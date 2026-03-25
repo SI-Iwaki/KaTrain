@@ -1573,7 +1573,7 @@ class HumanStyleStrategy(AIStrategy):
                     if non_best_moves:
                         # 最善手以外に「緑」（GREEN_MOVE_THRESHOLD以内）の代替手があるか確認
                         # 緑の代替手がない場合（黄色・オレンジのみ）は最善手を打つ
-                        GREEN_MOVE_THRESHOLD = 1.0 if (bx == 9 and by == 9) else 2.0  # 13路盤は盤面が大きいため緩める
+                        GREEN_MOVE_THRESHOLD = 1.0 if (bx == 9 and by == 9) else 1.5  # 13路盤は盤面が大きいため少し緩める
                         non_best_gtps = {m.gtp() for m, _ in non_best_moves}
                         green_score_set = {
                             mi.get("move", "")
