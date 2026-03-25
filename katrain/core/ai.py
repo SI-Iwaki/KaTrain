@@ -1598,6 +1598,11 @@ class HumanStyleStrategy(AIStrategy):
                                 f"playing best move {best_gtp_by_score}",
                                 OUTPUT_DEBUG
                             )
+                            if best_gtp_by_score == "pass":
+                                return Move(None, player=self.cn.next_player), f"Big win: no green move, playing best (pass)"
+                            else:
+                                best_move = Move.from_gtp(best_gtp_by_score, player=self.cn.next_player)
+                                return best_move, f"Big win: no green move (winrate={player_winrate:.1%}), playing best {best_gtp_by_score}"
                     else:
                         # 最善手しかない場合はそのまま（最善手を打つ）
                         self.game.katrain.log(
