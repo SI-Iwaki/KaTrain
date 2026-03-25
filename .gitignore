@@ -29,6 +29,7 @@ outdated_log.txt
 
 # too big
 models/*.bin.gz
+katrain/models/*.bin.gz
 
 # KataGo binaries (platform-specific executables and DLLs)
 katrain/KataGo/*.exe
