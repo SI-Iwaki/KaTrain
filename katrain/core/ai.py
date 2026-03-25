@@ -1573,26 +1573,28 @@ class HumanStyleStrategy(AIStrategy):
                     if non_best_moves:
                         # 最善手以外に「緑」（GREEN_MOVE_THRESHOLD以内）の代替手があるか確認
                         # 緑の代替手がない場合（黄色・オレンジのみ）は最善手を打つ
-                        GREEN_MOVE_THRESHOLD = 1.0 if (bx == 9 and by == 9) else 1.5  # 13路盤は盤面が大きいため少し緩める
+                        GREEN_MOVE_THRESHOLD = 1.0 if (bx == 9 and by == 9) else 2.0  # 13路盤は盤面が大きいため緩める
                         non_best_gtps = {m.gtp() for m, _ in non_best_moves}
-                        has_green_alternative = any(
-                            player_sign * (best_score - mi.get("scoreLead", 0)) < GREEN_MOVE_THRESHOLD
+                        green_score_set = {
+                            mi.get("move", "")
                             for mi in move_infos
                             if mi.get("move", "") in non_best_gtps
-                        )
-                        if has_green_alternative:
-                            moves = non_best_moves
+                            and player_sign * (best_score - mi.get("scoreLead", 0)) < GREEN_MOVE_THRESHOLD
+                        }
+                        green_moves = [(m, w) for m, w in non_best_moves if m.gtp() in green_score_set]
+                        if green_moves:
+                            moves = green_moves
                             self.game.katrain.log(
                                 f"[HumanStyleStrategy] {bx}x{by} big win: winrate={player_winrate:.1%} "
                                 f"(>= {WIN_RATE_THRESHOLD:.0%}), excluding best move {best_gtp_by_score}, "
-                                f"{len(non_best_moves)} moves remain (green alternative exists)",
+                                f"{len(green_moves)} green moves remain (threshold={GREEN_MOVE_THRESHOLD})",
                                 OUTPUT_DEBUG
                             )
                         else:
-                            # 緑の代替手なし（黄色・オレンジのみ）→ 最善手を打つ
+                            # 緑手なし（GREEN_MOVE_THRESHOLD外の手のみ）→ 最善手を打つ
                             self.game.katrain.log(
                                 f"[HumanStyleStrategy] {bx}x{by} big win: winrate={player_winrate:.1%}, "
-                                f"no green alternative (threshold={GREEN_MOVE_THRESHOLD}), "
+                                f"no green move within threshold={GREEN_MOVE_THRESHOLD}, "
                                 f"playing best move {best_gtp_by_score}",
                                 OUTPUT_DEBUG
                             )
