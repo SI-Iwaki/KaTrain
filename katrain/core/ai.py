@@ -1535,8 +1535,8 @@ class HumanStyleStrategy(AIStrategy):
                         OUTPUT_DEBUG,
                     )
 
-        # 9路盤: 勝率に応じた大差フィルター（大差負け → 最善手のみ / 大差勝ち → 最善手除外）
-        if bx == 9 and by == 9 and best_gtp_by_score is not None:
+        # 9路盤・13路盤: 勝率に応じた大差フィルター（大差負け → 最善手のみ / 大差勝ち → 最善手除外）
+        if (bx == 9 and by == 9 or bx == 13 and by == 13) and best_gtp_by_score is not None:
             root_winrate = analysis.get("rootInfo", {}).get("winrate", 0.5)
             # rootInfo.winrate は常にBlack視点（0.0〜1.0）
             player_winrate = root_winrate if self.cn.next_player == "B" else (1.0 - root_winrate)
@@ -1554,7 +1554,7 @@ class HumanStyleStrategy(AIStrategy):
             if self.game._human_ai_big_loss_mode:
                 # 大差負け: 最善手のみを打つ（humanPolicyを無視）
                 self.game.katrain.log(
-                    f"[HumanStyleStrategy] 9x9 big loss: winrate={player_winrate:.1%} "
+                    f"[HumanStyleStrategy] {bx}x{by} big loss: winrate={player_winrate:.1%} "
                     f"(big_loss_mode={self.game._human_ai_big_loss_mode}), "
                     f"playing best move {best_gtp_by_score}",
                     OUTPUT_DEBUG
@@ -1573,7 +1573,7 @@ class HumanStyleStrategy(AIStrategy):
                     if non_best_moves:
                         # 最善手以外に「緑」（GREEN_MOVE_THRESHOLD以内）の代替手があるか確認
                         # 緑の代替手がない場合（黄色・オレンジのみ）は最善手を打つ
-                        GREEN_MOVE_THRESHOLD = 1.0  # 最善手から1目以内を「緑」と判定
+                        GREEN_MOVE_THRESHOLD = 1.0 if (bx == 9 and by == 9) else 1.5  # 13路盤は盤面が大きいため少し緩める
                         non_best_gtps = {m.gtp() for m, _ in non_best_moves}
                         has_green_alternative = any(
                             player_sign * (best_score - mi.get("scoreLead", 0)) < GREEN_MOVE_THRESHOLD
@@ -1583,7 +1583,7 @@ class HumanStyleStrategy(AIStrategy):
                         if has_green_alternative:
                             moves = non_best_moves
                             self.game.katrain.log(
-                                f"[HumanStyleStrategy] 9x9 big win: winrate={player_winrate:.1%} "
+                                f"[HumanStyleStrategy] {bx}x{by} big win: winrate={player_winrate:.1%} "
                                 f"(>= {WIN_RATE_THRESHOLD:.0%}), excluding best move {best_gtp_by_score}, "
                                 f"{len(non_best_moves)} moves remain (green alternative exists)",
                                 OUTPUT_DEBUG
@@ -1591,7 +1591,7 @@ class HumanStyleStrategy(AIStrategy):
                         else:
                             # 緑の代替手なし（黄色・オレンジのみ）→ 最善手を打つ
                             self.game.katrain.log(
-                                f"[HumanStyleStrategy] 9x9 big win: winrate={player_winrate:.1%}, "
+                                f"[HumanStyleStrategy] {bx}x{by} big win: winrate={player_winrate:.1%}, "
                                 f"no green alternative (threshold={GREEN_MOVE_THRESHOLD}), "
                                 f"playing best move {best_gtp_by_score}",
                                 OUTPUT_DEBUG
@@ -1599,7 +1599,7 @@ class HumanStyleStrategy(AIStrategy):
                     else:
                         # 最善手しかない場合はそのまま（最善手を打つ）
                         self.game.katrain.log(
-                            f"[HumanStyleStrategy] 9x9 big win: winrate={player_winrate:.1%}, "
+                            f"[HumanStyleStrategy] {bx}x{by} big win: winrate={player_winrate:.1%}, "
                             f"only 1 candidate, playing best move {best_gtp_by_score}",
                             OUTPUT_DEBUG
                         )
