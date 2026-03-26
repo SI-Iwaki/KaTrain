@@ -1479,7 +1479,13 @@ class HumanStyleStrategy(AIStrategy):
         if not moves:
             self.game.katrain.log(f"[HumanStyleStrategy] All human moves filtered, using best search move", OUTPUT_DEBUG)
             if move_infos:
-                best_gtp = move_infos[0].get("move", "pass")
+                # 9路・13路盤: best_gtp_by_score（スコア最善手）を優先
+                # humanSLProfileの影響で最多探索手≠スコア最善手になる場合があるため
+                # 19路盤: move_infos[0]（最多探索手）のままとする（デフォルト動作を維持）
+                if (bx == 9 and by == 9 or bx == 13 and by == 13) and best_gtp_by_score:
+                    best_gtp = best_gtp_by_score
+                else:
+                    best_gtp = move_infos[0].get("move", "pass")
                 if best_gtp == "pass":
                     return Move(None, player=self.cn.next_player), "All human moves filtered, playing best move."
                 else:
@@ -1573,7 +1579,7 @@ class HumanStyleStrategy(AIStrategy):
                     if non_best_moves:
                         # 最善手以外に「緑」（GREEN_MOVE_THRESHOLD以内）の代替手があるか確認
                         # 緑の代替手がない場合（黄色・オレンジのみ）は最善手を打つ
-                        GREEN_MOVE_THRESHOLD = 1.0 if (bx == 9 and by == 9) else 1.5  # 13路盤は盤面が大きいため少し緩める
+                        GREEN_MOVE_THRESHOLD = 1.0 if (bx == 9 and by == 9) else 1.2  # 9路: 1.0, 13路: 1.2
                         non_best_gtps = {m.gtp() for m, _ in non_best_moves}
                         green_score_set = {
                             mi.get("move", "")
