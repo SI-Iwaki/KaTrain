@@ -1443,6 +1443,10 @@ class HumanStyleStrategy(AIStrategy):
             best_gtp_by_score = max(
                 move_infos, key=lambda mi: mi.get("scoreLead", 0) * player_sign
             ).get("move", "")
+            # 最善手がパスの場合は強制的にパス（9段がパスタイミングを間違えることはない）
+            if best_gtp_by_score == "pass":
+                self.game.katrain.log(f"[HumanStyleStrategy] Best move is pass, forcing pass", OUTPUT_DEBUG)
+                return Move(None, player=self.cn.next_player), "Best move is pass, forcing pass."
             self.game.katrain.log(f"[HumanStyleStrategy] Move {current_move}: phase={'opening' if current_move < opening_boundary else 'normal'}, threshold={BAD_MOVE_THRESHOLD} (boundary={opening_boundary})", OUTPUT_DEBUG)
             self.game.katrain.log(f"[HumanStyleStrategy] Best move score: {best_score:.1f} (player={self.cn.next_player}), filtering moves losing {BAD_MOVE_THRESHOLD}+ pts", OUTPUT_DEBUG)
             for mi in move_infos:
