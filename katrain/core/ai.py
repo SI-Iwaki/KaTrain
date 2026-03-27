@@ -1545,6 +1545,9 @@ class HumanStyleStrategy(AIStrategy):
                         OUTPUT_DEBUG,
                     )
 
+        # 終局閾値（big-win フィルター内の relax 判定にも使用）
+        endgame_threshold = math.ceil(bx * by * 0.5)
+
         # 9路盤・13路盤: 勝率に応じた大差フィルター（大差負け → 最善手のみ / 大差勝ち → 最善手除外）
         if (bx == 9 and by == 9 or bx == 13 and by == 13) and best_gtp_by_score is not None:
             root_winrate = analysis.get("rootInfo", {}).get("winrate", 0.5)
@@ -1581,17 +1584,38 @@ class HumanStyleStrategy(AIStrategy):
                 if player_winrate >= WIN_RATE_THRESHOLD:
                     non_best_moves = [(m, w) for m, w in moves if m.gtp() != best_gtp_by_score]
                     if non_best_moves:
-                        # 最善手以外に「緑」（GREEN_MOVE_THRESHOLD以内）の代替手があるか確認
-                        # 緑の代替手がない場合（黄色・オレンジのみ）は最善手を打つ
-                        GREEN_MOVE_THRESHOLD = 1.0 if (bx == 9 and by == 9) else 1.2  # 9路: 1.0, 13路: 1.2
-                        non_best_gtps = {m.gtp() for m, _ in non_best_moves}
-                        green_score_set = {
-                            mi.get("move", "")
-                            for mi in move_infos
-                            if mi.get("move", "") in non_best_gtps
-                            and player_sign * (best_score - mi.get("scoreLead", 0)) < GREEN_MOVE_THRESHOLD
-                        }
-                        green_moves = [(m, w) for m, w in non_best_moves if m.gtp() in green_score_set]
+                        # 13路盤 & 目差12目以上 & 非終局 & チェックON: GREEN_MOVE_THRESHOLD を解除
+                        root_score_lead = analysis.get("rootInfo", {}).get("scoreLead", 0)
+                        score_margin = player_sign * root_score_lead
+                        SCORE_MARGIN_FOR_RELAX = 12.0
+                        use_big_win_relax = (
+                            bx == 13 and by == 13
+                            and self.settings.get("loose_moves_big_win", False)
+                            and current_move < endgame_threshold
+                            and score_margin >= SCORE_MARGIN_FOR_RELAX
+                        )
+                        if use_big_win_relax:
+                            # GREEN_MOVE_THRESHOLD 解除: non_best_moves 全体（損失 < NORMAL_THRESHOLD目）を候補に
+                            green_moves = non_best_moves
+                            GREEN_MOVE_THRESHOLD = NORMAL_THRESHOLD  # ログ表示用
+                            self.game.katrain.log(
+                                f"[HumanStyleStrategy] {bx}x{by} big win relax: "
+                                f"score_margin={score_margin:.1f} >= {SCORE_MARGIN_FOR_RELAX}, "
+                                f"GREEN threshold removed, {len(green_moves)} candidates",
+                                OUTPUT_DEBUG
+                            )
+                        else:
+                            # 最善手以外に「緑」（GREEN_MOVE_THRESHOLD以内）の代替手があるか確認
+                            # 緑の代替手がない場合（黄色・オレンジのみ）は最善手を打つ
+                            GREEN_MOVE_THRESHOLD = 1.0 if (bx == 9 and by == 9) else 1.2  # 9路: 1.0, 13路: 1.2
+                            non_best_gtps = {m.gtp() for m, _ in non_best_moves}
+                            green_score_set = {
+                                mi.get("move", "")
+                                for mi in move_infos
+                                if mi.get("move", "") in non_best_gtps
+                                and player_sign * (best_score - mi.get("scoreLead", 0)) < GREEN_MOVE_THRESHOLD
+                            }
+                            green_moves = [(m, w) for m, w in non_best_moves if m.gtp() in green_score_set]
                         if green_moves:
                             moves = green_moves
                             self.game.katrain.log(
@@ -1648,7 +1672,6 @@ class HumanStyleStrategy(AIStrategy):
             return Move(None, player=self.cn.next_player), "Pass is in candidates, forcing pass."
 
         # 終局時はhumanPolicy最上位手を選択（9段はヨセを間違えない）
-        endgame_threshold = math.ceil(bx * by * 0.5)
         if current_move >= endgame_threshold:
             top_moves_sorted = sorted(moves, key=lambda x: -x[1])
             top_moves_str = "\n".join([f"#{i+1}: {m.gtp()} - {p:.1%}" for i, (m, p) in enumerate(top_moves_sorted[:5])])

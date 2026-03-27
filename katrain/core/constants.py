@@ -126,6 +126,7 @@ AI_OPTION_VALUES = {
     "modern_style": "bool",
     "pro_year": range(1800,2024),
     "force_star_opening": "bool",
+    "loose_moves_big_win": "bool",
     "policy_temperature": [round(x / 10, 1) for x in range(10, 31)],
 }
 
