@@ -1641,6 +1641,24 @@ class HumanStyleStrategy(AIStrategy):
                             OUTPUT_DEBUG
                         )
 
+        # passが候補手に含まれていたら強制的にパス
+        # （passが候補に上がった＝他の手を打つと損するため）
+        if any(m.is_pass for m, _ in moves):
+            self.game.katrain.log(f"[HumanStyleStrategy] Pass is among candidates, forcing pass", OUTPUT_DEBUG)
+            return Move(None, player=self.cn.next_player), "Pass is in candidates, forcing pass."
+
+        # 終局時はhumanPolicy最上位手を選択（9段はヨセを間違えない）
+        endgame_threshold = math.ceil(bx * by * 0.5)
+        if current_move >= endgame_threshold:
+            top_moves_sorted = sorted(moves, key=lambda x: -x[1])
+            top_moves_str = "\n".join([f"#{i+1}: {m.gtp()} - {p:.1%}" for i, (m, p) in enumerate(top_moves_sorted[:5])])
+            self.game.katrain.log(f"[HumanStyleStrategy] Endgame (move {current_move} >= {endgame_threshold}): playing top humanPolicy move", OUTPUT_DEBUG)
+            self.game.katrain.log(f"[HumanStyleStrategy] Top 5 moves:\n{top_moves_str}", OUTPUT_DEBUG)
+            move = top_moves_sorted[0][0]
+            prob = top_moves_sorted[0][1]
+            ai_thoughts = f"\n{top_moves_str}\n\nEndgame: played top move {move.gtp()} ({prob:.1%}). ({filtered_count} bad moves filtered)"
+            return move, ai_thoughts
+
         # Policy temperature scaling: T>1 flattens humanPolicy distribution → more ≥0.5 moves
         policy_temperature = self.settings.get("policy_temperature", 1.0)
         if policy_temperature != 1.0 and moves:
