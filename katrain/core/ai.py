@@ -1600,6 +1600,26 @@ class HumanStyleStrategy(AIStrategy):
                                 f"{len(green_moves)} green moves remain (threshold={GREEN_MOVE_THRESHOLD})",
                                 OUTPUT_DEBUG
                             )
+                            # 上位2手のhumanPolicy重みが拮抗（差1%未満）している場合、
+                            # ランダム性で人間らしくない手が選ばれるのを防ぐため
+                            # scoreが最善手に最も近い1手に絞る
+                            if len(green_moves) >= 2:
+                                sorted_by_w = sorted(green_moves, key=lambda x: -x[1])
+                                top1_w = sorted_by_w[0][1]
+                                top2_w = sorted_by_w[1][1]
+                                if top1_w > 0 and (top2_w / top1_w) > 0.99:
+                                    score_by_gtp = {mi["move"]: mi.get("scoreLead", 0) for mi in move_infos}
+                                    best_green = max(
+                                        green_moves,
+                                        key=lambda x: player_sign * score_by_gtp.get(x[0].gtp(), -999)
+                                    )
+                                    moves = [best_green]
+                                    self.game.katrain.log(
+                                        f"[HumanStyleStrategy] {bx}x{by} big win tie-break: "
+                                        f"top2/top1={top2_w/top1_w:.4f} > 0.99, "
+                                        f"score-selecting {best_green[0].gtp()}",
+                                        OUTPUT_DEBUG
+                                    )
                         else:
                             # 緑手なし（GREEN_MOVE_THRESHOLD外の手のみ）→ 最善手を打つ
                             self.game.katrain.log(
