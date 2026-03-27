@@ -58,6 +58,7 @@ python -m katrain
 - 詳細な実装ガイド・チェックリストは `.claude/rules/` に格納。対象ファイル編集時に自動ロードされる:
   - `katrain/core/ai.py` 編集時 → `ai-humanstyle.md`（フィルタ実装詳細、パラメータチェックリスト）
   - `katrain/core/constants.py` / `katrain/config.json` 編集時 → `ai-settings-gui.md`（AI設定追加手順）
+  - `katrain/core/base_katrain.py` 編集時 → `base-katrain-config.md`（JsonStore構造・起動時リセットパターン）
 - **パラメータ変更時は必ず下記テーブルも同時に更新すること**
 
 ## 現在のパラメータ値
@@ -67,7 +68,7 @@ python -m katrain
 | パラメータ | 19路・13路 | 9路盤 |
 |---|---|---|
 | OPENING_THRESHOLD | 2.8 | 0.5 |
-| NORMAL_THRESHOLD | 5.0 | 3.3 |
+|NORMAL_THRESHOLD | 5.0 | 3.3 |
 
 ### 大差フィルター（9路盤・13路盤）
 
@@ -78,6 +79,12 @@ python -m katrain
 | BIG_LOSS_EXIT | 0.50 |
 | GREEN_MOVE_THRESHOLD（9路） | 1.0 |
 | GREEN_MOVE_THRESHOLD（13路） | 1.2 |
+
+### ポリシー温度（Human-like モード共通）
+
+| パラメータ | デフォルト値 | 備考 |
+|---|---|---|
+| policy_temperature | 1.0 | 1.0=変化なし、大きいほど≥0.5損失手が増える。起動時は1.0にリセット |
 
 ### エンジン設定
 

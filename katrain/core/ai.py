@@ -1621,6 +1621,11 @@ class HumanStyleStrategy(AIStrategy):
                             OUTPUT_DEBUG
                         )
 
+        # Policy temperature scaling: T>1 flattens humanPolicy distribution → more ≥0.5 moves
+        policy_temperature = self.settings.get("policy_temperature", 1.0)
+        if policy_temperature != 1.0 and moves:
+            moves = [(m, w ** (1.0 / policy_temperature)) for m, w in moves]
+
         top_moves = sorted(moves, key=lambda x: -x[1])
         top_moves_str = "\n".join([f"#{i+1}: {move.gtp()} - {prob:.1%}" for i, (move, prob) in enumerate(top_moves[:5])])
         self.game.katrain.log(f"[HumanStyleStrategy] Top 5 moves:\n{top_moves_str}", OUTPUT_DEBUG)

@@ -162,7 +162,8 @@
         "ai:human": {
             "human_kyu_rank": 8,
             "modern_style": false,
-            "force_star_opening": false
+            "force_star_opening": false,
+            "policy_temperature": 1.0
         },
         "ai:pro": {
             "pro_year": 1914

@@ -143,6 +143,11 @@ class KaTrainBase:
             self.log(f"Failed to load config {config_file}: {e}", OUTPUT_ERROR)
             sys.exit(1)
         self._config = dict(self._config_store)
+        # Reset policy_temperature to 1.0 on every startup (session-only setting)
+        if "ai" in self._config and "ai:human" in self._config["ai"]:
+            if "policy_temperature" in self._config["ai"]["ai:human"]:
+                self._config["ai"]["ai:human"]["policy_temperature"] = 1.0
+                self._config_store.put("ai", **self._config["ai"])
         return config_file
 
     def save_config(self, key=None):
