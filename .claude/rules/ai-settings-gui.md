@@ -46,6 +46,17 @@ if not star_moves:
             star_moves.append((Move((sx, sy), player=self.cn.next_player), weight))
 ```
 
+## 現在の `ai:human` 設定項目一覧
+
+| キー | 型 | デフォルト | 備考 |
+|------|-----|-----------|------|
+| `human_kyu_rank` | float | -8.0 | humanSLProfile段位（-9=9段） |
+| `modern_style` | bool | true | 現代布石プロファイル |
+| `force_star_opening` | bool | true | 序盤に星点を優先 |
+| `loose_moves_big_win` | bool | false | 大差勝ち時に13路でGREEN解除 |
+| `policy_temperature` | float | 1.0 | 起動時1.0にリセット |
+| `first_impression_deviation` | bool | false | 19路盤・中盤以降で第一感ぶれ |
+
 ## チェックリスト（新機能追加時）
 
 - [ ] `katrain/core/constants.py` — `AI_OPTION_VALUES` に追加
@@ -53,3 +64,4 @@ if not star_moves:
 - [ ] `katrain/config.json` — `"ai:human"` にデフォルト値追加
 - [ ] `C:\Users\iwaki\.katrain\config.json` — `"ai:human"` に同じキー追加
 - [ ] CLAUDE.md を更新（新機能の説明、パラメータ等）
+- [ ] 起動時リセットが必要な場合は `base_katrain.py` の `_load_config` 末尾に追加

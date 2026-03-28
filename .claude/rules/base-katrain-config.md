@@ -64,6 +64,10 @@ if "ai" in self._config and "ai:human" in self._config["ai"]:
         self._config_store.put("ai", **self._config["ai"])
 ```
 
+### 起動時リセットが不要な設定
+
+`first_impression_deviation` や `loose_moves_big_win` のように、ユーザーが明示的にON/OFFを選ぶ設定は起動時リセットしない。リセット処理を追加するのは「セッション中に変わった値を毎回初期値に戻したい」場合のみ（`policy_temperature` が典型例）。
+
 ### なぜ `_load_config` の末尾か
 
 - `_load_config` の後に `save_config()` が呼ばれる箇所があるが、`self._config` を修正しておけば上書きされない
