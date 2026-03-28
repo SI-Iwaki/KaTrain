@@ -32,7 +32,7 @@ engine, contribute, general, timer, game, trainer, ai, ui_state, dist_models
   "ai": {
     "black": { ... },
     "white": { ... },
-    "ai:human": { "human_kyu_rank": ..., "policy_temperature": ... },
+    "ai:human": { "human_kyu_rank": ..., "first_impression_deviation": ... },
     "ai:pro":   { "pro_year": ... },
     "ai:p:rank": { "kyu_rank": ... }
   }
@@ -43,10 +43,10 @@ engine, contribute, general, timer, game, trainer, ai, ui_state, dist_models
 
 ```python
 # 読み取り
-value = self._config["ai"]["ai:human"]["policy_temperature"]
+value = self._config["ai"]["ai:human"]["first_impression_deviation"]
 
 # 書き込み（ファイルにも即時反映される）
-self._config["ai"]["ai:human"]["policy_temperature"] = 1.0
+self._config["ai"]["ai:human"]["first_impression_deviation"] = False
 self._config_store.put("ai", **self._config["ai"])
 ```
 
@@ -54,24 +54,9 @@ self._config_store.put("ai", **self._config["ai"])
 
 ## 起動時リセットのパターン
 
-「セッション中のみ有効で起動時に初期値に戻したい設定」は `_load_config` の末尾に追加する：
+現在、起動時リセット対象の設定はない。将来「セッション中のみ有効で起動時に初期値に戻したい設定」が必要な場合は `_load_config` の末尾に追加する。
 
-```python
-# _load_config の末尾（self._config = dict(self._config_store) の直後）
-if "ai" in self._config and "ai:human" in self._config["ai"]:
-    if "policy_temperature" in self._config["ai"]["ai:human"]:
-        self._config["ai"]["ai:human"]["policy_temperature"] = 1.0
-        self._config_store.put("ai", **self._config["ai"])
-```
-
-### 起動時リセットが不要な設定
-
-`first_impression_deviation` や `loose_moves_big_win` のように、ユーザーが明示的にON/OFFを選ぶ設定は起動時リセットしない。リセット処理を追加するのは「セッション中に変わった値を毎回初期値に戻したい」場合のみ（`policy_temperature` が典型例）。
-
-### なぜ `_load_config` の末尾か
-
-- `_load_config` の後に `save_config()` が呼ばれる箇所があるが、`self._config` を修正しておけば上書きされない
-- GUI 初期化前に値が確定するため、スライダー等のウィジェットが正しい値で描画される
+`first_impression_deviation` 等のように、ユーザーが明示的にON/OFFを選ぶ設定は起動時リセットしない。
 
 ## デバッグ方法（設定値が反映されない場合）
 
@@ -84,5 +69,5 @@ store = JsonStore('C:/Users/iwaki/.katrain/config.json')
 d = dict(store)
 print(list(d.keys()))                          # トップレベルキー一覧
 print(d.get('ai', {}).keys())                  # ai サブキー一覧
-print(d['ai']['ai:human']['policy_temperature']) # 値確認
+print(d['ai']['ai:human']['first_impression_deviation']) # 値確認
 ```

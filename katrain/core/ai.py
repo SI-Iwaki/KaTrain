@@ -1565,11 +1565,6 @@ class HumanStyleStrategy(AIStrategy):
             ai_thoughts = f"\n{top_moves_str}\n\nEndgame: played top move {move.gtp()} ({prob:.1%}). ({filtered_count} bad moves filtered)"
             return move, ai_thoughts
 
-        # Policy temperature scaling: T>1 flattens humanPolicy distribution → more ≥0.5 moves
-        policy_temperature = self.settings.get("policy_temperature", 1.0)
-        if policy_temperature != 1.0 and moves:
-            moves = [(m, w ** (1.0 / policy_temperature)) for m, w in moves]
-
         top_moves = sorted(moves, key=lambda x: -x[1])
         top_moves_str = "\n".join([f"#{i+1}: {move.gtp()} - {prob:.1%}" for i, (move, prob) in enumerate(top_moves[:5])])
         self.game.katrain.log(f"[HumanStyleStrategy] Top 5 moves:\n{top_moves_str}", OUTPUT_DEBUG)
@@ -1578,7 +1573,7 @@ class HumanStyleStrategy(AIStrategy):
         # 第一感上位3位で損失0.5〜上限目の手を確定選択
         # 損失上限: 9路=1.5目、13路・19路=2.0目
         if (self.settings.get("first_impression_deviation", False)
-                and current_move >= opening_boundary  # 序盤は第一感ぶれを無効化
+                and (self.settings.get("first_impression_deviation_opening", False) or current_move >= opening_boundary)
                 and top_moves and move_infos):
             loss_by_gtp = {}
             for mi in move_infos:

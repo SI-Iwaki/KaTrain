@@ -70,17 +70,12 @@ python -m katrain
 | OPENING_THRESHOLD | 2.8 | 0.5 |
 |NORMAL_THRESHOLD | 5.7 | 3.3 |
 
-### ポリシー温度（Human-like モード共通）
-
-| パラメータ | デフォルト値 | 備考 |
-|---|---|---|
-| policy_temperature | 1.0 | 1.0=変化なし、大きいほど≥0.5損失手が増える。起動時は1.0にリセット |
-
 ### 第一感ぶれ（全盤面）
 
 | パラメータ | デフォルト値 | 備考 |
 |---|---|---|
 | first_impression_deviation | false | ONで第一感上位3位中の損失0.5〜上限目の手のうち最も損失の少ない手を確定選択（9路=1.5目、13路・19路=2.0目） |
+| first_impression_deviation_opening | false | ON（+deviation ON）で序盤でも第一感ぶれを適用する（デフォルトOFF=序盤は無効） |
 | first_impression_green_blend | false | ON（+deviation ON）で第一感1位が緑(loss<0.5)かつ非最善の場合、第一感1位と上位3位中の最小損失手(0.5〜上限)をgreen_ratioで選択 |
 | green_blend_green_ratio | 0.5 | green_blend時の緑手選択確率（0.4=dev寄り40/60・0.5=均等50/50・0.6=緑寄り60/40） |
 

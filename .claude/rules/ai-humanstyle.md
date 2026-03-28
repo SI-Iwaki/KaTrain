@@ -33,8 +33,10 @@ paths:
   - `dev_loss_max`: 9路=1.5目、13路・19路=2.0目
 - 損失0.5未満（ほぼベスト）や上限以上の手は対象外
 - 候補がなければ通常の確率的選択にフォールバック
-- **序盤は無効**（`current_move < opening_boundary` の手番は発動しない）
+- **デフォルトでは序盤は無効**（`current_move < opening_boundary` の手番は発動しない）
+- `first_impression_deviation_opening: true` で序盤でも発動可能（試験的オプション）
 - 設定: `first_impression_deviation: bool`（デフォルト false、起動時リセットなし）
+- 設定: `first_impression_deviation_opening: bool`（デフォルト false）
 
 ### green_blend（第一感緑ブレンド）
 
@@ -46,20 +48,6 @@ paths:
 - 条件不成立時: 既存の `first_impression_deviation` 動作（最小損失を確定選択）にフォールバック
 - 設定: `first_impression_green_blend: bool`（デフォルト false）
 - 設定: `green_blend_green_ratio: float`（デフォルト 0.5、選択肢: 0.4/0.5/0.6）
-
-## policy_temperature（ポリシー温度）
-
-humanPolicy重みに対して温度スケーリングを適用する。
-
-```python
-moves = [(m, w ** (1.0 / policy_temperature)) for m, w in moves]
-```
-
-- `1.0`（デフォルト）: 変化なし
-- `> 1.0`: 確率分布をフラット化 → 低確率手が選ばれやすくなる（≥0.5損失手が増える）
-- `< 1.0`: 確率分布をシャープ化 → 最高確率手に集中
-- 設定: `policy_temperature: float`（1.0〜2.0）
-- **起動時に 1.0 にリセット**される（`base_katrain.py` の `_load_config` 末尾処理）
 
 ## パラメータ変更チェックリスト
 
@@ -73,12 +61,6 @@ moves = [(m, w ** (1.0 / policy_temperature)) for m, w in moves]
 - [ ] `katrain/core/ai.py` — 損失範囲 `0.5 <= loss < 2.0` や上位N位数を変更
 - [ ] `katrain/core/constants.py` — `AI_OPTION_VALUES` に既に `"bool"` で登録済みか確認
 - [ ] CLAUDE.md の「第一感ぶれ」セクションを更新
-
-### `policy_temperature` の動作を変更する場合
-
-- [ ] `katrain/core/ai.py` — スケーリング式 `w ** (1.0 / policy_temperature)` の確認
-- [ ] 起動時リセットが必要な場合は `base_katrain.py` の `_load_config` 末尾も確認
-- [ ] CLAUDE.md の「ポリシー温度」テーブルを更新
 
 ### `maxVisits` を変更する場合
 
