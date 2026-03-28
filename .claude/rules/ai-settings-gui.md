@@ -55,7 +55,8 @@ if not star_moves:
 | `force_star_opening` | bool | true | 序盤に星点を優先 |
 | `policy_temperature` | float | 1.0 | 起動時1.0にリセット |
 | `first_impression_deviation` | bool | false | 全盤面・中盤以降で第一感ぶれ（9路=上限1.5目、他=2.0目） |
-| `first_impression_green_blend` | bool | false | deviation ON時、緑の第一感と偏差手を50/50で選択 |
+| `first_impression_green_blend` | bool | false | deviation ON時、緑の第一感と偏差手をgreen_ratioで選択 |
+| `green_blend_green_ratio` | float | 0.5 | green_blend時の緑手確率（0.4=dev寄り/0.5=均等/0.6=緑寄り、スライダー） |
 
 ## チェックリスト（新機能追加時）
 

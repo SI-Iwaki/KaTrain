@@ -40,10 +40,12 @@ paths:
 
 `first_impression_deviation` ON 時の追加オプション。
 
-- 条件: 第一感1位（humanPolicy最大）が緑（0 < loss < 0.5）かつスコア最善でない、かつ上位3位内に 0.5 <= loss < 2.0 の手がある
-- 動作: 50%で緑の第一感1位、50%で偏差候補（0.5-2.0の最小損失手）を選択
-- 条件不成立時: 既存の `first_impression_deviation` 動作（0.5-2.0の最小損失を確定選択）にフォールバック
-- 設定: `first_impression_green_blend: bool`（デフォルト false、起動時リセットなし）
+- 条件: 第一感1位（humanPolicy最大）が緑（0 < loss < 0.5）かつスコア最善でない、かつ上位3位内に 0.5 <= loss < dev_loss_max の手がある
+- 動作: `green_blend_green_ratio`の確率で緑の第一感1位、残りで偏差候補（最小損失手）を選択
+  - 0.6 → 緑寄り(60/40)、0.5 → 均等(50/50)、0.4 → dev寄り(40/60)
+- 条件不成立時: 既存の `first_impression_deviation` 動作（最小損失を確定選択）にフォールバック
+- 設定: `first_impression_green_blend: bool`（デフォルト false）
+- 設定: `green_blend_green_ratio: float`（デフォルト 0.5、選択肢: 0.4/0.5/0.6）
 
 ## policy_temperature（ポリシー温度）
 

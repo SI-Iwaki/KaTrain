@@ -163,10 +163,10 @@
             "human_kyu_rank": 8,
             "modern_style": false,
             "force_star_opening": false,
-            "loose_moves_big_win": false,
             "policy_temperature": 1.0,
             "first_impression_deviation": false,
-            "first_impression_green_blend": false
+            "first_impression_green_blend": false,
+            "green_blend_green_ratio": 0.5
         },
         "ai:pro": {
             "pro_year": 1914

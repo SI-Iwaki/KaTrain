@@ -28,6 +28,7 @@ from katrain.core.constants import (
     AI_CONFIG_DEFAULT,
     AI_DEFAULT,
     AI_KEY_PROPERTIES,
+    AI_OPTION_ORDER,
     AI_OPTION_VALUES,
     AI_STRATEGIES_RECOMMENDED_ORDER,
     DATA_FOLDER,
@@ -419,7 +420,7 @@ class ConfigAIPopup(QuickConfigGui):
         mode_settings = self.katrain.config(f"ai/{strategy}")
         self.options_grid.clear_widgets()
         self.help_label.text = i18n._(strategy.replace("ai:", "aihelp:"))
-        for k, v in sorted(mode_settings.items(), key=lambda kv: (kv[0] not in AI_KEY_PROPERTIES, kv[0])):
+        for k, v in sorted(mode_settings.items(), key=lambda kv: (kv[0] not in AI_KEY_PROPERTIES, AI_OPTION_ORDER.get(kv[0], 99), kv[0])):
             self.options_grid.add_widget(DescriptionLabel(text=k, size_hint_x=0.275))
             if k in AI_OPTION_VALUES:
                 values = AI_OPTION_VALUES[k]

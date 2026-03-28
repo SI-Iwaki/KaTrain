@@ -1592,14 +1592,15 @@ class HumanStyleStrategy(AIStrategy):
                 if 0.5 <= loss < dev_loss_max:
                     deviation_candidates.append((m, loss))
 
-            # green_blend: 第一感1位が緑(0<loss<0.5)かつ非最善 → 50/50で緑手or偏差手
+            # green_blend: 第一感1位が緑(0<loss<0.5)かつ非最善 → green_ratioで緑手or偏差手
             if (self.settings.get("first_impression_green_blend", False)
                     and deviation_candidates and top_moves):
                 top1_move, top1_w = top_moves[0]
                 top1_loss = loss_by_gtp.get(top1_move.gtp(), 0.0)
                 if 0 < top1_loss < 0.5:
                     best_dev = min(deviation_candidates, key=lambda x: x[1])
-                    if random.random() < 0.5:
+                    green_ratio = self.settings.get("green_blend_green_ratio", 0.5)
+                    if random.random() < green_ratio:
                         chosen_move, chosen_loss = top1_move, top1_loss
                         blend_label = "green"
                     else:

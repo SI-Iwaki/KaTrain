@@ -129,6 +129,18 @@ AI_OPTION_VALUES = {
     "policy_temperature": [round(x / 10, 1) for x in range(10, 31)],
     "first_impression_deviation": "bool",
     "first_impression_green_blend": "bool",
+    "green_blend_green_ratio": [(0.4, "dev寄り(40/60)"), (0.5, "均等(50/50)"), (0.6, "緑寄り(60/40)")],
+}
+
+# AI設定画面の表示順（関連オプションをグループ化）
+AI_OPTION_ORDER = {
+    "human_kyu_rank": 0,
+    "modern_style": 10,
+    "force_star_opening": 11,
+    "policy_temperature": 20,
+    "first_impression_deviation": 30,
+    "first_impression_green_blend": 31,
+    "green_blend_green_ratio": 32,
 }
 
 AI_KEY_PROPERTIES = {
