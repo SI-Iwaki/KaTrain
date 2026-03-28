@@ -197,7 +197,7 @@ class KaTrainGui(Screen, KaTrainBase):
         if sgf_args:
             self.load_sgf_file(sgf_args[0], fast=True, rewind=True)
         else:
-            self._do_new_game()
+            self._do_new_game(_log=False)
 
         Clock.schedule_interval(self.handle_animations, 0.1)
         Window.request_keyboard(None, self, "").bind(on_key_down=self._on_keyboard_down, on_key_up=self._on_keyboard_up)
@@ -349,7 +349,9 @@ class KaTrainGui(Screen, KaTrainBase):
             else:  # game related actions
                 self.message_queue.put([self.game.game_id, message, args, kwargs])
 
-    def _do_new_game(self, move_tree=None, analyze_fast=False, sgf_filename=None):
+    def _do_new_game(self, move_tree=None, analyze_fast=False, sgf_filename=None, _log=True):
+        if _log:
+            self.start_game_log()
         self.pondering = False
         mode = self.play_analyze_mode
         if (move_tree is not None and mode == MODE_PLAY) or (move_tree is None and mode == MODE_ANALYZE):

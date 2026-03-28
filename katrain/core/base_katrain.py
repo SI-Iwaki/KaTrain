@@ -70,6 +70,8 @@ class KaTrainBase:
     def __init__(self, force_package_config=False, debug_level=None, **kwargs):
         self.debug_level = debug_level or 0
         self.game = None
+        self._game_log_file = None
+        self._game_log_path = None
 
         self.logger = lambda message, level=OUTPUT_INFO: self.log(message, level)
         self.config_file = self._load_config(force_package_config=force_package_config)
@@ -89,6 +91,58 @@ class KaTrainBase:
             print(f"ERROR: {message}")
         elif self.debug_level >= level:
             print(message)
+        if self._game_log_file and (level == OUTPUT_ERROR or self.debug_level >= level):
+            try:
+                self._game_log_file.write(f"{message}\n")
+                self._game_log_file.flush()
+            except Exception:
+                pass
+
+    def start_game_log(self):
+        MIN_MOVES = 20
+        if self.debug_level < 1:
+            return
+        if self._game_log_file:
+            try:
+                self._game_log_file.close()
+            except Exception:
+                pass
+            self._game_log_file = None
+            # 直前の対局が MIN_MOVES 手未満なら無効試合として削除
+            if self._game_log_path:
+                try:
+                    moves = self.game.current_node.depth if self.game else 0
+                except Exception:
+                    moves = 0
+                if moves < MIN_MOVES:
+                    try:
+                        os.remove(self._game_log_path)
+                    except Exception:
+                        pass
+            self._game_log_path = None
+
+        from datetime import datetime
+        import glob
+
+        log_dir = os.path.join(os.path.expanduser(DATA_FOLDER), "logs")
+        os.makedirs(log_dir, exist_ok=True)
+
+        MAX_LOGS = 10
+        existing = sorted(glob.glob(os.path.join(log_dir, "game_*.log")))
+        for old_file in existing[: max(0, len(existing) - MAX_LOGS + 1)]:
+            try:
+                os.remove(old_file)
+            except Exception:
+                pass
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_path = os.path.join(log_dir, f"game_{timestamp}.log")
+        try:
+            self._game_log_file = open(log_path, "w", encoding="utf-8")
+            self._game_log_path = log_path
+            print(f"Game log: {log_path}")
+        except Exception as e:
+            print(f"Failed to open game log: {e}")
 
     def _load_config(self, force_package_config):
         if len(sys.argv) > 1 and sys.argv[1].endswith("config.json"):
