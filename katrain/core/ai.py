@@ -1695,6 +1695,7 @@ class HumanStyleStrategy(AIStrategy):
         # 第一感上位3位で損失0.5〜2.0目の手を確定選択
         if (bx == 19 and by == 19
                 and self.settings.get("first_impression_deviation", False)
+                and current_move >= opening_boundary  # 序盤は第一感ぶれを無効化
                 and top_moves and move_infos):
             loss_by_gtp = {}
             for mi in move_infos:
