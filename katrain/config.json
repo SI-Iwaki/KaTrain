@@ -164,7 +164,8 @@
             "modern_style": false,
             "force_star_opening": false,
             "loose_moves_big_win": false,
-            "policy_temperature": 1.0
+            "policy_temperature": 1.0,
+            "first_impression_deviation": false
         },
         "ai:pro": {
             "pro_year": 1914

@@ -128,6 +128,7 @@ AI_OPTION_VALUES = {
     "force_star_opening": "bool",
     "loose_moves_big_win": "bool",
     "policy_temperature": [round(x / 10, 1) for x in range(10, 31)],
+    "first_impression_deviation": "bool",
 }
 
 AI_KEY_PROPERTIES = {

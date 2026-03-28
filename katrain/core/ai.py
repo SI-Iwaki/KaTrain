@@ -1428,7 +1428,7 @@ class HumanStyleStrategy(AIStrategy):
             NORMAL_THRESHOLD = 3.3    # 9路盤中盤・終盤: 3.3目以上の損失手は打たない
         else:
             OPENING_THRESHOLD = 2.8   # Stricter threshold in opening (3pt loss max)
-            NORMAL_THRESHOLD = 5.0    # Normal threshold for mid/endgame
+            NORMAL_THRESHOLD = 6.0    # Normal threshold for mid/endgame
         current_move = self.cn.depth  # Move number (both players combined)
         BAD_MOVE_THRESHOLD = OPENING_THRESHOLD if current_move < opening_boundary else NORMAL_THRESHOLD
         move_infos = analysis.get("moveInfos", [])
@@ -1690,6 +1690,35 @@ class HumanStyleStrategy(AIStrategy):
         top_moves = sorted(moves, key=lambda x: -x[1])
         top_moves_str = "\n".join([f"#{i+1}: {move.gtp()} - {prob:.1%}" for i, (move, prob) in enumerate(top_moves[:5])])
         self.game.katrain.log(f"[HumanStyleStrategy] Top 5 moves:\n{top_moves_str}", OUTPUT_DEBUG)
+
+        # First-impression deviation（19路盤限定）:
+        # 第一感上位3位で損失0.5〜2.0目の手を確定選択
+        if (bx == 19 and by == 19
+                and self.settings.get("first_impression_deviation", False)
+                and top_moves and move_infos):
+            loss_by_gtp = {}
+            for mi in move_infos:
+                score = mi.get("scoreLead", 0)
+                loss_by_gtp[mi.get("move", "")] = player_sign * (best_score - score)
+
+            deviation_candidates = []
+            for m, w in top_moves[:3]:
+                loss = loss_by_gtp.get(m.gtp(), 0.0)
+                if 0.5 <= loss < 2.0:
+                    deviation_candidates.append((m, loss))
+
+            if deviation_candidates:
+                best_dev = min(deviation_candidates, key=lambda x: x[1])
+                self.game.katrain.log(
+                    f"[HumanStyleStrategy] First-impression deviation: {best_dev[0].gtp()} "
+                    f"(loss={best_dev[1]:.1f})",
+                    OUTPUT_DEBUG
+                )
+                ai_thoughts = (
+                    f"\n{top_moves_str}\n\nFirst-impression deviation: played {best_dev[0].gtp()} "
+                    f"(loss={best_dev[1]:.1f}). ({filtered_count} bad moves filtered)"
+                )
+                return best_dev[0], ai_thoughts
 
         selected = weighted_selection_without_replacement(moves, 1)[0]
         move = selected[0]
