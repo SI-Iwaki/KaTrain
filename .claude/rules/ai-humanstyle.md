@@ -26,11 +26,12 @@ paths:
 
 ## 第一感ぶれ（first_impression_deviation）
 
-19路盤専用・中盤以降（opening_boundary以降）のみ発動。
+全盤面・中盤以降（opening_boundary以降）のみ発動。
 
 - 悪手フィルター通過後のhumanPolicy重み付き候補から**上位3位**を取り出す
-- そのうち損失 `0.5 <= loss < 2.0` の手があれば、損失最小の手を**確定選択**（確率的選択を行わない）
-- 損失0.5未満（ほぼベスト）や2.0以上の手は対象外
+- そのうち損失 `0.5 <= loss < dev_loss_max` の手があれば、損失最小の手を**確定選択**（確率的選択を行わない）
+  - `dev_loss_max`: 9路=1.5目、13路・19路=2.0目
+- 損失0.5未満（ほぼベスト）や上限以上の手は対象外
 - 候補がなければ通常の確率的選択にフォールバック
 - **序盤は無効**（`current_move < opening_boundary` の手番は発動しない）
 - 設定: `first_impression_deviation: bool`（デフォルト false、起動時リセットなし）
@@ -57,14 +58,6 @@ moves = [(m, w ** (1.0 / policy_temperature)) for m, w in moves]
 - `< 1.0`: 確率分布をシャープ化 → 最高確率手に集中
 - 設定: `policy_temperature: float`（1.0〜2.0）
 - **起動時に 1.0 にリセット**される（`base_katrain.py` の `_load_config` 末尾処理）
-
-## 大差フィルター（9路盤・13路盤）
-
-`analysis["rootInfo"]["winrate"]` を使用。`rootInfo.winrate` は常にBlack視点のため、White番は `1.0 - winrate` で変換。
-
-- **大差勝ち（勝率95%+）**: 最善手（`best_gtp_by_score`）を除外し、`GREEN_MOVE_THRESHOLD`以内の緑手のみからhumanPolicy重みで選択。緑手がない場合・推奨手が最善手のみの場合は最善手を打つ（`return`で確実に実行）
-- **大差負け（勝率25%未満）**: humanPolicyを無視して最善手のみを打つ。勝率が50%を超えるまで継続（ヒステリシス）。状態は `self.game._human_ai_big_loss_mode` で管理
-- 定数: `WIN_RATE_THRESHOLD = 0.95`, `BIG_LOSS_ENTER = 0.25`, `BIG_LOSS_EXIT = 0.50`
 
 ## パラメータ変更チェックリスト
 

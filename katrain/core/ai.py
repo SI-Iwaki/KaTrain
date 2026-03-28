@@ -1548,123 +1548,6 @@ class HumanStyleStrategy(AIStrategy):
         # 終局閾値（big-win フィルター内の relax 判定にも使用）
         endgame_threshold = math.ceil(bx * by * 0.5)
 
-        # 9路盤・13路盤: 勝率に応じた大差フィルター（大差負け → 最善手のみ / 大差勝ち → 最善手除外）
-        if (bx == 9 and by == 9 or bx == 13 and by == 13) and best_gtp_by_score is not None:
-            root_winrate = analysis.get("rootInfo", {}).get("winrate", 0.5)
-            # rootInfo.winrate は常にBlack視点（0.0〜1.0）
-            player_winrate = root_winrate if self.cn.next_player == "B" else (1.0 - root_winrate)
-
-            # 大差負けモードの状態管理（ヒステリシス: 25%で発動、50%で解除）
-            BIG_LOSS_ENTER = 0.25   # AI勝率がこれを下回ったらモード発動（人間側75%+）
-            BIG_LOSS_EXIT = 0.50    # AI勝率がこれを上回ったらモード解除（五分五分）
-            if not hasattr(self.game, '_human_ai_big_loss_mode'):
-                self.game._human_ai_big_loss_mode = False
-            if player_winrate < BIG_LOSS_ENTER:
-                self.game._human_ai_big_loss_mode = True
-            elif player_winrate > BIG_LOSS_EXIT:
-                self.game._human_ai_big_loss_mode = False
-
-            if self.game._human_ai_big_loss_mode:
-                # 大差負け: 最善手のみを打つ（humanPolicyを無視）
-                self.game.katrain.log(
-                    f"[HumanStyleStrategy] {bx}x{by} big loss: winrate={player_winrate:.1%} "
-                    f"(big_loss_mode={self.game._human_ai_big_loss_mode}), "
-                    f"playing best move {best_gtp_by_score}",
-                    OUTPUT_DEBUG
-                )
-                if best_gtp_by_score == "pass":
-                    return Move(None, player=self.cn.next_player), f"Big loss mode (winrate={player_winrate:.1%}): playing best move (pass)"
-                else:
-                    best_move = Move.from_gtp(best_gtp_by_score, player=self.cn.next_player)
-                    return best_move, f"Big loss mode (winrate={player_winrate:.1%}): playing best move {best_gtp_by_score}"
-
-            elif moves:
-                # 大差勝ち: 最善手を除外して選択
-                WIN_RATE_THRESHOLD = 0.95
-                if player_winrate >= WIN_RATE_THRESHOLD:
-                    non_best_moves = [(m, w) for m, w in moves if m.gtp() != best_gtp_by_score]
-                    if non_best_moves:
-                        # 13路盤 & 目差12目以上 & 非終局 & チェックON: GREEN_MOVE_THRESHOLD を解除
-                        root_score_lead = analysis.get("rootInfo", {}).get("scoreLead", 0)
-                        score_margin = player_sign * root_score_lead
-                        SCORE_MARGIN_FOR_RELAX = 12.0
-                        use_big_win_relax = (
-                            bx == 13 and by == 13
-                            and self.settings.get("loose_moves_big_win", False)
-                            and current_move < endgame_threshold
-                            and score_margin >= SCORE_MARGIN_FOR_RELAX
-                        )
-                        if use_big_win_relax:
-                            # GREEN_MOVE_THRESHOLD 解除: non_best_moves 全体（損失 < NORMAL_THRESHOLD目）を候補に
-                            green_moves = non_best_moves
-                            GREEN_MOVE_THRESHOLD = NORMAL_THRESHOLD  # ログ表示用
-                            self.game.katrain.log(
-                                f"[HumanStyleStrategy] {bx}x{by} big win relax: "
-                                f"score_margin={score_margin:.1f} >= {SCORE_MARGIN_FOR_RELAX}, "
-                                f"GREEN threshold removed, {len(green_moves)} candidates",
-                                OUTPUT_DEBUG
-                            )
-                        else:
-                            # 最善手以外に「緑」（GREEN_MOVE_THRESHOLD以内）の代替手があるか確認
-                            # 緑の代替手がない場合（黄色・オレンジのみ）は最善手を打つ
-                            GREEN_MOVE_THRESHOLD = 1.0 if (bx == 9 and by == 9) else 1.2  # 9路: 1.0, 13路: 1.2
-                            non_best_gtps = {m.gtp() for m, _ in non_best_moves}
-                            green_score_set = {
-                                mi.get("move", "")
-                                for mi in move_infos
-                                if mi.get("move", "") in non_best_gtps
-                                and player_sign * (best_score - mi.get("scoreLead", 0)) < GREEN_MOVE_THRESHOLD
-                            }
-                            green_moves = [(m, w) for m, w in non_best_moves if m.gtp() in green_score_set]
-                        if green_moves:
-                            moves = green_moves
-                            self.game.katrain.log(
-                                f"[HumanStyleStrategy] {bx}x{by} big win: winrate={player_winrate:.1%} "
-                                f"(>= {WIN_RATE_THRESHOLD:.0%}), excluding best move {best_gtp_by_score}, "
-                                f"{len(green_moves)} green moves remain (threshold={GREEN_MOVE_THRESHOLD})",
-                                OUTPUT_DEBUG
-                            )
-                            # 上位2手のhumanPolicy重みが拮抗（差1%未満）している場合、
-                            # ランダム性で人間らしくない手が選ばれるのを防ぐため
-                            # scoreが最善手に最も近い1手に絞る
-                            if len(green_moves) >= 2:
-                                sorted_by_w = sorted(green_moves, key=lambda x: -x[1])
-                                top1_w = sorted_by_w[0][1]
-                                top2_w = sorted_by_w[1][1]
-                                if top1_w > 0 and (top2_w / top1_w) > 0.99:
-                                    score_by_gtp = {mi["move"]: mi.get("scoreLead", 0) for mi in move_infos}
-                                    best_green = max(
-                                        green_moves,
-                                        key=lambda x: player_sign * score_by_gtp.get(x[0].gtp(), -999)
-                                    )
-                                    moves = [best_green]
-                                    self.game.katrain.log(
-                                        f"[HumanStyleStrategy] {bx}x{by} big win tie-break: "
-                                        f"top2/top1={top2_w/top1_w:.4f} > 0.99, "
-                                        f"score-selecting {best_green[0].gtp()}",
-                                        OUTPUT_DEBUG
-                                    )
-                        else:
-                            # 緑手なし（GREEN_MOVE_THRESHOLD外の手のみ）→ 最善手を打つ
-                            self.game.katrain.log(
-                                f"[HumanStyleStrategy] {bx}x{by} big win: winrate={player_winrate:.1%}, "
-                                f"no green move within threshold={GREEN_MOVE_THRESHOLD}, "
-                                f"playing best move {best_gtp_by_score}",
-                                OUTPUT_DEBUG
-                            )
-                            if best_gtp_by_score == "pass":
-                                return Move(None, player=self.cn.next_player), f"Big win: no green move, playing best (pass)"
-                            else:
-                                best_move = Move.from_gtp(best_gtp_by_score, player=self.cn.next_player)
-                                return best_move, f"Big win: no green move (winrate={player_winrate:.1%}), playing best {best_gtp_by_score}"
-                    else:
-                        # 最善手しかない場合はそのまま（最善手を打つ）
-                        self.game.katrain.log(
-                            f"[HumanStyleStrategy] {bx}x{by} big win: winrate={player_winrate:.1%}, "
-                            f"only 1 candidate, playing best move {best_gtp_by_score}",
-                            OUTPUT_DEBUG
-                        )
-
         # passが候補手に含まれていたら強制的にパス
         # （passが候補に上がった＝他の手を打つと損するため）
         if any(m.is_pass for m, _ in moves):
@@ -1691,10 +1574,10 @@ class HumanStyleStrategy(AIStrategy):
         top_moves_str = "\n".join([f"#{i+1}: {move.gtp()} - {prob:.1%}" for i, (move, prob) in enumerate(top_moves[:5])])
         self.game.katrain.log(f"[HumanStyleStrategy] Top 5 moves:\n{top_moves_str}", OUTPUT_DEBUG)
 
-        # First-impression deviation（19路盤限定）:
-        # 第一感上位3位で損失0.5〜2.0目の手を確定選択
-        if (bx == 19 and by == 19
-                and self.settings.get("first_impression_deviation", False)
+        # First-impression deviation（全盤面）:
+        # 第一感上位3位で損失0.5〜上限目の手を確定選択
+        # 損失上限: 9路=1.5目、13路・19路=2.0目
+        if (self.settings.get("first_impression_deviation", False)
                 and current_move >= opening_boundary  # 序盤は第一感ぶれを無効化
                 and top_moves and move_infos):
             loss_by_gtp = {}
@@ -1702,10 +1585,11 @@ class HumanStyleStrategy(AIStrategy):
                 score = mi.get("scoreLead", 0)
                 loss_by_gtp[mi.get("move", "")] = player_sign * (best_score - score)
 
+            dev_loss_max = 1.5 if (bx == 9 and by == 9) else 2.0
             deviation_candidates = []
             for m, w in top_moves[:3]:
                 loss = loss_by_gtp.get(m.gtp(), 0.0)
-                if 0.5 <= loss < 2.0:
+                if 0.5 <= loss < dev_loss_max:
                     deviation_candidates.append((m, loss))
 
             # green_blend: 第一感1位が緑(0<loss<0.5)かつ非最善 → 50/50で緑手or偏差手

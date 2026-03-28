@@ -53,9 +53,8 @@ if not star_moves:
 | `human_kyu_rank` | float | -8.0 | humanSLProfile段位（-9=9段） |
 | `modern_style` | bool | true | 現代布石プロファイル |
 | `force_star_opening` | bool | true | 序盤に星点を優先 |
-| `loose_moves_big_win` | bool | false | 大差勝ち時に13路でGREEN解除 |
 | `policy_temperature` | float | 1.0 | 起動時1.0にリセット |
-| `first_impression_deviation` | bool | false | 19路盤・中盤以降で第一感ぶれ |
+| `first_impression_deviation` | bool | false | 全盤面・中盤以降で第一感ぶれ（9路=上限1.5目、他=2.0目） |
 | `first_impression_green_blend` | bool | false | deviation ON時、緑の第一感と偏差手を50/50で選択 |
 
 ## チェックリスト（新機能追加時）
