@@ -129,6 +129,7 @@ AI_OPTION_VALUES = {
     "loose_moves_big_win": "bool",
     "policy_temperature": [round(x / 10, 1) for x in range(10, 31)],
     "first_impression_deviation": "bool",
+    "first_impression_green_blend": "bool",
 }
 
 AI_KEY_PROPERTIES = {

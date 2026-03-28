@@ -391,7 +391,7 @@ class DescriptionLabel(Label):
 
 
 class ConfigAIPopup(QuickConfigGui):
-    max_options = NumericProperty(6)
+    max_options = NumericProperty(7)
 
     def __init__(self, katrain):
         super().__init__(katrain)

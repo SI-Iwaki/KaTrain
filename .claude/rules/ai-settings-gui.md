@@ -56,6 +56,7 @@ if not star_moves:
 | `loose_moves_big_win` | bool | false | 大差勝ち時に13路でGREEN解除 |
 | `policy_temperature` | float | 1.0 | 起動時1.0にリセット |
 | `first_impression_deviation` | bool | false | 19路盤・中盤以降で第一感ぶれ |
+| `first_impression_green_blend` | bool | false | deviation ON時、緑の第一感と偏差手を50/50で選択 |
 
 ## チェックリスト（新機能追加時）
 

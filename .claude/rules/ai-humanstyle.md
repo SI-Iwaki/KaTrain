@@ -35,6 +35,15 @@ paths:
 - **序盤は無効**（`current_move < opening_boundary` の手番は発動しない）
 - 設定: `first_impression_deviation: bool`（デフォルト false、起動時リセットなし）
 
+### green_blend（第一感緑ブレンド）
+
+`first_impression_deviation` ON 時の追加オプション。
+
+- 条件: 第一感1位（humanPolicy最大）が緑（0 < loss < 0.5）かつスコア最善でない、かつ上位3位内に 0.5 <= loss < 2.0 の手がある
+- 動作: 50%で緑の第一感1位、50%で偏差候補（0.5-2.0の最小損失手）を選択
+- 条件不成立時: 既存の `first_impression_deviation` 動作（0.5-2.0の最小損失を確定選択）にフォールバック
+- 設定: `first_impression_green_blend: bool`（デフォルト false、起動時リセットなし）
+
 ## policy_temperature（ポリシー温度）
 
 humanPolicy重みに対して温度スケーリングを適用する。
