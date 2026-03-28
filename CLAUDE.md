@@ -68,7 +68,7 @@ python -m katrain
 | パラメータ | 19路・13路 | 9路盤 |
 |---|---|---|
 | OPENING_THRESHOLD | 2.8 | 0.5 |
-|NORMAL_THRESHOLD | 5.9 | 3.3 |
+|NORMAL_THRESHOLD | 5.7 | 3.3 |
 
 ### 大差フィルター（9路盤・13路盤）
 
@@ -92,6 +92,7 @@ python -m katrain
 | パラメータ | デフォルト値 | 備考 |
 |---|---|---|
 | first_impression_deviation | false | ONで第一感上位3位中の損失0.5〜2.0目の手を確定選択 |
+| first_impression_green_blend | false | ON（+deviation ON）で第一感1位が緑(loss<0.5)かつ非最善の場合、緑手と偏差手を50/50で選択 |
 
 ### エンジン設定
 

@@ -1428,7 +1428,7 @@ class HumanStyleStrategy(AIStrategy):
             NORMAL_THRESHOLD = 3.3    # 9路盤中盤・終盤: 3.3目以上の損失手は打たない
         else:
             OPENING_THRESHOLD = 2.8   # Stricter threshold in opening (3pt loss max)
-            NORMAL_THRESHOLD = 5.9    # Normal threshold for mid/endgame
+            NORMAL_THRESHOLD = 5.7    # Normal threshold for mid/endgame
         current_move = self.cn.depth  # Move number (both players combined)
         BAD_MOVE_THRESHOLD = OPENING_THRESHOLD if current_move < opening_boundary else NORMAL_THRESHOLD
         move_infos = analysis.get("moveInfos", [])
@@ -1707,6 +1707,31 @@ class HumanStyleStrategy(AIStrategy):
                 loss = loss_by_gtp.get(m.gtp(), 0.0)
                 if 0.5 <= loss < 2.0:
                     deviation_candidates.append((m, loss))
+
+            # green_blend: 第一感1位が緑(0<loss<0.5)かつ非最善 → 50/50で緑手or偏差手
+            if (self.settings.get("first_impression_green_blend", False)
+                    and deviation_candidates and top_moves):
+                top1_move, top1_w = top_moves[0]
+                top1_loss = loss_by_gtp.get(top1_move.gtp(), 0.0)
+                if 0 < top1_loss < 0.5:
+                    best_dev = min(deviation_candidates, key=lambda x: x[1])
+                    if random.random() < 0.5:
+                        chosen_move, chosen_loss = top1_move, top1_loss
+                        blend_label = "green"
+                    else:
+                        chosen_move, chosen_loss = best_dev
+                        blend_label = "dev"
+                    self.game.katrain.log(
+                        f"[HumanStyleStrategy] First-impression green-blend({blend_label}): "
+                        f"{chosen_move.gtp()} (loss={chosen_loss:.1f})",
+                        OUTPUT_DEBUG
+                    )
+                    ai_thoughts = (
+                        f"\n{top_moves_str}\n\nFirst-impression green-blend({blend_label}): "
+                        f"played {chosen_move.gtp()} (loss={chosen_loss:.1f}). "
+                        f"({filtered_count} bad moves filtered)"
+                    )
+                    return chosen_move, ai_thoughts
 
             if deviation_candidates:
                 best_dev = min(deviation_candidates, key=lambda x: x[1])
