@@ -68,7 +68,7 @@ python -m katrain
 | パラメータ | 19路・13路 | 9路盤 |
 |---|---|---|
 | OPENING_THRESHOLD | 2.8 | 0.5 |
-|NORMAL_THRESHOLD | 6.0 | 3.3 |
+|NORMAL_THRESHOLD | 6.2 | 3.3 |
 
 ### 大差フィルター（9路盤・13路盤）
 
