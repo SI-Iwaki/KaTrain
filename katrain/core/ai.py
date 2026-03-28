@@ -1428,7 +1428,7 @@ class HumanStyleStrategy(AIStrategy):
             NORMAL_THRESHOLD = 3.3    # 9路盤中盤・終盤: 3.3目以上の損失手は打たない
         else:
             OPENING_THRESHOLD = 2.8   # Stricter threshold in opening (3pt loss max)
-            NORMAL_THRESHOLD = 6.2    # Normal threshold for mid/endgame
+            NORMAL_THRESHOLD = 5.9    # Normal threshold for mid/endgame
         current_move = self.cn.depth  # Move number (both players combined)
         BAD_MOVE_THRESHOLD = OPENING_THRESHOLD if current_move < opening_boundary else NORMAL_THRESHOLD
         move_infos = analysis.get("moveInfos", [])
