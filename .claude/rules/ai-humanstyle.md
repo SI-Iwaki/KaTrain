@@ -30,7 +30,7 @@ paths:
 
 - 序盤境界: `math.ceil(0.14 × 盤面マス数)` — 19路: 1〜50手目、9路: 1〜11手目
 - 小さいほど強い（悪手が減る）が、人間らしさも減る
-- 現在値: 19路 OPENING=2.8 / NORMAL=5.9、9路 OPENING=0.5 / NORMAL=3.3
+- 現在値: 19路 OPENING=2.8 / NORMAL=6.0、9路 OPENING=0.5 / NORMAL=3.3
 
 ## 第一感ぶれ（first_impression_deviation）
 

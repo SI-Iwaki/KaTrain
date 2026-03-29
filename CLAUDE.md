@@ -68,7 +68,7 @@ python -m katrain
 | パラメータ | 19路・13路 | 9路盤 |
 |---|---|---|
 | OPENING_THRESHOLD | 2.8 | 0.5 |
-|NORMAL_THRESHOLD | 5.7 | 3.3 |
+|NORMAL_THRESHOLD | 6.0 | 3.3 |
 
 ### 第一感ぶれ（全盤面）
 
