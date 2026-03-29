@@ -1418,6 +1418,51 @@ class HumanStyleStrategy(AIStrategy):
         board_size = self.game.board_size
         human_policy = analysis["humanPolicy"]
 
+        # --- Stage 2: Unbiased score query (no humanSLProfile) ---
+        # humanSLProfile付きクエリのscoreLeadはバイアスされるため、
+        # 正確なスコアでフィルタリングするためにクリーンクエリを送信
+        clean_override_settings = {
+            "ignorePreRootHistory": False,
+            "maxVisits": 400,
+            "wideRootNoise": 0.0,
+        }
+
+        clean_analysis = None
+        clean_error = False
+
+        def set_clean_analysis(a, partial_result):
+            nonlocal clean_analysis
+            if not partial_result:
+                self.game.katrain.log(f"[HumanStyleStrategy] Clean analysis results received", OUTPUT_DEBUG)
+                clean_analysis = a
+
+        def set_clean_error(a):
+            nonlocal clean_error
+            clean_error = True
+            self.game.katrain.log(f"[HumanStyleStrategy] Error in clean analysis query: {a}", OUTPUT_ERROR)
+
+        self.game.katrain.log(f"[HumanStyleStrategy] Requesting clean analysis (no humanSLProfile)", OUTPUT_DEBUG)
+        engine.request_analysis(
+            self.cn,
+            callback=set_clean_analysis,
+            error_callback=set_clean_error,
+            priority=PRIORITY_EXTRA_AI_QUERY,
+            include_policy=False,
+            extra_settings=clean_override_settings
+        )
+
+        wait_count = 0
+        while not (clean_error or clean_analysis):
+            import time
+            time.sleep(0.01)
+            wait_count += 1
+            if wait_count % 100 == 0:
+                self.game.katrain.log(
+                    f"[HumanStyleStrategy] Waiting for clean analysis ({wait_count/100:.1f}s)",
+                    OUTPUT_DEBUG
+                )
+            engine.check_alive(exception_if_dead=True)
+
         # Build set of acceptable moves using moveInfos from KataGo search
         # Phase-based threshold: stricter in opening to avoid large blunders early
         # Opening boundary matches the game report definition (depth < 0.14 * board_squares)
@@ -1431,7 +1476,19 @@ class HumanStyleStrategy(AIStrategy):
             NORMAL_THRESHOLD = 5.7    # Normal threshold for mid/endgame
         current_move = self.cn.depth  # Move number (both players combined)
         BAD_MOVE_THRESHOLD = OPENING_THRESHOLD if current_move < opening_boundary else NORMAL_THRESHOLD
-        move_infos = analysis.get("moveInfos", [])
+        # クリーンクエリのmoveInfosを優先使用（正確なスコア）、失敗時はバイアス付きにフォールバック
+        if clean_analysis and not clean_error:
+            move_infos = clean_analysis.get("moveInfos", [])
+            self.game.katrain.log(
+                f"[HumanStyleStrategy] Using CLEAN moveInfos ({len(move_infos)} moves) for score filter",
+                OUTPUT_DEBUG
+            )
+        else:
+            move_infos = analysis.get("moveInfos", [])
+            self.game.katrain.log(
+                f"[HumanStyleStrategy] Clean query failed, falling back to biased moveInfos ({len(move_infos)} moves)",
+                OUTPUT_DEBUG
+            )
         good_moves = set()  # Only moves evaluated by KataGo and within threshold
         best_gtp_by_score = None  # 大差フィルター用（現在プレイヤーにとっての最善手GTP）
         if move_infos:

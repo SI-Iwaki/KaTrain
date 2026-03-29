@@ -10,12 +10,20 @@ paths:
 
 `HumanStyleStrategy.generate_move()` でKataGoの`moveInfos`を使い、大悪手を除外してからhumanPolicy重みで選択する。
 
+### 二段階クエリ
+
+`humanSLProfile`付きクエリの`scoreLead`はバイアスされ、人間モデルが高確率を与える手のスコアが楽観的に歪められる。そのため二段階でクエリを送信する:
+
+1. **Stage 1（humanSLProfile付き・600 visits）**: `humanPolicy`を取得するためのクエリ
+2. **Stage 2（humanSLProfileなし・400 visits・wideRootNoise=0）**: 正確な`scoreLead`を取得するためのクリーンクエリ
+
+悪手フィルタ・first_impression_deviation・green_blendのスコア判定はすべてStage 2のクリーンな`moveInfos`を使用する。Stage 2が失敗した場合はStage 1の`moveInfos`にフォールバック。
+
 ### スコア計算の注意点
 
 - KataGoの`scoreLead`は**常にBlackの視点**（正 = Black有利）。Whiteの場合は符号反転が必要
 - `player_sign = 1 if Black else -1` を使い `loss = player_sign * (best_score - score)` で計算
 - 参照点は`move_infos[0]`（最多探索手）ではなく、現在プレイヤーにとっての**真の最善スコア**を使う
-  - `move_infos[0]`はhumanSLProfileの影響で最善手≠最多探索手になることがある
 - `moveInfos`に含まれない手（探索されなかった手）も除外する
 
 ## フェーズ別閾値の詳細
@@ -64,21 +72,23 @@ paths:
 
 ### `maxVisits` を変更する場合
 
-**3箇所を必ず同じ値に揃える**（不一致だとフィルタが不安定になる）
+**Stage1（HumanSL）とGUI/analysis_configの3箇所を同じ値に揃える**（不一致だとフィルタが不安定になる）
+Stage2（クリーンクエリ）は独立した値（現在400）で、これらと揃える必要はない。
 
 | 場所 | 設定項目 | 役割 |
 |------|----------|------|
-| `katrain/core/ai.py` 約1325行目 | `override_settings["maxVisits"]` | HumanSL着手選択クエリ |
-| KaTrain GUI → `C:\Users\iwaki\.katrain\config.json` | `max_visits` | 事後分析クエリ |
-| `C:\Users\iwaki\.katrain\analysis_config.cfg` 51行目 | `maxVisits` | デフォルト値 |
+| `katrain/core/ai.py` `override_settings["maxVisits"]` | Stage1: HumanSL着手選択クエリ | 600 |
+| `katrain/core/ai.py` `clean_override_settings["maxVisits"]` | Stage2: クリーンスコア検証クエリ | 400 |
+| KaTrain GUI → `C:\Users\iwaki\.katrain\config.json` | `max_visits` — 事後分析クエリ | 600 |
+| `C:\Users\iwaki\.katrain\analysis_config.cfg` 51行目 | `maxVisits` — デフォルト値 | 600 |
 
-- [ ] `katrain/core/ai.py` — `override_settings` の `"maxVisits": XXX`
+- [ ] `katrain/core/ai.py` — `override_settings` の `"maxVisits": XXX`（Stage1）
 - [ ] KaTrain GUI「エンジン設定 → 分析時の最大探索手数」→「設定を更新」
 - [ ] `C:\Users\iwaki\.katrain\analysis_config.cfg` — `maxVisits = XXX`
 
 ## GREEN_MOVE_THRESHOLD 調整メモ（13路盤）
 
-> 着手生成時（`humanSLProfile` + `wideRootNoise=0.04` 付き）と事後分析でスコア推定に0.5目程度のズレが生じるため、閾値選択はこのズレを考慮する必要がある。
+> 二段階フィルタ導入前の記録。Stage2クリーンクエリ導入により、着手生成時と事後分析のスコアズレは大幅に縮小されている。
 
 ### 検証済みの閾値と結果（13路盤・白番・Human-like 9段）
 
