@@ -1657,6 +1657,30 @@ class FightingStrategy(PickBasedStrategy):
         top_str = "\n".join([f"#{i+1}: {m.gtp()} weight={w:.4f}" for i, (m, w) in enumerate(top5)])
         self.game.katrain.log(f"[FightingStrategy:human] Top 5:\n{top_str}", OUTPUT_DEBUG)
 
+        # 拮抗タイブレーク: top-2の重みが5%以内かつスコア差4目以上なら高スコア手を確定選択
+        _TIEBREAK_WEIGHT_RATIO = 1.05
+        _TIEBREAK_SCORE_DIFF = 4.0
+        if len(top5) >= 2 and move_infos:
+            _player_sign = 1 if self.cn.next_player == "B" else -1
+            _score_by_gtp = {mi.get("move", ""): mi.get("scoreLead", 0) * _player_sign for mi in move_infos}
+            top1_move, top1_w = top5[0]
+            top2_move, top2_w = top5[1]
+            if top2_w > 0 and top1_w / top2_w < _TIEBREAK_WEIGHT_RATIO:
+                s1 = _score_by_gtp.get(top1_move.gtp())
+                s2 = _score_by_gtp.get(top2_move.gtp())
+                if s1 is not None and s2 is not None and abs(s1 - s2) >= _TIEBREAK_SCORE_DIFF:
+                    winner = top1_move if s1 > s2 else top2_move
+                    loser = top2_move if s1 > s2 else top1_move
+                    self.game.katrain.log(
+                        f"[FightingStrategy:human] Tiebreak: {winner.gtp()} over {loser.gtp()} "
+                        f"(score diff={abs(s1-s2):.1f}pt, weight ratio={top1_w/top2_w:.3f})",
+                        OUTPUT_DEBUG,
+                    )
+                    return winner, (
+                        f"\n{top_str}\n\nScore tiebreak: played {winner.gtp()} "
+                        f"(score diff={abs(s1-s2):.1f}pt). ({filtered_count} filtered)"
+                    )
+
         # 重み付き選択
         selected = weighted_selection_without_replacement(moves, 1)[0]
         move = selected[0]
@@ -2025,6 +2049,12 @@ class HumanStyleStrategy(AIStrategy):
         top_moves_str = "\n".join([f"#{i+1}: {move.gtp()} - {prob:.1%}" for i, (move, prob) in enumerate(top_moves[:5])])
         self.game.katrain.log(f"[HumanStyleStrategy] Top 5 moves:\n{top_moves_str}", OUTPUT_DEBUG)
 
+        # 拮抗タイブレーク用スコアマップ（現プレイヤー視点）
+        score_by_gtp = {}
+        if move_infos:
+            for mi in move_infos:
+                score_by_gtp[mi.get("move", "")] = mi.get("scoreLead", 0) * player_sign
+
         # First-impression deviation（全盤面）:
         # 第一感上位3位で損失0.5〜上限目の手を確定選択
         # 損失上限: 9路=1.5目、13路・19路=2.0目
@@ -2081,6 +2111,29 @@ class HumanStyleStrategy(AIStrategy):
                     f"(loss={best_dev[1]:.1f}). ({filtered_count} bad moves filtered)"
                 )
                 return best_dev[0], ai_thoughts
+
+        # 拮抗タイブレーク: top-2の重みが5%以内かつスコア差4目以上なら高スコア手を確定選択
+        _TIEBREAK_WEIGHT_RATIO = 1.05
+        _TIEBREAK_SCORE_DIFF = 4.0
+        if len(top_moves) >= 2 and score_by_gtp:
+            top1_move, top1_w = top_moves[0]
+            top2_move, top2_w = top_moves[1]
+            if top2_w > 0 and top1_w / top2_w < _TIEBREAK_WEIGHT_RATIO:
+                s1 = score_by_gtp.get(top1_move.gtp())
+                s2 = score_by_gtp.get(top2_move.gtp())
+                if s1 is not None and s2 is not None and abs(s1 - s2) >= _TIEBREAK_SCORE_DIFF:
+                    winner = top1_move if s1 > s2 else top2_move
+                    loser = top2_move if s1 > s2 else top1_move
+                    self.game.katrain.log(
+                        f"[HumanStyleStrategy] Tiebreak: {winner.gtp()} over {loser.gtp()} "
+                        f"(score diff={abs(s1-s2):.1f}pt, weight ratio={top1_w/top2_w:.3f})",
+                        OUTPUT_DEBUG,
+                    )
+                    ai_thoughts = (
+                        f"\n{top_moves_str}\n\nScore tiebreak: played {winner.gtp()} "
+                        f"(score diff={abs(s1-s2):.1f}pt). ({filtered_count} bad moves filtered)"
+                    )
+                    return winner, ai_thoughts
 
         selected = weighted_selection_without_replacement(moves, 1)[0]
         move = selected[0]
