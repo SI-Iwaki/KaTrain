@@ -156,6 +156,16 @@
             "line_weight": 2,
             "endgame": 0.4
         },
+        "ai:p:fighting": {
+            "fighting_mode": "classic",
+            "fighting_max_loss": 3.0,
+            "pick_override": 0.95,
+            "pick_n": 10,
+            "pick_frac": 0.2,
+            "endgame": 0.45,
+            "unsettled_power": 2.0,
+            "proximity_stddev": 3.0
+        },
         "ai:p:rank": {
             "kyu_rank": 4.0
         },

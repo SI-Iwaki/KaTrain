@@ -696,6 +696,9 @@ msgstr "Select AI strategy to configure"
 msgid "update ai settings"
 msgstr "Update AI Settings"
 
+msgid "reset ai defaults"
+msgstr "Reset to Defaults"
+
 #. misc errors and info messages
 msgid "sgf written"
 msgstr "SGF with analysis written to {file_name}"
@@ -775,6 +778,15 @@ msgstr "k"
 
 msgid "strength:dan"
 msgstr "d"
+
+msgid "fighting:classic"
+msgstr "Classic"
+
+msgid "fighting:scoreloss"
+msgstr "ScoreLoss"
+
+msgid "fighting:human"
+msgstr "Human"
 
 msgid "ai:default"
 msgstr "KataGo"
@@ -898,6 +910,18 @@ msgstr ""
 "Picks moves biased below the 'threshold' line and plays the best one. "
 "Increase 'line_weight' to penalize moves near the center more. Stops "
 "strategy after the 'endgame' fraction of the board is filled."
+
+msgid "ai:p:fighting"
+msgstr "Fighting Style"
+
+msgid "aihelp:p:fighting"
+msgstr ""
+"Picks moves weighted toward unsettled areas and near opponent stones, creating complex fighting positions. "
+"'fighting_mode': Classic=pick-based, ScoreLoss=loss filter+fighting, Human=9d humanSL+fighting weights (strongest/slower). "
+"'fighting_max_loss': max point loss for ScoreLoss/Human (lower=stronger). "
+"'unsettled_power' for aggression, 'proximity_stddev' for closeness to opponent (lower=closer). "
+"'pick_n'/'pick_frac'/'pick_override': Classic mode candidate and strength settings. "
+"'endgame': disables fighting weights after this board fraction."
 
 msgid "ai:p:rank"
 msgstr "Calibrated Rank"

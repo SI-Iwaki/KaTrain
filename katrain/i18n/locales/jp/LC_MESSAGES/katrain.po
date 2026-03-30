@@ -445,6 +445,9 @@ msgstr "AIの戦略"
 msgid "update ai settings"
 msgstr "AI設定を更新"
 
+msgid "reset ai defaults"
+msgstr "デフォルトに戻す"
+
 #. misc errors and info messages
 msgid "sgf written"
 msgstr "分析結果入りSGFを{file_name}に保存"
@@ -489,6 +492,15 @@ msgstr "級"
 
 msgid "strength:dan"
 msgstr "段"
+
+msgid "fighting:classic"
+msgstr "従来"
+
+msgid "fighting:scoreloss"
+msgstr "ScoreLoss系"
+
+msgid "fighting:human"
+msgstr "Human拡張"
 
 msgid "ai:default"
 msgstr "手加減なし"
@@ -583,6 +595,18 @@ msgstr ""
 "'threshold'線より低い（盤端寄りの）手に重みをつけて何個かの手を選び, その中での最善手を打ちます. "
 "'line_weight'を大きくするほど, 天元に近い手をより避けるようになります. なお, "
 "盤全体のうち'endgame'の割合が埋まったあとにはこの重みづけは適用しません."
+
+msgid "ai:p:fighting"
+msgstr "力戦派"
+
+msgid "aihelp:p:fighting"
+msgstr ""
+"未確定地域や相手石の近くに重みを付けて力戦局面を作ります. "
+"'fighting_mode': 従来=pick選択, ScoreLoss系=損失フィルタ+力戦重み, Human拡張=9段humanSL+力戦重み(最強・低速). "
+"'fighting_max_loss'はScoreLoss/Humanの許容損失目数(小さいほど強). "
+"'unsettled_power'で争い重視度, 'proximity_stddev'で接近戦度を調整(小さいほど接近戦). "
+"'pick_n'/'pick_frac'/'pick_override'は従来モード専用の候補手と強さ調整. "
+"'endgame'以降は力戦重みを無効化."
 
 msgid "ai:p:rank"
 msgstr "段級位相応"

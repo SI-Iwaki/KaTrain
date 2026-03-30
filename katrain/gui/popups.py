@@ -160,7 +160,10 @@ class LabelledSelectionSlider(BoxLayout):
     @property
     def input_value(self):
         if self.textbox.text:
-            return float(self.textbox.text)
+            try:
+                return float(self.textbox.text)
+            except (ValueError, TypeError):
+                return self.slider.values[self.slider.index][0]
         return self.slider.values[self.slider.index][0]
 
     @property
@@ -392,7 +395,7 @@ class DescriptionLabel(Label):
 
 
 class ConfigAIPopup(QuickConfigGui):
-    max_options = NumericProperty(7)
+    max_options = NumericProperty(8)
 
     def __init__(self, katrain):
         super().__init__(katrain)
@@ -446,6 +449,23 @@ class ConfigAIPopup(QuickConfigGui):
         for _ in range((self.max_options - len(mode_settings)) * 2):
             self.options_grid.add_widget(Label(size_hint_x=None))
         Clock.schedule_once(self.estimate_rank_from_options)
+
+    def reset_to_defaults(self):
+        """Reset current AI strategy settings to package defaults"""
+        import json
+
+        strategy = self.ai_select.selected[1]
+        package_config_file = find_package_resource("katrain/config.json")
+        with open(package_config_file) as f:
+            default_config = json.load(f)
+        default_ai_settings = default_config.get("ai", {}).get(strategy, {})
+        if not default_ai_settings:
+            return
+        current = self.katrain._config.get("ai", {}).get(strategy, {})
+        for k, v in default_ai_settings.items():
+            current[k] = v
+        self.katrain.save_config("ai")
+        self.build_ai_options()
 
     def update_config(self, save_to_file=True, close_popup=True):
         super().update_config(save_to_file=save_to_file, close_popup=close_popup)

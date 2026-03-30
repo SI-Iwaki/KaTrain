@@ -11,6 +11,7 @@ from katrain.core.constants import (
     AI_POLICY, AI_RANK, AI_SCORELOSS, AI_SCORELOSS_ELO, AI_SETTLE_STONES,
     AI_SIMPLE_OWNERSHIP, AI_STRENGTH,
     AI_TENUKI, AI_TENUKI_ELO_GRID, AI_TERRITORY, AI_TERRITORY_ELO_GRID,
+    AI_FIGHTING, AI_FIGHTING_SCORELOSS_ELO,
     AI_WEIGHTED, AI_WEIGHTED_ELO, CALIBRATED_RANK_ELO, OUTPUT_DEBUG,
     OUTPUT_ERROR, OUTPUT_INFO, PRIORITY_EXTRA_AI_QUERY, ADDITIONAL_MOVE_ORDER, AI_HUMAN, AI_PRO
 )
@@ -57,7 +58,7 @@ def ai_rank_estimation(strategy, settings) -> int:
     if strategy == AI_HUMAN:
         return 1 - settings["human_kyu_rank"]
 
-    if strategy in [AI_WEIGHTED, AI_SCORELOSS, AI_LOCAL, AI_TENUKI, AI_TERRITORY, AI_INFLUENCE, AI_PICK]:
+    if strategy in [AI_WEIGHTED, AI_SCORELOSS, AI_LOCAL, AI_TENUKI, AI_TERRITORY, AI_INFLUENCE, AI_FIGHTING, AI_PICK]:
         if strategy == AI_WEIGHTED:
             elo = interp1d(AI_WEIGHTED_ELO, settings["weaken_fac"])
         if strategy == AI_SCORELOSS:
@@ -72,6 +73,14 @@ def ai_rank_estimation(strategy, settings) -> int:
             elo = interp2d(AI_TERRITORY_ELO_GRID, settings["pick_frac"], settings["pick_n"])
         if strategy == AI_INFLUENCE:
             elo = interp2d(AI_INFLUENCE_ELO_GRID, settings["pick_frac"], settings["pick_n"])
+        if strategy == AI_FIGHTING:
+            fighting_mode = settings.get("fighting_mode", "classic")
+            if fighting_mode == "human":
+                elo = 1700  # 9-dan humanSL + score filtering
+            elif fighting_mode == "scoreloss":
+                elo = interp1d(AI_FIGHTING_SCORELOSS_ELO, settings.get("fighting_max_loss", 3.0))
+            else:  # classic
+                elo = interp2d(AI_PICK_ELO_GRID, settings["pick_frac"], settings["pick_n"])
 
         kyu = interp1d(CALIBRATED_RANK_ELO, elo)
         return 1 - kyu
@@ -194,6 +203,49 @@ def generate_local_tenuki_weights(ai_mode, ai_settings, policy_grid, cn, size):
         ai_thoughts = (
             f"Generated weights based on one minus gaussian with variance {var} around coordinates {mx},{my}. "
         )
+    return weighted_coords, ai_thoughts
+
+def generate_fighting_weights(ai_settings, policy_grid, game, cn, size):
+    unsettled_power = ai_settings.get("unsettled_power", 2.0)
+    prox_stddev = ai_settings.get("proximity_stddev", 3.0)
+    prox_var = prox_stddev ** 2
+
+    # Build opponent stone positions
+    next_player = cn.next_player
+    opponent_coords = [s.coords for s in game.stones if s.player != next_player]
+
+    # Build ownership grid if available
+    ownership_grid = None
+    if cn.ownership:
+        ownership_grid = var_to_grid(cn.ownership, size)
+
+    weighted_coords = []
+    for x in range(size[0]):
+        for y in range(size[1]):
+            if policy_grid[y][x] <= 0:
+                continue
+
+            # Unsettledness weight
+            if ownership_grid is not None:
+                unsettled = (1.0 - abs(ownership_grid[y][x])) ** unsettled_power
+            else:
+                unsettled = 1.0
+
+            # Proximity to opponent stones weight
+            if opponent_coords:
+                min_dist_sq = min((x - ox) ** 2 + (y - oy) ** 2 for ox, oy in opponent_coords)
+                prox_weight = math.exp(-0.5 * min_dist_sq / prox_var)
+            else:
+                prox_weight = 1.0
+
+            weight = max(unsettled * prox_weight, 1e-6)
+            weighted_coords.append((policy_grid[y][x], weight, x, y))
+
+    ai_thoughts = (
+        f"Generated fighting weights with unsettled_power={unsettled_power}, "
+        f"proximity_stddev={prox_stddev}, "
+        f"opponent_stones={len(opponent_coords)}. "
+    )
     return weighted_coords, ai_thoughts
 
 class AIStrategy(ABC):
@@ -1286,6 +1338,353 @@ class TenukiStrategy(PickBasedStrategy):
             self.game.katrain.log(f"[TenukiStrategy] Top 5 weighted coordinates (by policy*weight):", OUTPUT_DEBUG)
             for i, (pol, wt, x, y) in enumerate(top5):
                 self.game.katrain.log(f"[TenukiStrategy] #{i+1}: ({x},{y}) - policy={pol:.2%}, weight={wt}, combined={pol*wt:.2%}", OUTPUT_DEBUG)
+        return weighted_coords, ai_thoughts
+
+@register_strategy(AI_FIGHTING)
+class FightingStrategy(PickBasedStrategy):
+    """Fighting strategy - weights moves toward unsettled areas near opponent stones"""
+
+    def generate_move(self) -> Tuple[Move, str]:
+        mode = self.settings.get("fighting_mode", "classic")
+        self.game.katrain.log(f"[FightingStrategy] Mode: {mode}", OUTPUT_DEBUG)
+        if mode == "scoreloss":
+            return self._generate_scoreloss()
+        elif mode == "human":
+            return self._generate_human()
+        else:
+            return self._generate_classic()
+
+    def _generate_classic(self) -> Tuple[Move, str]:
+        # Need at least a few opponent stones for fighting weights to be meaningful
+        opponent_stones = [s for s in self.game.stones if s.player != self.cn.next_player]
+        if len(opponent_stones) < 2:
+            self.game.katrain.log(
+                f"[FightingStrategy] Too few opponent stones ({len(opponent_stones)}), falling back to WeightedStrategy",
+                OUTPUT_DEBUG,
+            )
+            return WeightedStrategy(self.game, {
+                "pick_override": 0.9,
+                "weaken_fac": 1,
+                "lower_bound": 0.02,
+            }).generate_move()
+        return super().generate_move()
+
+    def _build_fighting_weight_dict(self):
+        """力戦重みの辞書 {(x,y): weight} を返す"""
+        size = self.game.board_size
+        ownership_grid = var_to_grid(self.cn.ownership, size) if self.cn.ownership else None
+        opponent_coords = [s.coords for s in self.game.stones if s.player != self.cn.next_player]
+        unsettled_power = self.settings.get("unsettled_power", 2.0)
+        prox_var = self.settings.get("proximity_stddev", 3.0) ** 2
+        weights = {}
+        for x in range(size[0]):
+            for y in range(size[1]):
+                unsettled = (1.0 - abs(ownership_grid[y][x])) ** unsettled_power if ownership_grid else 1.0
+                if opponent_coords:
+                    min_dist_sq = min((x - ox) ** 2 + (y - oy) ** 2 for ox, oy in opponent_coords)
+                    prox = math.exp(-0.5 * min_dist_sq / prox_var)
+                else:
+                    prox = 1.0
+                weights[(x, y)] = max(unsettled * prox, 1e-6)
+        return weights
+
+    def _generate_scoreloss(self) -> Tuple[Move, str]:
+        """案A: ScoreLoss系フィルタ + 力戦重みで着手選択"""
+        self.game.katrain.log(f"[FightingStrategy:scoreloss] Starting move generation", OUTPUT_DEBUG)
+        self.wait_for_analysis()
+
+        candidate_moves = self.cn.candidate_moves
+        if not candidate_moves:
+            self.game.katrain.log(f"[FightingStrategy:scoreloss] No candidate moves, passing", OUTPUT_DEBUG)
+            return Move(None, player=self.cn.next_player), "No candidate moves found, passing."
+
+        # パスが最善なら強制パス
+        top_cand = Move.from_gtp(candidate_moves[0]["move"], player=self.cn.next_player)
+        if top_cand.is_pass:
+            self.game.katrain.log(f"[FightingStrategy:scoreloss] Top move is pass, forcing pass", OUTPUT_DEBUG)
+            return top_cand, "Top move is pass, forcing pass."
+
+        # 損失フィルタ
+        fighting_max_loss = self.settings.get("fighting_max_loss", 3.0)
+        good_moves = [d for d in candidate_moves if d["pointsLost"] < fighting_max_loss and not Move.from_gtp(d["move"], player=self.cn.next_player).is_pass]
+        self.game.katrain.log(
+            f"[FightingStrategy:scoreloss] {len(good_moves)}/{len(candidate_moves)} moves pass loss filter (max_loss={fighting_max_loss})",
+            OUTPUT_DEBUG,
+        )
+
+        if not good_moves:
+            self.game.katrain.log(f"[FightingStrategy:scoreloss] No moves pass filter, using best move", OUTPUT_DEBUG)
+            return top_cand, "All moves exceed loss threshold, playing best move."
+
+        # 力戦重み
+        opponent_stones = [s for s in self.game.stones if s.player != self.cn.next_player]
+        if len(opponent_stones) >= 2:
+            fighting_weights = self._build_fighting_weight_dict()
+        else:
+            fighting_weights = {}
+
+        # 損失重み × 力戦重み
+        weighted_moves = []
+        for d in good_moves:
+            move = Move.from_gtp(d["move"], player=self.cn.next_player)
+            points_lost = d["pointsLost"]
+            score_weight = math.exp(min(200, -5 * max(0, points_lost)))
+            fight_weight = fighting_weights.get(move.coords, 1e-6) if move.coords and fighting_weights else 1.0
+            combined = score_weight * fight_weight
+            weighted_moves.append((points_lost, combined, move))
+
+        # デバッグ: 上位5手表示
+        top5 = heapq.nlargest(5, weighted_moves, key=lambda t: t[1])
+        self.game.katrain.log(f"[FightingStrategy:scoreloss] Top 5 weighted moves:", OUTPUT_DEBUG)
+        for i, (pl, w, m) in enumerate(top5):
+            self.game.katrain.log(f"  #{i+1}: {m.gtp()} loss={pl:.2f} weight={w:.4f}", OUTPUT_DEBUG)
+
+        # 重み付き選択
+        selected = weighted_selection_without_replacement(weighted_moves, 1)[0]
+        aimove = selected[2]
+        ai_thoughts = (
+            f"ScoreLoss+Fighting: {len(good_moves)} moves within {fighting_max_loss}pt loss. "
+            f"Selected {aimove.gtp()} (loss={selected[0]:.1f}, weight={selected[1]:.3f})."
+        )
+        self.game.katrain.log(f"[FightingStrategy:scoreloss] Selected: {aimove.gtp()}", OUTPUT_DEBUG)
+        return aimove, ai_thoughts
+
+    def _generate_human(self) -> Tuple[Move, str]:
+        """案B: HumanStyleStrategy拡張 + 力戦重みで着���選択"""
+        self.game.katrain.log(f"[FightingStrategy:human] Starting move generation", OUTPUT_DEBUG)
+
+        # 標準解析を待つ（ownership取得のため）
+        self.wait_for_analysis()
+
+        # --- Stage 1: humanSLProfile付きクエリ（9段固定） ---
+        human_profile = "rank_9d"
+        override_settings = {
+            "humanSLProfile": human_profile,
+            "ignorePreRootHistory": False,
+            "maxVisits": 600,
+        }
+        self.game.katrain.log(f"[FightingStrategy:human] Stage 1: requesting humanSL analysis ({human_profile})", OUTPUT_DEBUG)
+
+        analysis = None
+        error = False
+
+        def set_analysis(a, partial_result):
+            nonlocal analysis
+            if not partial_result:
+                analysis = a
+
+        def set_error(a):
+            nonlocal error
+            error = True
+            self.game.katrain.log(f"[FightingStrategy:human] Error in Stage 1: {a}", OUTPUT_ERROR)
+
+        engine = self.game.engines[self.cn.player]
+        engine.request_analysis(
+            self.cn,
+            callback=set_analysis,
+            error_callback=set_error,
+            priority=PRIORITY_EXTRA_AI_QUERY,
+            include_policy=True,
+            extra_settings=override_settings,
+        )
+
+        while not (error or analysis):
+            time.sleep(0.01)
+            engine.check_alive(exception_if_dead=True)
+
+        if error or not analysis or "humanPolicy" not in analysis:
+            self.game.katrain.log(f"[FightingStrategy:human] Stage 1 failed, falling back to scoreloss mode", OUTPUT_DEBUG)
+            return self._generate_scoreloss()
+
+        board_size = self.game.board_size
+        human_policy = analysis["humanPolicy"]
+
+        # --- Stage 2: クリーンクエリ（正確なスコア取得） ---
+        clean_override_settings = {
+            "ignorePreRootHistory": False,
+            "maxVisits": 400,
+            "wideRootNoise": 0.0,
+        }
+        clean_analysis = None
+        clean_error = False
+
+        def set_clean_analysis(a, partial_result):
+            nonlocal clean_analysis
+            if not partial_result:
+                clean_analysis = a
+
+        def set_clean_error(a):
+            nonlocal clean_error
+            clean_error = True
+            self.game.katrain.log(f"[FightingStrategy:human] Error in Stage 2: {a}", OUTPUT_ERROR)
+
+        self.game.katrain.log(f"[FightingStrategy:human] Stage 2: requesting clean analysis", OUTPUT_DEBUG)
+        engine.request_analysis(
+            self.cn,
+            callback=set_clean_analysis,
+            error_callback=set_clean_error,
+            priority=PRIORITY_EXTRA_AI_QUERY,
+            include_policy=False,
+            extra_settings=clean_override_settings,
+        )
+
+        while not (clean_error or clean_analysis):
+            time.sleep(0.01)
+            engine.check_alive(exception_if_dead=True)
+
+        # --- 悪手フィ��タ ---
+        bx, by = board_size
+        opening_boundary = math.ceil(0.14 * bx * by)
+        if bx == 9 and by == 9:
+            OPENING_THRESHOLD = 0.5
+            NORMAL_THRESHOLD = 3.3
+        else:
+            OPENING_THRESHOLD = 2.8
+            NORMAL_THRESHOLD = 6.0
+        current_move = self.cn.depth
+        BAD_MOVE_THRESHOLD = OPENING_THRESHOLD if current_move < opening_boundary else NORMAL_THRESHOLD
+
+        if clean_analysis and not clean_error:
+            move_infos = clean_analysis.get("moveInfos", [])
+            self.game.katrain.log(f"[FightingStrategy:human] Using clean moveInfos ({len(move_infos)} moves)", OUTPUT_DEBUG)
+        else:
+            move_infos = analysis.get("moveInfos", [])
+            self.game.katrain.log(f"[FightingStrategy:human] Clean query failed, using biased moveInfos", OUTPUT_DEBUG)
+
+        good_moves = set()
+        best_gtp_by_score = None
+        if move_infos:
+            player_sign = 1 if self.cn.next_player == "B" else -1
+            best_score = max(mi.get("scoreLead", 0) * player_sign for mi in move_infos) / player_sign
+            best_gtp_by_score = max(
+                move_infos, key=lambda mi: mi.get("scoreLead", 0) * player_sign
+            ).get("move", "")
+
+            if best_gtp_by_score == "pass":
+                self.game.katrain.log(f"[FightingStrategy:human] Best move is pass, forcing pass", OUTPUT_DEBUG)
+                return Move(None, player=self.cn.next_player), "Best move is pass, forcing pass."
+
+            self.game.katrain.log(
+                f"[FightingStrategy:human] Move {current_move}: threshold={BAD_MOVE_THRESHOLD}, best_score={best_score:.1f}",
+                OUTPUT_DEBUG,
+            )
+            for mi in move_infos:
+                gtp_move = mi.get("move", "")
+                score = mi.get("scoreLead", 0)
+                loss = player_sign * (best_score - score)
+                if loss < BAD_MOVE_THRESHOLD:
+                    good_moves.add(gtp_move)
+            self.game.katrain.log(
+                f"[FightingStrategy:human] {len(good_moves)} moves pass score filter",
+                OUTPUT_DEBUG,
+            )
+
+        # --- humanPolicy × fighting_weight で候補構築 ---
+        opponent_stones = [s for s in self.game.stones if s.player != self.cn.next_player]
+        if len(opponent_stones) >= 2:
+            fighting_weights = self._build_fighting_weight_dict()
+        else:
+            fighting_weights = {}
+
+        moves = []
+        filtered_count = 0
+        has_filter = len(good_moves) > 0
+        for x in range(board_size[0]):
+            for y in range(board_size[1]):
+                idx = (board_size[1] - y - 1) * board_size[0] + x
+                if idx < len(human_policy) and human_policy[idx] > 0:
+                    m = Move((x, y), player=self.cn.next_player)
+                    if has_filter and m.gtp() not in good_moves:
+                        filtered_count += 1
+                    else:
+                        hp_weight = human_policy[idx]
+                        fight_weight = fighting_weights.get((x, y), 1e-6) if fighting_weights else 1.0
+                        combined = hp_weight * fight_weight
+                        moves.append((m, combined))
+
+        # パス候補
+        if len(human_policy) > board_size[0] * board_size[1] and human_policy[-1] > 0:
+            if not has_filter or "pass" in good_moves:
+                moves.append((Move(None, player=self.cn.next_player), human_policy[-1]))
+
+        self.game.katrain.log(
+            f"[FightingStrategy:human] {len(moves)} candidate moves ({filtered_count} filtered)",
+            OUTPUT_DEBUG,
+        )
+
+        # 全手フィルタ時のフォールバック
+        if not moves:
+            self.game.katrain.log(f"[FightingStrategy:human] All moves filtered, using best search move", OUTPUT_DEBUG)
+            if move_infos:
+                if (bx == 9 and by == 9 or bx == 13 and by == 13) and best_gtp_by_score:
+                    best_gtp = best_gtp_by_score
+                else:
+                    best_gtp = move_infos[0].get("move", "pass")
+                if best_gtp == "pass":
+                    return Move(None, player=self.cn.next_player), "All human moves filtered, playing best move."
+                else:
+                    coords = Move.from_gtp(best_gtp, player=self.cn.next_player)
+                    return coords, "All human moves filtered, playing best move."
+            return Move(None, player=self.cn.next_player), "No valid moves found."
+
+        # パスが候補にあれば強制パス
+        if any(m.is_pass for m, _ in moves):
+            self.game.katrain.log(f"[FightingStrategy:human] Pass is among candidates, forcing pass", OUTPUT_DEBUG)
+            return Move(None, player=self.cn.next_player), "Pass is in candidates, forcing pass."
+
+        # 終局時: humanPolicy最上位手（力戦重み無視）
+        endgame_threshold = math.ceil(bx * by * 0.5)
+        if current_move >= endgame_threshold:
+            # 終局は力戦重みなしのhumanPolicyで選択
+            endgame_moves = []
+            for x in range(board_size[0]):
+                for y in range(board_size[1]):
+                    idx = (board_size[1] - y - 1) * board_size[0] + x
+                    if idx < len(human_policy) and human_policy[idx] > 0:
+                        m = Move((x, y), player=self.cn.next_player)
+                        if not has_filter or m.gtp() in good_moves:
+                            endgame_moves.append((m, human_policy[idx]))
+            if endgame_moves:
+                top_move = max(endgame_moves, key=lambda x: x[1])
+                self.game.katrain.log(
+                    f"[FightingStrategy:human] Endgame: playing top humanPolicy move {top_move[0].gtp()}",
+                    OUTPUT_DEBUG,
+                )
+                return top_move[0], f"Endgame: played top humanPolicy move {top_move[0].gtp()}."
+
+        # デバッグ: 上位5手表示
+        top5 = sorted(moves, key=lambda x: -x[1])[:5]
+        top_str = "\n".join([f"#{i+1}: {m.gtp()} weight={w:.4f}" for i, (m, w) in enumerate(top5)])
+        self.game.katrain.log(f"[FightingStrategy:human] Top 5:\n{top_str}", OUTPUT_DEBUG)
+
+        # 重み付き選択
+        selected = weighted_selection_without_replacement(moves, 1)[0]
+        move = selected[0]
+        self.game.katrain.log(f"[FightingStrategy:human] Selected: {move.gtp()}", OUTPUT_DEBUG)
+
+        ai_thoughts = (
+            f"\n{top_str}\n\nHuman+Fighting: played {move.gtp()} "
+            f"({filtered_count} bad moves filtered)"
+        )
+        return move, ai_thoughts
+
+    def generate_weighted_coords(self, legal_policy_moves, policy_grid, size):
+        self.game.katrain.log(f"[FightingStrategy] Generating fighting-based weights", OUTPUT_DEBUG)
+        weighted_coords, ai_thoughts = generate_fighting_weights(
+            self.settings, policy_grid, self.game, self.cn, size
+        )
+        self.game.katrain.log(
+            f"[FightingStrategy] Generated {len(weighted_coords)} weighted coordinates",
+            OUTPUT_DEBUG,
+        )
+        if weighted_coords:
+            top5 = heapq.nlargest(5, weighted_coords, key=lambda t: t[0] * t[1])
+            self.game.katrain.log(f"[FightingStrategy] Top 5 weighted coordinates (by policy*weight):", OUTPUT_DEBUG)
+            for i, (pol, wt, x, y) in enumerate(top5):
+                self.game.katrain.log(
+                    f"[FightingStrategy] #{i+1}: ({x},{y}) - policy={pol:.2%}, weight={wt:.4f}, combined={pol*wt:.4f}",
+                    OUTPUT_DEBUG,
+                )
         return weighted_coords, ai_thoughts
 
 def _get_corner_star_points(board_size):

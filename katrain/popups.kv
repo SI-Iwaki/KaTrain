@@ -873,12 +873,25 @@
         rows: root.max_options
         cols: 2
     AnchorLayout:
-        size_hint: 1, 1.5
-        AutoSizedRoundedRectangleButton:
-            padding_x: 15
-            size_hint: None,0.5
-            text: i18n._("update ai settings")
-            on_press: root.update_config(True)
+        size_hint: 1, None
+        height: dp(50)
+        BoxLayout:
+            size_hint: None, None
+            height: dp(35)
+            spacing: dp(10)
+            width: self.minimum_width
+            AutoSizedRoundedRectangleButton:
+                padding_x: 15
+                size_hint: None, 1
+                _font_size: sp(14)
+                text: i18n._("update ai settings")
+                on_press: root.update_config(True)
+            AutoSizedRoundedRectangleButton:
+                padding_x: 15
+                size_hint: None, 1
+                _font_size: sp(14)
+                text: i18n._("reset ai defaults")
+                on_press: root.reset_to_defaults()
 
 <EngineRecoveryPopup>:
     Label:

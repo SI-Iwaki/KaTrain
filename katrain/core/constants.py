@@ -49,6 +49,7 @@ AI_LOCAL = "ai:p:local"
 AI_TENUKI = "ai:p:tenuki"
 AI_INFLUENCE = "ai:p:influence"
 AI_TERRITORY = "ai:p:territory"
+AI_FIGHTING = "ai:p:fighting"
 AI_RANK = "ai:p:rank"
 AI_SIMPLE_OWNERSHIP = "ai:simple"
 AI_SETTLE_STONES = "ai:settle"
@@ -58,7 +59,7 @@ AI_PRO = "ai:pro"
 AI_CONFIG_DEFAULT = AI_RANK
 
 AI_STRATEGIES_ENGINE = [AI_DEFAULT, AI_HANDICAP, AI_SCORELOSS, AI_SIMPLE_OWNERSHIP, AI_JIGO, AI_ANTIMIRROR]
-AI_STRATEGIES_PICK = [AI_PICK, AI_LOCAL, AI_TENUKI, AI_INFLUENCE, AI_TERRITORY, AI_RANK]
+AI_STRATEGIES_PICK = [AI_PICK, AI_LOCAL, AI_TENUKI, AI_INFLUENCE, AI_TERRITORY, AI_FIGHTING, AI_RANK]
 AI_STRATEGIES_POLICY = [AI_WEIGHTED, AI_POLICY] + AI_STRATEGIES_PICK
 AI_STRATEGIES = AI_STRATEGIES_ENGINE + AI_STRATEGIES_POLICY + [AI_HUMAN, AI_PRO]
 AI_STRATEGIES_RECOMMENDED_ORDER = [
@@ -78,6 +79,7 @@ AI_STRATEGIES_RECOMMENDED_ORDER = [
     AI_TENUKI,
     AI_TERRITORY,
     AI_INFLUENCE,
+    AI_FIGHTING,
 ]
 
 AI_STRENGTH = {  # dan ranks, backup if model is missing. TODO: remove some?
@@ -92,6 +94,7 @@ AI_STRENGTH = {  # dan ranks, backup if model is missing. TODO: remove some?
     AI_TENUKI: -7,
     AI_INFLUENCE: -7,
     AI_TERRITORY: -7,
+    AI_FIGHTING: -4,
     AI_RANK: float("nan"),
     AI_SIMPLE_OWNERSHIP: 2,
     AI_SETTLE_STONES: 2,
@@ -113,6 +116,8 @@ AI_OPTION_VALUES = {
     "stddev": [x / 2 for x in range(21)],
     "line_weight": range(0, 11),
     "threshold": [2, 2.5, 3, 3.5, 4, 4.5],
+    "unsettled_power": [x / 2 for x in range(2, 11)],  # 1.0 to 5.0 in 0.5 steps
+    "proximity_stddev": [x / 2 for x in range(2, 21)],  # 1.0 to 10.0 in 0.5 steps
     "automatic": "bool",
     "pda": [(x / 10, f"{'W' if x<0 else 'B'}+{abs(x/10):.1f}") for x in range(-30, 31)],
     "max_points_lost": [x / 10 for x in range(51)],
@@ -130,6 +135,12 @@ AI_OPTION_VALUES = {
     "first_impression_deviation_opening": "bool",
     "first_impression_green_blend": "bool",
     "green_blend_green_ratio": [(0.4, "dev寄り(40/60)"), (0.5, "均等(50/50)"), (0.6, "緑寄り(60/40)")],
+    "fighting_mode": [
+        ("classic", "[fighting:classic]"),
+        ("scoreloss", "[fighting:scoreloss]"),
+        ("human", "[fighting:human]"),
+    ],
+    "fighting_max_loss": [x / 2 for x in range(1, 21)],  # 0.5〜10.0（0.5刻み）
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）
@@ -141,6 +152,14 @@ AI_OPTION_ORDER = {
     "first_impression_deviation_opening": 31,
     "first_impression_green_blend": 32,
     "green_blend_green_ratio": 33,
+    "fighting_mode": 0,
+    "fighting_max_loss": 1,
+    "pick_override": 10,
+    "pick_n": 11,
+    "pick_frac": 12,
+    "endgame": 13,
+    "unsettled_power": 20,
+    "proximity_stddev": 21,
 }
 
 AI_KEY_PROPERTIES = {
@@ -152,6 +171,8 @@ AI_KEY_PROPERTIES = {
     "automatic",
     "max_points_lost",
     "min_visits",
+    "fighting_mode",
+    "fighting_max_loss",
 }
 
 
@@ -253,6 +274,16 @@ AI_INFLUENCE_ELO_GRID = [
         [772.0, 912.0, 958.0, 1145.0, 1318.0, 1511.0, 1577.0, 1623.0],
     ],
 ]
+AI_FIGHTING_SCORELOSS_ELO = [
+    (0.5, 1300),
+    (1.0, 1200),
+    (1.5, 1100),
+    (2.0, 1050),
+    (3.0, 1000),
+    (5.0, 800),
+    (10.0, 600),
+]
+
 AI_PICK_ELO_GRID = [
     [0.0, 0.05, 0.1, 0.2, 0.3, 0.5, 0.75, 1.0],
     [0, 5, 10, 15, 25, 50],
