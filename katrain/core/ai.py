@@ -1657,9 +1657,9 @@ class FightingStrategy(PickBasedStrategy):
         top_str = "\n".join([f"#{i+1}: {m.gtp()} weight={w:.4f}" for i, (m, w) in enumerate(top5)])
         self.game.katrain.log(f"[FightingStrategy:human] Top 5:\n{top_str}", OUTPUT_DEBUG)
 
-        # 拮抗タイブレーク: top-2の重みが5%以内かつスコア差4目以上なら高スコア手を確定選択
+        # 拮抗タイブレーク: top-2の重みが5%以内かつスコア差2目以上なら高スコア手を確定選択
         _TIEBREAK_WEIGHT_RATIO = 1.05
-        _TIEBREAK_SCORE_DIFF = 4.0
+        _TIEBREAK_SCORE_DIFF = 2.0
         if len(top5) >= 2 and move_infos:
             _player_sign = 1 if self.cn.next_player == "B" else -1
             _score_by_gtp = {mi.get("move", ""): mi.get("scoreLead", 0) * _player_sign for mi in move_infos}
@@ -2112,9 +2112,9 @@ class HumanStyleStrategy(AIStrategy):
                 )
                 return best_dev[0], ai_thoughts
 
-        # 拮抗タイブレーク: top-2の重みが5%以内かつスコア差4目以上なら高スコア手を確定選択
+        # 拮抗タイブレーク: top-2の重みが5%以内かつスコア差2目以上なら高スコア手を確定選択
         _TIEBREAK_WEIGHT_RATIO = 1.05
-        _TIEBREAK_SCORE_DIFF = 4.0
+        _TIEBREAK_SCORE_DIFF = 2.0
         if len(top_moves) >= 2 and score_by_gtp:
             top1_move, top1_w = top_moves[0]
             top2_move, top2_w = top_moves[1]
