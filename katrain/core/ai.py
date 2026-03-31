@@ -1461,7 +1461,7 @@ class FightingStrategy(PickBasedStrategy):
         override_settings = {
             "humanSLProfile": human_profile,
             "ignorePreRootHistory": False,
-            "maxVisits": 600,
+            "maxVisits": 800,
         }
         self.game.katrain.log(f"[FightingStrategy:human] Stage 1: requesting humanSL analysis ({human_profile})", OUTPUT_DEBUG)
 
@@ -1502,7 +1502,7 @@ class FightingStrategy(PickBasedStrategy):
         # --- Stage 2: クリーンクエリ（正確なスコア取得） ---
         clean_override_settings = {
             "ignorePreRootHistory": False,
-            "maxVisits": 400,
+            "maxVisits": 600,
             "wideRootNoise": 0.0,
         }
         clean_analysis = None
@@ -1552,6 +1552,23 @@ class FightingStrategy(PickBasedStrategy):
             self.game.katrain.log(f"[FightingStrategy:human] Clean query failed, using biased moveInfos", OUTPUT_DEBUG)
 
         good_moves = set()
+        _AREA_SCORING_RULES_F = {"chinese", "aga", "new zealand", "tromp-taylor", "stone_scoring"}
+        _rules_f = self.game.rules
+        _is_area_scoring_f = (
+            (isinstance(_rules_f, dict) and _rules_f.get("scoring") == "area")
+            or str(_rules_f).lower() in _AREA_SCORING_RULES_F
+        )
+
+        def _best_non_pass_gtp_f(infos, sign):
+            """エリアカウントルール用: パスより有利な非パス手のGTPを返す（なければNone）"""
+            pass_info = next((mi for mi in infos if mi.get("move") == "pass"), None)
+            pass_score = pass_info.get("scoreLead", 0) * sign if pass_info else float("-inf")
+            non_pass = [mi for mi in infos if mi.get("move", "") not in ("pass", "")]
+            if not non_pass:
+                return None
+            best = max(non_pass, key=lambda mi: mi.get("scoreLead", 0) * sign)
+            return best.get("move") if best.get("scoreLead", 0) * sign > pass_score else None
+
         best_gtp_by_score = None
         if move_infos:
             player_sign = 1 if self.cn.next_player == "B" else -1
@@ -1561,6 +1578,11 @@ class FightingStrategy(PickBasedStrategy):
             ).get("move", "")
 
             if best_gtp_by_score == "pass":
+                if _is_area_scoring_f:
+                    _alt_f = _best_non_pass_gtp_f(move_infos, player_sign)
+                    if _alt_f:
+                        self.game.katrain.log(f"[FightingStrategy:human] Area scoring: best is pass but profitable non-pass {_alt_f} found, playing it", OUTPUT_DEBUG)
+                        return Move.from_gtp(_alt_f, player=self.cn.next_player), f"Area scoring rules: playing best non-pass move {_alt_f}."
                 self.game.katrain.log(f"[FightingStrategy:human] Best move is pass, forcing pass", OUTPUT_DEBUG)
                 return Move(None, player=self.cn.next_player), "Best move is pass, forcing pass."
 
@@ -1593,6 +1615,10 @@ class FightingStrategy(PickBasedStrategy):
                     OUTPUT_DEBUG,
                 )
                 if best_gtp_by_score == "pass":
+                    if _is_area_scoring_f:
+                        _alt_f = _best_non_pass_gtp_f(move_infos, player_sign)
+                        if _alt_f:
+                            return Move.from_gtp(_alt_f, player=self.cn.next_player), f"Safety valve + area scoring: playing best non-pass {_alt_f}."
                     return Move(None, player=self.cn.next_player), "Safety valve: best move is pass."
                 return Move.from_gtp(best_gtp_by_score, player=self.cn.next_player), (
                     f"Safety valve: max-visit {max_visit_gtp} had loss={max_visit_loss:.2f}, "
@@ -1622,10 +1648,11 @@ class FightingStrategy(PickBasedStrategy):
                         combined = hp_weight * fight_weight
                         moves.append((m, combined))
 
-        # パス候補
+        # パス候補（エリアカウントルールでは有利な非パス手がある場合はパスを追加しない）
         if len(human_policy) > board_size[0] * board_size[1] and human_policy[-1] > 0:
             if not has_filter or "pass" in good_moves:
-                moves.append((Move(None, player=self.cn.next_player), human_policy[-1]))
+                if not _is_area_scoring_f or not move_infos or _best_non_pass_gtp_f(move_infos, player_sign) is None:
+                    moves.append((Move(None, player=self.cn.next_player), human_policy[-1]))
 
         self.game.katrain.log(
             f"[FightingStrategy:human] {len(moves)} candidate moves ({filtered_count} filtered)",
@@ -1653,6 +1680,10 @@ class FightingStrategy(PickBasedStrategy):
                         OUTPUT_DEBUG,
                     )
                     if best_gtp_by_score == "pass":
+                        if _is_area_scoring_f:
+                            _alt_f = _best_non_pass_gtp_f(move_infos, player_sign)
+                            if _alt_f:
+                                return Move.from_gtp(_alt_f, player=self.cn.next_player), f"Safety valve v2 + area scoring: playing best non-pass {_alt_f}."
                         return Move(None, player=self.cn.next_player), "Safety valve v2: best move is pass."
                     return Move.from_gtp(best_gtp_by_score, player=self.cn.next_player), (
                         f"Safety valve v2: top weighted {top_gtp_v2} had loss={top_loss_v2:.2f}, "
@@ -1668,16 +1699,30 @@ class FightingStrategy(PickBasedStrategy):
                 else:
                     best_gtp = move_infos[0].get("move", "pass")
                 if best_gtp == "pass":
+                    if _is_area_scoring_f:
+                        _alt_f = _best_non_pass_gtp_f(move_infos, player_sign)
+                        if _alt_f:
+                            self.game.katrain.log(f"[FightingStrategy:human] Area scoring: fallback pass overridden by {_alt_f}", OUTPUT_DEBUG)
+                            return Move.from_gtp(_alt_f, player=self.cn.next_player), f"Area scoring rules: fallback to best non-pass move {_alt_f}."
                     return Move(None, player=self.cn.next_player), "All human moves filtered, playing best move."
                 else:
                     coords = Move.from_gtp(best_gtp, player=self.cn.next_player)
                     return coords, "All human moves filtered, playing best move."
             return Move(None, player=self.cn.next_player), "No valid moves found."
 
-        # パスが候補にあれば強制パス
+        # パスが候補にあれば強制パス（エリアカウントルールかつ有利な非パス手がある場合はスキップ）
         if any(m.is_pass for m, _ in moves):
-            self.game.katrain.log(f"[FightingStrategy:human] Pass is among candidates, forcing pass", OUTPUT_DEBUG)
-            return Move(None, player=self.cn.next_player), "Pass is in candidates, forcing pass."
+            if _is_area_scoring_f and move_infos:
+                _alt_f = _best_non_pass_gtp_f(move_infos, player_sign)
+                if _alt_f:
+                    moves = [(m, w) for m, w in moves if not m.is_pass]
+                    self.game.katrain.log(f"[FightingStrategy:human] Area scoring: pass in candidates but profitable non-pass exists, removed pass from candidates", OUTPUT_DEBUG)
+                else:
+                    self.game.katrain.log(f"[FightingStrategy:human] Pass is among candidates, forcing pass", OUTPUT_DEBUG)
+                    return Move(None, player=self.cn.next_player), "Pass is in candidates, forcing pass."
+            else:
+                self.game.katrain.log(f"[FightingStrategy:human] Pass is among candidates, forcing pass", OUTPUT_DEBUG)
+                return Move(None, player=self.cn.next_player), "Pass is in candidates, forcing pass."
 
         # 終局時: humanPolicy最上位手（力戦重み無視）
         endgame_threshold = math.ceil(bx * by * 0.5)
@@ -1822,7 +1867,7 @@ class HumanStyleStrategy(AIStrategy):
         override_settings = {
             "humanSLProfile": human_profile,
             "ignorePreRootHistory": False,
-            "maxVisits": 600,
+            "maxVisits": 800,
         }
         self.game.katrain.log(f"[HumanStyleStrategy] Override settings for engine: {override_settings}", OUTPUT_DEBUG)
         
@@ -1905,7 +1950,7 @@ class HumanStyleStrategy(AIStrategy):
         # 正確なスコアでフィルタリングするためにクリーンクエリを送信
         clean_override_settings = {
             "ignorePreRootHistory": False,
-            "maxVisits": 400,
+            "maxVisits": 600,
             "wideRootNoise": 0.0,
         }
 
@@ -1972,6 +2017,23 @@ class HumanStyleStrategy(AIStrategy):
                 OUTPUT_DEBUG
             )
         good_moves = set()  # Only moves evaluated by KataGo and within threshold
+        _AREA_SCORING_RULES_H = {"chinese", "aga", "new zealand", "tromp-taylor", "stone_scoring"}
+        _rules_h = self.game.rules
+        _is_area_scoring_h = (
+            (isinstance(_rules_h, dict) and _rules_h.get("scoring") == "area")
+            or str(_rules_h).lower() in _AREA_SCORING_RULES_H
+        )
+
+        def _best_non_pass_gtp_h(infos, sign):
+            """エリアカウントルール用: パスより有利な非パス手のGTPを返す（なければNone）"""
+            pass_info = next((mi for mi in infos if mi.get("move") == "pass"), None)
+            pass_score = pass_info.get("scoreLead", 0) * sign if pass_info else float("-inf")
+            non_pass = [mi for mi in infos if mi.get("move", "") not in ("pass", "")]
+            if not non_pass:
+                return None
+            best = max(non_pass, key=lambda mi: mi.get("scoreLead", 0) * sign)
+            return best.get("move") if best.get("scoreLead", 0) * sign > pass_score else None
+
         best_gtp_by_score = None  # 大差フィルター用（現在プレイヤーにとっての最善手GTP）
         if move_infos:
             # player_sign: Black=+1, White=-1 (scoreLead is always from Black's perspective)
@@ -1983,7 +2045,13 @@ class HumanStyleStrategy(AIStrategy):
                 move_infos, key=lambda mi: mi.get("scoreLead", 0) * player_sign
             ).get("move", "")
             # 最善手がパスの場合は強制的にパス（9段がパスタイミングを間違えることはない）
+            # エリアカウントルール（中国ルール等）では有利な非パス手がある場合はパスをスキップ
             if best_gtp_by_score == "pass":
+                if _is_area_scoring_h:
+                    _alt_h = _best_non_pass_gtp_h(move_infos, player_sign)
+                    if _alt_h:
+                        self.game.katrain.log(f"[HumanStyleStrategy] Area scoring: best is pass but profitable non-pass {_alt_h} found, playing it", OUTPUT_DEBUG)
+                        return Move.from_gtp(_alt_h, player=self.cn.next_player), f"Area scoring rules: playing best non-pass move {_alt_h}."
                 self.game.katrain.log(f"[HumanStyleStrategy] Best move is pass, forcing pass", OUTPUT_DEBUG)
                 return Move(None, player=self.cn.next_player), "Best move is pass, forcing pass."
             self.game.katrain.log(f"[HumanStyleStrategy] Move {current_move}: phase={'opening' if current_move < opening_boundary else 'normal'}, threshold={BAD_MOVE_THRESHOLD} (boundary={opening_boundary})", OUTPUT_DEBUG)
@@ -2012,9 +2080,11 @@ class HumanStyleStrategy(AIStrategy):
                         moves.append((m, human_policy[idx]))
 
         # Add pass move if it has positive probability and is acceptable
+        # エリアカウントルールでは有利な非パス手がある場合はパスを候補に追加しない
         if len(human_policy) > board_size[0] * board_size[1] and human_policy[-1] > 0:
             if not has_filter or "pass" in good_moves:
-                moves.append((Move(None, player=self.cn.next_player), human_policy[-1]))
+                if not _is_area_scoring_h or not move_infos or _best_non_pass_gtp_h(move_infos, player_sign) is None:
+                    moves.append((Move(None, player=self.cn.next_player), human_policy[-1]))
 
         self.game.katrain.log(f"[HumanStyleStrategy] {len(moves)} candidate moves ({filtered_count} filtered out)", OUTPUT_DEBUG)
 
@@ -2030,6 +2100,11 @@ class HumanStyleStrategy(AIStrategy):
                 else:
                     best_gtp = move_infos[0].get("move", "pass")
                 if best_gtp == "pass":
+                    if _is_area_scoring_h:
+                        _alt_h = _best_non_pass_gtp_h(move_infos, player_sign)
+                        if _alt_h:
+                            self.game.katrain.log(f"[HumanStyleStrategy] Area scoring: fallback pass overridden by {_alt_h}", OUTPUT_DEBUG)
+                            return Move.from_gtp(_alt_h, player=self.cn.next_player), f"Area scoring rules: fallback to best non-pass move {_alt_h}."
                     return Move(None, player=self.cn.next_player), "All human moves filtered, playing best move."
                 else:
                     coords = Move.from_gtp(best_gtp, player=self.cn.next_player)
