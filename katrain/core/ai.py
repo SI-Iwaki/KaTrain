@@ -1540,7 +1540,7 @@ class FightingStrategy(PickBasedStrategy):
             NORMAL_THRESHOLD = 3.3
         else:
             OPENING_THRESHOLD = 2.8
-            NORMAL_THRESHOLD = 6.0
+            NORMAL_THRESHOLD = 5.6
         current_move = self.cn.depth
         BAD_MOVE_THRESHOLD = OPENING_THRESHOLD if current_move < opening_boundary else NORMAL_THRESHOLD
 
@@ -1579,6 +1579,26 @@ class FightingStrategy(PickBasedStrategy):
                 OUTPUT_DEBUG,
             )
 
+            # 安全弁: 最多探索手のlossが閾値以上なら最善スコア手を確定選択（力戦特性を無視）
+            _SAFETY_LOSS_THRESHOLD = 3.4
+            max_visit_mi = max(move_infos, key=lambda mi: mi.get("visits", 0))
+            max_visit_gtp = max_visit_mi.get("move", "")
+            max_visit_score = max_visit_mi.get("scoreLead", 0)
+            max_visit_loss = player_sign * (best_score - max_visit_score)
+            if max_visit_loss >= _SAFETY_LOSS_THRESHOLD and best_gtp_by_score and best_gtp_by_score != max_visit_gtp:
+                self.game.katrain.log(
+                    f"[FightingStrategy:human] Safety valve: max-visit move {max_visit_gtp} "
+                    f"loss={max_visit_loss:.2f} >= {_SAFETY_LOSS_THRESHOLD}, "
+                    f"forcing best-score move {best_gtp_by_score}",
+                    OUTPUT_DEBUG,
+                )
+                if best_gtp_by_score == "pass":
+                    return Move(None, player=self.cn.next_player), "Safety valve: best move is pass."
+                return Move.from_gtp(best_gtp_by_score, player=self.cn.next_player), (
+                    f"Safety valve: max-visit {max_visit_gtp} had loss={max_visit_loss:.2f}, "
+                    f"forced best-score move {best_gtp_by_score}."
+                )
+
         # --- humanPolicy × fighting_weight で候補構築 ---
         opponent_stones = [s for s in self.game.stones if s.player != self.cn.next_player]
         if len(opponent_stones) >= 2:
@@ -1611,6 +1631,33 @@ class FightingStrategy(PickBasedStrategy):
             f"[FightingStrategy:human] {len(moves)} candidate moves ({filtered_count} filtered)",
             OUTPUT_DEBUG,
         )
+
+        # 安全弁v2: 最高重み候補のlossが閾値以上なら最善スコア手を確定選択
+        # 安全弁v1はmove_infosの最多探索手を対象とするが、実際に選ばれる手は
+        # humanPolicy×fighting_weightで決まるため、v2でその手を直接チェックする
+        if moves and move_infos and best_gtp_by_score:
+            _score_by_gtp_v2 = {mi.get("move", ""): mi.get("scoreLead", 0) for mi in move_infos}
+            top_move_v2, _ = max(moves, key=lambda x: x[1])
+            top_gtp_v2 = top_move_v2.gtp()
+            if top_gtp_v2 in _score_by_gtp_v2 and top_gtp_v2 != best_gtp_by_score:
+                top_loss_v2 = player_sign * (best_score - _score_by_gtp_v2[top_gtp_v2])
+                self.game.katrain.log(
+                    f"[FightingStrategy:human] Safety v2: top weighted move {top_gtp_v2} loss={top_loss_v2:.2f}",
+                    OUTPUT_DEBUG,
+                )
+                if top_loss_v2 >= _SAFETY_LOSS_THRESHOLD:
+                    self.game.katrain.log(
+                        f"[FightingStrategy:human] Safety valve v2: top weighted {top_gtp_v2} "
+                        f"loss={top_loss_v2:.2f} >= {_SAFETY_LOSS_THRESHOLD}, "
+                        f"forcing best-score move {best_gtp_by_score}",
+                        OUTPUT_DEBUG,
+                    )
+                    if best_gtp_by_score == "pass":
+                        return Move(None, player=self.cn.next_player), "Safety valve v2: best move is pass."
+                    return Move.from_gtp(best_gtp_by_score, player=self.cn.next_player), (
+                        f"Safety valve v2: top weighted {top_gtp_v2} had loss={top_loss_v2:.2f}, "
+                        f"forced best-score move {best_gtp_by_score}."
+                    )
 
         # 全手フィルタ時のフォールバック
         if not moves:
@@ -1657,27 +1704,37 @@ class FightingStrategy(PickBasedStrategy):
         top_str = "\n".join([f"#{i+1}: {m.gtp()} weight={w:.4f}" for i, (m, w) in enumerate(top5)])
         self.game.katrain.log(f"[FightingStrategy:human] Top 5:\n{top_str}", OUTPUT_DEBUG)
 
-        # 拮抗タイブレーク: top-2の重みが5%以内かつスコア差2目以上なら高スコア手を確定選択
+        # 拮抗タイブレーク: 以下いずれかで発動 → スコア差2目以上なら高スコア手を確定選択
+        # 1. humanPolicy比が5%以内（humanPolicy拮抗）
+        # 2. Stage2 visitsがtop2 > top1 × 2.0（visits逆転: MCTSがhumanPolicy2位を実際には1位と判断）
         _TIEBREAK_WEIGHT_RATIO = 1.05
+        _TIEBREAK_VISITS_REVERSAL_RATIO = 2.0
         _TIEBREAK_SCORE_DIFF = 2.0
         if len(top5) >= 2 and move_infos:
             _player_sign = 1 if self.cn.next_player == "B" else -1
             _score_by_gtp = {mi.get("move", ""): mi.get("scoreLead", 0) * _player_sign for mi in move_infos}
+            _visits_by_gtp = {mi.get("move", ""): mi.get("visits", 0) for mi in move_infos}
             top1_move, top1_w = top5[0]
             top2_move, top2_w = top5[1]
-            if top2_w > 0 and top1_w / top2_w < _TIEBREAK_WEIGHT_RATIO:
+            top1_visits = _visits_by_gtp.get(top1_move.gtp(), 0)
+            top2_visits = _visits_by_gtp.get(top2_move.gtp(), 0)
+            is_policy_close = top2_w > 0 and top1_w / top2_w < _TIEBREAK_WEIGHT_RATIO
+            is_visits_reversal = top2_visits > top1_visits * _TIEBREAK_VISITS_REVERSAL_RATIO
+            if is_policy_close or is_visits_reversal:
                 s1 = _score_by_gtp.get(top1_move.gtp())
                 s2 = _score_by_gtp.get(top2_move.gtp())
                 if s1 is not None and s2 is not None and abs(s1 - s2) >= _TIEBREAK_SCORE_DIFF:
                     winner = top1_move if s1 > s2 else top2_move
                     loser = top2_move if s1 > s2 else top1_move
+                    trigger = "policy" if is_policy_close else "visits_reversal"
                     self.game.katrain.log(
-                        f"[FightingStrategy:human] Tiebreak: {winner.gtp()} over {loser.gtp()} "
-                        f"(score diff={abs(s1-s2):.1f}pt, weight ratio={top1_w/top2_w:.3f})",
+                        f"[FightingStrategy:human] Tiebreak({trigger}): {winner.gtp()} over {loser.gtp()} "
+                        f"(score diff={abs(s1-s2):.1f}pt, "
+                        f"policy_ratio={top1_w/top2_w:.3f}, visits={top1_visits}/{top2_visits})",
                         OUTPUT_DEBUG,
                     )
                     return winner, (
-                        f"\n{top_str}\n\nScore tiebreak: played {winner.gtp()} "
+                        f"\n{top_str}\n\nScore tiebreak({trigger}): played {winner.gtp()} "
                         f"(score diff={abs(s1-s2):.1f}pt). ({filtered_count} filtered)"
                     )
 
@@ -1896,7 +1953,7 @@ class HumanStyleStrategy(AIStrategy):
             NORMAL_THRESHOLD = 3.3    # 9路盤中盤・終盤: 3.3目以上の損失手は打たない
         else:
             OPENING_THRESHOLD = 2.8   # Stricter threshold in opening (3pt loss max)
-            NORMAL_THRESHOLD = 6.0    # Normal threshold for mid/endgame
+            NORMAL_THRESHOLD = 5.6    # Normal threshold for mid/endgame
         current_move = self.cn.depth  # Move number (both players combined)
         BAD_MOVE_THRESHOLD = OPENING_THRESHOLD if current_move < opening_boundary else NORMAL_THRESHOLD
         # クリーンクエリのmoveInfosを優先使用（正確なスコア）、失敗時はバイアス付きにフォールバック
@@ -2049,11 +2106,14 @@ class HumanStyleStrategy(AIStrategy):
         top_moves_str = "\n".join([f"#{i+1}: {move.gtp()} - {prob:.1%}" for i, (move, prob) in enumerate(top_moves[:5])])
         self.game.katrain.log(f"[HumanStyleStrategy] Top 5 moves:\n{top_moves_str}", OUTPUT_DEBUG)
 
-        # 拮抗タイブレーク用スコアマップ（現プレイヤー視点）
+        # 拮抗タイブレーク用スコア・訪問数マップ（現プレイヤー視点・Stage2クリーン値）
         score_by_gtp = {}
+        visits_by_gtp = {}
         if move_infos:
             for mi in move_infos:
-                score_by_gtp[mi.get("move", "")] = mi.get("scoreLead", 0) * player_sign
+                gtp = mi.get("move", "")
+                score_by_gtp[gtp] = mi.get("scoreLead", 0) * player_sign
+                visits_by_gtp[gtp] = mi.get("visits", 0)
 
         # First-impression deviation（全盤面）:
         # 第一感上位3位で損失0.5〜上限目の手を確定選択
@@ -2112,25 +2172,34 @@ class HumanStyleStrategy(AIStrategy):
                 )
                 return best_dev[0], ai_thoughts
 
-        # 拮抗タイブレーク: top-2の重みが5%以内かつスコア差2目以上なら高スコア手を確定選択
+        # 拮抗タイブレーク: 以下いずれかで発動 → スコア差2目以上なら高スコア手を確定選択
+        # 1. humanPolicy比が5%以内（humanPolicy拮抗）
+        # 2. Stage2 visitsがtop2 > top1 × 2.0（visits逆転: MCTSがhumanPolicy2位を実際には1位と判断）
         _TIEBREAK_WEIGHT_RATIO = 1.05
+        _TIEBREAK_VISITS_REVERSAL_RATIO = 2.0
         _TIEBREAK_SCORE_DIFF = 2.0
         if len(top_moves) >= 2 and score_by_gtp:
             top1_move, top1_w = top_moves[0]
             top2_move, top2_w = top_moves[1]
-            if top2_w > 0 and top1_w / top2_w < _TIEBREAK_WEIGHT_RATIO:
+            top1_visits = visits_by_gtp.get(top1_move.gtp(), 0)
+            top2_visits = visits_by_gtp.get(top2_move.gtp(), 0)
+            is_policy_close = top2_w > 0 and top1_w / top2_w < _TIEBREAK_WEIGHT_RATIO
+            is_visits_reversal = top2_visits > top1_visits * _TIEBREAK_VISITS_REVERSAL_RATIO
+            if is_policy_close or is_visits_reversal:
                 s1 = score_by_gtp.get(top1_move.gtp())
                 s2 = score_by_gtp.get(top2_move.gtp())
                 if s1 is not None and s2 is not None and abs(s1 - s2) >= _TIEBREAK_SCORE_DIFF:
                     winner = top1_move if s1 > s2 else top2_move
                     loser = top2_move if s1 > s2 else top1_move
+                    trigger = "policy" if is_policy_close else "visits_reversal"
                     self.game.katrain.log(
-                        f"[HumanStyleStrategy] Tiebreak: {winner.gtp()} over {loser.gtp()} "
-                        f"(score diff={abs(s1-s2):.1f}pt, weight ratio={top1_w/top2_w:.3f})",
+                        f"[HumanStyleStrategy] Tiebreak({trigger}): {winner.gtp()} over {loser.gtp()} "
+                        f"(score diff={abs(s1-s2):.1f}pt, "
+                        f"policy_ratio={top1_w/top2_w:.3f}, visits={top1_visits}/{top2_visits})",
                         OUTPUT_DEBUG,
                     )
                     ai_thoughts = (
-                        f"\n{top_moves_str}\n\nScore tiebreak: played {winner.gtp()} "
+                        f"\n{top_moves_str}\n\nScore tiebreak({trigger}): played {winner.gtp()} "
                         f"(score diff={abs(s1-s2):.1f}pt). ({filtered_count} bad moves filtered)"
                     )
                     return winner, ai_thoughts
