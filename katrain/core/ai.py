@@ -1707,6 +1707,7 @@ class FightingStrategy(PickBasedStrategy):
         # 拮抗タイブレーク: 以下いずれかで発動 → スコア差2目以上なら高スコア手を確定選択
         # 1. humanPolicy比が5%以内（humanPolicy拮抗）
         # 2. Stage2 visitsがtop2 > top1 × 2.0（visits逆転: MCTSがhumanPolicy2位を実際には1位と判断）
+        # 3. top2 visits ≥ top1 visits（visits同数・MCTSがtop1を優遇していない）
         _TIEBREAK_WEIGHT_RATIO = 1.05
         _TIEBREAK_VISITS_REVERSAL_RATIO = 2.0
         _TIEBREAK_SCORE_DIFF = 2.0
@@ -1720,13 +1721,14 @@ class FightingStrategy(PickBasedStrategy):
             top2_visits = _visits_by_gtp.get(top2_move.gtp(), 0)
             is_policy_close = top2_w > 0 and top1_w / top2_w < _TIEBREAK_WEIGHT_RATIO
             is_visits_reversal = top2_visits > top1_visits * _TIEBREAK_VISITS_REVERSAL_RATIO
-            if is_policy_close or is_visits_reversal:
+            is_mcts_nonprefer = top1_visits > 0 and top2_visits >= top1_visits
+            if is_policy_close or is_visits_reversal or is_mcts_nonprefer:
                 s1 = _score_by_gtp.get(top1_move.gtp())
                 s2 = _score_by_gtp.get(top2_move.gtp())
                 if s1 is not None and s2 is not None and abs(s1 - s2) >= _TIEBREAK_SCORE_DIFF:
                     winner = top1_move if s1 > s2 else top2_move
                     loser = top2_move if s1 > s2 else top1_move
-                    trigger = "policy" if is_policy_close else "visits_reversal"
+                    trigger = "policy" if is_policy_close else ("visits_reversal" if is_visits_reversal else "mcts_nonprefer")
                     self.game.katrain.log(
                         f"[FightingStrategy:human] Tiebreak({trigger}): {winner.gtp()} over {loser.gtp()} "
                         f"(score diff={abs(s1-s2):.1f}pt, "
@@ -2175,6 +2177,7 @@ class HumanStyleStrategy(AIStrategy):
         # 拮抗タイブレーク: 以下いずれかで発動 → スコア差2目以上なら高スコア手を確定選択
         # 1. humanPolicy比が5%以内（humanPolicy拮抗）
         # 2. Stage2 visitsがtop2 > top1 × 2.0（visits逆転: MCTSがhumanPolicy2位を実際には1位と判断）
+        # 3. top2 visits ≥ top1 visits（visits同数・MCTSがtop1を優遇していない）
         _TIEBREAK_WEIGHT_RATIO = 1.05
         _TIEBREAK_VISITS_REVERSAL_RATIO = 2.0
         _TIEBREAK_SCORE_DIFF = 2.0
@@ -2185,13 +2188,14 @@ class HumanStyleStrategy(AIStrategy):
             top2_visits = visits_by_gtp.get(top2_move.gtp(), 0)
             is_policy_close = top2_w > 0 and top1_w / top2_w < _TIEBREAK_WEIGHT_RATIO
             is_visits_reversal = top2_visits > top1_visits * _TIEBREAK_VISITS_REVERSAL_RATIO
-            if is_policy_close or is_visits_reversal:
+            is_mcts_nonprefer = top1_visits > 0 and top2_visits >= top1_visits
+            if is_policy_close or is_visits_reversal or is_mcts_nonprefer:
                 s1 = score_by_gtp.get(top1_move.gtp())
                 s2 = score_by_gtp.get(top2_move.gtp())
                 if s1 is not None and s2 is not None and abs(s1 - s2) >= _TIEBREAK_SCORE_DIFF:
                     winner = top1_move if s1 > s2 else top2_move
                     loser = top2_move if s1 > s2 else top1_move
-                    trigger = "policy" if is_policy_close else "visits_reversal"
+                    trigger = "policy" if is_policy_close else ("visits_reversal" if is_visits_reversal else "mcts_nonprefer")
                     self.game.katrain.log(
                         f"[HumanStyleStrategy] Tiebreak({trigger}): {winner.gtp()} over {loser.gtp()} "
                         f"(score diff={abs(s1-s2):.1f}pt, "
