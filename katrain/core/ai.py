@@ -1709,7 +1709,7 @@ class FightingStrategy(PickBasedStrategy):
             return Move(None, player=self.cn.next_player), "Pass is in candidates, forcing pass."
 
         # 終局時: humanPolicy最上位手（力戦重み無視）
-        endgame_threshold = 28 if (bx == 9 and by == 9) else math.ceil(bx * by * 0.5)
+        endgame_threshold = 32 if (bx == 9 and by == 9) else math.ceil(bx * by * 0.5)
         if current_move >= endgame_threshold:
             # 終局は力戦重みなしのhumanPolicyで選択
             endgame_moves = []
@@ -2114,7 +2114,7 @@ class HumanStyleStrategy(AIStrategy):
                     )
 
         # 終局閾値（big-win フィルター内の relax 判定にも使用）
-        endgame_threshold = 28 if (bx == 9 and by == 9) else math.ceil(bx * by * 0.5)
+        endgame_threshold = 32 if (bx == 9 and by == 9) else math.ceil(bx * by * 0.5)
 
         # passが候補手に含まれていたら強制的にパス
         # （passが候補に上がった＝他の手を打つと損するため）
