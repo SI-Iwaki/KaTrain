@@ -1601,6 +1601,33 @@ class FightingStrategy(PickBasedStrategy):
                 OUTPUT_DEBUG,
             )
 
+            # --- 安全弁クロスバリデーション用ヘルパー ---
+            def _safety_valve_cross_check(forced_gtp, candidate_gtp, p_sign, label="v1"):
+                """安全弁の強制手をRegular分析でクロスチェック。安全ならTrue。"""
+                _CROSS_CHECK_MAX_LOSS = 2.0
+                _reg_moves = self.cn.analysis.get("moves", {})
+                _reg_forced = _reg_moves.get(forced_gtp)
+                _reg_candidate = _reg_moves.get(candidate_gtp)
+                if _reg_forced is None:
+                    self.game.katrain.log(
+                        f"[FightingStrategy:human] Safety {label}: {forced_gtp} not in regular analysis, skipping force",
+                        OUTPUT_DEBUG,
+                    )
+                    return False
+                if _reg_candidate is None:
+                    return True
+                reg_forced_score = _reg_forced.get("scoreLead", 0)
+                reg_cand_score = _reg_candidate.get("scoreLead", 0)
+                reg_loss = p_sign * (reg_cand_score - reg_forced_score)
+                if reg_loss > _CROSS_CHECK_MAX_LOSS:
+                    self.game.katrain.log(
+                        f"[FightingStrategy:human] Safety {label} cross-check FAILED: "
+                        f"{forced_gtp} loses {reg_loss:.2f}pt vs {candidate_gtp} in regular analysis",
+                        OUTPUT_DEBUG,
+                    )
+                    return False
+                return True
+
             # 安全弁: 最多探索手のlossが閾値以上なら最善スコア手を確定選択（力戦特性を無視）
             _SAFETY_LOSS_THRESHOLD = 3.4
             max_visit_mi = max(move_infos, key=lambda mi: mi.get("visits", 0))
@@ -1608,22 +1635,23 @@ class FightingStrategy(PickBasedStrategy):
             max_visit_score = max_visit_mi.get("scoreLead", 0)
             max_visit_loss = player_sign * (best_score - max_visit_score)
             if max_visit_loss >= _SAFETY_LOSS_THRESHOLD and best_gtp_by_score and best_gtp_by_score != max_visit_gtp:
-                self.game.katrain.log(
-                    f"[FightingStrategy:human] Safety valve: max-visit move {max_visit_gtp} "
-                    f"loss={max_visit_loss:.2f} >= {_SAFETY_LOSS_THRESHOLD}, "
-                    f"forcing best-score move {best_gtp_by_score}",
-                    OUTPUT_DEBUG,
-                )
-                if best_gtp_by_score == "pass":
-                    if _is_area_scoring_f:
-                        _alt_f = _best_non_pass_gtp_f(move_infos, player_sign)
-                        if _alt_f:
-                            return Move.from_gtp(_alt_f, player=self.cn.next_player), f"Safety valve + area scoring: playing best non-pass {_alt_f}."
-                    return Move(None, player=self.cn.next_player), "Safety valve: best move is pass."
-                return Move.from_gtp(best_gtp_by_score, player=self.cn.next_player), (
-                    f"Safety valve: max-visit {max_visit_gtp} had loss={max_visit_loss:.2f}, "
-                    f"forced best-score move {best_gtp_by_score}."
-                )
+                if _safety_valve_cross_check(best_gtp_by_score, max_visit_gtp, player_sign, "v1"):
+                    self.game.katrain.log(
+                        f"[FightingStrategy:human] Safety valve: max-visit move {max_visit_gtp} "
+                        f"loss={max_visit_loss:.2f} >= {_SAFETY_LOSS_THRESHOLD}, "
+                        f"forcing best-score move {best_gtp_by_score}",
+                        OUTPUT_DEBUG,
+                    )
+                    if best_gtp_by_score == "pass":
+                        if _is_area_scoring_f:
+                            _alt_f = _best_non_pass_gtp_f(move_infos, player_sign)
+                            if _alt_f:
+                                return Move.from_gtp(_alt_f, player=self.cn.next_player), f"Safety valve + area scoring: playing best non-pass {_alt_f}."
+                        return Move(None, player=self.cn.next_player), "Safety valve: best move is pass."
+                    return Move.from_gtp(best_gtp_by_score, player=self.cn.next_player), (
+                        f"Safety valve: max-visit {max_visit_gtp} had loss={max_visit_loss:.2f}, "
+                        f"forced best-score move {best_gtp_by_score}."
+                    )
 
         # --- humanPolicy × fighting_weight で候補構築 ---
         opponent_stones = [s for s in self.game.stones if s.player != self.cn.next_player]
@@ -1673,22 +1701,23 @@ class FightingStrategy(PickBasedStrategy):
                     OUTPUT_DEBUG,
                 )
                 if top_loss_v2 >= _SAFETY_LOSS_THRESHOLD:
-                    self.game.katrain.log(
-                        f"[FightingStrategy:human] Safety valve v2: top weighted {top_gtp_v2} "
-                        f"loss={top_loss_v2:.2f} >= {_SAFETY_LOSS_THRESHOLD}, "
-                        f"forcing best-score move {best_gtp_by_score}",
-                        OUTPUT_DEBUG,
-                    )
-                    if best_gtp_by_score == "pass":
-                        if _is_area_scoring_f:
-                            _alt_f = _best_non_pass_gtp_f(move_infos, player_sign)
-                            if _alt_f:
-                                return Move.from_gtp(_alt_f, player=self.cn.next_player), f"Safety valve v2 + area scoring: playing best non-pass {_alt_f}."
-                        return Move(None, player=self.cn.next_player), "Safety valve v2: best move is pass."
-                    return Move.from_gtp(best_gtp_by_score, player=self.cn.next_player), (
-                        f"Safety valve v2: top weighted {top_gtp_v2} had loss={top_loss_v2:.2f}, "
-                        f"forced best-score move {best_gtp_by_score}."
-                    )
+                    if _safety_valve_cross_check(best_gtp_by_score, top_gtp_v2, player_sign, "v2"):
+                        self.game.katrain.log(
+                            f"[FightingStrategy:human] Safety valve v2: top weighted {top_gtp_v2} "
+                            f"loss={top_loss_v2:.2f} >= {_SAFETY_LOSS_THRESHOLD}, "
+                            f"forcing best-score move {best_gtp_by_score}",
+                            OUTPUT_DEBUG,
+                        )
+                        if best_gtp_by_score == "pass":
+                            if _is_area_scoring_f:
+                                _alt_f = _best_non_pass_gtp_f(move_infos, player_sign)
+                                if _alt_f:
+                                    return Move.from_gtp(_alt_f, player=self.cn.next_player), f"Safety valve v2 + area scoring: playing best non-pass {_alt_f}."
+                            return Move(None, player=self.cn.next_player), "Safety valve v2: best move is pass."
+                        return Move.from_gtp(best_gtp_by_score, player=self.cn.next_player), (
+                            f"Safety valve v2: top weighted {top_gtp_v2} had loss={top_loss_v2:.2f}, "
+                            f"forced best-score move {best_gtp_by_score}."
+                        )
 
         # 全手フィルタ時のフォールバック
         if not moves:

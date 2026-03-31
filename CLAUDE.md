@@ -83,4 +83,4 @@ python -m katrain
 
 | パラメータ | 値 | 備考 |
 |---|---|---|
-| maxVisits | 600 | ai.py・GUI・analysis_config.cfgの3箇所を同じ値に揃える |
+| maxVisits | 800 | ai.py・GUI・analysis_config.cfgの3箇所を同じ値に揃える |
