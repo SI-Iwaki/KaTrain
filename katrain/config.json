@@ -159,6 +159,7 @@
         "ai:p:fighting": {
             "fighting_mode": "classic",
             "fighting_max_loss": 3.0,
+            "force_tengen_opening": false,
             "pick_override": 0.95,
             "pick_n": 10,
             "pick_frac": 0.2,

@@ -1347,6 +1347,12 @@ class FightingStrategy(PickBasedStrategy):
     def generate_move(self) -> Tuple[Move, str]:
         mode = self.settings.get("fighting_mode", "classic")
         self.game.katrain.log(f"[FightingStrategy] Mode: {mode}", OUTPUT_DEBUG)
+
+        if self.settings.get("force_tengen_opening", False) and self.cn.next_player == "B" and len(self.game.stones) == 0:
+            tx, ty = self.game.board_size[0] // 2, self.game.board_size[1] // 2
+            self.game.katrain.log(f"[FightingStrategy] Force Tengen opening: playing B ({tx},{ty})", OUTPUT_DEBUG)
+            return Move((tx, ty), player="B"), "Force Tengen opening."
+
         if mode == "scoreloss":
             return self._generate_scoreloss()
         elif mode == "human":

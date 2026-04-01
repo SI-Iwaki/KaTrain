@@ -141,6 +141,7 @@ AI_OPTION_VALUES = {
         ("human", "[fighting:human]"),
     ],
     "fighting_max_loss": [x / 2 for x in range(1, 21)],  # 0.5〜10.0（0.5刻み）
+    "force_tengen_opening": "bool",
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）
@@ -154,6 +155,7 @@ AI_OPTION_ORDER = {
     "green_blend_green_ratio": 33,
     "fighting_mode": 0,
     "fighting_max_loss": 1,
+    "force_tengen_opening": 2,
     "pick_override": 10,
     "pick_n": 11,
     "pick_frac": 12,
