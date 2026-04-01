@@ -1540,7 +1540,7 @@ class FightingStrategy(PickBasedStrategy):
             NORMAL_THRESHOLD = 3.3
         else:
             OPENING_THRESHOLD = 2.8
-            NORMAL_THRESHOLD = 5.6
+            NORMAL_THRESHOLD = 6.0
         current_move = self.cn.depth
         BAD_MOVE_THRESHOLD = OPENING_THRESHOLD if current_move < opening_boundary else NORMAL_THRESHOLD
 
@@ -1607,7 +1607,7 @@ class FightingStrategy(PickBasedStrategy):
                 return True
 
             # 安全弁: 最多探索手のlossが閾値以上なら最善スコア手を確定選択（力戦特性を無視）
-            _SAFETY_LOSS_THRESHOLD = 3.4
+            _SAFETY_LOSS_THRESHOLD = 4.0
             max_visit_mi = max(move_infos, key=lambda mi: mi.get("visits", 0))
             max_visit_gtp = max_visit_mi.get("move", "")
             max_visit_score = max_visit_mi.get("scoreLead", 0)
