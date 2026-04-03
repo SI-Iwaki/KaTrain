@@ -15,6 +15,7 @@ from katrain.core.constants import (
     AI_WEIGHTED, AI_WEIGHTED_ELO, CALIBRATED_RANK_ELO, OUTPUT_DEBUG,
     OUTPUT_ERROR, OUTPUT_INFO, PRIORITY_EXTRA_AI_QUERY, ADDITIONAL_MOVE_ORDER, AI_HUMAN, AI_PRO
 )
+from katrain.core.engine import KataGoEngine
 from katrain.core.game import Game, GameNode, Move
 from katrain.core.utils import var_to_grid, weighted_selection_without_replacement, evaluation_class
 
@@ -1574,6 +1575,14 @@ class FightingStrategy(PickBasedStrategy):
             move_infos = analysis.get("moveInfos", [])
             self.game.katrain.log(f"[FightingStrategy:human] Clean query failed, using biased moveInfos", OUTPUT_DEBUG)
 
+        # area scoringルール判定（中国・AGA・Tromp-Taylor・NZ・石計算）
+        _ruleset = self.cn.ruleset
+        _rules = KataGoEngine.get_rules(_ruleset)
+        is_area_scoring = (
+            (isinstance(_rules, str) and _rules.lower() in ["chinese", "aga", "tromp-taylor", "new zealand", "stone_scoring"])
+            or (isinstance(_rules, dict) and _rules.get("scoring", "").lower() == "area")
+        )
+
         good_moves = set()
         best_gtp_by_score = None
         if move_infos:
@@ -1745,10 +1754,39 @@ class FightingStrategy(PickBasedStrategy):
                     return coords, "All human moves filtered, playing best move."
             return Move(None, player=self.cn.next_player), "No valid moves found."
 
-        # パスが候補にあれば強制パス
+        # passが候補手に含まれているかチェック
         if any(m.is_pass for m, _ in moves):
-            self.game.katrain.log(f"[FightingStrategy:human] Pass is among candidates, forcing pass", OUTPUT_DEBUG)
-            return Move(None, player=self.cn.next_player), "Pass is in candidates, forcing pass."
+            if is_area_scoring:
+                # area scoring（中国ルール等）ではpassは最善手の場合のみ選択する
+                # best_gtp_by_score == "pass" は既に上で処理済み → passを候補から除外して続行
+                # ただし、passと最善手のスコア差が小さい場合は強制パス（ダメ点程度の差なら打つ価値なし）
+                _AREA_PASS_MARGIN = 0.5
+                pass_mi = next((mi for mi in (move_infos or []) if mi.get("move") == "pass"), None)
+                if pass_mi is not None:
+                    pass_score_lead = pass_mi.get("scoreLead", best_score)
+                    pass_loss = player_sign * (best_score - pass_score_lead)
+                    if pass_loss < _AREA_PASS_MARGIN:
+                        self.game.katrain.log(
+                            f"[FightingStrategy:human] Area scoring: pass within {_AREA_PASS_MARGIN}pt of best "
+                            f"(loss={pass_loss:.2f}), forcing pass", OUTPUT_DEBUG
+                        )
+                        return Move(None, player=self.cn.next_player), "Area scoring: pass near-optimal, forcing pass."
+                moves_without_pass = [(m, w) for m, w in moves if not m.is_pass]
+                if moves_without_pass:
+                    moves = moves_without_pass
+                    self.game.katrain.log(
+                        f"[FightingStrategy:human] Area scoring: pass removed from candidates "
+                        f"(better non-pass moves exist, best={best_gtp_by_score})", OUTPUT_DEBUG
+                    )
+                    # fall through to normal selection
+                else:
+                    if best_gtp_by_score and best_gtp_by_score != "pass":
+                        return Move.from_gtp(best_gtp_by_score, player=self.cn.next_player), \
+                            "Area scoring: playing best non-pass move."
+                    return Move(None, player=self.cn.next_player), "Area scoring: no non-pass candidates."
+            else:
+                self.game.katrain.log(f"[FightingStrategy:human] Pass is among candidates, forcing pass", OUTPUT_DEBUG)
+                return Move(None, player=self.cn.next_player), "Pass is in candidates, forcing pass."
 
         # 終局時: humanPolicy最上位手（力戦重み無視）
         endgame_threshold = 32 if (bx == 9 and by == 9) else math.ceil(bx * by * 0.5)
@@ -2044,6 +2082,15 @@ class HumanStyleStrategy(AIStrategy):
             )
         good_moves = set()  # Only moves evaluated by KataGo and within threshold
         best_gtp_by_score = None  # 大差フィルター用（現在プレイヤーにとっての最善手GTP）
+        # area scoringルール判定（中国・AGA・Tromp-Taylor・NZ・石計算）
+        # territory scoring（日本・韓国）と異なり、ダメは1点の価値があるためパス判断に影響する
+        _ruleset = self.cn.ruleset
+        _rules = KataGoEngine.get_rules(_ruleset)
+        is_area_scoring = (
+            (isinstance(_rules, str) and _rules.lower() in ["chinese", "aga", "tromp-taylor", "new zealand", "stone_scoring"])
+            or (isinstance(_rules, dict) and _rules.get("scoring", "").lower() == "area")
+        )
+
         if move_infos:
             # player_sign: Black=+1, White=-1 (scoreLead is always from Black's perspective)
             player_sign = 1 if self.cn.next_player == "B" else -1
@@ -2158,11 +2205,42 @@ class HumanStyleStrategy(AIStrategy):
         # 終局閾値（big-win フィルター内の relax 判定にも使用）
         endgame_threshold = 32 if (bx == 9 and by == 9) else math.ceil(bx * by * 0.5)
 
-        # passが候補手に含まれていたら強制的にパス
-        # （passが候補に上がった＝他の手を打つと損するため）
+        # passが候補手に含まれているかチェック
         if any(m.is_pass for m, _ in moves):
-            self.game.katrain.log(f"[HumanStyleStrategy] Pass is among candidates, forcing pass", OUTPUT_DEBUG)
-            return Move(None, player=self.cn.next_player), "Pass is in candidates, forcing pass."
+            if is_area_scoring:
+                # area scoring（中国ルール等）では、ダメは1点の価値があるためpassは最善手の場合のみ選択する
+                # best_gtp_by_score == "pass" の場合は既に上で処理済み（強制パス済み）
+                # ただし、passと最善手のスコア差が小さい場合は強制パス（ダメ点程度の差なら打つ価値なし）
+                _AREA_PASS_MARGIN = 0.5
+                pass_mi = next((mi for mi in (move_infos or []) if mi.get("move") == "pass"), None)
+                if pass_mi is not None:
+                    pass_score_lead = pass_mi.get("scoreLead", best_score)
+                    pass_loss = player_sign * (best_score - pass_score_lead)
+                    if pass_loss < _AREA_PASS_MARGIN:
+                        self.game.katrain.log(
+                            f"[HumanStyleStrategy] Area scoring: pass within {_AREA_PASS_MARGIN}pt of best "
+                            f"(loss={pass_loss:.2f}), forcing pass", OUTPUT_DEBUG
+                        )
+                        return Move(None, player=self.cn.next_player), "Area scoring: pass near-optimal, forcing pass."
+                # ここに来た = KataGoはpassを最善と判断していない → passを候補から除外して続行
+                moves_without_pass = [(m, w) for m, w in moves if not m.is_pass]
+                if moves_without_pass:
+                    moves = moves_without_pass
+                    self.game.katrain.log(
+                        f"[HumanStyleStrategy] Area scoring: pass removed from candidates "
+                        f"(better non-pass moves exist, best={best_gtp_by_score})", OUTPUT_DEBUG
+                    )
+                    # fall through to normal selection
+                else:
+                    # passのみ候補にある（理論上ここには来ないはずだが安全弁）
+                    if best_gtp_by_score and best_gtp_by_score != "pass":
+                        return Move.from_gtp(best_gtp_by_score, player=self.cn.next_player), \
+                            "Area scoring: playing best non-pass move."
+                    return Move(None, player=self.cn.next_player), "Area scoring: no non-pass candidates."
+            else:
+                # territory scoring（日本・韓国ルール等）: 従来通り強制パス
+                self.game.katrain.log(f"[HumanStyleStrategy] Pass is among candidates, forcing pass", OUTPUT_DEBUG)
+                return Move(None, player=self.cn.next_player), "Pass is in candidates, forcing pass."
 
         # 終局時はhumanPolicy最上位手を選択（9段はヨセを間違えない）
         if current_move >= endgame_threshold:
@@ -2200,8 +2278,11 @@ class HumanStyleStrategy(AIStrategy):
                 loss_by_gtp[mi.get("move", "")] = player_sign * (best_score - score)
 
             dev_loss_max = 1.5 if (bx == 9 and by == 9) else 2.0
+            _DEV_MIN_POLICY = 0.05  # humanPolicy < 5%の手はdeviation候補から除外
             deviation_candidates = []
             for m, w in top_moves[:3]:
+                if w < _DEV_MIN_POLICY:
+                    continue
                 loss = loss_by_gtp.get(m.gtp(), 0.0)
                 if 0.5 <= loss < dev_loss_max:
                     deviation_candidates.append((m, loss))
