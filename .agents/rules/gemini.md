@@ -119,9 +119,13 @@ Stage1とGUI/analysis_configの3箇所を同じ値に揃える。Stage2は独立
 
 | パラメータ | デフォルト値 | 備考 |
 |---|---|---|
-| fighting_mode | "classic" | classicモード |
-| fighting_max_loss | 3.0 | 悪手フィルタ閾値（NORMAL_THRESHOLD=6.0, OPENING=2.8/0.5） |
+| fighting_mode | "classic" | "classic" / "scoreloss" / "human" |
+| fighting_max_loss | 3.0 | scorelossモード専用の悪手フィルタ閾値（目数） |
 | force_tengen_opening | false | ONで黒番初手のみ天元に打つ |
-| fighting_invasion_bonus | 1.0 | 侵入ボーナス重み |
-| fighting_contact_boost | 1.0 | 接触戦ブースト |
-| fighting_chaos_relax | 0.0 | カオス緩和 |
+| fighting_invasion_bonus | 1.0 | 相手地への侵入手の重みボーナス（全モード共通） |
+| fighting_contact_boost | 1.0 | 相手石への接触手（距離1）の重みブースト（全モード共通） |
+| fighting_chaos_relax | 0.0 | humanモード: 相手地への接触手の悪手閾値を緩和する目数 |
+| unsettled_power | 2.0 | 未確定地への重み指数（大きいほど未確定地に集中） |
+| proximity_stddev | 3.0 | 相手石への近接重みの標準偏差（小さいほど近距離に集中） |
+
+humanモードの悪手フィルタ閾値はHumanStyleStrategyと同じBAD_MOVE_THRESHOLD（19路 NORMAL=5.6 / OPENING=2.8、9路 NORMAL=3.3 / OPENING=0.5）を使用。`fighting_max_loss`は無効。
