@@ -51,7 +51,14 @@ python -m katrain
 
 - コミットメッセージは**日本語**で書く
 - Conventional Commits形式を使用（`feat:`, `fix:`, `refactor:` 等）
-- 改修はほぼ `katrain/core/ai.py` の `HumanStyleStrategy` クラスに集中
+- 改修はほぼ `katrain/core/ai.py` の `HumanStyleStrategy` / `FightingStrategy` クラスに集中
+
+## やってはいけないこと
+
+- **ログファイルをReadで全読みしない** — 数百KB〜1MB超あるため、必ずGrepで必要行だけ抽出する
+- **Stage 1（humanSLProfile付き）の`scoreLead`をフィルタ判定に使わない** — バイアスされているため、必ずStage 2のクリーンクエリの値を使う
+- **パッケージ`config.json`だけ更新して終わらない** — ユーザーのローカル設定`C:\Users\iwaki\.katrain\config.json`にもキーを追加しないとGUIに表示されない
+- **`analysis_config.cfg`や`katago.exe`を直接編集しない** — ランタイムエンジン設定は手動管理
 
 ## 開発ワークフロー
 
@@ -59,7 +66,18 @@ python -m katrain
   - `katrain/core/ai.py` 編集時 → `ai-humanstyle.md`（フィルタ実装詳細、パラメータチェックリスト）
   - `katrain/core/constants.py` / `katrain/config.json` 編集時 → `ai-settings-gui.md`（AI設定追加手順）
   - `katrain/core/base_katrain.py` 編集時 → `base-katrain-config.md`（JsonStore構造・起動時リセットパターン）
+  - `**/*.log` 分析時 → `log-analysis.md`（Grepパターン、サブエージェントテンプレート）
 - **パラメータ変更時は必ず下記テーブルも同時に更新すること**
+
+## 変更の検証方法
+
+1. `C:\Users\iwaki\.katrain\config.json` の `"debug_level": 0` → `1` に変更
+2. `python -m katrain` で起動し、対局を実施
+3. ログをGrepで確認（`log-analysis.md` のパターン参照）:
+   - 着手結果: `Played move|First-impression deviation: played`
+   - フィルター効果: `moves pass score filter out of`
+   - 設定値: `Initializing HumanStyleStrategy with settings`
+4. 確認後、`debug_level` を `0` に戻す
 
 ## 現在のパラメータ値
 
@@ -79,8 +97,23 @@ python -m katrain
 | first_impression_green_blend | false | ON（+deviation ON）で第一感1位が緑(loss<0.5)かつ非最善の場合、第一感1位と上位3位中の最小損失手(0.5〜上限)をgreen_ratioで選択 |
 | green_blend_green_ratio | 0.5 | green_blend時の緑手選択確率（0.4=dev寄り40/60・0.5=均等50/50・0.6=緑寄り60/40） |
 
-### エンジン設定
+### エンジン設定（maxVisits）
 
-| パラメータ | 値 | 備考 |
+Stage1とGUI/analysis_configの3箇所を同じ値に揃える。Stage2は独立値。
+
+| 場所 | 現在値 | 役割 |
 |---|---|---|
-| maxVisits | 800 | ai.py・GUI・analysis_config.cfgの3箇所を同じ値に揃える |
+| ai.py `override_settings["maxVisits"]` | 800 | Stage1: HumanSL着手選択 |
+| ai.py `clean_override_settings["maxVisits"]` | 600 | Stage2: クリーンスコア検証（独立値） |
+| GUI `max_visits` / `analysis_config.cfg` | 800 | 事後分析クエリ（Stage1と揃える） |
+
+### 力戦派モード（FightingStrategy）
+
+| パラメータ | デフォルト値 | 備考 |
+|---|---|---|
+| fighting_mode | "classic" | classicモード |
+| fighting_max_loss | 3.0 | 悪手フィルタ閾値（NORMAL_THRESHOLD=6.0, OPENING=2.8/0.5） |
+| force_tengen_opening | false | ONで黒番初手のみ天元に打つ |
+| fighting_invasion_bonus | 1.0 | 侵入ボーナス重み |
+| fighting_contact_boost | 1.0 | 接触戦ブースト |
+| fighting_chaos_relax | 0.0 | カオス緩和 |

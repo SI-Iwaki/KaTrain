@@ -1382,16 +1382,33 @@ class FightingStrategy(PickBasedStrategy):
         opponent_coords = [s.coords for s in self.game.stones if s.player != self.cn.next_player]
         unsettled_power = self.settings.get("unsettled_power", 2.0)
         prox_var = self.settings.get("proximity_stddev", 3.0) ** 2
+        
+        invasion_bonus = self.settings.get("fighting_invasion_bonus", 1.0)
+        contact_boost = self.settings.get("fighting_contact_boost", 1.0)
+        player_sign = 1 if self.cn.next_player == "B" else -1
+        
         weights = {}
         for x in range(size[0]):
             for y in range(size[1]):
-                unsettled = (1.0 - abs(ownership_grid[y][x])) ** unsettled_power if ownership_grid else 1.0
+                o = ownership_grid[y][x] if ownership_grid else 0.0
+                unsettled = (1.0 - abs(o)) ** unsettled_power
+                
+                min_dist_sq = 1000
                 if opponent_coords:
                     min_dist_sq = min((x - ox) ** 2 + (y - oy) ** 2 for ox, oy in opponent_coords)
                     prox = math.exp(-0.5 * min_dist_sq / prox_var)
                 else:
                     prox = 1.0
-                weights[(x, y)] = max(unsettled * prox, 1e-6)
+                
+                w = unsettled * prox
+                
+                if min_dist_sq == 1:
+                    w *= contact_boost
+                    
+                if (player_sign * o) < -0.5 and min_dist_sq <= 2:
+                    w *= invasion_bonus
+                    
+                weights[(x, y)] = max(w, 1e-6)
         return weights
 
     def _generate_scoreloss(self) -> Tuple[Move, str]:
@@ -1574,11 +1591,30 @@ class FightingStrategy(PickBasedStrategy):
                 f"[FightingStrategy:human] Move {current_move}: threshold={BAD_MOVE_THRESHOLD}, best_score={best_score:.1f}",
                 OUTPUT_DEBUG,
             )
+            
+            chaos_relax = self.settings.get("fighting_chaos_relax", 0.0)
+            ownership_grid = var_to_grid(self.cn.ownership, board_size) if self.cn.ownership else None
+            opponent_coords = [s.coords for s in self.game.stones if s.player != self.cn.next_player]
+            
             for mi in move_infos:
                 gtp_move = mi.get("move", "")
                 score = mi.get("scoreLead", 0)
                 loss = player_sign * (best_score - score)
-                if loss < BAD_MOVE_THRESHOLD:
+                
+                threshold = BAD_MOVE_THRESHOLD
+                if chaos_relax > 0.0 and gtp_move != "pass":
+                    mx, my = Move.from_gtp(gtp_move, player=self.cn.next_player).coords
+                    o = ownership_grid[my][mx] if ownership_grid else 0.0
+                    is_opponent_terr = (player_sign * o) < -0.5
+                    
+                    min_dist_sq = 1000
+                    if opponent_coords:
+                        min_dist_sq = min((mx - ox) ** 2 + (my - oy) ** 2 for ox, oy in opponent_coords)
+                        
+                    if is_opponent_terr and min_dist_sq == 1:
+                        threshold += chaos_relax
+                        
+                if loss < threshold:
                     good_moves.add(gtp_move)
             self.game.katrain.log(
                 f"[FightingStrategy:human] {len(good_moves)} moves pass score filter",

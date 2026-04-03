@@ -142,6 +142,9 @@ AI_OPTION_VALUES = {
     ],
     "fighting_max_loss": [x / 2 for x in range(1, 21)],  # 0.5〜10.0（0.5刻み）
     "force_tengen_opening": "bool",
+    "fighting_invasion_bonus": [1.0, 1.5, 2.0, 3.0, 5.0, 8.0, 10.0],
+    "fighting_contact_boost": [1.0, 1.5, 2.0, 3.0, 5.0, 8.0, 10.0],
+    "fighting_chaos_relax": [x / 2 for x in range(0, 11)],
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）
@@ -156,6 +159,9 @@ AI_OPTION_ORDER = {
     "fighting_mode": 0,
     "fighting_max_loss": 1,
     "force_tengen_opening": 2,
+    "fighting_invasion_bonus": 3,
+    "fighting_contact_boost": 4,
+    "fighting_chaos_relax": 5,
     "pick_override": 10,
     "pick_n": 11,
     "pick_frac": 12,
@@ -175,6 +181,9 @@ AI_KEY_PROPERTIES = {
     "min_visits",
     "fighting_mode",
     "fighting_max_loss",
+    "fighting_invasion_bonus",
+    "fighting_contact_boost",
+    "fighting_chaos_relax",
 }
 
 

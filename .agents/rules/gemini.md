@@ -54,4 +54,74 @@ python -m katrain
 
 - コミットメッセージは**日本語**で書く
 - Conventional Commits形式を使用（`feat:`, `fix:`, `refactor:` 等）
-- 改修はほぼ `katrain/core/ai.py` の `HumanStyleStrategy` クラスに集中
+- 改修はほぼ `katrain/core/ai.py` の `HumanStyleStrategy` / `FightingStrategy` クラスに集中
+
+## やってはいけないこと
+
+- **ログファイルをReadで全読みしない** — 数百KB〜1MB超あるため、必ずGrepで必要行だけ抽出する
+- **Stage 1（humanSLProfile付き）の`scoreLead`をフィルタ判定に使わない** — バイアスされているため、必ずStage 2のクリーンクエリの値を使う
+- **パッケージ`config.json`だけ更新して終わらない** — ユーザーのローカル設定`C:\Users\iwaki\.katrain\config.json`にもキーを追加しないとGUIに表示されない
+- **`analysis_config.cfg`や`katago.exe`を直接編集しない** — ランタイムエンジン設定は手動管理
+
+## GUI拡張時の注意事項（ルール）
+
+AI等に新しいパラメータやGUI設定を追加する際は、以下の問題が発生しやすいため必ず対策案を履行すること。
+
+**問題1（設定がUIに表示されない）:**
+KaTrainの設定画面は、「現在のローカル設定ファイル（`C:\Users\iwaki\.katrain\config.json`）」に存在するキーのみを動的に読み込んでUIを生成する仕様になっている。そのため、ソースコード上のパッケージ設定（`katrain/config.json`）だけにデフォルト値を追記しても、ユーザーの既存環境のUI画面には表示されない。
+**対策:**
+設定キー・パラメータを新設した際は、ソースコードの更新に加え、**アクティブなローカル設定ファイル（`C:\Users\iwaki\.katrain\config.json`）にもそのキーと初期値を直接パッチして追記する**か、ユーザーに「UIからデフォルトに戻すボタンを押すこと」を案内する。
+
+**問題2（GridLayoutの要素上限によるクラッシュ）:**
+AI設定パネルなどを構成する `GridLayout` には、表示できる行数上限（`max_options`）が固定で設定されている場合がある。設定項目を追加しすぎてこれが上限を超えると、`GridLayoutException ('Too many children...')` が発生しGUIがクラッシュする。
+**対策:**
+設定項目（キー）を追加する際は、必ず描画先となる Popup クラス（`katrain/gui/popups.py` 内の `ConfigAIPopup` など）の `max_options = NumericProperty(N)` の数値を、追加する項目数に合わせて十分な値に引き上げること。
+
+## 変更の検証方法
+
+1. `C:\Users\iwaki\.katrain\config.json` の `"debug_level": 0` → `1` に変更
+2. `python -m katrain` で起動し、対局を実施
+3. ログで確認:
+   - 着手結果: `Played move|First-impression deviation: played`
+   - フィルター効果: `moves pass score filter out of`
+   - 設定値: `Initializing HumanStyleStrategy with settings`
+4. 確認後、`debug_level` を `0` に戻す
+
+## 現在のパラメータ値
+
+### 悪手フィルタ閾値
+
+| パラメータ | 19路・13路 | 9路盤 |
+|---|---|---|
+| OPENING_THRESHOLD | 2.8 | 0.5 |
+| NORMAL_THRESHOLD | 5.6 | 3.3 |
+
+### 第一感ぶれ（全盤面）
+
+| パラメータ | デフォルト値 | 備考 |
+|---|---|---|
+| first_impression_deviation | false | ONで第一感上位3位中の損失0.5〜上限目の手のうち最も損失の少ない手を確定選択（9路=1.5目、13路・19路=2.0目） |
+| first_impression_deviation_opening | false | ON（+deviation ON）で序盤でも第一感ぶれを適用する（デフォルトOFF=序盤は無効） |
+| first_impression_green_blend | false | ON（+deviation ON）で第一感1位が緑(loss<0.5)かつ非最善の場合、第一感1位と上位3位中の最小損失手(0.5〜上限)をgreen_ratioで選択 |
+| green_blend_green_ratio | 0.5 | green_blend時の緑手選択確率（0.4=dev寄り40/60・0.5=均等50/50・0.6=緑寄り60/40） |
+
+### エンジン設定（maxVisits）
+
+Stage1とGUI/analysis_configの3箇所を同じ値に揃える。Stage2は独立値。
+
+| 場所 | 現在値 | 役割 |
+|---|---|---|
+| ai.py `override_settings["maxVisits"]` | 800 | Stage1: HumanSL着手選択 |
+| ai.py `clean_override_settings["maxVisits"]` | 600 | Stage2: クリーンスコア検証（独立値） |
+| GUI `max_visits` / `analysis_config.cfg` | 800 | 事後分析クエリ（Stage1と揃える） |
+
+### 力戦派モード（FightingStrategy）
+
+| パラメータ | デフォルト値 | 備考 |
+|---|---|---|
+| fighting_mode | "classic" | classicモード |
+| fighting_max_loss | 3.0 | 悪手フィルタ閾値（NORMAL_THRESHOLD=6.0, OPENING=2.8/0.5） |
+| force_tengen_opening | false | ONで黒番初手のみ天元に打つ |
+| fighting_invasion_bonus | 1.0 | 侵入ボーナス重み |
+| fighting_contact_boost | 1.0 | 接触戦ブースト |
+| fighting_chaos_relax | 0.0 | カオス緩和 |
