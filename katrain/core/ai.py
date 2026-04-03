@@ -1563,7 +1563,7 @@ class FightingStrategy(PickBasedStrategy):
             NORMAL_THRESHOLD = 3.3
         else:
             OPENING_THRESHOLD = 2.8
-            NORMAL_THRESHOLD = 6.0
+            NORMAL_THRESHOLD = 5.6
         current_move = self.cn.depth
         BAD_MOVE_THRESHOLD = OPENING_THRESHOLD if current_move < opening_boundary else NORMAL_THRESHOLD
 
