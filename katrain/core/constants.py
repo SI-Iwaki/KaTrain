@@ -142,8 +142,8 @@ AI_OPTION_VALUES = {
     ],
     "fighting_max_loss": [x / 2 for x in range(1, 21)],  # 0.5〜10.0（0.5刻み）
     "force_tengen_opening": "bool",
-    "fighting_invasion_bonus": [1.0, 1.5, 2.0, 3.0, 5.0],
-    "fighting_contact_boost": [1.0, 1.5, 2.0, 3.0, 5.0],
+    "fighting_invasion_bonus": [1.0, 1.5, 2.0, 3.0, 5.0],  # 1.0 to 5.0
+    "fighting_contact_boost": [1.0, 1.5, 2.0, 3.0, 5.0],  # 1.0 to 5.0
     "fighting_chaos_relax": [x / 2 for x in range(0, 7)],  # 0.0 to 3.0 in 0.5 steps
 }
 
