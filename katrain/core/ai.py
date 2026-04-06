@@ -1636,7 +1636,6 @@ class FightingStrategy(PickBasedStrategy):
             _FILTER_ABSOLUTE_CAP = 9.0
             if not good_moves:
                 original_threshold = BAD_MOVE_THRESHOLD
-                relaxed = False
                 for multiplier in _FILTER_RELAXATION_STEPS:
                     relaxed_threshold = original_threshold * multiplier
                     good_moves = _filter_moves(move_infos, relaxed_threshold, chaos_relax, ownership_grid, opponent_coords, player_sign, best_score)
@@ -1645,7 +1644,6 @@ class FightingStrategy(PickBasedStrategy):
                             f"[FightingStrategy:human] Filter relaxed: threshold {original_threshold} -> {relaxed_threshold:.1f}, found {len(good_moves)} moves",
                             OUTPUT_DEBUG,
                         )
-                        relaxed = True
                         break
                 if not good_moves:
                     good_moves = _filter_moves(move_infos, _FILTER_ABSOLUTE_CAP, chaos_relax, ownership_grid, opponent_coords, player_sign, best_score)
@@ -1654,7 +1652,6 @@ class FightingStrategy(PickBasedStrategy):
                             f"[FightingStrategy:human] Filter relaxed: threshold {original_threshold} -> {_FILTER_ABSOLUTE_CAP} (absolute cap), found {len(good_moves)} moves",
                             OUTPUT_DEBUG,
                         )
-                        relaxed = True
                 if not good_moves and best_gtp_by_score:
                     self.game.katrain.log(
                         f"[FightingStrategy:human] Filter failsafe: no moves passed even at {_FILTER_ABSOLUTE_CAP}pt cap, forcing best-score move {best_gtp_by_score}",
