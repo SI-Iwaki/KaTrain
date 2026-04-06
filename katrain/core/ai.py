@@ -1646,7 +1646,7 @@ class FightingStrategy(PickBasedStrategy):
                         )
                         break
                 if not good_moves:
-                    good_moves = _filter_moves(move_infos, _FILTER_ABSOLUTE_CAP, chaos_relax, ownership_grid, opponent_coords, player_sign, best_score)
+                    good_moves = _filter_moves(move_infos, _FILTER_ABSOLUTE_CAP, 0.0, ownership_grid, opponent_coords, player_sign, best_score)
                     if good_moves:
                         self.game.katrain.log(
                             f"[FightingStrategy:human] Filter relaxed: threshold {original_threshold} -> {_FILTER_ABSOLUTE_CAP} (absolute cap), found {len(good_moves)} moves",
