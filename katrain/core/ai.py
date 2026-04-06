@@ -2591,6 +2591,8 @@ class DivergenceStrategy(AIStrategy):
                 continue
 
             hp = human_policy[idx]
+            if hp <= 0:
+                continue  # humanPolicy=0 の手は選択候補から除外
             div_score = hp * ((order + 1) ** divergence_power)
             candidates.append((m, div_score, hp, order, loss))
 
