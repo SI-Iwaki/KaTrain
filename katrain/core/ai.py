@@ -1604,27 +1604,33 @@ class FightingStrategy(PickBasedStrategy):
             chaos_relax = self.settings.get("fighting_chaos_relax", 0.0)
             ownership_grid = var_to_grid(self.cn.ownership, board_size) if self.cn.ownership else None
             opponent_coords = [s.coords for s in self.game.stones if s.player != self.cn.next_player]
-            
-            for mi in move_infos:
-                gtp_move = mi.get("move", "")
-                score = mi.get("scoreLead", 0)
-                loss = player_sign * (best_score - score)
-                
-                threshold = BAD_MOVE_THRESHOLD
-                if chaos_relax > 0.0 and gtp_move != "pass":
-                    mx, my = Move.from_gtp(gtp_move, player=self.cn.next_player).coords
-                    o = ownership_grid[my][mx] if ownership_grid else 0.0
-                    is_opponent_terr = (player_sign * o) < -0.5
-                    
-                    min_dist_sq = 1000
-                    if opponent_coords:
-                        min_dist_sq = min((mx - ox) ** 2 + (my - oy) ** 2 for ox, oy in opponent_coords)
-                        
-                    if is_opponent_terr and min_dist_sq == 1:
-                        threshold += chaos_relax
-                        
-                if loss < threshold:
-                    good_moves.add(gtp_move)
+
+            def _filter_moves(move_infos, threshold_base, chaos_relax, ownership_grid, opponent_coords, player_sign, best_score):
+                """指定閾値で悪手フィルタを実行し、通過した手のsetを返す。"""
+                result = set()
+                for mi in move_infos:
+                    gtp_move = mi.get("move", "")
+                    score = mi.get("scoreLead", 0)
+                    loss = player_sign * (best_score - score)
+
+                    threshold = threshold_base
+                    if chaos_relax > 0.0 and gtp_move != "pass":
+                        mx, my = Move.from_gtp(gtp_move, player=self.cn.next_player).coords
+                        o = ownership_grid[my][mx] if ownership_grid else 0.0
+                        is_opponent_terr = (player_sign * o) < -0.5
+
+                        min_dist_sq = 1000
+                        if opponent_coords:
+                            min_dist_sq = min((mx - ox) ** 2 + (my - oy) ** 2 for ox, oy in opponent_coords)
+
+                        if is_opponent_terr and min_dist_sq == 1:
+                            threshold += chaos_relax
+
+                    if loss < threshold:
+                        result.add(gtp_move)
+                return result
+
+            good_moves = _filter_moves(move_infos, BAD_MOVE_THRESHOLD, chaos_relax, ownership_grid, opponent_coords, player_sign, best_score)
             self.game.katrain.log(
                 f"[FightingStrategy:human] {len(good_moves)} moves pass score filter",
                 OUTPUT_DEBUG,
