@@ -121,3 +121,20 @@ Stage1とGUI/analysis_configの3箇所を同じ値に揃える。Stage2は独立
 | proximity_stddev | 3.0 | 相手石への近接重みの標準偏差（小さいほど近距離に集中、最小2.0） |
 
 humanモードの悪手フィルタ閾値はHumanStyleStrategyと同じBAD_MOVE_THRESHOLD（19路 NORMAL=5.6 / OPENING=2.8、9路 NORMAL=3.3 / OPENING=0.5）を使用。`fighting_max_loss`は無効。
+
+### AI一致率低減モード（DivergenceStrategy）
+
+評価レポートの AI 最善手一致率≤30%・上位5手一致率≤40%・平均損失<1.00 を目標とする新戦略モード。
+
+**目標値**: `ai_top_move ≤ 30%`, `ai_top5_move ≤ 40%`, `mean_ptloss < 1.00`
+
+**アルゴリズム**: `divergence_score = humanPolicy × (order+1)^divergence_power`
+（order: KataGo の探索順位、0=最善手。大きいほど AI 下位手をブースト）
+
+| パラメータ | デフォルト値 | 備考 |
+|---|---|---|
+| human_kyu_rank | -8（9段） | humanSLプロファイルのベース段位 |
+| divergence_power | 0.5 | AI一致率低減強度（0.3〜1.5）。大きいほど AI 下位手をブースト |
+| diverge_score_filter | 2.5 | 許容する最大損失（目数）（1.0〜5.0） |
+
+**注意**: `divergence_power` のデフォルト値は実戦テストで調整が必要。目標値に届かない場合は 0.3 刻みで引き上げる。
