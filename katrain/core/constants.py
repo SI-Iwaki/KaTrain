@@ -55,17 +55,19 @@ AI_SIMPLE_OWNERSHIP = "ai:simple"
 AI_SETTLE_STONES = "ai:settle"
 AI_HUMAN = "ai:human"
 AI_PRO = "ai:pro"
+AI_DIVERGE = "ai:diverge_move"
 
 AI_CONFIG_DEFAULT = AI_RANK
 
 AI_STRATEGIES_ENGINE = [AI_DEFAULT, AI_HANDICAP, AI_SCORELOSS, AI_SIMPLE_OWNERSHIP, AI_JIGO, AI_ANTIMIRROR]
 AI_STRATEGIES_PICK = [AI_PICK, AI_LOCAL, AI_TENUKI, AI_INFLUENCE, AI_TERRITORY, AI_FIGHTING, AI_RANK]
 AI_STRATEGIES_POLICY = [AI_WEIGHTED, AI_POLICY] + AI_STRATEGIES_PICK
-AI_STRATEGIES = AI_STRATEGIES_ENGINE + AI_STRATEGIES_POLICY + [AI_HUMAN, AI_PRO]
+AI_STRATEGIES = AI_STRATEGIES_ENGINE + AI_STRATEGIES_POLICY + [AI_HUMAN, AI_PRO, AI_DIVERGE]
 AI_STRATEGIES_RECOMMENDED_ORDER = [
     AI_DEFAULT,
     AI_HUMAN,
     AI_PRO,
+    AI_DIVERGE,
     AI_RANK,
     AI_HANDICAP,
     AI_SIMPLE_OWNERSHIP,
@@ -99,7 +101,8 @@ AI_STRENGTH = {  # dan ranks, backup if model is missing. TODO: remove some?
     AI_SIMPLE_OWNERSHIP: 2,
     AI_SETTLE_STONES: 2,
     AI_HUMAN: float("nan"),
-    AI_PRO: float("nan")
+    AI_PRO: float("nan"),
+    AI_DIVERGE: float("nan")
 }
 
 AI_OPTION_VALUES = {
@@ -135,6 +138,8 @@ AI_OPTION_VALUES = {
     "first_impression_deviation_opening": "bool",
     "first_impression_green_blend": "bool",
     "green_blend_green_ratio": [(0.4, "dev寄り(40/60)"), (0.5, "均等(50/50)"), (0.6, "緑寄り(60/40)")],
+    "divergence_power": [0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.2, 1.5],
+    "diverge_score_filter": [1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0],
     "fighting_mode": [
         ("classic", "[fighting:classic]"),
         ("scoreloss", "[fighting:scoreloss]"),
@@ -156,6 +161,8 @@ AI_OPTION_ORDER = {
     "first_impression_deviation_opening": 31,
     "first_impression_green_blend": 32,
     "green_blend_green_ratio": 33,
+    "divergence_power": 0,
+    "diverge_score_filter": 1,
     "fighting_mode": 0,
     "fighting_max_loss": 1,
     "force_tengen_opening": 2,
