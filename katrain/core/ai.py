@@ -13,7 +13,7 @@ from katrain.core.constants import (
     AI_TENUKI, AI_TENUKI_ELO_GRID, AI_TERRITORY, AI_TERRITORY_ELO_GRID,
     AI_FIGHTING, AI_FIGHTING_SCORELOSS_ELO,
     AI_WEIGHTED, AI_WEIGHTED_ELO, CALIBRATED_RANK_ELO, OUTPUT_DEBUG,
-    OUTPUT_ERROR, OUTPUT_INFO, PRIORITY_EXTRA_AI_QUERY, ADDITIONAL_MOVE_ORDER, AI_HUMAN, AI_PRO
+    OUTPUT_ERROR, OUTPUT_INFO, PRIORITY_EXTRA_AI_QUERY, ADDITIONAL_MOVE_ORDER, AI_HUMAN, AI_PRO, AI_DIVERGE
 )
 from katrain.core.engine import KataGoEngine
 from katrain.core.game import Game, GameNode, Move
@@ -58,6 +58,8 @@ def ai_rank_estimation(strategy, settings) -> int:
         return 1 - settings["kyu_rank"]
     if strategy == AI_HUMAN:
         return 1 - settings["human_kyu_rank"]
+    if strategy == AI_DIVERGE:
+        return 1 - settings.get("human_kyu_rank", -8)
 
     if strategy in [AI_WEIGHTED, AI_SCORELOSS, AI_LOCAL, AI_TENUKI, AI_TERRITORY, AI_INFLUENCE, AI_FIGHTING, AI_PICK]:
         if strategy == AI_WEIGHTED:
@@ -2406,6 +2408,263 @@ class HumanStyleStrategy(AIStrategy):
         self.game.katrain.log(f"[HumanStyleStrategy] Selected move {move.gtp()} (prob={prob:.4f})", OUTPUT_DEBUG)
         ai_thoughts = f"\n{top_moves_str}\n\nPlayed move {move.gtp()} ({prob:.1%}) as the #{selected_rank} top move. ({filtered_count} bad moves filtered)"
         return move, ai_thoughts
+
+
+@register_strategy(AI_DIVERGE)
+class DivergenceStrategy(AIStrategy):
+    """Strategy that reduces AI move match rate while maintaining strength.
+
+    Algorithm:
+      Stage 1: humanSL query → humanPolicy[]
+      Stage 2: clean query   → moveInfos[] with accurate scoreLead
+      Score:   divergence_score[i] = humanPolicy[i] * (order[i] + 1)^divergence_power
+      Filter:  loss > diverge_score_filter を除外
+      Fallback: 候補 ≤ 3 の場合は humanPolicy のみ使用（divergence 無効化）
+    """
+
+    def __init__(self, game: Game, ai_settings: Dict):
+        super().__init__(game, ai_settings)
+        self.game.katrain.log(
+            f"[DivergenceStrategy] Initializing with settings: {ai_settings}",
+            OUTPUT_DEBUG,
+        )
+
+    def generate_move(self) -> Tuple[Move, str]:
+        self.game.katrain.log(f"[DivergenceStrategy] Starting move generation", OUTPUT_DEBUG)
+
+        human_kyu_rank = round(self.settings.get("human_kyu_rank", -8))
+        if human_kyu_rank <= 0:
+            rank_text = f"{1 - human_kyu_rank}d"
+        else:
+            rank_text = f"{human_kyu_rank}k"
+        human_profile = f"rank_{rank_text}"
+
+        divergence_power = float(self.settings.get("divergence_power", 0.5))
+        score_filter = float(self.settings.get("diverge_score_filter", 2.5))
+
+        self.game.katrain.log(
+            f"[DivergenceStrategy] profile={human_profile}, "
+            f"divergence_power={divergence_power}, score_filter={score_filter}",
+            OUTPUT_DEBUG,
+        )
+
+        # --- Stage 1: humanSL クエリ（humanPolicy 取得） ---
+        analysis = None
+        error = False
+
+        def set_analysis(a, partial_result):
+            nonlocal analysis
+            if not partial_result:
+                analysis = a
+
+        def set_error(a):
+            nonlocal error
+            error = True
+            self.game.katrain.log(f"[DivergenceStrategy] Stage1 error: {a}", OUTPUT_ERROR)
+
+        engine = self.game.engines[self.cn.player]
+        engine.request_analysis(
+            self.cn,
+            callback=set_analysis,
+            error_callback=set_error,
+            priority=PRIORITY_EXTRA_AI_QUERY,
+            include_policy=True,
+            extra_settings={
+                "humanSLProfile": human_profile,
+                "ignorePreRootHistory": False,
+                "maxVisits": 800,
+            },
+        )
+
+        while not (error or analysis):
+            time.sleep(0.01)
+            engine.check_alive(exception_if_dead=True)
+
+        if error or not analysis or "humanPolicy" not in analysis:
+            self.game.katrain.log(
+                f"[DivergenceStrategy] Stage1 failed, falling back to policy", OUTPUT_DEBUG
+            )
+            policy_move = self.cn.policy_ranking[0][1] if self.cn.policy_ranking else None
+            if policy_move:
+                return policy_move, "DivergenceStrategy: fallback to policy (Stage1 error)."
+            return Move(None, player=self.cn.next_player), "DivergenceStrategy: no valid moves."
+
+        human_policy = analysis["humanPolicy"]
+        bx, by = self.game.board_size
+
+        # --- Stage 2: クリーンクエリ（正確な scoreLead 取得） ---
+        # humanSLProfile 付きクエリの scoreLead はバイアスされるため、
+        # Stage2 のクリーン値を損失フィルタ判定に使用する
+        clean_analysis = None
+        clean_error = False
+
+        def set_clean_analysis(a, partial_result):
+            nonlocal clean_analysis
+            if not partial_result:
+                clean_analysis = a
+
+        def set_clean_error(a):
+            nonlocal clean_error
+            clean_error = True
+            self.game.katrain.log(f"[DivergenceStrategy] Stage2 error: {a}", OUTPUT_ERROR)
+
+        engine.request_analysis(
+            self.cn,
+            callback=set_clean_analysis,
+            error_callback=set_clean_error,
+            priority=PRIORITY_EXTRA_AI_QUERY,
+            include_policy=False,
+            extra_settings={
+                "ignorePreRootHistory": False,
+                "maxVisits": 600,
+                "wideRootNoise": 0.0,
+            },
+        )
+
+        while not (clean_error or clean_analysis):
+            time.sleep(0.01)
+            engine.check_alive(exception_if_dead=True)
+
+        if clean_analysis and not clean_error:
+            move_infos = clean_analysis.get("moveInfos", [])
+            self.game.katrain.log(
+                f"[DivergenceStrategy] Using clean moveInfos ({len(move_infos)} moves)",
+                OUTPUT_DEBUG,
+            )
+        else:
+            move_infos = analysis.get("moveInfos", [])
+            self.game.katrain.log(
+                f"[DivergenceStrategy] Stage2 failed, using biased moveInfos "
+                f"({len(move_infos)} moves)",
+                OUTPUT_DEBUG,
+            )
+
+        # moveInfos が空の場合は humanPolicy 最上位手を返す
+        if not move_infos:
+            self.game.katrain.log(
+                f"[DivergenceStrategy] No moveInfos, using top humanPolicy", OUTPUT_DEBUG
+            )
+            top_idx = max(range(len(human_policy)), key=lambda i: human_policy[i])
+            x = top_idx % bx
+            y = by - 1 - (top_idx // bx)
+            return Move((x, y), player=self.cn.next_player), "No moveInfos available."
+
+        # player_sign: Black=+1, White=-1（scoreLead は常に Black 視点）
+        player_sign = 1 if self.cn.next_player == "B" else -1
+
+        # best_score: 現在プレイヤー視点での最善スコア（Black=max, White=min scoreLead）
+        best_score = (
+            max(mi.get("scoreLead", 0) * player_sign for mi in move_infos) / player_sign
+        )
+
+        # order=0 の手がパスなら強制パス
+        order0_mi = next(
+            (mi for mi in move_infos if mi.get("order", 999) == 0), move_infos[0]
+        )
+        if order0_mi.get("move") == "pass":
+            return Move(None, player=self.cn.next_player), "Best move is pass, forcing pass."
+
+        # 候補手の divergence スコアを計算
+        # divergence_score[i] = humanPolicy[i] × (order[i] + 1)^divergence_power
+        # order が大きい（AI が低く評価）ほどブーストが大きくなる
+        candidates = []  # [(Move, divergence_score, humanPolicy, order, loss)]
+        for i, mi in enumerate(move_infos):
+            gtp = mi.get("move", "")
+            if not gtp or gtp == "pass":
+                continue
+            order = mi.get("order", i)
+            score = mi.get("scoreLead", 0)
+            loss = player_sign * (best_score - score)  # 正値 = 現在プレイヤーにとって損
+
+            if loss > score_filter:
+                continue  # スコアフィルタ: 損失過大な手を除外
+
+            try:
+                m = Move.from_gtp(gtp, player=self.cn.next_player)
+            except Exception:
+                continue
+            if m.coords is None:
+                continue
+            x, y = m.coords
+            idx = (by - y - 1) * bx + x
+            if idx < 0 or idx >= len(human_policy):
+                continue
+
+            hp = human_policy[idx]
+            div_score = hp * ((order + 1) ** divergence_power)
+            candidates.append((m, div_score, hp, order, loss))
+
+        self.game.katrain.log(
+            f"[DivergenceStrategy] {len(candidates)} candidates after score filter "
+            f"(filter={score_filter})",
+            OUTPUT_DEBUG,
+        )
+
+        # フォールバック: スコアフィルタ後に候補が0の場合、フィルタを解除して再構築
+        if not candidates:
+            self.game.katrain.log(
+                f"[DivergenceStrategy] No candidates after filter, relaxing to all moveInfos",
+                OUTPUT_DEBUG,
+            )
+            for i, mi in enumerate(move_infos):
+                gtp = mi.get("move", "")
+                if not gtp or gtp == "pass":
+                    continue
+                try:
+                    m = Move.from_gtp(gtp, player=self.cn.next_player)
+                except Exception:
+                    continue
+                if m.coords is None:
+                    continue
+                x, y = m.coords
+                idx = (by - y - 1) * bx + x
+                if idx < 0 or idx >= len(human_policy):
+                    continue
+                hp = human_policy[idx]
+                candidates.append((m, hp, hp, mi.get("order", i), 999.0))
+
+        # それでも候補が無ければ AI 最善手を返す
+        if not candidates:
+            best_gtp = move_infos[0].get("move", "pass")
+            if best_gtp == "pass":
+                return Move(None, player=self.cn.next_player), "Fallback: pass."
+            return Move.from_gtp(best_gtp, player=self.cn.next_player), "Fallback: best AI move."
+
+        # 候補が ≤3 手の場合は divergence を無効化（humanPolicy のみで選択）
+        # → 「ほぼ1択」局面でも自然な手を打てる
+        if len(candidates) <= 3:
+            self.game.katrain.log(
+                f"[DivergenceStrategy] ≤3 candidates, disabling divergence (humanPolicy only)",
+                OUTPUT_DEBUG,
+            )
+            weighted_moves = [(m, hp) for m, _, hp, _, _ in candidates]
+        else:
+            weighted_moves = [(m, div_score) for m, div_score, _, _, _ in candidates]
+
+        # 重み付き確率選択（weighted_selection_without_replacement は item[1] を重みとして使用）
+        selected = weighted_selection_without_replacement(weighted_moves, 1)[0]
+        move = selected[0]
+
+        top5_sorted = sorted(candidates, key=lambda c: -c[1])[:5]
+        top5_str = "\n".join(
+            f"#{j+1}: {m.gtp()} (div={ds:.4f}, hp={hp:.3f}, order={ord_}, loss={ls:.2f})"
+            for j, (m, ds, hp, ord_, ls) in enumerate(top5_sorted)
+        )
+        chosen_order = next(
+            (ord_ for m2, _, _, ord_, _ in candidates if m2.gtp() == move.gtp()), "?"
+        )
+        ai_thoughts = (
+            f"\n{top5_str}\n\n"
+            f"DivergenceStrategy: played {move.gtp()} "
+            f"(power={divergence_power}, filter={score_filter}, AI_order={chosen_order})"
+        )
+
+        self.game.katrain.log(
+            f"[DivergenceStrategy] Selected {move.gtp()} (AI order={chosen_order})",
+            OUTPUT_DEBUG,
+        )
+        return move, ai_thoughts
+
 
 def generate_ai_move(game: Game, ai_mode: str, ai_settings: Dict) -> Tuple[Move, GameNode]:
     """Generate a move using the selected AI strategy"""
