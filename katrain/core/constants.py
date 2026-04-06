@@ -117,7 +117,7 @@ AI_OPTION_VALUES = {
     "line_weight": range(0, 11),
     "threshold": [2, 2.5, 3, 3.5, 4, 4.5],
     "unsettled_power": [x / 2 for x in range(2, 11)],  # 1.0 to 5.0 in 0.5 steps
-    "proximity_stddev": [x / 2 for x in range(2, 21)],  # 1.0 to 10.0 in 0.5 steps
+    "proximity_stddev": [x / 2 for x in range(4, 21)],  # 2.0 to 10.0 in 0.5 steps
     "automatic": "bool",
     "pda": [(x / 10, f"{'W' if x<0 else 'B'}+{abs(x/10):.1f}") for x in range(-30, 31)],
     "max_points_lost": [x / 10 for x in range(51)],
@@ -142,9 +142,9 @@ AI_OPTION_VALUES = {
     ],
     "fighting_max_loss": [x / 2 for x in range(1, 21)],  # 0.5〜10.0（0.5刻み）
     "force_tengen_opening": "bool",
-    "fighting_invasion_bonus": [1.0, 1.5, 2.0, 3.0, 5.0, 8.0, 10.0],
-    "fighting_contact_boost": [1.0, 1.5, 2.0, 3.0, 5.0, 8.0, 10.0],
-    "fighting_chaos_relax": [x / 2 for x in range(0, 11)],
+    "fighting_invasion_bonus": [1.0, 1.5, 2.0, 3.0, 5.0],
+    "fighting_contact_boost": [1.0, 1.5, 2.0, 3.0, 5.0],
+    "fighting_chaos_relax": [x / 2 for x in range(0, 7)],  # 0.0 to 3.0 in 0.5 steps
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）
