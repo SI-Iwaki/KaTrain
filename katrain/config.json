@@ -184,6 +184,11 @@
         },
         "ai:pro": {
             "pro_year": 1914
+        },
+        "ai:diverge_move": {
+            "human_kyu_rank": -8,
+            "divergence_power": 0.5,
+            "diverge_score_filter": 2.5
         }
     },
     "ui_state": {
