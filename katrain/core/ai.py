@@ -1631,6 +1631,40 @@ class FightingStrategy(PickBasedStrategy):
                 return result
 
             good_moves = _filter_moves(move_infos, BAD_MOVE_THRESHOLD, chaos_relax, ownership_grid, opponent_coords, player_sign, best_score)
+            # --- 段階的閾値緩和フェイルセーフ ---
+            _FILTER_RELAXATION_STEPS = [1.5, 2.0]
+            _FILTER_ABSOLUTE_CAP = 9.0
+            if not good_moves:
+                original_threshold = BAD_MOVE_THRESHOLD
+                relaxed = False
+                for multiplier in _FILTER_RELAXATION_STEPS:
+                    relaxed_threshold = original_threshold * multiplier
+                    good_moves = _filter_moves(move_infos, relaxed_threshold, chaos_relax, ownership_grid, opponent_coords, player_sign, best_score)
+                    if good_moves:
+                        self.game.katrain.log(
+                            f"[FightingStrategy:human] Filter relaxed: threshold {original_threshold} -> {relaxed_threshold:.1f}, found {len(good_moves)} moves",
+                            OUTPUT_DEBUG,
+                        )
+                        relaxed = True
+                        break
+                if not good_moves:
+                    good_moves = _filter_moves(move_infos, _FILTER_ABSOLUTE_CAP, chaos_relax, ownership_grid, opponent_coords, player_sign, best_score)
+                    if good_moves:
+                        self.game.katrain.log(
+                            f"[FightingStrategy:human] Filter relaxed: threshold {original_threshold} -> {_FILTER_ABSOLUTE_CAP} (absolute cap), found {len(good_moves)} moves",
+                            OUTPUT_DEBUG,
+                        )
+                        relaxed = True
+                if not good_moves and best_gtp_by_score:
+                    self.game.katrain.log(
+                        f"[FightingStrategy:human] Filter failsafe: no moves passed even at {_FILTER_ABSOLUTE_CAP}pt cap, forcing best-score move {best_gtp_by_score}",
+                        OUTPUT_DEBUG,
+                    )
+                    if best_gtp_by_score == "pass":
+                        return Move(None, player=self.cn.next_player), "Filter failsafe: best move is pass."
+                    return Move.from_gtp(best_gtp_by_score, player=self.cn.next_player), (
+                        f"Filter failsafe: no moves within {_FILTER_ABSOLUTE_CAP}pt, forced {best_gtp_by_score}."
+                    )
             self.game.katrain.log(
                 f"[FightingStrategy:human] {len(good_moves)} moves pass score filter",
                 OUTPUT_DEBUG,
