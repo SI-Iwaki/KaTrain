@@ -56,13 +56,14 @@ AI_SETTLE_STONES = "ai:settle"
 AI_HUMAN = "ai:human"
 AI_PRO = "ai:pro"
 AI_DIVERGE = "ai:diverge_move"
+AI_SIEGE = "ai:攻城戦略"
 
 AI_CONFIG_DEFAULT = AI_RANK
 
 AI_STRATEGIES_ENGINE = [AI_DEFAULT, AI_HANDICAP, AI_SCORELOSS, AI_SIMPLE_OWNERSHIP, AI_JIGO, AI_ANTIMIRROR]
 AI_STRATEGIES_PICK = [AI_PICK, AI_LOCAL, AI_TENUKI, AI_INFLUENCE, AI_TERRITORY, AI_FIGHTING, AI_RANK]
 AI_STRATEGIES_POLICY = [AI_WEIGHTED, AI_POLICY] + AI_STRATEGIES_PICK
-AI_STRATEGIES = AI_STRATEGIES_ENGINE + AI_STRATEGIES_POLICY + [AI_HUMAN, AI_PRO, AI_DIVERGE]
+AI_STRATEGIES = AI_STRATEGIES_ENGINE + AI_STRATEGIES_POLICY + [AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE]
 AI_STRATEGIES_RECOMMENDED_ORDER = [
     AI_DEFAULT,
     AI_HUMAN,
@@ -82,6 +83,7 @@ AI_STRATEGIES_RECOMMENDED_ORDER = [
     AI_TERRITORY,
     AI_INFLUENCE,
     AI_FIGHTING,
+    AI_SIEGE,
 ]
 
 AI_STRENGTH = {  # dan ranks, backup if model is missing. TODO: remove some?
@@ -102,7 +104,8 @@ AI_STRENGTH = {  # dan ranks, backup if model is missing. TODO: remove some?
     AI_SETTLE_STONES: 2,
     AI_HUMAN: float("nan"),
     AI_PRO: float("nan"),
-    AI_DIVERGE: float("nan")
+    AI_DIVERGE: float("nan"),
+    AI_SIEGE: float("nan"),
 }
 
 AI_OPTION_VALUES = {
@@ -150,6 +153,12 @@ AI_OPTION_VALUES = {
     "fighting_invasion_bonus": [1.0, 1.5, 2.0, 3.0, 5.0],  # 1.0 to 5.0
     "fighting_contact_boost": [1.0, 1.5, 2.0, 3.0, 5.0],  # 1.0 to 5.0
     "fighting_chaos_relax": [x / 2 for x in range(0, 7)],  # 0.0 to 3.0 in 0.5 steps
+    "siege_transition_move": list(range(15, 61, 5)),  # 15〜60（5刻み）
+    "siege_min_group_size": list(range(3, 11)),  # 3〜10
+    "concede_max_loss": [x / 2 for x in range(2, 13)],  # 1.0〜6.0（0.5刻み）
+    "siege_max_loss": [x / 2 for x in range(2, 15)],  # 1.0〜7.0（0.5刻み）
+    "siege_proximity_stddev": [x / 2 for x in range(4, 13)],  # 2.0〜6.0（0.5刻み）
+    "siege_instability_min": [x / 10 for x in range(1, 6)],  # 0.1〜0.5（0.1刻み）
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）
@@ -175,6 +184,12 @@ AI_OPTION_ORDER = {
     "endgame": 13,
     "unsettled_power": 20,
     "proximity_stddev": 21,
+    "siege_transition_move": 0,
+    "siege_min_group_size": 1,
+    "concede_max_loss": 10,
+    "siege_max_loss": 11,
+    "siege_proximity_stddev": 20,
+    "siege_instability_min": 21,
 }
 
 AI_KEY_PROPERTIES = {

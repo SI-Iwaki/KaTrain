@@ -189,6 +189,14 @@
             "human_kyu_rank": -8,
             "divergence_power": 0.5,
             "diverge_score_filter": 2.5
+        },
+        "ai:攻城戦略": {
+            "siege_transition_move": 40,
+            "siege_min_group_size": 5,
+            "concede_max_loss": 4.0,
+            "siege_max_loss": 5.0,
+            "siege_proximity_stddev": 3.0,
+            "siege_instability_min": 0.3
         }
     },
     "ui_state": {
