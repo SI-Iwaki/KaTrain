@@ -21,7 +21,7 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 ```
 katrain/
   core/               -- コアロジック
-    ai.py             -- AI着手生成（HumanStyleStrategy = 主な改修箇所）
+    ai.py             -- AI着手生成（HumanStyleStrategy, FightingStrategy, SiegeStrategy = 主な改修箇所）
     constants.py      -- 定数、AI設定ウィジェット定義（AI_OPTION_VALUES）
     engine.py         -- KataGoエンジン管理
     game.py           -- ゲーム状態管理
@@ -138,3 +138,18 @@ humanモードの悪手フィルタ閾値はHumanStyleStrategyと同じBAD_MOVE_
 | diverge_score_filter | 2.5 | 許容する最大損失（目数）（1.0〜5.0） |
 
 **注意**: `divergence_power` のデフォルト値は実戦テストで調整が必要。目標値に届かない場合は 0.3 刻みで引き上げる。
+
+### 攻城戦略（SiegeStrategy）
+
+序盤は相手に地を譲り、中盤以降に不安定な大石群を攻めて逆転を狙う「背水の陣」モード。対応盤面: 19路・13路。
+
+**フェーズ**: 序盤（Concede）→ 攻撃（Attack）。手数条件 + ターゲット存在で切替。60%経過で強制移行。
+
+| パラメータ | デフォルト値(19路) | デフォルト値(13路) | 備考 |
+|---|---|---|---|
+| siege_transition_move | 40 | 25 | 攻撃フェーズ移行の最小手数 |
+| siege_min_group_size | 5 | 4 | ターゲット最小グループサイズ |
+| concede_max_loss | 4.0 | 3.0 | 序盤の許容最大損失（目） |
+| siege_max_loss | 5.0 | 4.0 | 攻撃時の許容最大損失（目） |
+| siege_proximity_stddev | 3.0 | 2.5 | ターゲット近接重みの標準偏差 |
+| siege_instability_min | 0.3 | 0.3 | ターゲット判定の最小不安定度 |
