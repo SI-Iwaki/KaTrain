@@ -37,6 +37,7 @@ tests/                -- テスト
 - `config.json` — KaTrain全体の設定（エンジンパス、モデルパス、AI設定等）
 - `analysis_config.cfg` — KataGo解析エンジン用設定
 - `katago.exe` — KataGoエンジン本体
+- `b18c384nbt-humanv0.bin.gz` — humanSLモデル（`config.json`の`humanlike_model`が空だとhumanSLProfile系の全戦略が動作しない）
 
 ## 起動・デバッグ
 
@@ -51,7 +52,7 @@ python -m katrain
 
 - コミットメッセージは**日本語**で書く
 - Conventional Commits形式を使用（`feat:`, `fix:`, `refactor:` 等）
-- 改修はほぼ `katrain/core/ai.py` の `HumanStyleStrategy` / `FightingStrategy` クラスに集中
+- 改修はほぼ `katrain/core/ai.py` の `HumanStyleStrategy` / `FightingStrategy` / `SiegeStrategy` クラスに集中
 
 ## やってはいけないこと
 
@@ -142,6 +143,8 @@ humanモードの悪手フィルタ閾値はHumanStyleStrategyと同じBAD_MOVE_
 ### 攻城戦略（SiegeStrategy）
 
 序盤は相手に地を譲り、中盤以降に不安定な大石群を攻めて逆転を狙う「背水の陣」モード。対応盤面: 19路・13路。
+
+**着手選択**: HumanStyleStrategy/FightingStrategy (human) と同じ2段階クエリ方式。Stage 1でhumanPolicy（9段固定）を取得し、Stage 2のクリーンスコアでフィルタ。重み = `humanPolicy × 戦略重み`（concedeはconcede_score、attackはproximity × instability）。安全弁・タイブレーク・エンドゲーム処理あり。エンドゲーム閾値: `ceil(0.5 × 盤面マス数)`（19路=181手目）。
 
 **フェーズ**: 序盤（Concede）→ 攻撃（Attack）。手数条件 + ターゲット存在で切替。60%経過で強制移行。
 
