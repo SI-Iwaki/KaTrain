@@ -149,7 +149,7 @@ humanモードの悪手フィルタ閾値はHumanStyleStrategyと同じBAD_MOVE_
 |---|---|---|---|
 | siege_transition_move | 40 | 25 | 攻撃フェーズ移行の最小手数 |
 | siege_min_group_size | 5 | 4 | ターゲット最小グループサイズ |
-| concede_max_loss | 4.0 | 3.0 | 序盤の許容最大損失（目） |
-| siege_max_loss | 5.0 | 4.0 | 攻撃時の許容最大損失（目） |
+| concede_max_loss | 4.5 | 3.0 | 序盤の許容最大損失（目） |
+| siege_max_loss | 6.0 | 4.0 | 攻撃時の許容最大損失（目） |
 | siege_proximity_stddev | 3.0 | 2.5 | ターゲット近接重みの標準偏差 |
 | siege_instability_min | 0.3 | 0.3 | ターゲット判定の最小不安定度 |
