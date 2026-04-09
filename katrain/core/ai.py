@@ -2696,6 +2696,243 @@ class DivergenceStrategy(AIStrategy):
         return move, ai_thoughts
 
 
+@register_strategy(AI_SIEGE)
+class SiegeStrategy(AIStrategy):
+    """攻城戦略 — 序盤は地を譲り、中盤以降に大石を攻めて逆転を狙う"""
+
+    BOARD_PARAMS = {
+        19: {"transition_move": 40, "min_group_size": 5, "concede_max_loss": 4.0, "max_loss": 5.0, "proximity_stddev": 3.0},
+        13: {"transition_move": 25, "min_group_size": 4, "concede_max_loss": 3.0, "max_loss": 4.0, "proximity_stddev": 2.5},
+    }
+
+    def generate_move(self) -> Tuple[Move, str]:
+        self.game.katrain.log(f"[SiegeStrategy] Starting move generation", OUTPUT_DEBUG)
+
+        self.wait_for_analysis()
+
+        board_size = self.game.board_size
+        bx = board_size[0]
+        params = self.BOARD_PARAMS.get(bx, self.BOARD_PARAMS[19])
+
+        transition_move = self.settings.get("siege_transition_move", params["transition_move"])
+        min_group_size = self.settings.get("siege_min_group_size", params["min_group_size"])
+        concede_max_loss = self.settings.get("concede_max_loss", params["concede_max_loss"])
+        max_loss = self.settings.get("siege_max_loss", params["max_loss"])
+        proximity_stddev = self.settings.get("siege_proximity_stddev", params["proximity_stddev"])
+        instability_min = self.settings.get("siege_instability_min", 0.3)
+
+        self.game.katrain.log(
+            f"[SiegeStrategy] Settings: transition={transition_move}, min_group={min_group_size}, "
+            f"concede_loss={concede_max_loss}, max_loss={max_loss}, prox_std={proximity_stddev}, instab_min={instability_min}",
+            OUTPUT_DEBUG,
+        )
+
+        candidate_moves = self.cn.candidate_moves
+        if not candidate_moves:
+            self.game.katrain.log(f"[SiegeStrategy] No candidate moves, passing", OUTPUT_DEBUG)
+            return Move(None, player=self.cn.next_player), "No candidate moves found, passing."
+
+        top_move = Move.from_gtp(candidate_moves[0]["move"], player=self.cn.next_player)
+        if top_move.is_pass:
+            self.game.katrain.log(f"[SiegeStrategy] Top move is pass, forcing pass", OUTPUT_DEBUG)
+            return top_move, "Top move is pass."
+
+        current_move = self.cn.depth
+        total_moves = bx * board_size[1]
+        force_transition = current_move >= int(total_moves * 0.6)
+
+        targets = self._find_targets(min_group_size, instability_min)
+
+        has_target = len(targets) > 0
+        in_attack_phase = (current_move >= transition_move and has_target) or force_transition
+
+        if in_attack_phase:
+            phase = "attack (forced)" if force_transition and not has_target else "attack"
+            self.game.katrain.log(f"[SiegeStrategy] Phase: {phase}, move={current_move}, targets={len(targets)}", OUTPUT_DEBUG)
+            return self._generate_attack(candidate_moves, targets, max_loss, proximity_stddev)
+        else:
+            self.game.katrain.log(f"[SiegeStrategy] Phase: concede, move={current_move}", OUTPUT_DEBUG)
+            return self._generate_concede(candidate_moves, concede_max_loss)
+
+    def _find_targets(self, min_group_size, instability_min):
+        """ターゲットとなる不安定な相手石群を特定する。"""
+        board_size = self.game.board_size
+        ownership = self.cn.ownership
+        if not ownership:
+            self.game.katrain.log(f"[SiegeStrategy] No ownership data available", OUTPUT_DEBUG)
+            return []
+
+        ownership_grid = var_to_grid(ownership, board_size)
+
+        opponent_coords = set()
+        for s in self.game.stones:
+            if s.player != self.cn.next_player and s.coords:
+                opponent_coords.add(s.coords)
+
+        if not opponent_coords:
+            return []
+
+        groups = find_connected_groups(opponent_coords)
+
+        targets = []
+        for group in groups:
+            if len(group) < min_group_size:
+                continue
+
+            total_ownership = 0.0
+            for x, y in group:
+                total_ownership += ownership_grid[y][x]
+            avg_ownership = total_ownership / len(group)
+
+            instability = 1.0 - abs(avg_ownership)
+            if instability < instability_min:
+                continue
+
+            target_score = len(group) * instability
+            targets.append((target_score, instability, group))
+
+        targets.sort(key=lambda t: t[0], reverse=True)
+
+        if targets:
+            top = targets[0]
+            self.game.katrain.log(
+                f"[SiegeStrategy] Primary target: size={len(top[2])}, instability={top[1]:.2f}, score={top[0]:.2f}",
+                OUTPUT_DEBUG,
+            )
+
+        return targets
+
+    def _generate_concede(self, candidate_moves, concede_max_loss):
+        """序盤フェーズ: 最善手を避けつつ地を譲る手を選択する。"""
+        player_sign = 1 if self.cn.next_player == "B" else -1
+        best_score = max(player_sign * mi["scoreLead"] for mi in candidate_moves)
+
+        policy = self.cn.policy
+        board_size = self.game.board_size
+        policy_grid = var_to_grid(policy, board_size) if policy else None
+
+        weighted_moves = []
+        for mi in candidate_moves:
+            gtp_move = mi.get("move", "")
+            if gtp_move == "pass":
+                continue
+            score = mi.get("scoreLead", 0)
+            loss = player_sign * (best_score - player_sign * score)
+
+            if loss > concede_max_loss:
+                continue
+
+            move = Move.from_gtp(gtp_move, player=self.cn.next_player)
+            if move.coords is None:
+                continue
+
+            x, y = move.coords
+            if policy_grid:
+                pol = policy_grid[y][x]
+            else:
+                pol = mi.get("prior", 0.01)
+            pol = max(pol, 1e-6)
+
+            concede_score = min(loss, concede_max_loss) / concede_max_loss
+            concede_score = max(concede_score, 0.05)
+
+            weight = pol * concede_score
+            weighted_moves.append((loss, weight, move))
+
+        if not weighted_moves:
+            self.game.katrain.log(f"[SiegeStrategy:concede] No valid moves, playing best move", OUTPUT_DEBUG)
+            return Move.from_gtp(candidate_moves[0]["move"], player=self.cn.next_player), "Concede fallback: no valid moves."
+
+        top5 = heapq.nlargest(5, weighted_moves, key=lambda t: t[1])
+        self.game.katrain.log(f"[SiegeStrategy:concede] Top 5 weighted moves:", OUTPUT_DEBUG)
+        for i, (l, w, m) in enumerate(top5):
+            self.game.katrain.log(f"  #{i+1}: {m.gtp()} loss={l:.2f} weight={w:.4f}", OUTPUT_DEBUG)
+
+        selected = weighted_selection_without_replacement(weighted_moves, 1)[0]
+        aimove = selected[2]
+        ai_thoughts = (
+            f"Siege[concede]: {len(weighted_moves)} candidates within {concede_max_loss}pt. "
+            f"Selected {aimove.gtp()} (loss={selected[0]:.1f})."
+        )
+        self.game.katrain.log(f"[SiegeStrategy:concede] Selected: {aimove.gtp()} loss={selected[0]:.2f}", OUTPUT_DEBUG)
+        return aimove, ai_thoughts
+
+    def _generate_attack(self, candidate_moves, targets, max_loss, proximity_stddev):
+        """攻撃フェーズ: ターゲットの大石群に近い手を重み付けして選択する。"""
+        player_sign = 1 if self.cn.next_player == "B" else -1
+        best_score = max(player_sign * mi["scoreLead"] for mi in candidate_moves)
+        board_size = self.game.board_size
+        prox_var = proximity_stddev ** 2
+
+        policy = self.cn.policy
+        policy_grid = var_to_grid(policy, board_size) if policy else None
+
+        if targets:
+            primary_target = targets[0]
+            target_instability = primary_target[1]
+            target_coords = primary_target[2]
+            if len(targets) > 1:
+                target_coords = target_coords | targets[1][2]
+        else:
+            target_instability = 0.5
+            target_coords = set()
+            for s in self.game.stones:
+                if s.player != self.cn.next_player and s.coords:
+                    target_coords.add(s.coords)
+            if not target_coords:
+                return Move.from_gtp(candidate_moves[0]["move"], player=self.cn.next_player), "Attack: no opponent stones."
+
+        weighted_moves = []
+        for mi in candidate_moves:
+            gtp_move = mi.get("move", "")
+            if gtp_move == "pass":
+                continue
+
+            score = mi.get("scoreLead", 0)
+            loss = player_sign * (best_score - player_sign * score)
+
+            if loss > max_loss:
+                continue
+
+            move = Move.from_gtp(gtp_move, player=self.cn.next_player)
+            if move.coords is None:
+                continue
+
+            mx, my = move.coords
+
+            if policy_grid:
+                pol = policy_grid[my][mx]
+            else:
+                pol = mi.get("prior", 0.01)
+            pol = max(pol, 1e-6)
+
+            min_dist_sq = min((mx - tx) ** 2 + (my - ty) ** 2 for tx, ty in target_coords)
+            proximity = math.exp(-0.5 * min_dist_sq / prox_var) if prox_var > 0 else 1.0
+
+            weight = pol * proximity * target_instability
+            weighted_moves.append((loss, weight, move))
+
+        if not weighted_moves:
+            self.game.katrain.log(f"[SiegeStrategy:attack] No valid moves within {max_loss}pt, playing best", OUTPUT_DEBUG)
+            return Move.from_gtp(candidate_moves[0]["move"], player=self.cn.next_player), "Attack fallback: no moves within threshold."
+
+        top5 = heapq.nlargest(5, weighted_moves, key=lambda t: t[1])
+        self.game.katrain.log(f"[SiegeStrategy:attack] Targets: {len(targets)}, candidates: {len(weighted_moves)}", OUTPUT_DEBUG)
+        self.game.katrain.log(f"[SiegeStrategy:attack] Top 5 weighted moves:", OUTPUT_DEBUG)
+        for i, (l, w, m) in enumerate(top5):
+            self.game.katrain.log(f"  #{i+1}: {m.gtp()} loss={l:.2f} weight={w:.4f}", OUTPUT_DEBUG)
+
+        selected = weighted_selection_without_replacement(weighted_moves, 1)[0]
+        aimove = selected[2]
+        target_info = f"primary_size={len(targets[0][2])}" if targets else "pressure_mode"
+        ai_thoughts = (
+            f"Siege[attack]: {target_info}, {len(weighted_moves)} candidates within {max_loss}pt. "
+            f"Selected {aimove.gtp()} (loss={selected[0]:.1f}, weight={selected[1]:.4f})."
+        )
+        self.game.katrain.log(f"[SiegeStrategy:attack] Selected: {aimove.gtp()} loss={selected[0]:.2f}", OUTPUT_DEBUG)
+        return aimove, ai_thoughts
+
+
 def generate_ai_move(game: Game, ai_mode: str, ai_settings: Dict) -> Tuple[Move, GameNode]:
     """Generate a move using the selected AI strategy"""
     game.katrain.log(f"Generate AI move called with mode: {ai_mode}", OUTPUT_DEBUG)

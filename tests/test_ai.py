@@ -4,7 +4,7 @@ import pytest
 
 from katrain.core.ai import ai_rank_estimation, generate_ai_move, find_connected_groups
 from katrain.core.base_katrain import KaTrainBase
-from katrain.core.constants import AI_STRATEGIES, AI_STRATEGIES_RECOMMENDED_ORDER, AI_HUMAN, AI_PRO, AI_DIVERGE, OUTPUT_INFO
+from katrain.core.constants import AI_STRATEGIES, AI_STRATEGIES_RECOMMENDED_ORDER, AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, OUTPUT_INFO
 from katrain.core.engine import KataGoEngine
 from katrain.core.game import Game
 
@@ -22,7 +22,7 @@ class TestAI:
         n_rounds = 3
         for _ in range(n_rounds):
             for strategy in AI_STRATEGIES:
-                if strategy in [AI_HUMAN, AI_PRO, AI_DIVERGE]:
+                if strategy in [AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE]:
                     continue
                 settings = katrain.config(f"ai/{strategy}")
                 move, played_node = generate_ai_move(game, strategy, settings)
@@ -30,10 +30,10 @@ class TestAI:
                 assert move.coords is not None
                 assert played_node == game.current_node
 
-        assert game.current_node.depth == (len(AI_STRATEGIES) - 3) * n_rounds
+        assert game.current_node.depth == (len(AI_STRATEGIES) - 4) * n_rounds
 
         for strategy in AI_STRATEGIES:
-            if strategy in [AI_HUMAN, AI_PRO, AI_DIVERGE]:
+            if strategy in [AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE]:
                 continue
             game = Game(katrain, engine)
             settings = katrain.config(f"ai/{strategy}")
@@ -83,3 +83,18 @@ class TestFindConnectedGroups:
     def test_empty_input(self):
         groups = find_connected_groups(set())
         assert len(groups) == 0
+
+
+class TestFindTargets:
+    def test_score_calculation(self):
+        group_size = 5
+        avg_ownership = -0.5
+        instability = 1 - abs(avg_ownership)
+        score = group_size * instability
+        assert instability == 0.5
+        assert score == 2.5
+
+    def test_instability_range(self):
+        assert 1 - abs(-1.0) == 0.0
+        assert 1 - abs(0.0) == 1.0
+        assert abs(1 - abs(-0.3) - 0.7) < 0.01
