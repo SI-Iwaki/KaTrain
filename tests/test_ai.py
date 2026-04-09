@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from katrain.core.ai import ai_rank_estimation, generate_ai_move
+from katrain.core.ai import ai_rank_estimation, generate_ai_move, find_connected_groups
 from katrain.core.base_katrain import KaTrainBase
 from katrain.core.constants import AI_STRATEGIES, AI_STRATEGIES_RECOMMENDED_ORDER, AI_HUMAN, AI_PRO, AI_DIVERGE, OUTPUT_INFO
 from katrain.core.engine import KataGoEngine
@@ -49,3 +49,37 @@ class TestAI:
             settings = katrain.config(f"ai/{strategy}")
             rank = ai_rank_estimation(strategy, settings)
             assert -20 <= rank <= 9
+
+
+class TestFindConnectedGroups:
+    def test_single_stone(self):
+        stones = {(3, 3)}
+        groups = find_connected_groups(stones)
+        assert len(groups) == 1
+        assert groups[0] == {(3, 3)}
+
+    def test_two_connected_stones(self):
+        stones = {(3, 3), (3, 4)}
+        groups = find_connected_groups(stones)
+        assert len(groups) == 1
+        assert groups[0] == {(3, 3), (3, 4)}
+
+    def test_two_separate_groups(self):
+        stones = {(0, 0), (5, 5)}
+        groups = find_connected_groups(stones)
+        assert len(groups) == 2
+
+    def test_diagonal_not_connected(self):
+        stones = {(3, 3), (4, 4)}
+        groups = find_connected_groups(stones)
+        assert len(groups) == 2
+
+    def test_l_shape_group(self):
+        stones = {(0, 0), (1, 0), (1, 1), (1, 2)}
+        groups = find_connected_groups(stones)
+        assert len(groups) == 1
+        assert len(groups[0]) == 4
+
+    def test_empty_input(self):
+        groups = find_connected_groups(set())
+        assert len(groups) == 0

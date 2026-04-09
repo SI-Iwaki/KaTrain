@@ -28,6 +28,34 @@ def register_strategy(strategy_name):
         return strategy_class
     return decorator
 
+def find_connected_groups(stones: set) -> list:
+    """石の座標集合を連結グループに分類する。上下左右の隣接で接続判定。
+
+    Args:
+        stones: {(x, y), ...} 形式の座標集合
+    Returns:
+        [set((x,y), ...), ...] 形式のグループリスト
+    """
+    remaining = set(stones)
+    groups = []
+    while remaining:
+        start = next(iter(remaining))
+        group = set()
+        queue = [start]
+        while queue:
+            coord = queue.pop()
+            if coord in remaining:
+                remaining.discard(coord)
+                group.add(coord)
+                x, y = coord
+                for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                    neighbor = (x + dx, y + dy)
+                    if neighbor in remaining:
+                        queue.append(neighbor)
+        groups.append(group)
+    return groups
+
+
 def interp_ix(lst, x):
     i = 0
     while i + 1 < len(lst) - 1 and lst[i + 1] < x:
