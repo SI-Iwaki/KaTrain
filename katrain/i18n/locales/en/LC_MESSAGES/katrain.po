@@ -932,6 +932,12 @@ msgstr ""
 "Stronger settings select the best move from a larger selection. Since there "
 "is no 0 kyu/dan, 3 dan = -2 kyu."
 
+msgid "ai:siege"
+msgstr "Siege Strategy"
+
+msgid "aihelp:siege"
+msgstr "Concedes territory in the opening, then targets large unstable opponent groups in the mid/endgame for a dramatic comeback."
+
 msgid "ai:human"
 msgstr "Human-like"
 

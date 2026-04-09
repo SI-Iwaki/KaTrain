@@ -56,7 +56,7 @@ AI_SETTLE_STONES = "ai:settle"
 AI_HUMAN = "ai:human"
 AI_PRO = "ai:pro"
 AI_DIVERGE = "ai:diverge_move"
-AI_SIEGE = "ai:攻城戦略"
+AI_SIEGE = "ai:siege"
 
 AI_CONFIG_DEFAULT = AI_RANK
 

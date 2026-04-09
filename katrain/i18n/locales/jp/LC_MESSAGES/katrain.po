@@ -1041,6 +1041,12 @@ msgstr "Limit to moves"
 msgid "contribute:passwordwarning"
 msgstr "(Stored as plain text, do not re-use this anywhere)"
 
+msgid "ai:siege"
+msgstr "攻城戦略"
+
+msgid "aihelp:siege"
+msgstr "序盤は相手に地を譲り、中盤以降に不安定な大石群を攻めて逆転を狙う「背水の陣」モード。"
+
 #. TODO
 msgid "ai:human"
 msgstr "Human-like"

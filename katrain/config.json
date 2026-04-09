@@ -190,7 +190,7 @@
             "divergence_power": 0.5,
             "diverge_score_filter": 2.5
         },
-        "ai:攻城戦略": {
+        "ai:siege": {
             "siege_transition_move": 40,
             "siege_min_group_size": 5,
             "concede_max_loss": 4.0,
