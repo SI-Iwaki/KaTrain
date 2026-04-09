@@ -2727,32 +2727,146 @@ class SiegeStrategy(AIStrategy):
             OUTPUT_DEBUG,
         )
 
-        candidate_moves = self.cn.candidate_moves
-        if not candidate_moves:
-            self.game.katrain.log(f"[SiegeStrategy] No candidate moves, passing", OUTPUT_DEBUG)
-            return Move(None, player=self.cn.next_player), "No candidate moves found, passing."
+        # --- Stage 1: humanSLProfile付きクエリ（9段固定） ---
+        human_profile = "rank_9d"
+        override_settings = {
+            "humanSLProfile": human_profile,
+            "ignorePreRootHistory": False,
+            "maxVisits": 800,
+        }
+        self.game.katrain.log(f"[SiegeStrategy] Stage 1: requesting humanSL analysis ({human_profile})", OUTPUT_DEBUG)
 
-        top_move = Move.from_gtp(candidate_moves[0]["move"], player=self.cn.next_player)
-        if top_move.is_pass:
-            self.game.katrain.log(f"[SiegeStrategy] Top move is pass, forcing pass", OUTPUT_DEBUG)
-            return top_move, "Top move is pass."
+        analysis = None
+        error = False
+
+        def set_analysis(a, partial_result):
+            nonlocal analysis
+            if not partial_result:
+                analysis = a
+
+        def set_error(a):
+            nonlocal error
+            error = True
+            self.game.katrain.log(f"[SiegeStrategy] Error in Stage 1: {a}", OUTPUT_ERROR)
+
+        engine = self.game.engines[self.cn.player]
+        engine.request_analysis(
+            self.cn,
+            callback=set_analysis,
+            error_callback=set_error,
+            priority=PRIORITY_EXTRA_AI_QUERY,
+            include_policy=True,
+            extra_settings=override_settings,
+        )
+
+        while not (error or analysis):
+            time.sleep(0.01)
+            engine.check_alive(exception_if_dead=True)
+
+        if error or not analysis or "humanPolicy" not in analysis:
+            self.game.katrain.log(f"[SiegeStrategy] Stage 1 failed, falling back to standard policy", OUTPUT_DEBUG)
+            candidate_moves = self.cn.candidate_moves
+            if not candidate_moves:
+                return Move(None, player=self.cn.next_player), "No candidate moves found, passing."
+            top_move = Move.from_gtp(candidate_moves[0]["move"], player=self.cn.next_player)
+            if top_move.is_pass:
+                return top_move, "Top move is pass."
+            current_move = self.cn.depth
+            total_moves = bx * board_size[1]
+            force_transition = current_move >= int(total_moves * 0.6)
+            targets = self._find_targets(min_group_size, instability_min)
+            has_target = len(targets) > 0
+            in_attack_phase = (current_move >= transition_move and has_target) or force_transition
+            if in_attack_phase:
+                return self._generate_attack_fallback(candidate_moves, targets, max_loss, proximity_stddev)
+            else:
+                return self._generate_concede_fallback(candidate_moves, concede_max_loss)
+
+        human_policy = analysis["humanPolicy"]
+
+        # --- Stage 2: クリーンクエリ（正確なスコア取得） ---
+        clean_override_settings = {
+            "ignorePreRootHistory": False,
+            "maxVisits": 600,
+            "wideRootNoise": 0.0,
+        }
+        clean_analysis = None
+        clean_error = False
+
+        def set_clean_analysis(a, partial_result):
+            nonlocal clean_analysis
+            if not partial_result:
+                clean_analysis = a
+
+        def set_clean_error(a):
+            nonlocal clean_error
+            clean_error = True
+            self.game.katrain.log(f"[SiegeStrategy] Error in Stage 2: {a}", OUTPUT_ERROR)
+
+        self.game.katrain.log(f"[SiegeStrategy] Stage 2: requesting clean analysis", OUTPUT_DEBUG)
+        engine.request_analysis(
+            self.cn,
+            callback=set_clean_analysis,
+            error_callback=set_clean_error,
+            priority=PRIORITY_EXTRA_AI_QUERY,
+            include_policy=False,
+            extra_settings=clean_override_settings,
+        )
+
+        while not (clean_error or clean_analysis):
+            time.sleep(0.01)
+            engine.check_alive(exception_if_dead=True)
+
+        if clean_analysis and not clean_error:
+            move_infos = clean_analysis.get("moveInfos", [])
+            self.game.katrain.log(f"[SiegeStrategy] Using clean moveInfos ({len(move_infos)} moves)", OUTPUT_DEBUG)
+        else:
+            move_infos = analysis.get("moveInfos", [])
+            self.game.katrain.log(f"[SiegeStrategy] Clean query failed, using Stage 1 moveInfos", OUTPUT_DEBUG)
+
+        # --- スコア計算の前処理 ---
+        player_sign = 1 if self.cn.next_player == "B" else -1
+        best_score = None
+        best_gtp_by_score = None
+        if move_infos:
+            best_score = max(mi.get("scoreLead", 0) * player_sign for mi in move_infos) / player_sign
+            best_gtp_by_score = max(
+                move_infos, key=lambda mi: mi.get("scoreLead", 0) * player_sign
+            ).get("move", "")
+
+            if best_gtp_by_score == "pass":
+                self.game.katrain.log(f"[SiegeStrategy] Best move is pass, forcing pass", OUTPUT_DEBUG)
+                return Move(None, player=self.cn.next_player), "Best move is pass, forcing pass."
+
+        # area scoringルール判定
+        _ruleset = self.cn.ruleset
+        _rules = KataGoEngine.get_rules(_ruleset)
+        is_area_scoring = (
+            (isinstance(_rules, str) and _rules.lower() in ["chinese", "aga", "tromp-taylor", "new zealand", "stone_scoring"])
+            or (isinstance(_rules, dict) and _rules.get("scoring", "").lower() == "area")
+        )
 
         current_move = self.cn.depth
         total_moves = bx * board_size[1]
         force_transition = current_move >= int(total_moves * 0.6)
 
         targets = self._find_targets(min_group_size, instability_min)
-
         has_target = len(targets) > 0
         in_attack_phase = (current_move >= transition_move and has_target) or force_transition
 
         if in_attack_phase:
             phase = "attack (forced)" if force_transition and not has_target else "attack"
             self.game.katrain.log(f"[SiegeStrategy] Phase: {phase}, move={current_move}, targets={len(targets)}", OUTPUT_DEBUG)
-            return self._generate_attack(candidate_moves, targets, max_loss, proximity_stddev)
+            return self._generate_attack(
+                human_policy, move_infos, targets, max_loss, proximity_stddev,
+                player_sign, best_score, best_gtp_by_score, is_area_scoring,
+            )
         else:
             self.game.katrain.log(f"[SiegeStrategy] Phase: concede, move={current_move}", OUTPUT_DEBUG)
-            return self._generate_concede(candidate_moves, concede_max_loss)
+            return self._generate_concede(
+                human_policy, move_infos, concede_max_loss,
+                player_sign, best_score, best_gtp_by_score, is_area_scoring,
+            )
 
     def _find_targets(self, min_group_size, instability_min):
         """ターゲットとなる不安定な相手石群を特定する。"""
@@ -2802,7 +2916,7 @@ class SiegeStrategy(AIStrategy):
 
         return targets
 
-    def _generate_concede(self, candidate_moves, concede_max_loss):
+    def _generate_concede_fallback(self, candidate_moves, concede_max_loss):
         """序盤フェーズ: 最善手を避けつつ地を譲る手を選択する。"""
         player_sign = 1 if self.cn.next_player == "B" else -1
         best_score = max(player_sign * mi["scoreLead"] for mi in candidate_moves)
@@ -2857,7 +2971,7 @@ class SiegeStrategy(AIStrategy):
         self.game.katrain.log(f"[SiegeStrategy:concede] Selected: {aimove.gtp()} loss={selected[0]:.2f}", OUTPUT_DEBUG)
         return aimove, ai_thoughts
 
-    def _generate_attack(self, candidate_moves, targets, max_loss, proximity_stddev):
+    def _generate_attack_fallback(self, candidate_moves, targets, max_loss, proximity_stddev):
         """攻撃フェーズ: ターゲットの大石群に近い手を重み付けして選択する。"""
         player_sign = 1 if self.cn.next_player == "B" else -1
         best_score = max(player_sign * mi["scoreLead"] for mi in candidate_moves)
