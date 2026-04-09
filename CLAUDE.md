@@ -75,9 +75,10 @@ python -m katrain
 1. `C:\Users\iwaki\.katrain\config.json` の `"debug_level": 0` → `1` に変更
 2. `python -m katrain` で起動し、対局を実施
 3. ログをGrepで確認（`log-analysis.md` のパターン参照）:
-   - 着手結果: `Played move|First-impression deviation: played`
+   - 着手結果（共通）: `Selected:|Safety valve.*forced|Tiebreak|Endgame: played`
    - フィルター効果: `moves pass score filter out of`
-   - 設定値: `Initializing HumanStyleStrategy with settings`
+   - 設定値: `Initializing.*Strategy with settings`
+   - フェーズ確認: `Phase:`（SiegeStrategy）/ `Mode:`（FightingStrategy）
 4. 確認後、`debug_level` を `0` に戻す
 
 ## 現在のパラメータ値

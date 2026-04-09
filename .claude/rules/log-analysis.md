@@ -338,6 +338,100 @@ C:\Users\iwaki\.katrain\logs\game_YYYYMMDD_HHMMSS.log を分析し、
 
 ---
 
+## SiegeStrategy（攻城戦略）のログパターン
+
+### 初期化
+
+```
+Generate AI move called with mode: ai:siege
+Initializing SiegeStrategy with settings: {'siege_transition_move': 40, 'siege_min_group_size': 5, ...}
+[SiegeStrategy] Stage 1: requesting humanSL analysis (rank_9d)
+[SiegeStrategy] Stage 2: requesting clean analysis
+[SiegeStrategy] Using clean moveInfos (N moves)
+```
+
+### フェーズ・ターゲット
+
+```
+[SiegeStrategy] Phase: concede, move=N
+[SiegeStrategy] Phase: attack, move=N, targets=M
+[SiegeStrategy] Phase: attack (forced), move=N, targets=0
+[SiegeStrategy] Primary target: size=N, instability=0.XX, score=X.XX
+```
+
+### フィルター通過
+
+```
+[SiegeStrategy:concede] N moves pass score filter out of M (threshold=4.5)
+[SiegeStrategy:concede] N candidate moves (M filtered)
+[SiegeStrategy:attack] N moves pass score filter out of M (threshold=6.0)
+[SiegeStrategy:attack] Targets: N, candidates: M (K filtered)
+```
+
+### 安全弁・タイブレーク・エンドゲーム
+
+```
+[SiegeStrategy:attack] Safety valve: top weighted A19 loss=4.07 >= 4.0, forcing best-score move L16
+[SiegeStrategy:concede] Tiebreak(mcts_nonprefer): D4 over Q4 (score diff=2.5pt)
+[SiegeStrategy:attack] Endgame: playing top humanPolicy move C11
+```
+
+### 通常選択
+
+```
+[SiegeStrategy:concede] Selected: Q4
+[SiegeStrategy:attack] Selected: D16
+```
+
+### Stage 1 失敗時
+
+```
+[SiegeStrategy] Stage 1 failed, falling back to standard policy
+```
+
+### SiegeStrategy よく使うGrepパターン
+
+| 目的 | pattern |
+|---|---|
+| 全着手の選択結果 | `SiegeStrategy.*Selected:\|Safety valve.*forced\|Tiebreak.*:\|Endgame: played` |
+| フィルター通過率 | `SiegeStrategy.*moves pass score filter` |
+| フェーズ遷移 | `SiegeStrategy.*Phase:` |
+| ターゲット情報 | `SiegeStrategy.*Primary target` |
+| 安全弁の発動確認 | `SiegeStrategy.*Safety valve.*forced` |
+| タイブレーク発動確認 | `SiegeStrategy.*Tiebreak` |
+| 設定値の確認 | `Initializing SiegeStrategy with settings` |
+| 異常検出 | `SiegeStrategy.*Stage 1 failed\|SiegeStrategy.*Error` |
+
+### サブエージェントテンプレートF: SiegeStrategy 1局サマリー
+
+```
+subagent_type: Explore
+
+prompt:
+C:\Users\iwaki\.katrain\logs\game_YYYYMMDD_HHMMSS.log を分析し、
+以下をコンパクトに返せ。生ログ行は貼らないこと。
+
+1. 対局設定（盤面サイズ・AI設定値）
+   Grep: "Initializing SiegeStrategy with settings"（最初の1件）
+
+2. フェーズ遷移（concede→attack移行手番、ターゲット数推移）
+   Grep: "SiegeStrategy.*Phase:"（全件）
+
+3. 全着手サマリー表（手番|座標|選択パターン|filtered数）
+   Grep: "SiegeStrategy.*Selected:|Safety valve.*forced|Tiebreak|Endgame: played"
+
+4. ターゲット一覧（サイズ・不安定度・スコア）
+   Grep: "Primary target"
+
+5. 安全弁発動一覧（手番・発動理由・強制手）
+   Grep: "SiegeStrategy.*Safety valve.*forced"
+
+6. タイブレーク発動一覧（手番・トリガー種別・打った手・score diff）
+   Grep: "SiegeStrategy.*Tiebreak"
+```
+
+---
+
 ## humanPolicy=0問題の診断
 
 `memory/feedback_humanpolicy_zero.md` も参照。
