@@ -166,6 +166,10 @@ AI_OPTION_VALUES = {
     "hunt_min_group_size": list(range(2, 11)),  # 2〜10
     "hunt_proximity_stddev": [x / 2 for x in range(3, 13)],  # 1.5〜6.0（0.5刻み）
     "hunt_instability_min": [x / 10 for x in range(1, 9)],  # 0.1〜0.8（0.1刻み）
+    "hunt_invasion_max_loss": [x / 2 for x in range(4, 25)],  # 2.0〜12.0（0.5刻み）
+    "hunt_invasion_min": [x / 20 for x in range(2, 11)],  # 0.1〜0.5（0.05刻み）
+    "hunt_invasion_max": [x / 20 for x in range(8, 19)],  # 0.4〜0.9（0.05刻み）
+    "hunt_invasion_proximity_stddev": [x / 2 for x in range(4, 17)],  # 2.0〜8.0（0.5刻み）
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）
@@ -201,6 +205,10 @@ AI_OPTION_ORDER = {
     "hunt_min_group_size": 1,
     "hunt_proximity_stddev": 10,
     "hunt_instability_min": 11,
+    "hunt_invasion_max_loss": 20,
+    "hunt_invasion_min": 21,
+    "hunt_invasion_max": 22,
+    "hunt_invasion_proximity_stddev": 23,
 }
 
 AI_KEY_PROPERTIES = {
