@@ -6,7 +6,7 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 
 - 上流リポジトリ: https://github.com/sanderland/katrain
 - ランタイム設定: `C:\Users\iwaki\.katrain\`
-- 主な改修: Human-like AI（9段）モードの拡張。悪手フィルタ（スコアベースのフィルタリング）に加え、力戦派（Fighting）・攻城（Siege）・狩猟（Hunt）・AI一致率低減（Divergence）等の戦略モードを追加
+- 主な改修: Human-like AI（9段）モードの拡張。悪手フィルタ（スコアベースのフィルタリング）に加え、力戦派（Fighting）・攻城（Siege）・狩猟（Hunt）・狩猟一致率低減（HuntDivergence）・AI一致率低減（Divergence）等の戦略モードを追加
 
 ## 技術スタック
 
@@ -21,7 +21,7 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 ```
 katrain/
   core/               -- コアロジック
-    ai.py             -- AI着手生成（HumanStyleStrategy, FightingStrategy, SiegeStrategy, HuntStrategy, DivergenceStrategy = 主な改修箇所）
+    ai.py             -- AI着手生成（HumanStyleStrategy, FightingStrategy, SiegeStrategy, HuntStrategy, HuntDivergenceStrategy, DivergenceStrategy = 主な改修箇所）
     constants.py      -- 定数、AI設定ウィジェット定義（AI_OPTION_VALUES）
     engine.py         -- KataGoエンジン管理
     game.py           -- ゲーム状態管理
@@ -54,7 +54,7 @@ python -m katrain
 
 - コミットメッセージは**日本語**で書く
 - Conventional Commits形式を使用（`feat:`, `fix:`, `refactor:` 等）
-- 改修はほぼ `katrain/core/ai.py` の `HumanStyleStrategy` / `FightingStrategy` / `SiegeStrategy` / `HuntStrategy` クラスに集中
+- 改修はほぼ `katrain/core/ai.py` の `HumanStyleStrategy` / `FightingStrategy` / `SiegeStrategy` / `HuntStrategy` / `HuntDivergenceStrategy` クラスに集中
 
 ## やってはいけないこと
 
@@ -63,6 +63,7 @@ python -m katrain
 - **パッケージ`config.json`だけ更新して終わらない** — ユーザーのローカル設定`C:\Users\iwaki\.katrain\config.json`にもキーを追加しないとGUIに表示されない
 - **`analysis_config.cfg`や`katago.exe`を直接編集しない** — ランタイムエンジン設定は手動管理
 - **i18nの`.po`ファイルだけ編集して終わらない** — `python tools/compile_mo.py` で`.mo`にコンパイルしないと翻訳が反映されない
+- **偏差/dodgeメカニズムで生humanPolicyを順位判定に使わない** — proximity/intensity込みのcombined weightを使わないと、攻撃対象から遠い手に差し替わり棋風が崩壊する
 
 ## 開発ワークフロー
 
@@ -84,6 +85,7 @@ python -m katrain
    - 重み付け効果: `Safety v2: top weighted move`（loss値で最善手からの乖離度を確認）
    - 設定値: `Initializing.*Strategy with settings`
    - フェーズ確認: `Phase:`（SiegeStrategy / HuntStrategy）/ `Mode:`（FightingStrategy）
+   - dodge効果: `Best-move dodge:`（HuntDivergenceStrategy）/ `Post-temp safety:`（HuntStrategy温度選択後安全チェック）
 4. 確認後、`debug_level` を `0` に戻す
 
 ## 現在のパラメータ値
