@@ -170,7 +170,7 @@ AI_OPTION_VALUES = {
     "hunt_invasion_min": [x / 20 for x in range(2, 11)],  # 0.1〜0.5（0.05刻み）
     "hunt_invasion_max": [x / 20 for x in range(8, 19)],  # 0.4〜0.9（0.05刻み）
     "hunt_invasion_proximity_stddev": [x / 2 for x in range(4, 17)],  # 2.0〜8.0（0.5刻み）
-    "hunt_invasion_temperature": [1.0, 1.5, 2.0],  # 侵入時の選択温度（高い＝分散）
+    "hunt_invasion_temperature": [1.0, 1.5, 2.0, 2.5, 3.0],  # 侵入時の選択温度（高い＝分散）
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）
