@@ -56,6 +56,64 @@ def find_connected_groups(stones: set) -> list:
     return groups
 
 
+def find_targets(game, cn, min_group_size, instability_min):
+    """ターゲットとなる不安定な相手石群を特定する（共有関数）。
+
+    Args:
+        game: Game オブジェクト（stones, board_size, katrain.log にアクセス）
+        cn: GameNode オブジェクト（ownership, next_player にアクセス）
+        min_group_size: ターゲットとする最小グループサイズ
+        instability_min: ターゲット判定の最小不安定度
+    Returns:
+        [(target_score, instability, group_coords_set), ...] スコア降順
+    """
+    board_size = game.board_size
+    ownership = cn.ownership
+    if not ownership:
+        game.katrain.log("[find_targets] No ownership data available", OUTPUT_DEBUG)
+        return []
+
+    ownership_grid = var_to_grid(ownership, board_size)
+
+    opponent_coords = set()
+    for s in game.stones:
+        if s.player != cn.next_player and s.coords:
+            opponent_coords.add(s.coords)
+
+    if not opponent_coords:
+        return []
+
+    groups = find_connected_groups(opponent_coords)
+
+    targets = []
+    for group in groups:
+        if len(group) < min_group_size:
+            continue
+
+        total_ownership = 0.0
+        for x, y in group:
+            total_ownership += ownership_grid[y][x]
+        avg_ownership = total_ownership / len(group)
+
+        instability = 1.0 - abs(avg_ownership)
+        if instability < instability_min:
+            continue
+
+        target_score = len(group) * instability
+        targets.append((target_score, instability, group))
+
+    targets.sort(key=lambda t: t[0], reverse=True)
+
+    if targets:
+        top = targets[0]
+        game.katrain.log(
+            f"[find_targets] Primary target: size={len(top[2])}, instability={top[1]:.2f}, score={top[0]:.2f}",
+            OUTPUT_DEBUG,
+        )
+
+    return targets
+
+
 def interp_ix(lst, x):
     i = 0
     while i + 1 < len(lst) - 1 and lst[i + 1] < x:
@@ -2774,7 +2832,7 @@ class SiegeStrategy(AIStrategy):
             current_move = self.cn.depth
             total_moves = bx * board_size[1]
             force_transition = current_move >= int(total_moves * 0.6)
-            targets = self._find_targets(min_group_size, instability_min)
+            targets = find_targets(self.game, self.cn, min_group_size, instability_min)
             has_target = len(targets) > 0
             in_attack_phase = (current_move >= transition_move and has_target) or force_transition
             if in_attack_phase:
@@ -2850,7 +2908,7 @@ class SiegeStrategy(AIStrategy):
         total_moves = bx * board_size[1]
         force_transition = current_move >= int(total_moves * 0.6)
 
-        targets = self._find_targets(min_group_size, instability_min)
+        targets = find_targets(self.game, self.cn, min_group_size, instability_min)
         has_target = len(targets) > 0
         in_attack_phase = (current_move >= transition_move and has_target) or force_transition
 
@@ -2867,54 +2925,6 @@ class SiegeStrategy(AIStrategy):
                 human_policy, move_infos, concede_max_loss,
                 player_sign, best_score, best_gtp_by_score, is_area_scoring,
             )
-
-    def _find_targets(self, min_group_size, instability_min):
-        """ターゲットとなる不安定な相手石群を特定する。"""
-        board_size = self.game.board_size
-        ownership = self.cn.ownership
-        if not ownership:
-            self.game.katrain.log(f"[SiegeStrategy] No ownership data available", OUTPUT_DEBUG)
-            return []
-
-        ownership_grid = var_to_grid(ownership, board_size)
-
-        opponent_coords = set()
-        for s in self.game.stones:
-            if s.player != self.cn.next_player and s.coords:
-                opponent_coords.add(s.coords)
-
-        if not opponent_coords:
-            return []
-
-        groups = find_connected_groups(opponent_coords)
-
-        targets = []
-        for group in groups:
-            if len(group) < min_group_size:
-                continue
-
-            total_ownership = 0.0
-            for x, y in group:
-                total_ownership += ownership_grid[y][x]
-            avg_ownership = total_ownership / len(group)
-
-            instability = 1.0 - abs(avg_ownership)
-            if instability < instability_min:
-                continue
-
-            target_score = len(group) * instability
-            targets.append((target_score, instability, group))
-
-        targets.sort(key=lambda t: t[0], reverse=True)
-
-        if targets:
-            top = targets[0]
-            self.game.katrain.log(
-                f"[SiegeStrategy] Primary target: size={len(top[2])}, instability={top[1]:.2f}, score={top[0]:.2f}",
-                OUTPUT_DEBUG,
-            )
-
-        return targets
 
     def _generate_concede(self, human_policy, move_infos, concede_max_loss,
                           player_sign, best_score, best_gtp_by_score, is_area_scoring):
