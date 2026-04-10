@@ -1074,6 +1074,19 @@ msgstr ""
 "hunt_invasion_proximity_stddev: 侵入手の分散度。小さい＝侵入先に集中、大きい＝広く分散して侵入。\n"
 "hunt_invasion_temperature: 侵入手の選択温度。大きい＝侵入先付近の手からより多様に選択。1.0＝変更なし。"
 
+msgid "ai:hunt_diverge"
+msgstr "狩猟戦略（一致率低減）"
+
+msgid "aihelp:hunt_diverge"
+msgstr ""
+"狩猟戦略（一致率低減）: 狩猟戦略と同じ侵入・石群攻撃の棋風を維持しつつ、"
+"AI最善手一致率を低減します。KataGo最善手が選ばれた際に、スコア僅差かつ"
+"humanPolicy上位の代替手があれば差し替えます。\n"
+"hunt_dodge_max_loss: dodge対象とするスコア僅差の閾値（目数）。"
+"大きい＝dodge機会が増えるが弱い手も選ばれる。\n"
+"hunt_dodge_top_n: dodge対象とするhumanPolicy上位N位。"
+"小さい＝より自然な手だけを対象にする。"
+
 #. TODO
 msgid "ai:human"
 msgstr "Human-like"

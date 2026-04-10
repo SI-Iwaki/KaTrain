@@ -981,6 +981,20 @@ msgstr ""
 "hunt_invasion_temperature: Selection temperature for invasion moves. "
 "Higher = more variety in move selection while staying near invasion targets. 1.0 = no change."
 
+msgid "ai:hunt_diverge"
+msgstr "Hunt Strategy (Low Agreement)"
+
+msgid "aihelp:hunt_diverge"
+msgstr ""
+"Hunt Strategy (Low Agreement): Same aggressive invasion and group attack "
+"as Hunt Strategy, but with reduced AI top-move agreement rate. Uses "
+"Best-move dodge to avoid playing KataGo's top choice when a close "
+"alternative exists.\n"
+"hunt_dodge_max_loss: Maximum score loss for dodge alternatives. "
+"Larger = more dodge opportunities but weaker moves.\n"
+"hunt_dodge_top_n: Only consider top N humanPolicy moves as dodge "
+"alternatives. Smaller = more natural moves."
+
 msgid "ai:human"
 msgstr "Human-like"
 
