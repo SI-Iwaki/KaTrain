@@ -1071,7 +1071,8 @@ msgstr ""
 "hunt_invasion_max_loss: 侵入時に許容する最大損失（目数）。大きい＝積極的に侵入、小さい＝慎重に侵入。\n"
 "hunt_invasion_min: 侵入対象とする相手ownership強度の下限。小さい＝弱い勢力圏も侵入、大きい＝強い勢力圏だけ侵入。\n"
 "hunt_invasion_max: 侵入対象とする相手ownership強度の上限。大きい＝確定地近くも侵入、小さい＝未確定地だけ侵入。\n"
-"hunt_invasion_proximity_stddev: 侵入手の分散度。小さい＝侵入先に集中、大きい＝広く分散して侵入。"
+"hunt_invasion_proximity_stddev: 侵入手の分散度。小さい＝侵入先に集中、大きい＝広く分散して侵入。\n"
+"hunt_invasion_deviation_rate: 侵入時の第一感ぶれ適用率。最善手一致率を下げつつ強さを維持する。大きい＝ぶれやすい。"
 
 #. TODO
 msgid "ai:human"
