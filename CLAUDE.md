@@ -21,7 +21,7 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 ```
 katrain/
   core/               -- コアロジック
-    ai.py             -- AI着手生成（HumanStyleStrategy, FightingStrategy, SiegeStrategy = 主な改修箇所）
+    ai.py             -- AI着手生成（HumanStyleStrategy, FightingStrategy, SiegeStrategy, HuntStrategy = 主な改修箇所）
     constants.py      -- 定数、AI設定ウィジェット定義（AI_OPTION_VALUES）
     engine.py         -- KataGoエンジン管理
     game.py           -- ゲーム状態管理
@@ -52,7 +52,7 @@ python -m katrain
 
 - コミットメッセージは**日本語**で書く
 - Conventional Commits形式を使用（`feat:`, `fix:`, `refactor:` 等）
-- 改修はほぼ `katrain/core/ai.py` の `HumanStyleStrategy` / `FightingStrategy` / `SiegeStrategy` クラスに集中
+- 改修はほぼ `katrain/core/ai.py` の `HumanStyleStrategy` / `FightingStrategy` / `SiegeStrategy` / `HuntStrategy` クラスに集中
 
 ## やってはいけないこと
 
@@ -60,6 +60,7 @@ python -m katrain
 - **Stage 1（humanSLProfile付き）の`scoreLead`をフィルタ判定に使わない** — バイアスされているため、必ずStage 2のクリーンクエリの値を使う
 - **パッケージ`config.json`だけ更新して終わらない** — ユーザーのローカル設定`C:\Users\iwaki\.katrain\config.json`にもキーを追加しないとGUIに表示されない
 - **`analysis_config.cfg`や`katago.exe`を直接編集しない** — ランタイムエンジン設定は手動管理
+- **i18nの`.po`ファイルだけ編集して終わらない** — `python tools/compile_mo.py` で`.mo`にコンパイルしないと翻訳が反映されない
 
 ## 開発ワークフロー
 
@@ -68,6 +69,7 @@ python -m katrain
   - `katrain/core/constants.py` / `katrain/config.json` 編集時 → `ai-settings-gui.md`（AI設定追加手順）
   - `katrain/core/base_katrain.py` 編集時 → `base-katrain-config.md`（JsonStore構造・起動時リセットパターン）
   - `**/*.log` 分析時 → `log-analysis.md`（Grepパターン、サブエージェントテンプレート）
+- **i18n変更時は `.po` 編集後に `python tools/compile_mo.py` で `.mo` を再コンパイルすること**
 - **パラメータ変更時は必ず下記テーブルも同時に更新すること**
 
 ## 変更の検証方法
@@ -78,7 +80,7 @@ python -m katrain
    - 着手結果（共通）: `Selected:|Safety valve.*forced|Tiebreak|Endgame: played`
    - フィルター効果: `moves pass score filter out of`
    - 設定値: `Initializing.*Strategy with settings`
-   - フェーズ確認: `Phase:`（SiegeStrategy / FightingStrategy:hunt）/ `Mode:`（FightingStrategy）
+   - フェーズ確認: `Phase:`（SiegeStrategy / HuntStrategy）/ `Mode:`（FightingStrategy）
 4. 確認後、`debug_level` を `0` に戻す
 
 ## 現在のパラメータ値
@@ -113,7 +115,7 @@ Stage1とGUI/analysis_configの3箇所を同じ値に揃える。Stage2は独立
 
 | パラメータ | デフォルト値 | 備考 |
 |---|---|---|
-| fighting_mode | "classic" | "classic" / "scoreloss" / "human" / "hunt" |
+| fighting_mode | "classic" | "classic" / "scoreloss" / "human" |
 | fighting_max_loss | 3.0 | scorelossモード専用の悪手フィルタ閾値（目数） |
 | force_tengen_opening | false | ONで黒番初手のみ天元に打つ |
 | fighting_invasion_bonus | 1.0 | 相手地への侵入手の重みボーナス（全モード共通、最大5.0） |
@@ -124,13 +126,13 @@ Stage1とGUI/analysis_configの3箇所を同じ値に揃える。Stage2は独立
 
 humanモードの悪手フィルタ閾値はHumanStyleStrategyと同じBAD_MOVE_THRESHOLD（19路 NORMAL=5.6 / OPENING=2.8、9路 NORMAL=3.3 / OPENING=0.5）を使用。`fighting_max_loss`は無効。
 
-### 狩猟モード（FightingStrategy hunt）
+### 狩猟戦略（HuntStrategy）
 
-相手の弱い石群を見つけて集中攻撃する狩猟モード。ターゲットがない序盤は通常の9段として着手し、弱い石群が出現したら集中攻撃に切り替える。攻め切れないと判断したら次のターゲットに移る。9路盤は非対応（humanモードにフォールバック）。
+独立した戦略（`ai:hunt`）。相手の弱い石群を見つけて集中攻撃する狩猟モード。ターゲットがない序盤は通常の9段として着手し、弱い石群が出現したら集中攻撃に切り替える。攻め切れないと判断したら次のターゲットに移る。対応盤面: 19路・13路（9路は非対応）。
 
-**着手選択**: humanモードと同じ2段階クエリ方式。重み = `humanPolicy × proximity × target_instability`（ターゲットあり時）/ `humanPolicy`（ターゲットなし時）。安全弁・タイブレーク・エンドゲーム処理はhumanモードと同じ。
+**着手選択**: 2段階クエリ方式（humanSL 9段固定）。重み = `humanPolicy × proximity × target_instability`（ターゲットあり時）/ `humanPolicy`（ターゲットなし時）。安全弁・タイブレーク・エンドゲーム処理あり。
 
-**ターゲット検出**: `find_targets()`（SiegeStrategyと共有）で毎手再評価。不安定度が閾値以下になった石群は自動的にターゲットから外れる。
+**ターゲット検出**: `find_targets()`（SiegeStrategyと共有のモジュールレベル関数）で毎手再評価。不安定度が閾値以下になった石群は自動的にターゲットから外れる。
 
 | パラメータ | デフォルト(19路) | デフォルト(13路) | 備考 |
 |---|---|---|---|

@@ -58,11 +58,26 @@ if not star_moves:
 | `first_impression_green_blend` | bool | false | deviation ON時、緑の第一感と偏差手をgreen_ratioで選択 |
 | `green_blend_green_ratio` | float | 0.5 | green_blend時の緑手確率（0.4=dev寄り/0.5=均等/0.6=緑寄り、スライダー） |
 
+## GUI設定画面の制約
+
+- **GridLayout行数上限**: `katrain/gui/popups.py` の `ConfigAIPopup.max_options = 15` が1戦略あたりの最大設定項目数。超過すると `GridLayoutException: Too many children in GridLayout` が発生する。項目数が多い場合は独立した戦略（`ai:新名前`）に分離すること
+- **i18nコンパイル必須**: `.po` ファイル編集後は `python tools/compile_mo.py` で `.mo` を再コンパイルしないと翻訳が反映されない（戦略名が `ai:xxx` のまま表示される）
+
 ## チェックリスト（新機能追加時）
 
 - [ ] `katrain/core/constants.py` — `AI_OPTION_VALUES` に追加
-- [ ] `katrain/core/ai.py` — `HumanStyleStrategy.generate_move()` にロジック追加
-- [ ] `katrain/config.json` — `"ai:human"` にデフォルト値追加
-- [ ] `C:\Users\iwaki\.katrain\config.json` — `"ai:human"` に同じキー追加
+- [ ] `katrain/core/ai.py` — 対象Strategyクラスにロジック追加
+- [ ] `katrain/config.json` — 対象戦略セクションにデフォルト値追加
+- [ ] `C:\Users\iwaki\.katrain\config.json` — 同じキー追加（GUIに表示するため）
 - [ ] CLAUDE.md を更新（新機能の説明、パラメータ等）
 - [ ] 起動時リセットが必要な場合は `base_katrain.py` の `_load_config` 末尾に追加
+
+## チェックリスト（新戦略追加時）
+
+上記に加えて:
+- [ ] `katrain/core/constants.py` — `AI_XXX` 定数追加、`AI_STRATEGIES`・`AI_STRATEGIES_RECOMMENDED_ORDER`・`AI_STRENGTH` に登録
+- [ ] `katrain/core/ai.py` — import に `AI_XXX` 追加、`@register_strategy(AI_XXX)` クラス新設
+- [ ] `katrain/i18n/locales/en/LC_MESSAGES/katrain.po` — `ai:xxx` / `aihelp:xxx` 追加
+- [ ] `katrain/i18n/locales/jp/LC_MESSAGES/katrain.po` — 同上（日本語）
+- [ ] `python tools/compile_mo.py` で `.mo` を再コンパイル
+- [ ] 設定項目数が `max_options`（現在15）を超えないか確認
