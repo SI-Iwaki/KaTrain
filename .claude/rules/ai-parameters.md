@@ -67,6 +67,7 @@ humanモードの悪手フィルタ閾値はHumanStyleStrategyと同じBAD_MOVE_
 | hunt_invasion_min | 0.2 | 0.2 | 侵入対象ownership強度の下限 |
 | hunt_invasion_max | 0.7 | 0.7 | 侵入対象ownership強度の上限 |
 | hunt_invasion_proximity_stddev | 3.0 | 3.0 | 侵入用の近接重みの標準偏差 |
+| hunt_invasion_deviation_rate | 0.7 | 0.7 | 侵入フェーズの第一感ぶれ適用率（0.5/0.7/0.9） |
 
 ## AI一致率低減モード（DivergenceStrategy）
 
