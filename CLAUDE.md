@@ -6,7 +6,7 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 
 - 上流リポジトリ: https://github.com/sanderland/katrain
 - ランタイム設定: `C:\Users\iwaki\.katrain\`
-- 主な改修: Human-like AI（9段）モードに悪手フィルタを追加。KataGoの`moveInfos`でスコアベースのフィルタリングを行い、大悪手を除外してからhumanPolicy重みで選択する
+- 主な改修: Human-like AI（9段）モードの拡張。悪手フィルタ（スコアベースのフィルタリング）に加え、力戦派（Fighting）・攻城（Siege）・狩猟（Hunt）・AI一致率低減（Divergence）等の戦略モードを追加
 
 ## 技術スタック
 
@@ -21,7 +21,7 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 ```
 katrain/
   core/               -- コアロジック
-    ai.py             -- AI着手生成（HumanStyleStrategy, FightingStrategy, SiegeStrategy, HuntStrategy = 主な改修箇所）
+    ai.py             -- AI着手生成（HumanStyleStrategy, FightingStrategy, SiegeStrategy, HuntStrategy, DivergenceStrategy = 主な改修箇所）
     constants.py      -- 定数、AI設定ウィジェット定義（AI_OPTION_VALUES）
     engine.py         -- KataGoエンジン管理
     game.py           -- ゲーム状態管理
@@ -46,6 +46,8 @@ cd C:\Users\iwaki\Documents\katrain-1.17.1.1\katrain-1.17.1.1
 python -m katrain
 ```
 
+テスト: `pytest`（SGFパーサ、盤面ロジック、AI着手生成のユニットテスト）
+
 デバッグ: `C:\Users\iwaki\.katrain\config.json` の `"debug_level": 0` → `1` に変更して起動。確認後 `0` に戻す。
 
 ## コーディング規約
@@ -65,12 +67,12 @@ python -m katrain
 ## 開発ワークフロー
 
 - 詳細な実装ガイド・チェックリストは `.claude/rules/` に格納。対象ファイル編集時に自動ロードされる:
-  - `katrain/core/ai.py` 編集時 → `ai-humanstyle.md`（フィルタ実装詳細、パラメータチェックリスト）
+  - `katrain/core/ai.py` 編集時 → `ai-humanstyle.md`（フィルタ実装詳細、パラメータチェックリスト）、`ai-parameters.md`（全戦略パラメータ値）
   - `katrain/core/constants.py` / `katrain/config.json` 編集時 → `ai-settings-gui.md`（AI設定追加手順）
   - `katrain/core/base_katrain.py` 編集時 → `base-katrain-config.md`（JsonStore構造・起動時リセットパターン）
   - `**/*.log` 分析時 → `log-analysis.md`（Grepパターン、サブエージェントテンプレート）
 - **i18n変更時は `.po` 編集後に `python tools/compile_mo.py` で `.mo` を再コンパイルすること**
-- **パラメータ変更時は必ず下記テーブルも同時に更新すること**
+- **パラメータ変更時は `.claude/rules/ai-parameters.md` のテーブルも同時に更新すること**
 
 ## 変更の検証方法
 
@@ -79,98 +81,11 @@ python -m katrain
 3. ログをGrepで確認（`log-analysis.md` のパターン参照）:
    - 着手結果（共通）: `Selected:|Safety valve.*forced|Tiebreak|Endgame: played`
    - フィルター効果: `moves pass score filter out of`
+   - 重み付け効果: `Safety v2: top weighted move`（loss値で最善手からの乖離度を確認）
    - 設定値: `Initializing.*Strategy with settings`
    - フェーズ確認: `Phase:`（SiegeStrategy / HuntStrategy）/ `Mode:`（FightingStrategy）
 4. 確認後、`debug_level` を `0` に戻す
 
 ## 現在のパラメータ値
 
-### 悪手フィルタ閾値
-
-| パラメータ | 19路・13路 | 9路盤 |
-|---|---|---|
-| OPENING_THRESHOLD | 2.8 | 0.5 |
-|NORMAL_THRESHOLD | 5.6 | 3.3 |
-
-### 第一感ぶれ（全盤面）
-
-| パラメータ | デフォルト値 | 備考 |
-|---|---|---|
-| first_impression_deviation | false | ONで第一感上位3位中のhumanPolicy≥5%かつ損失0.5〜上限目の手のうち最も損失の少ない手を確定選択（9路=1.5目、13路・19路=2.0目） |
-| first_impression_deviation_opening | false | ON（+deviation ON）で序盤でも第一感ぶれを適用する（デフォルトOFF=序盤は無効） |
-| first_impression_green_blend | false | ON（+deviation ON）で第一感1位が緑(loss<0.5)かつ非最善の場合、第一感1位と上位3位中の最小損失手(0.5〜上限)をgreen_ratioで選択 |
-| green_blend_green_ratio | 0.5 | green_blend時の緑手選択確率（0.4=dev寄り40/60・0.5=均等50/50・0.6=緑寄り60/40） |
-
-### エンジン設定（maxVisits）
-
-Stage1とGUI/analysis_configの3箇所を同じ値に揃える。Stage2は独立値。
-
-| 場所 | 現在値 | 役割 |
-|---|---|---|
-| ai.py `override_settings["maxVisits"]` | 800 | Stage1: HumanSL着手選択 |
-| ai.py `clean_override_settings["maxVisits"]` | 600 | Stage2: クリーンスコア検証（独立値） |
-| GUI `max_visits` / `analysis_config.cfg` | 800 | 事後分析クエリ（Stage1と揃える） |
-
-### 力戦派モード（FightingStrategy）
-
-| パラメータ | デフォルト値 | 備考 |
-|---|---|---|
-| fighting_mode | "classic" | "classic" / "scoreloss" / "human" |
-| fighting_max_loss | 3.0 | scorelossモード専用の悪手フィルタ閾値（目数） |
-| force_tengen_opening | false | ONで黒番初手のみ天元に打つ |
-| fighting_invasion_bonus | 1.0 | 相手地への侵入手の重みボーナス（全モード共通、最大5.0） |
-| fighting_contact_boost | 1.0 | 相手石への接触手（距離1）の重みブースト（全モード共通、最大5.0） |
-| fighting_chaos_relax | 0.0 | humanモード: 相手地への接触手の悪手閾値を緩和する目数（最大3.0） |
-| unsettled_power | 2.0 | 未確定地への重み指数（大きいほど未確定地に集中） |
-| proximity_stddev | 3.0 | 相手石への近接重みの標準偏差（小さいほど近距離に集中、最小2.0） |
-
-humanモードの悪手フィルタ閾値はHumanStyleStrategyと同じBAD_MOVE_THRESHOLD（19路 NORMAL=5.6 / OPENING=2.8、9路 NORMAL=3.3 / OPENING=0.5）を使用。`fighting_max_loss`は無効。
-
-### 狩猟戦略（HuntStrategy）
-
-独立した戦略（`ai:hunt`）。相手の弱い石群を見つけて集中攻撃する狩猟モード。ターゲットがない序盤は通常の9段として着手し、弱い石群が出現したら集中攻撃に切り替える。攻め切れないと判断したら次のターゲットに移る。対応盤面: 19路・13路（9路は非対応）。
-
-**着手選択**: 2段階クエリ方式（humanSL 9段固定）。重み = `humanPolicy × proximity × target_instability`（ターゲットあり時）/ `humanPolicy`（ターゲットなし時）。安全弁・タイブレーク・エンドゲーム処理あり。
-
-**ターゲット検出**: `find_targets()`（SiegeStrategyと共有のモジュールレベル関数）で毎手再評価。不安定度が閾値以下になった石群は自動的にターゲットから外れる。
-
-| パラメータ | デフォルト(19路) | デフォルト(13路) | 備考 |
-|---|---|---|---|
-| hunt_max_loss | 6.0 | 4.0 | 攻撃時の許容最大損失（目） |
-| hunt_min_group_size | 5 | 4 | ターゲット最小グループサイズ |
-| hunt_proximity_stddev | 3.0 | 2.5 | ターゲット近接重みの標準偏差 |
-| hunt_instability_min | 0.3 | 0.3 | ターゲット判定の最小不安定度 |
-
-### AI一致率低減モード（DivergenceStrategy）
-
-評価レポートの AI 最善手一致率≤30%・上位5手一致率≤40%・平均損失<1.00 を目標とする新戦略モード。
-
-**目標値**: `ai_top_move ≤ 30%`, `ai_top5_move ≤ 40%`, `mean_ptloss < 1.00`
-
-**アルゴリズム**: `divergence_score = humanPolicy × (order+1)^divergence_power`
-（order: KataGo の探索順位、0=最善手。大きいほど AI 下位手をブースト）
-
-| パラメータ | デフォルト値 | 備考 |
-|---|---|---|
-| human_kyu_rank | -8（9段） | humanSLプロファイルのベース段位 |
-| divergence_power | 0.5 | AI一致率低減強度（0.3〜1.5）。大きいほど AI 下位手をブースト |
-| diverge_score_filter | 2.5 | 許容する最大損失（目数）（1.0〜5.0） |
-
-**注意**: `divergence_power` のデフォルト値は実戦テストで調整が必要。目標値に届かない場合は 0.3 刻みで引き上げる。
-
-### 攻城戦略（SiegeStrategy）
-
-序盤は相手に地を譲り、中盤以降に不安定な大石群を攻めて逆転を狙う「背水の陣」モード。対応盤面: 19路・13路。
-
-**着手選択**: HumanStyleStrategy/FightingStrategy (human) と同じ2段階クエリ方式。Stage 1でhumanPolicy（9段固定）を取得し、Stage 2のクリーンスコアでフィルタ。重み = `humanPolicy × 戦略重み`（concedeはconcede_score、attackはproximity × instability）。安全弁・タイブレーク・エンドゲーム処理あり。エンドゲーム閾値: `ceil(0.5 × 盤面マス数)`（19路=181手目）。
-
-**フェーズ**: 序盤（Concede）→ 攻撃（Attack）。手数条件 + ターゲット存在で切替。60%経過で強制移行。
-
-| パラメータ | デフォルト値(19路) | デフォルト値(13路) | 備考 |
-|---|---|---|---|
-| siege_transition_move | 40 | 25 | 攻撃フェーズ移行の最小手数 |
-| siege_min_group_size | 5 | 4 | ターゲット最小グループサイズ |
-| concede_max_loss | 4.5 | 3.0 | 序盤の許容最大損失（目） |
-| siege_max_loss | 6.0 | 4.0 | 攻撃時の許容最大損失（目） |
-| siege_proximity_stddev | 3.0 | 2.5 | ターゲット近接重みの標準偏差 |
-| siege_instability_min | 0.3 | 0.3 | ターゲット判定の最小不安定度 |
+`.claude/rules/ai-parameters.md` に全戦略のパラメータテーブルを格納（`ai.py` 編集時に自動ロード）。
