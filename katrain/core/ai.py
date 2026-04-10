@@ -3484,7 +3484,7 @@ class HuntStrategy(AIStrategy):
         hunt_invasion_min = self.settings.get("hunt_invasion_min", 0.2)
         hunt_invasion_max = self.settings.get("hunt_invasion_max", 0.7)
         hunt_invasion_prox_stddev = self.settings.get("hunt_invasion_proximity_stddev", default_invasion_prox_stddev)
-        hunt_invasion_deviation_rate = self.settings.get("hunt_invasion_deviation_rate", 0.7)
+        hunt_invasion_temperature = self.settings.get("hunt_invasion_temperature", 1.5)
 
         self.game.katrain.log(
             f"[HuntStrategy] Starting move generation "
@@ -3492,7 +3492,7 @@ class HuntStrategy(AIStrategy):
             f"prox_stddev={hunt_proximity_stddev}, instability_min={hunt_instability_min}, "
             f"inv_max_loss={hunt_invasion_max_loss}, inv_min={hunt_invasion_min}, "
             f"inv_max={hunt_invasion_max}, inv_prox_stddev={hunt_invasion_prox_stddev}, "
-            f"inv_deviation_rate={hunt_invasion_deviation_rate})",
+            f"inv_temperature={hunt_invasion_temperature})",
             OUTPUT_DEBUG,
         )
 
@@ -3808,7 +3808,6 @@ class HuntStrategy(AIStrategy):
         inv_prox_var = hunt_invasion_prox_stddev ** 2
         has_ownership_grid = bool(ownership)
         moves = []
-        hp_only_moves = []  # humanPolicy単体順（第一感ぶれ用）
         filtered_count = 0
         has_filter = len(good_moves) > 0
 
@@ -3821,7 +3820,6 @@ class HuntStrategy(AIStrategy):
                         filtered_count += 1
                     else:
                         hp_weight = human_policy[idx]
-                        hp_only_moves.append((m, hp_weight))
 
                         # 自陣回避ペナルティ: 自分の地ほど重みを下げる
                         if has_ownership_grid:
@@ -3985,40 +3983,13 @@ class HuntStrategy(AIStrategy):
                         f"(score diff={abs(s1-s2):.1f}pt). ({filtered_count} filtered)"
                     )
 
-        # --- Invadeフェーズ: 第一感ぶれ（humanPolicy順の上位3位から候補選択） ---
-        hp_top3 = sorted(hp_only_moves, key=lambda x: -x[1])[:3]
-        if phase_name == "Invade" and len(hp_top3) >= 2 and move_infos and best_score is not None:
-            if random.random() < hunt_invasion_deviation_rate:
-                _score_by_gtp_dev = {mi.get("move", ""): mi.get("scoreLead", 0) for mi in move_infos}
-                _DEV_LOSS_MIN = 0.5
-                _DEV_LOSS_MAX = 2.0
-                dev_candidates = []
-                for m, w in hp_top3:
-                    gtp = m.gtp()
-                    if gtp in _score_by_gtp_dev:
-                        loss = player_sign * (best_score - _score_by_gtp_dev[gtp])
-                        if _DEV_LOSS_MIN <= loss < _DEV_LOSS_MAX:
-                            dev_candidates.append((m, loss))
-                if dev_candidates:
-                    dev_move, dev_loss = min(dev_candidates, key=lambda x: x[1])
-                    self.game.katrain.log(
-                        f"[HuntStrategy] Invade deviation: {dev_move.gtp()} "
-                        f"(loss={dev_loss:.2f}, rate={hunt_invasion_deviation_rate})",
-                        OUTPUT_DEBUG,
-                    )
-                    return dev_move, (
-                        f"\n{top_str}\n\nInvade deviation: played {dev_move.gtp()} "
-                        f"(loss={dev_loss:.2f}). ({filtered_count} bad moves filtered)"
-                    )
-                else:
-                    self.game.katrain.log(
-                        "[HuntStrategy] Invade deviation: no candidates in 0.5-2.0 range, "
-                        "falling back to weighted selection",
-                        OUTPUT_DEBUG,
-                    )
-
-        # 重み付き選択
-        selected = weighted_selection_without_replacement(moves, 1)[0]
+        # 重み付き選択（Invadeフェーズは温度で分布を平坦化）
+        if phase_name == "Invade" and hunt_invasion_temperature != 1.0:
+            inv_temp = 1.0 / hunt_invasion_temperature
+            temp_moves = [(m, w ** inv_temp) for m, w in moves]
+            selected = weighted_selection_without_replacement(temp_moves, 1)[0]
+        else:
+            selected = weighted_selection_without_replacement(moves, 1)[0]
         move = selected[0]
         self.game.katrain.log(f"[HuntStrategy] Selected: {move.gtp()} ({phase_name})", OUTPUT_DEBUG)
 

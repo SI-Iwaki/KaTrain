@@ -179,7 +179,7 @@
             "hunt_invasion_min": 0.2,
             "hunt_invasion_max": 0.7,
             "hunt_invasion_proximity_stddev": 3.0,
-            "hunt_invasion_deviation_rate": 0.7
+            "hunt_invasion_temperature": 1.5
         },
         "ai:p:rank": {
             "kyu_rank": 4.0
