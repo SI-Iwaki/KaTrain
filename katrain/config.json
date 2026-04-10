@@ -174,7 +174,11 @@
             "hunt_max_loss": 6.0,
             "hunt_min_group_size": 5,
             "hunt_proximity_stddev": 3.0,
-            "hunt_instability_min": 0.3
+            "hunt_instability_min": 0.3,
+            "hunt_invasion_max_loss": 8.0,
+            "hunt_invasion_min": 0.2,
+            "hunt_invasion_max": 0.7,
+            "hunt_invasion_proximity_stddev": 5.0
         },
         "ai:p:rank": {
             "kyu_rank": 4.0
