@@ -863,10 +863,14 @@
             font_size: sp(Theme.DESC_FONT_SIZE)
             id: estimated_rank_label
             text: '?' + i18n._('strength:kyu')
-    SmallDescriptionLabel:
-        id: help_label
-        size_hint: 1,1.25
-        text: i18n._('')
+    ScrollView:
+        size_hint: 1, 1.25
+        bar_width: dp(4)
+        SmallDescriptionLabel:
+            id: help_label
+            size_hint_y: None
+            height: max(self.texture_size[1], 1)
+            text: i18n._('')
     GridLayout:
         size_hint: 1, 4
         id: options_grid
