@@ -3988,6 +3988,20 @@ class HuntStrategy(AIStrategy):
             inv_temp = 1.0 / hunt_invasion_temperature
             temp_moves = [(m, w ** inv_temp) for m, w in moves]
             selected = weighted_selection_without_replacement(temp_moves, 1)[0]
+            # 温度選択後の安全チェック: 選択手のlossがhunt_max_lossを超えたらtop weighted moveにフォールバック
+            if move_infos and best_gtp_by_score:
+                _sel_gtp = selected[0].gtp()
+                _pt_score_map = {mi.get("move", ""): mi.get("scoreLead", 0) for mi in move_infos}
+                if _sel_gtp in _pt_score_map and _sel_gtp != best_gtp_by_score:
+                    _sel_loss = player_sign * (best_score - _pt_score_map[_sel_gtp])
+                    if _sel_loss >= hunt_max_loss:
+                        _top_w_move = max(moves, key=lambda x: x[1])[0]
+                        self.game.katrain.log(
+                            f"[HuntStrategy] Post-temp safety: {_sel_gtp} loss={_sel_loss:.2f} >= {hunt_max_loss}, "
+                            f"fallback to top weighted {_top_w_move.gtp()}",
+                            OUTPUT_DEBUG,
+                        )
+                        selected = (_top_w_move, 0)
         else:
             selected = weighted_selection_without_replacement(moves, 1)[0]
         move = selected[0]
