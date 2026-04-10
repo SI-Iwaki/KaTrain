@@ -147,6 +147,7 @@ AI_OPTION_VALUES = {
         ("classic", "[fighting:classic]"),
         ("scoreloss", "[fighting:scoreloss]"),
         ("human", "[fighting:human]"),
+        ("hunt", "[fighting:hunt]"),
     ],
     "fighting_max_loss": [x / 2 for x in range(1, 21)],  # 0.5〜10.0（0.5刻み）
     "force_tengen_opening": "bool",
@@ -159,6 +160,10 @@ AI_OPTION_VALUES = {
     "siege_max_loss": [x / 2 for x in range(2, 15)],  # 1.0〜7.0（0.5刻み）
     "siege_proximity_stddev": [x / 2 for x in range(4, 13)],  # 2.0〜6.0（0.5刻み）
     "siege_instability_min": [x / 10 for x in range(1, 6)],  # 0.1〜0.5（0.1刻み）
+    "hunt_max_loss": [x / 2 for x in range(2, 21)],  # 1.0〜10.0（0.5刻み）
+    "hunt_min_group_size": list(range(2, 11)),  # 2〜10
+    "hunt_proximity_stddev": [x / 2 for x in range(3, 13)],  # 1.5〜6.0（0.5刻み）
+    "hunt_instability_min": [x / 10 for x in range(1, 9)],  # 0.1〜0.8（0.1刻み）
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）
@@ -190,6 +195,10 @@ AI_OPTION_ORDER = {
     "siege_max_loss": 11,
     "siege_proximity_stddev": 20,
     "siege_instability_min": 21,
+    "hunt_max_loss": 6,
+    "hunt_min_group_size": 7,
+    "hunt_proximity_stddev": 8,
+    "hunt_instability_min": 9,
 }
 
 AI_KEY_PROPERTIES = {
