@@ -3484,13 +3484,15 @@ class HuntStrategy(AIStrategy):
         hunt_invasion_min = self.settings.get("hunt_invasion_min", 0.2)
         hunt_invasion_max = self.settings.get("hunt_invasion_max", 0.7)
         hunt_invasion_prox_stddev = self.settings.get("hunt_invasion_proximity_stddev", default_invasion_prox_stddev)
+        hunt_invasion_deviation_rate = self.settings.get("hunt_invasion_deviation_rate", 0.7)
 
         self.game.katrain.log(
             f"[HuntStrategy] Starting move generation "
             f"(max_loss={hunt_max_loss}, min_group={hunt_min_group_size}, "
             f"prox_stddev={hunt_proximity_stddev}, instability_min={hunt_instability_min}, "
             f"inv_max_loss={hunt_invasion_max_loss}, inv_min={hunt_invasion_min}, "
-            f"inv_max={hunt_invasion_max}, inv_prox_stddev={hunt_invasion_prox_stddev})",
+            f"inv_max={hunt_invasion_max}, inv_prox_stddev={hunt_invasion_prox_stddev}, "
+            f"inv_deviation_rate={hunt_invasion_deviation_rate})",
             OUTPUT_DEBUG,
         )
 
@@ -3979,6 +3981,37 @@ class HuntStrategy(AIStrategy):
                     return winner, (
                         f"\n{top_str}\n\nScore tiebreak({trigger}): played {winner.gtp()} "
                         f"(score diff={abs(s1-s2):.1f}pt). ({filtered_count} filtered)"
+                    )
+
+        # --- Invadeフェーズ: 第一感ぶれ ---
+        if phase_name == "Invade" and len(top5) >= 2 and move_infos and best_score is not None:
+            if random.random() < hunt_invasion_deviation_rate:
+                _score_by_gtp_dev = {mi.get("move", ""): mi.get("scoreLead", 0) for mi in move_infos}
+                _DEV_LOSS_MIN = 0.5
+                _DEV_LOSS_MAX = 2.0
+                dev_candidates = []
+                for m, w in top5[:3]:
+                    gtp = m.gtp()
+                    if gtp in _score_by_gtp_dev:
+                        loss = player_sign * (best_score - _score_by_gtp_dev[gtp])
+                        if _DEV_LOSS_MIN <= loss < _DEV_LOSS_MAX:
+                            dev_candidates.append((m, loss))
+                if dev_candidates:
+                    dev_move, dev_loss = min(dev_candidates, key=lambda x: x[1])
+                    self.game.katrain.log(
+                        f"[HuntStrategy] Invade deviation: {dev_move.gtp()} "
+                        f"(loss={dev_loss:.2f}, rate={hunt_invasion_deviation_rate})",
+                        OUTPUT_DEBUG,
+                    )
+                    return dev_move, (
+                        f"\n{top_str}\n\nInvade deviation: played {dev_move.gtp()} "
+                        f"(loss={dev_loss:.2f}). ({filtered_count} bad moves filtered)"
+                    )
+                else:
+                    self.game.katrain.log(
+                        "[HuntStrategy] Invade deviation: no candidates in 0.5-2.0 range, "
+                        "falling back to weighted selection",
+                        OUTPUT_DEBUG,
                     )
 
         # 重み付き選択
