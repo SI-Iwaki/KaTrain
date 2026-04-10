@@ -3808,6 +3808,7 @@ class HuntStrategy(AIStrategy):
         inv_prox_var = hunt_invasion_prox_stddev ** 2
         has_ownership_grid = bool(ownership)
         moves = []
+        hp_only_moves = []  # humanPolicy単体順（第一感ぶれ用）
         filtered_count = 0
         has_filter = len(good_moves) > 0
 
@@ -3820,6 +3821,7 @@ class HuntStrategy(AIStrategy):
                         filtered_count += 1
                     else:
                         hp_weight = human_policy[idx]
+                        hp_only_moves.append((m, hp_weight))
 
                         # 自陣回避ペナルティ: 自分の地ほど重みを下げる
                         if has_ownership_grid:
@@ -3983,14 +3985,15 @@ class HuntStrategy(AIStrategy):
                         f"(score diff={abs(s1-s2):.1f}pt). ({filtered_count} filtered)"
                     )
 
-        # --- Invadeフェーズ: 第一感ぶれ ---
-        if phase_name == "Invade" and len(top5) >= 2 and move_infos and best_score is not None:
+        # --- Invadeフェーズ: 第一感ぶれ（humanPolicy順の上位3位から候補選択） ---
+        hp_top3 = sorted(hp_only_moves, key=lambda x: -x[1])[:3]
+        if phase_name == "Invade" and len(hp_top3) >= 2 and move_infos and best_score is not None:
             if random.random() < hunt_invasion_deviation_rate:
                 _score_by_gtp_dev = {mi.get("move", ""): mi.get("scoreLead", 0) for mi in move_infos}
                 _DEV_LOSS_MIN = 0.5
                 _DEV_LOSS_MAX = 2.0
                 dev_candidates = []
-                for m, w in top5[:3]:
+                for m, w in hp_top3:
                     gtp = m.gtp()
                     if gtp in _score_by_gtp_dev:
                         loss = player_sign * (best_score - _score_by_gtp_dev[gtp])
