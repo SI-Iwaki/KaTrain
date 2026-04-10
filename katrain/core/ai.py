@@ -3467,20 +3467,30 @@ class HuntStrategy(AIStrategy):
             default_max_loss = 4.0
             default_min_group = 4
             default_prox_stddev = 2.5
+            default_invasion_max_loss = 6.0
+            default_invasion_prox_stddev = 4.0
         else:
             default_max_loss = 6.0
             default_min_group = 5
             default_prox_stddev = 3.0
+            default_invasion_max_loss = 8.0
+            default_invasion_prox_stddev = 5.0
 
         hunt_max_loss = self.settings.get("hunt_max_loss", default_max_loss)
         hunt_min_group_size = self.settings.get("hunt_min_group_size", default_min_group)
         hunt_proximity_stddev = self.settings.get("hunt_proximity_stddev", default_prox_stddev)
         hunt_instability_min = self.settings.get("hunt_instability_min", 0.3)
+        hunt_invasion_max_loss = self.settings.get("hunt_invasion_max_loss", default_invasion_max_loss)
+        hunt_invasion_min = self.settings.get("hunt_invasion_min", 0.2)
+        hunt_invasion_max = self.settings.get("hunt_invasion_max", 0.7)
+        hunt_invasion_prox_stddev = self.settings.get("hunt_invasion_proximity_stddev", default_invasion_prox_stddev)
 
         self.game.katrain.log(
             f"[HuntStrategy] Starting move generation "
             f"(max_loss={hunt_max_loss}, min_group={hunt_min_group_size}, "
-            f"prox_stddev={hunt_proximity_stddev}, instability_min={hunt_instability_min})",
+            f"prox_stddev={hunt_proximity_stddev}, instability_min={hunt_instability_min}, "
+            f"inv_max_loss={hunt_invasion_max_loss}, inv_min={hunt_invasion_min}, "
+            f"inv_max={hunt_invasion_max}, inv_prox_stddev={hunt_invasion_prox_stddev})",
             OUTPUT_DEBUG,
         )
 
@@ -3699,24 +3709,101 @@ class HuntStrategy(AIStrategy):
 
         # --- ターゲット検出 ---
         targets = find_targets(self.game, self.cn, hunt_min_group_size, hunt_instability_min)
-        has_targets = len(targets) > 0
+        has_group_targets = len(targets) > 0
 
-        if has_targets:
+        # --- 侵入対象の検出（ownershipベース） ---
+        # player_sign は 3585行付近で定義済み (1=Black, -1=White)
+        invasion_coords = set()
+        opp_strength_map = {}
+        ownership = self.cn.ownership
+        if ownership:
+            ownership_grid = var_to_grid(ownership, board_size)
+            for ix in range(bx):
+                for iy in range(by):
+                    own_val = ownership_grid[iy][ix] * player_sign
+                    opp_strength = max(0.0, -own_val)
+                    if hunt_invasion_min <= opp_strength <= hunt_invasion_max:
+                        invasion_coords.add((ix, iy))
+                        opp_strength_map[(ix, iy)] = opp_strength
+
+        has_invasion = len(invasion_coords) > 0
+
+        # グループターゲット座標の構築
+        group_coords = set()
+        target_instability = 0.0
+        if has_group_targets:
             primary_target = targets[0]
             target_instability = primary_target[1]
-            target_coords = set(primary_target[2])
+            group_coords = set(primary_target[2])
             if len(targets) > 1:
-                target_coords = target_coords | targets[1][2]
+                group_coords = group_coords | targets[1][2]
+
+        # 統合ターゲット
+        all_target_coords = invasion_coords | group_coords
+        has_targets = len(all_target_coords) > 0
+
+        # フェーズ判定とログ
+        if has_group_targets:
+            phase_name = "Hunt"
             self.game.katrain.log(
-                f"[HuntStrategy] Phase: Attack (targets={len(targets)}, "
-                f"primary: size={len(primary_target[2])}, instability={target_instability:.2f})",
+                f"[HuntStrategy] Phase: Hunt (invasion_targets={len(invasion_coords)}, "
+                f"group_targets={len(targets)}, primary: size={len(targets[0][2])}, "
+                f"instability={target_instability:.2f})",
+                OUTPUT_DEBUG,
+            )
+        elif has_invasion:
+            phase_name = "Invade"
+            self.game.katrain.log(
+                f"[HuntStrategy] Phase: Invade (invasion_targets={len(invasion_coords)}, "
+                f"no group targets)",
                 OUTPUT_DEBUG,
             )
         else:
-            self.game.katrain.log("[HuntStrategy] Phase: No targets, playing as 9-dan", OUTPUT_DEBUG)
+            phase_name = "Hunt(9-dan)"
+            self.game.katrain.log(
+                "[HuntStrategy] Phase: No targets and no invasion, playing as 9-dan",
+                OUTPUT_DEBUG,
+            )
 
-        # --- humanPolicy × (proximity × instability | 1.0) で候補構築 ---
+        # --- 侵入フェーズ時は悪手フィルタを再計算 ---
+        if not has_group_targets and has_invasion and hunt_invasion_max_loss != hunt_max_loss:
+            good_moves = set()
+            for mi in move_infos:
+                gtp_move = mi.get("move", "")
+                score = mi.get("scoreLead", 0)
+                loss = player_sign * (best_score - score)
+                if loss <= hunt_invasion_max_loss:
+                    good_moves.add(gtp_move)
+            total_candidates = len([mi for mi in move_infos if mi.get("move", "") != "pass"])
+            self.game.katrain.log(
+                f"[HuntStrategy] Invasion filter: {len(good_moves)} moves pass score filter "
+                f"out of {total_candidates} (threshold={hunt_invasion_max_loss})",
+                OUTPUT_DEBUG,
+            )
+            # 段階的緩和
+            if not good_moves:
+                for relaxed in [hunt_invasion_max_loss * 1.5, hunt_invasion_max_loss * 2.0, 9.0]:
+                    for mi in move_infos:
+                        gtp_move = mi.get("move", "")
+                        score = mi.get("scoreLead", 0)
+                        loss = player_sign * (best_score - score)
+                        if loss <= relaxed:
+                            good_moves.add(gtp_move)
+                    if good_moves:
+                        self.game.katrain.log(
+                            f"[HuntStrategy] Invasion filter relaxed: "
+                            f"threshold {hunt_invasion_max_loss} -> {relaxed:.1f}, "
+                            f"found {len(good_moves)} moves",
+                            OUTPUT_DEBUG,
+                        )
+                        break
+            # 最終フォールバック
+            if not good_moves and best_gtp_by_score:
+                good_moves.add(best_gtp_by_score)
+
+        # --- humanPolicy × proximity × intensity で候補構築 ---
         prox_var = hunt_proximity_stddev ** 2
+        inv_prox_var = hunt_invasion_prox_stddev ** 2
         moves = []
         filtered_count = 0
         has_filter = len(good_moves) > 0
@@ -3731,9 +3818,25 @@ class HuntStrategy(AIStrategy):
                     else:
                         hp_weight = human_policy[idx]
                         if has_targets:
-                            min_dist_sq = min((x - tx) ** 2 + (y - ty) ** 2 for tx, ty in target_coords)
-                            proximity = math.exp(-0.5 * min_dist_sq / prox_var)
-                            combined = hp_weight * proximity * target_instability
+                            # 最近接ターゲット座標を探し、由来で stddev を切替
+                            min_dist_sq = float("inf")
+                            nearest_type = None
+                            nearest_coord = None
+                            for tx, ty in all_target_coords:
+                                dist_sq = (x - tx) ** 2 + (y - ty) ** 2
+                                if dist_sq < min_dist_sq:
+                                    min_dist_sq = dist_sq
+                                    nearest_coord = (tx, ty)
+                                    nearest_type = "group" if (tx, ty) in group_coords else "invasion"
+
+                            if nearest_type == "group":
+                                proximity = math.exp(-0.5 * min_dist_sq / prox_var)
+                                intensity = target_instability
+                            else:
+                                proximity = math.exp(-0.5 * min_dist_sq / inv_prox_var)
+                                intensity = opp_strength_map.get(nearest_coord, 0.3)
+
+                            combined = hp_weight * proximity * intensity
                         else:
                             combined = hp_weight
                         moves.append((m, combined))
@@ -3872,11 +3975,10 @@ class HuntStrategy(AIStrategy):
         # 重み付き選択
         selected = weighted_selection_without_replacement(moves, 1)[0]
         move = selected[0]
-        phase = "Hunt(attack)" if has_targets else "Hunt(9-dan)"
-        self.game.katrain.log(f"[HuntStrategy] Selected: {move.gtp()} ({phase})", OUTPUT_DEBUG)
+        self.game.katrain.log(f"[HuntStrategy] Selected: {move.gtp()} ({phase_name})", OUTPUT_DEBUG)
 
         ai_thoughts = (
-            f"\n{top_str}\n\n{phase}: played {move.gtp()} "
+            f"\n{top_str}\n\n{phase_name}: played {move.gtp()} "
             f"({filtered_count} bad moves filtered)"
         )
         return move, ai_thoughts
