@@ -3468,13 +3468,13 @@ class HuntStrategy(AIStrategy):
             default_min_group = 4
             default_prox_stddev = 2.5
             default_invasion_max_loss = 6.0
-            default_invasion_prox_stddev = 4.0
+            default_invasion_prox_stddev = 3.0
         else:
             default_max_loss = 6.0
             default_min_group = 5
             default_prox_stddev = 3.0
             default_invasion_max_loss = 8.0
-            default_invasion_prox_stddev = 5.0
+            default_invasion_prox_stddev = 3.0
 
         hunt_max_loss = self.settings.get("hunt_max_loss", default_max_loss)
         hunt_min_group_size = self.settings.get("hunt_min_group_size", default_min_group)
@@ -3801,9 +3801,10 @@ class HuntStrategy(AIStrategy):
             if not good_moves and best_gtp_by_score:
                 good_moves.add(best_gtp_by_score)
 
-        # --- humanPolicy × proximity × intensity で候補構築 ---
+        # --- humanPolicy × proximity × intensity × territory_avoid で候補構築 ---
         prox_var = hunt_proximity_stddev ** 2
         inv_prox_var = hunt_invasion_prox_stddev ** 2
+        has_ownership_grid = bool(ownership)
         moves = []
         filtered_count = 0
         has_filter = len(good_moves) > 0
@@ -3817,6 +3818,14 @@ class HuntStrategy(AIStrategy):
                         filtered_count += 1
                     else:
                         hp_weight = human_policy[idx]
+
+                        # 自陣回避ペナルティ: 自分の地ほど重みを下げる
+                        if has_ownership_grid:
+                            own_val = ownership_grid[y][x] * player_sign
+                            territory_avoid = max(0.1, 1.0 - max(0.0, own_val))
+                        else:
+                            territory_avoid = 1.0
+
                         if has_targets:
                             # 最近接ターゲット座標を探し、由来で stddev を切替
                             min_dist_sq = float("inf")
@@ -3836,9 +3845,9 @@ class HuntStrategy(AIStrategy):
                                 proximity = math.exp(-0.5 * min_dist_sq / inv_prox_var)
                                 intensity = opp_strength_map.get(nearest_coord, 0.3)
 
-                            combined = hp_weight * proximity * intensity
+                            combined = hp_weight * proximity * intensity * territory_avoid
                         else:
-                            combined = hp_weight
+                            combined = hp_weight * territory_avoid
                         moves.append((m, combined))
 
         # パス候補
