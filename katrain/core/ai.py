@@ -3450,6 +3450,76 @@ class SiegeStrategy(AIStrategy):
 class HuntStrategy(AIStrategy):
     """狩猟戦略 — 弱い石群を見つけて集中攻撃する"""
 
+    def _try_tiebreak(self, top5, move_infos, player_sign, filtered_count, top_str):
+        """タイブレーク判定。発動した場合は (Move, ai_thoughts) を返し、しなければ None を返す。"""
+        _TIEBREAK_WEIGHT_RATIO = 1.05
+        _TIEBREAK_VISITS_REVERSAL_RATIO = 2.0
+        _TIEBREAK_SCORE_DIFF = 2.0
+        if len(top5) >= 2 and move_infos:
+            _score_by_gtp = {mi.get("move", ""): mi.get("scoreLead", 0) * player_sign for mi in move_infos}
+            _visits_by_gtp = {mi.get("move", ""): mi.get("visits", 0) for mi in move_infos}
+            top1_move, top1_w = top5[0]
+            top2_move, top2_w = top5[1]
+            top1_visits = _visits_by_gtp.get(top1_move.gtp(), 0)
+            top2_visits = _visits_by_gtp.get(top2_move.gtp(), 0)
+            is_policy_close = top2_w > 0 and top1_w / top2_w < _TIEBREAK_WEIGHT_RATIO
+            is_visits_reversal = top2_visits > top1_visits * _TIEBREAK_VISITS_REVERSAL_RATIO
+            is_mcts_nonprefer = top1_visits > 0 and top2_visits >= top1_visits
+            if is_policy_close or is_visits_reversal or is_mcts_nonprefer:
+                s1 = _score_by_gtp.get(top1_move.gtp())
+                s2 = _score_by_gtp.get(top2_move.gtp())
+                if s1 is not None and s2 is not None and abs(s1 - s2) >= _TIEBREAK_SCORE_DIFF:
+                    winner = top1_move if s1 > s2 else top2_move
+                    loser = top2_move if s1 > s2 else top1_move
+                    trigger = "policy" if is_policy_close else ("visits_reversal" if is_visits_reversal else "mcts_nonprefer")
+                    self.game.katrain.log(
+                        f"[{self.__class__.__name__}] Tiebreak({trigger}): {winner.gtp()} over {loser.gtp()} "
+                        f"(score diff={abs(s1-s2):.1f}pt, "
+                        f"policy_ratio={top1_w/top2_w:.3f}, visits={top1_visits}/{top2_visits})",
+                        OUTPUT_DEBUG,
+                    )
+                    return winner, (
+                        f"\n{top_str}\n\nScore tiebreak({trigger}): played {winner.gtp()} "
+                        f"(score diff={abs(s1-s2):.1f}pt). ({filtered_count} filtered)"
+                    )
+        return None
+
+    def _select_final_move(self, moves, phase_name, move_infos, best_score,
+                           best_gtp_by_score, player_sign, hunt_max_loss,
+                           filtered_count, top_str, human_policy):
+        """最終的な手の選択。子クラスでオーバーライド可能。"""
+        hunt_invasion_temperature = self.settings.get("hunt_invasion_temperature", 1.5)
+
+        # 重み付き選択（Invadeフェーズは温度で分布を平坦化）
+        if phase_name == "Invade" and hunt_invasion_temperature != 1.0:
+            inv_temp = 1.0 / hunt_invasion_temperature
+            temp_moves = [(m, w ** inv_temp) for m, w in moves]
+            selected = weighted_selection_without_replacement(temp_moves, 1)[0]
+            # 温度選択後の安全チェック
+            if move_infos and best_gtp_by_score:
+                _sel_gtp = selected[0].gtp()
+                _pt_score_map = {mi.get("move", ""): mi.get("scoreLead", 0) for mi in move_infos}
+                if _sel_gtp in _pt_score_map and _sel_gtp != best_gtp_by_score:
+                    _sel_loss = player_sign * (best_score - _pt_score_map[_sel_gtp])
+                    if _sel_loss >= hunt_max_loss:
+                        _top_w_move = max(moves, key=lambda x: x[1])[0]
+                        self.game.katrain.log(
+                            f"[{self.__class__.__name__}] Post-temp safety: {_sel_gtp} loss={_sel_loss:.2f} >= {hunt_max_loss}, "
+                            f"fallback to top weighted {_top_w_move.gtp()}",
+                            OUTPUT_DEBUG,
+                        )
+                        selected = (_top_w_move, 0)
+        else:
+            selected = weighted_selection_without_replacement(moves, 1)[0]
+        move = selected[0]
+        self.game.katrain.log(f"[{self.__class__.__name__}] Selected: {move.gtp()} ({phase_name})", OUTPUT_DEBUG)
+
+        ai_thoughts = (
+            f"\n{top_str}\n\n{phase_name}: played {move.gtp()} "
+            f"({filtered_count} bad moves filtered)"
+        )
+        return move, ai_thoughts
+
     def generate_move(self) -> Tuple[Move, str]:
         board_size = self.game.board_size
         bx, by = board_size
@@ -3949,69 +4019,17 @@ class HuntStrategy(AIStrategy):
         # デバッグ: 上位5手表示
         top5 = sorted(moves, key=lambda x: -x[1])[:5]
         top_str = "\n".join([f"#{i+1}: {m.gtp()} weight={w:.4f}" for i, (m, w) in enumerate(top5)])
-        self.game.katrain.log(f"[HuntStrategy] Top 5:\n{top_str}", OUTPUT_DEBUG)
+        self.game.katrain.log(f"[{self.__class__.__name__}] Top 5:\n{top_str}", OUTPUT_DEBUG)
 
         # タイブレーク
-        _TIEBREAK_WEIGHT_RATIO = 1.05
-        _TIEBREAK_VISITS_REVERSAL_RATIO = 2.0
-        _TIEBREAK_SCORE_DIFF = 2.0
-        if len(top5) >= 2 and move_infos:
-            _score_by_gtp = {mi.get("move", ""): mi.get("scoreLead", 0) * player_sign for mi in move_infos}
-            _visits_by_gtp = {mi.get("move", ""): mi.get("visits", 0) for mi in move_infos}
-            top1_move, top1_w = top5[0]
-            top2_move, top2_w = top5[1]
-            top1_visits = _visits_by_gtp.get(top1_move.gtp(), 0)
-            top2_visits = _visits_by_gtp.get(top2_move.gtp(), 0)
-            is_policy_close = top2_w > 0 and top1_w / top2_w < _TIEBREAK_WEIGHT_RATIO
-            is_visits_reversal = top2_visits > top1_visits * _TIEBREAK_VISITS_REVERSAL_RATIO
-            is_mcts_nonprefer = top1_visits > 0 and top2_visits >= top1_visits
-            if is_policy_close or is_visits_reversal or is_mcts_nonprefer:
-                s1 = _score_by_gtp.get(top1_move.gtp())
-                s2 = _score_by_gtp.get(top2_move.gtp())
-                if s1 is not None and s2 is not None and abs(s1 - s2) >= _TIEBREAK_SCORE_DIFF:
-                    winner = top1_move if s1 > s2 else top2_move
-                    loser = top2_move if s1 > s2 else top1_move
-                    trigger = "policy" if is_policy_close else ("visits_reversal" if is_visits_reversal else "mcts_nonprefer")
-                    self.game.katrain.log(
-                        f"[HuntStrategy] Tiebreak({trigger}): {winner.gtp()} over {loser.gtp()} "
-                        f"(score diff={abs(s1-s2):.1f}pt, "
-                        f"policy_ratio={top1_w/top2_w:.3f}, visits={top1_visits}/{top2_visits})",
-                        OUTPUT_DEBUG,
-                    )
-                    return winner, (
-                        f"\n{top_str}\n\nScore tiebreak({trigger}): played {winner.gtp()} "
-                        f"(score diff={abs(s1-s2):.1f}pt). ({filtered_count} filtered)"
-                    )
+        tiebreak_result = self._try_tiebreak(top5, move_infos, player_sign, filtered_count, top_str)
+        if tiebreak_result:
+            return tiebreak_result
 
-        # 重み付き選択（Invadeフェーズは温度で分布を平坦化）
-        if phase_name == "Invade" and hunt_invasion_temperature != 1.0:
-            inv_temp = 1.0 / hunt_invasion_temperature
-            temp_moves = [(m, w ** inv_temp) for m, w in moves]
-            selected = weighted_selection_without_replacement(temp_moves, 1)[0]
-            # 温度選択後の安全チェック: 選択手のlossがhunt_max_lossを超えたらtop weighted moveにフォールバック
-            if move_infos and best_gtp_by_score:
-                _sel_gtp = selected[0].gtp()
-                _pt_score_map = {mi.get("move", ""): mi.get("scoreLead", 0) for mi in move_infos}
-                if _sel_gtp in _pt_score_map and _sel_gtp != best_gtp_by_score:
-                    _sel_loss = player_sign * (best_score - _pt_score_map[_sel_gtp])
-                    if _sel_loss >= hunt_max_loss:
-                        _top_w_move = max(moves, key=lambda x: x[1])[0]
-                        self.game.katrain.log(
-                            f"[HuntStrategy] Post-temp safety: {_sel_gtp} loss={_sel_loss:.2f} >= {hunt_max_loss}, "
-                            f"fallback to top weighted {_top_w_move.gtp()}",
-                            OUTPUT_DEBUG,
-                        )
-                        selected = (_top_w_move, 0)
-        else:
-            selected = weighted_selection_without_replacement(moves, 1)[0]
-        move = selected[0]
-        self.game.katrain.log(f"[HuntStrategy] Selected: {move.gtp()} ({phase_name})", OUTPUT_DEBUG)
-
-        ai_thoughts = (
-            f"\n{top_str}\n\n{phase_name}: played {move.gtp()} "
-            f"({filtered_count} bad moves filtered)"
-        )
-        return move, ai_thoughts
+        # 最終選択（子クラスでオーバーライド可能）
+        return self._select_final_move(moves, phase_name, move_infos, best_score,
+                                       best_gtp_by_score, player_sign, hunt_max_loss,
+                                       filtered_count, top_str, human_policy)
 
 
 def generate_ai_move(game: Game, ai_mode: str, ai_settings: Dict) -> Tuple[Move, GameNode]:
