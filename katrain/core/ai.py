@@ -4049,18 +4049,10 @@ class HuntDivergenceStrategy(HuntStrategy):
             dodge_max_loss = self.settings.get("hunt_dodge_max_loss", 1.0)
             dodge_top_n = int(self.settings.get("hunt_dodge_top_n", 3))
 
-            # 候補手プール内でのhumanPolicy順位を算出
-            bx, by = self.game.board_size
-            hp_by_gtp = {}
-            for m, w in moves:
-                if m.coords:
-                    x, y = m.coords
-                    idx = (by - y - 1) * bx + x
-                    if idx < len(human_policy):
-                        hp_by_gtp[m.gtp()] = human_policy[idx]
-
-            sorted_by_hp = sorted(hp_by_gtp.items(), key=lambda x: -x[1])
-            top_n_gtps = {gtp for gtp, _ in sorted_by_hp[:dodge_top_n]}
+            # 候補手プール内でのcombined weight順位を算出（proximity/intensity込みで棋風を維持）
+            weight_by_gtp = {m.gtp(): w for m, w in moves if m.coords}
+            sorted_by_weight = sorted(weight_by_gtp.items(), key=lambda x: -x[1])
+            top_n_gtps = {gtp for gtp, _ in sorted_by_weight[:dodge_top_n]}
 
             # スコアマップ
             score_map = {mi.get("move", ""): mi.get("scoreLead", 0) for mi in move_infos}
@@ -4073,15 +4065,15 @@ class HuntDivergenceStrategy(HuntStrategy):
                     continue
                 loss = player_sign * (best_score - score_map[gtp])
                 if loss <= dodge_max_loss:
-                    hp_rank = next(i for i, (g, _) in enumerate(sorted_by_hp) if g == gtp) + 1
-                    alternatives.append((m, loss, hp_rank))
+                    w_rank = next(i for i, (g, _) in enumerate(sorted_by_weight) if g == gtp) + 1
+                    alternatives.append((m, loss, w_rank))
 
             if alternatives:
                 best_alt = min(alternatives, key=lambda x: x[1])
                 alt_move, alt_loss, alt_rank = best_alt
                 self.game.katrain.log(
                     f"[HuntDivergenceStrategy] Best-move dodge: {best_gtp_by_score} -> {alt_move.gtp()} "
-                    f"(loss={alt_loss:.2f}, hP rank={alt_rank}/{len(sorted_by_hp)})",
+                    f"(loss={alt_loss:.2f}, weight rank={alt_rank}/{len(sorted_by_weight)})",
                     OUTPUT_DEBUG,
                 )
                 move = alt_move
