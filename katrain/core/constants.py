@@ -170,6 +170,7 @@ AI_OPTION_VALUES = {
     "hunt_invasion_min": [x / 20 for x in range(2, 11)],  # 0.1〜0.5（0.05刻み）
     "hunt_invasion_max": [x / 20 for x in range(8, 19)],  # 0.4〜0.9（0.05刻み）
     "hunt_invasion_proximity_stddev": [x / 2 for x in range(4, 17)],  # 2.0〜8.0（0.5刻み）
+    "hunt_invasion_deviation_rate": [0.5, 0.7, 0.9],  # 侵入時の第一感ぶれ適用率
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）
@@ -209,6 +210,7 @@ AI_OPTION_ORDER = {
     "hunt_invasion_min": 21,
     "hunt_invasion_max": 22,
     "hunt_invasion_proximity_stddev": 23,
+    "hunt_invasion_deviation_rate": 24,
 }
 
 AI_KEY_PROPERTIES = {
