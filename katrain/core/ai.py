@@ -13,7 +13,7 @@ from katrain.core.constants import (
     AI_TENUKI, AI_TENUKI_ELO_GRID, AI_TERRITORY, AI_TERRITORY_ELO_GRID,
     AI_FIGHTING, AI_FIGHTING_SCORELOSS_ELO,
     AI_WEIGHTED, AI_WEIGHTED_ELO, CALIBRATED_RANK_ELO, OUTPUT_DEBUG,
-    OUTPUT_ERROR, OUTPUT_INFO, PRIORITY_EXTRA_AI_QUERY, ADDITIONAL_MOVE_ORDER, AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE
+    OUTPUT_ERROR, OUTPUT_INFO, PRIORITY_EXTRA_AI_QUERY, ADDITIONAL_MOVE_ORDER, AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT
 )
 from katrain.core.engine import KataGoEngine
 from katrain.core.game import Game, GameNode, Move
@@ -1446,8 +1446,6 @@ class FightingStrategy(PickBasedStrategy):
             return self._generate_scoreloss()
         elif mode == "human":
             return self._generate_human()
-        elif mode == "hunt":
-            return self._generate_hunt()
         else:
             return self._generate_classic()
 
@@ -1983,446 +1981,6 @@ class FightingStrategy(PickBasedStrategy):
 
         ai_thoughts = (
             f"\n{top_str}\n\nHuman+Fighting: played {move.gtp()} "
-            f"({filtered_count} bad moves filtered)"
-        )
-        return move, ai_thoughts
-
-    def _generate_hunt(self) -> Tuple[Move, str]:
-        """Hunt mode: 弱い石群を見つけて集中攻撃する狩猟モード。"""
-        board_size = self.game.board_size
-        bx, by = board_size
-
-        # 9路フォールバック
-        if bx == 9 and by == 9:
-            self.game.katrain.log(
-                "[FightingStrategy:hunt] Hunt mode not supported on 9x9, falling back to human mode",
-                OUTPUT_DEBUG,
-            )
-            return self._generate_human()
-
-        # 盤面サイズ別デフォルト
-        if bx <= 13:
-            default_max_loss = 4.0
-            default_min_group = 4
-            default_prox_stddev = 2.5
-        else:
-            default_max_loss = 6.0
-            default_min_group = 5
-            default_prox_stddev = 3.0
-
-        hunt_max_loss = self.settings.get("hunt_max_loss", default_max_loss)
-        hunt_min_group_size = self.settings.get("hunt_min_group_size", default_min_group)
-        hunt_proximity_stddev = self.settings.get("hunt_proximity_stddev", default_prox_stddev)
-        hunt_instability_min = self.settings.get("hunt_instability_min", 0.3)
-
-        self.game.katrain.log(
-            f"[FightingStrategy:hunt] Starting move generation "
-            f"(max_loss={hunt_max_loss}, min_group={hunt_min_group_size}, "
-            f"prox_stddev={hunt_proximity_stddev}, instability_min={hunt_instability_min})",
-            OUTPUT_DEBUG,
-        )
-
-        # 標準解析を待つ（ownership取得のため）
-        self.wait_for_analysis()
-
-        # --- Stage 1: humanSLProfile付きクエリ（9段固定） ---
-        human_profile = "rank_9d"
-        override_settings = {
-            "humanSLProfile": human_profile,
-            "ignorePreRootHistory": False,
-            "maxVisits": 800,
-        }
-        self.game.katrain.log(
-            f"[FightingStrategy:hunt] Stage 1: requesting humanSL analysis ({human_profile})",
-            OUTPUT_DEBUG,
-        )
-
-        analysis = None
-        error = False
-
-        def set_analysis(a, partial_result):
-            nonlocal analysis
-            if not partial_result:
-                analysis = a
-
-        def set_error(a):
-            nonlocal error
-            error = True
-            self.game.katrain.log(f"[FightingStrategy:hunt] Error in Stage 1: {a}", OUTPUT_ERROR)
-
-        engine = self.game.engines[self.cn.player]
-        engine.request_analysis(
-            self.cn,
-            callback=set_analysis,
-            error_callback=set_error,
-            priority=PRIORITY_EXTRA_AI_QUERY,
-            include_policy=True,
-            extra_settings=override_settings,
-        )
-
-        while not (error or analysis):
-            time.sleep(0.01)
-            engine.check_alive(exception_if_dead=True)
-
-        if error or not analysis or "humanPolicy" not in analysis:
-            self.game.katrain.log(
-                "[FightingStrategy:hunt] Stage 1 failed, falling back to human mode",
-                OUTPUT_DEBUG,
-            )
-            return self._generate_human()
-
-        human_policy = analysis["humanPolicy"]
-
-        # --- Stage 2: クリーンクエリ（正確なスコア取得） ---
-        clean_override_settings = {
-            "ignorePreRootHistory": False,
-            "maxVisits": 600,
-            "wideRootNoise": 0.0,
-        }
-        clean_analysis = None
-        clean_error = False
-
-        def set_clean_analysis(a, partial_result):
-            nonlocal clean_analysis
-            if not partial_result:
-                clean_analysis = a
-
-        def set_clean_error(a):
-            nonlocal clean_error
-            clean_error = True
-            self.game.katrain.log(f"[FightingStrategy:hunt] Error in Stage 2: {a}", OUTPUT_ERROR)
-
-        self.game.katrain.log("[FightingStrategy:hunt] Stage 2: requesting clean analysis", OUTPUT_DEBUG)
-        engine.request_analysis(
-            self.cn,
-            callback=set_clean_analysis,
-            error_callback=set_clean_error,
-            priority=PRIORITY_EXTRA_AI_QUERY,
-            include_policy=False,
-            extra_settings=clean_override_settings,
-        )
-
-        while not (clean_error or clean_analysis):
-            time.sleep(0.01)
-            engine.check_alive(exception_if_dead=True)
-
-        if clean_analysis and not clean_error:
-            move_infos = clean_analysis.get("moveInfos", [])
-            self.game.katrain.log(
-                f"[FightingStrategy:hunt] Using clean moveInfos ({len(move_infos)} moves)", OUTPUT_DEBUG
-            )
-        else:
-            move_infos = analysis.get("moveInfos", [])
-            self.game.katrain.log(
-                "[FightingStrategy:hunt] Clean query failed, using biased moveInfos", OUTPUT_DEBUG
-            )
-
-        # --- 基本情報 ---
-        _ruleset = self.cn.ruleset
-        _rules = KataGoEngine.get_rules(_ruleset)
-        is_area_scoring = (
-            (isinstance(_rules, str) and _rules.lower() in ["chinese", "aga", "tromp-taylor", "new zealand", "stone_scoring"])
-            or (isinstance(_rules, dict) and _rules.get("scoring", "").lower() == "area")
-        )
-
-        player_sign = 1 if self.cn.next_player == "B" else -1
-        current_move = self.cn.depth
-
-        good_moves = set()
-        best_gtp_by_score = None
-        best_score = None
-
-        if move_infos:
-            best_score = max(mi.get("scoreLead", 0) * player_sign for mi in move_infos) / player_sign
-            best_gtp_by_score = max(
-                move_infos, key=lambda mi: mi.get("scoreLead", 0) * player_sign
-            ).get("move", "")
-
-            if best_gtp_by_score == "pass":
-                self.game.katrain.log("[FightingStrategy:hunt] Best move is pass, forcing pass", OUTPUT_DEBUG)
-                return Move(None, player=self.cn.next_player), "Best move is pass, forcing pass."
-
-            # --- 悪手フィルタ（hunt_max_loss 統一閾値） ---
-            self.game.katrain.log(
-                f"[FightingStrategy:hunt] Move {current_move}: threshold={hunt_max_loss}, best_score={best_score:.1f}",
-                OUTPUT_DEBUG,
-            )
-
-            for mi in move_infos:
-                gtp_move = mi.get("move", "")
-                score = mi.get("scoreLead", 0)
-                loss = player_sign * (best_score - score)
-                if loss <= hunt_max_loss:
-                    good_moves.add(gtp_move)
-
-            total_candidates = len([mi for mi in move_infos if mi.get("move", "") != "pass"])
-            self.game.katrain.log(
-                f"[FightingStrategy:hunt] {len(good_moves)} moves pass score filter out of {total_candidates} "
-                f"(threshold={hunt_max_loss})",
-                OUTPUT_DEBUG,
-            )
-
-            # 段階的緩和
-            if not good_moves:
-                original_threshold = hunt_max_loss
-                for relaxed in [hunt_max_loss * 1.5, hunt_max_loss * 2.0, 9.0]:
-                    for mi in move_infos:
-                        gtp_move = mi.get("move", "")
-                        score = mi.get("scoreLead", 0)
-                        loss = player_sign * (best_score - score)
-                        if loss <= relaxed:
-                            good_moves.add(gtp_move)
-                    if good_moves:
-                        self.game.katrain.log(
-                            f"[FightingStrategy:hunt] Filter relaxed: threshold {original_threshold} -> {relaxed:.1f}, "
-                            f"found {len(good_moves)} moves",
-                            OUTPUT_DEBUG,
-                        )
-                        break
-
-            # 最終フォールバック
-            if not good_moves and best_gtp_by_score:
-                good_moves.add(best_gtp_by_score)
-                self.game.katrain.log(
-                    f"[FightingStrategy:hunt] Filter failsafe: forcing best-score move {best_gtp_by_score}",
-                    OUTPUT_DEBUG,
-                )
-                if best_gtp_by_score == "pass":
-                    return Move(None, player=self.cn.next_player), "Filter failsafe: best move is pass."
-                return Move.from_gtp(best_gtp_by_score, player=self.cn.next_player), (
-                    f"Filter failsafe: no moves within cap, forced {best_gtp_by_score}."
-                )
-
-            # --- 安全弁クロスバリデーション用ヘルパー ---
-            def _safety_valve_cross_check(forced_gtp, candidate_gtp, p_sign, label="v1"):
-                """安全弁の強制手をRegular分析でクロスチェック。安全ならTrue。"""
-                _CROSS_CHECK_MAX_LOSS = 2.0
-                _reg_moves = self.cn.analysis.get("moves", {})
-                _reg_forced = _reg_moves.get(forced_gtp)
-                _reg_candidate = _reg_moves.get(candidate_gtp)
-                if _reg_forced is None:
-                    self.game.katrain.log(
-                        f"[FightingStrategy:hunt] Safety {label}: {forced_gtp} not in regular analysis, skipping force",
-                        OUTPUT_DEBUG,
-                    )
-                    return False
-                if _reg_candidate is None:
-                    return True
-                reg_forced_score = _reg_forced.get("scoreLead", 0)
-                reg_cand_score = _reg_candidate.get("scoreLead", 0)
-                reg_loss = p_sign * (reg_cand_score - reg_forced_score)
-                if reg_loss > _CROSS_CHECK_MAX_LOSS:
-                    self.game.katrain.log(
-                        f"[FightingStrategy:hunt] Safety {label} cross-check FAILED: "
-                        f"{forced_gtp} loses {reg_loss:.2f}pt vs {candidate_gtp} in regular analysis",
-                        OUTPUT_DEBUG,
-                    )
-                    return False
-                return True
-
-            # 安全弁v1: 最多探索手のlossが閾値以上なら最善スコア手を確定選択
-            _SAFETY_LOSS_THRESHOLD = 4.0
-            max_visit_mi = max(move_infos, key=lambda mi: mi.get("visits", 0))
-            max_visit_gtp = max_visit_mi.get("move", "")
-            max_visit_score = max_visit_mi.get("scoreLead", 0)
-            max_visit_loss = player_sign * (best_score - max_visit_score)
-            if max_visit_loss >= _SAFETY_LOSS_THRESHOLD and best_gtp_by_score and best_gtp_by_score != max_visit_gtp:
-                if _safety_valve_cross_check(best_gtp_by_score, max_visit_gtp, player_sign, "v1"):
-                    self.game.katrain.log(
-                        f"[FightingStrategy:hunt] Safety valve: max-visit move {max_visit_gtp} "
-                        f"loss={max_visit_loss:.2f} >= {_SAFETY_LOSS_THRESHOLD}, "
-                        f"forcing best-score move {best_gtp_by_score}",
-                        OUTPUT_DEBUG,
-                    )
-                    if best_gtp_by_score == "pass":
-                        return Move(None, player=self.cn.next_player), "Safety valve: best move is pass."
-                    return Move.from_gtp(best_gtp_by_score, player=self.cn.next_player), (
-                        f"Safety valve: max-visit {max_visit_gtp} had loss={max_visit_loss:.2f}, "
-                        f"forced best-score move {best_gtp_by_score}."
-                    )
-
-        # --- ターゲット検出 ---
-        targets = find_targets(self.game, self.cn, hunt_min_group_size, hunt_instability_min)
-        has_targets = len(targets) > 0
-
-        if has_targets:
-            primary_target = targets[0]
-            target_instability = primary_target[1]
-            target_coords = set(primary_target[2])
-            if len(targets) > 1:
-                target_coords = target_coords | targets[1][2]
-            self.game.katrain.log(
-                f"[FightingStrategy:hunt] Phase: Attack (targets={len(targets)}, "
-                f"primary: size={len(primary_target[2])}, instability={target_instability:.2f})",
-                OUTPUT_DEBUG,
-            )
-        else:
-            self.game.katrain.log("[FightingStrategy:hunt] Phase: No targets, playing as 9-dan", OUTPUT_DEBUG)
-
-        # --- humanPolicy × (proximity × instability | 1.0) で候補構築 ---
-        prox_var = hunt_proximity_stddev ** 2
-        moves = []
-        filtered_count = 0
-        has_filter = len(good_moves) > 0
-
-        for x in range(bx):
-            for y in range(by):
-                idx = (by - y - 1) * bx + x
-                if idx < len(human_policy) and human_policy[idx] > 0:
-                    m = Move((x, y), player=self.cn.next_player)
-                    if has_filter and m.gtp() not in good_moves:
-                        filtered_count += 1
-                    else:
-                        hp_weight = human_policy[idx]
-                        if has_targets:
-                            min_dist_sq = min((x - tx) ** 2 + (y - ty) ** 2 for tx, ty in target_coords)
-                            proximity = math.exp(-0.5 * min_dist_sq / prox_var)
-                            combined = hp_weight * proximity * target_instability
-                        else:
-                            combined = hp_weight
-                        moves.append((m, combined))
-
-        # パス候補
-        if len(human_policy) > bx * by and human_policy[-1] > 0:
-            if not has_filter or "pass" in good_moves:
-                moves.append((Move(None, player=self.cn.next_player), human_policy[-1]))
-
-        self.game.katrain.log(
-            f"[FightingStrategy:hunt] {len(moves)} candidate moves ({filtered_count} filtered)",
-            OUTPUT_DEBUG,
-        )
-
-        # 安全弁v2: 最高重み候補のlossが閾値以上なら最善スコア手を確定選択
-        _SAFETY_LOSS_THRESHOLD = 4.0
-        if moves and move_infos and best_gtp_by_score:
-            _score_by_gtp_v2 = {mi.get("move", ""): mi.get("scoreLead", 0) for mi in move_infos}
-            top_move_v2, _ = max(moves, key=lambda x: x[1])
-            top_gtp_v2 = top_move_v2.gtp()
-            if top_gtp_v2 in _score_by_gtp_v2 and top_gtp_v2 != best_gtp_by_score:
-                top_loss_v2 = player_sign * (best_score - _score_by_gtp_v2[top_gtp_v2])
-                self.game.katrain.log(
-                    f"[FightingStrategy:hunt] Safety v2: top weighted move {top_gtp_v2} loss={top_loss_v2:.2f}",
-                    OUTPUT_DEBUG,
-                )
-                if top_loss_v2 >= _SAFETY_LOSS_THRESHOLD:
-                    if _safety_valve_cross_check(best_gtp_by_score, top_gtp_v2, player_sign, "v2"):
-                        self.game.katrain.log(
-                            f"[FightingStrategy:hunt] Safety valve v2: top weighted {top_gtp_v2} "
-                            f"loss={top_loss_v2:.2f} >= {_SAFETY_LOSS_THRESHOLD}, "
-                            f"forcing best-score move {best_gtp_by_score}",
-                            OUTPUT_DEBUG,
-                        )
-                        if best_gtp_by_score == "pass":
-                            return Move(None, player=self.cn.next_player), "Safety valve v2: best move is pass."
-                        return Move.from_gtp(best_gtp_by_score, player=self.cn.next_player), (
-                            f"Safety valve v2: top weighted {top_gtp_v2} had loss={top_loss_v2:.2f}, "
-                            f"forced best-score move {best_gtp_by_score}."
-                        )
-
-        # 全手フィルタ時のフォールバック
-        if not moves:
-            self.game.katrain.log("[FightingStrategy:hunt] All moves filtered, using best search move", OUTPUT_DEBUG)
-            if move_infos:
-                best_gtp = best_gtp_by_score if best_gtp_by_score else move_infos[0].get("move", "pass")
-                if best_gtp == "pass":
-                    return Move(None, player=self.cn.next_player), "All moves filtered, playing best move."
-                return Move.from_gtp(best_gtp, player=self.cn.next_player), "All moves filtered, playing best move."
-            return Move(None, player=self.cn.next_player), "No valid moves found."
-
-        # パス処理
-        if any(m.is_pass for m, _ in moves):
-            if is_area_scoring:
-                _AREA_PASS_MARGIN = 0.5
-                pass_mi = next((mi for mi in (move_infos or []) if mi.get("move") == "pass"), None)
-                if pass_mi is not None:
-                    pass_score_lead = pass_mi.get("scoreLead", best_score)
-                    pass_loss = player_sign * (best_score - pass_score_lead)
-                    if pass_loss < _AREA_PASS_MARGIN:
-                        self.game.katrain.log(
-                            f"[FightingStrategy:hunt] Area scoring: pass within {_AREA_PASS_MARGIN}pt of best "
-                            f"(loss={pass_loss:.2f}), forcing pass",
-                            OUTPUT_DEBUG,
-                        )
-                        return Move(None, player=self.cn.next_player), "Area scoring: pass near-optimal, forcing pass."
-                moves_without_pass = [(m, w) for m, w in moves if not m.is_pass]
-                if moves_without_pass:
-                    moves = moves_without_pass
-                    self.game.katrain.log(
-                        "[FightingStrategy:hunt] Area scoring: pass removed from candidates", OUTPUT_DEBUG
-                    )
-                else:
-                    if best_gtp_by_score and best_gtp_by_score != "pass":
-                        return Move.from_gtp(best_gtp_by_score, player=self.cn.next_player), \
-                            "Area scoring: playing best non-pass move."
-                    return Move(None, player=self.cn.next_player), "Area scoring: no non-pass candidates."
-            else:
-                self.game.katrain.log("[FightingStrategy:hunt] Pass is among candidates, forcing pass", OUTPUT_DEBUG)
-                return Move(None, player=self.cn.next_player), "Pass is in candidates, forcing pass."
-
-        # エンドゲーム: humanPolicy最上位手（ターゲット重み無視）
-        endgame_threshold = math.ceil(bx * by * 0.5)
-        if current_move >= endgame_threshold:
-            endgame_moves = []
-            for x in range(bx):
-                for y in range(by):
-                    idx = (by - y - 1) * bx + x
-                    if idx < len(human_policy) and human_policy[idx] > 0:
-                        m = Move((x, y), player=self.cn.next_player)
-                        if not has_filter or m.gtp() in good_moves:
-                            endgame_moves.append((m, human_policy[idx]))
-            if endgame_moves:
-                top_move = max(endgame_moves, key=lambda x: x[1])
-                self.game.katrain.log(
-                    f"[FightingStrategy:hunt] Endgame: playing top humanPolicy move {top_move[0].gtp()}",
-                    OUTPUT_DEBUG,
-                )
-                return top_move[0], f"Endgame: played top humanPolicy move {top_move[0].gtp()}."
-
-        # デバッグ: 上位5手表示
-        top5 = sorted(moves, key=lambda x: -x[1])[:5]
-        top_str = "\n".join([f"#{i+1}: {m.gtp()} weight={w:.4f}" for i, (m, w) in enumerate(top5)])
-        self.game.katrain.log(f"[FightingStrategy:hunt] Top 5:\n{top_str}", OUTPUT_DEBUG)
-
-        # タイブレーク
-        _TIEBREAK_WEIGHT_RATIO = 1.05
-        _TIEBREAK_VISITS_REVERSAL_RATIO = 2.0
-        _TIEBREAK_SCORE_DIFF = 2.0
-        if len(top5) >= 2 and move_infos:
-            _score_by_gtp = {mi.get("move", ""): mi.get("scoreLead", 0) * player_sign for mi in move_infos}
-            _visits_by_gtp = {mi.get("move", ""): mi.get("visits", 0) for mi in move_infos}
-            top1_move, top1_w = top5[0]
-            top2_move, top2_w = top5[1]
-            top1_visits = _visits_by_gtp.get(top1_move.gtp(), 0)
-            top2_visits = _visits_by_gtp.get(top2_move.gtp(), 0)
-            is_policy_close = top2_w > 0 and top1_w / top2_w < _TIEBREAK_WEIGHT_RATIO
-            is_visits_reversal = top2_visits > top1_visits * _TIEBREAK_VISITS_REVERSAL_RATIO
-            is_mcts_nonprefer = top1_visits > 0 and top2_visits >= top1_visits
-            if is_policy_close or is_visits_reversal or is_mcts_nonprefer:
-                s1 = _score_by_gtp.get(top1_move.gtp())
-                s2 = _score_by_gtp.get(top2_move.gtp())
-                if s1 is not None and s2 is not None and abs(s1 - s2) >= _TIEBREAK_SCORE_DIFF:
-                    winner = top1_move if s1 > s2 else top2_move
-                    loser = top2_move if s1 > s2 else top1_move
-                    trigger = "policy" if is_policy_close else ("visits_reversal" if is_visits_reversal else "mcts_nonprefer")
-                    self.game.katrain.log(
-                        f"[FightingStrategy:hunt] Tiebreak({trigger}): {winner.gtp()} over {loser.gtp()} "
-                        f"(score diff={abs(s1-s2):.1f}pt, "
-                        f"policy_ratio={top1_w/top2_w:.3f}, visits={top1_visits}/{top2_visits})",
-                        OUTPUT_DEBUG,
-                    )
-                    return winner, (
-                        f"\n{top_str}\n\nScore tiebreak({trigger}): played {winner.gtp()} "
-                        f"(score diff={abs(s1-s2):.1f}pt). ({filtered_count} filtered)"
-                    )
-
-        # 重み付き選択
-        selected = weighted_selection_without_replacement(moves, 1)[0]
-        move = selected[0]
-        phase = "Hunt(attack)" if has_targets else "Hunt(9-dan)"
-        self.game.katrain.log(f"[FightingStrategy:hunt] Selected: {move.gtp()} ({phase})", OUTPUT_DEBUG)
-
-        ai_thoughts = (
-            f"\n{top_str}\n\n{phase}: played {move.gtp()} "
             f"({filtered_count} bad moves filtered)"
         )
         return move, ai_thoughts
@@ -3886,6 +3444,442 @@ class SiegeStrategy(AIStrategy):
         )
         self.game.katrain.log(f"[SiegeStrategy:attack] Selected: {aimove.gtp()} loss={selected[0]:.2f}", OUTPUT_DEBUG)
         return aimove, ai_thoughts
+
+
+@register_strategy(AI_HUNT)
+class HuntStrategy(AIStrategy):
+    """狩猟戦略 — 弱い石群を見つけて集中攻撃する"""
+
+    def generate_move(self) -> Tuple[Move, str]:
+        board_size = self.game.board_size
+        bx, by = board_size
+
+        # 9路非対応
+        if bx == 9 and by == 9:
+            self.game.katrain.log(
+                "[HuntStrategy] Not supported on 9x9, playing as default",
+                OUTPUT_DEBUG,
+            )
+            return Move(None, player=self.cn.next_player), "Hunt not supported on 9x9."
+
+        # 盤面サイズ別デフォルト
+        if bx <= 13:
+            default_max_loss = 4.0
+            default_min_group = 4
+            default_prox_stddev = 2.5
+        else:
+            default_max_loss = 6.0
+            default_min_group = 5
+            default_prox_stddev = 3.0
+
+        hunt_max_loss = self.settings.get("hunt_max_loss", default_max_loss)
+        hunt_min_group_size = self.settings.get("hunt_min_group_size", default_min_group)
+        hunt_proximity_stddev = self.settings.get("hunt_proximity_stddev", default_prox_stddev)
+        hunt_instability_min = self.settings.get("hunt_instability_min", 0.3)
+
+        self.game.katrain.log(
+            f"[HuntStrategy] Starting move generation "
+            f"(max_loss={hunt_max_loss}, min_group={hunt_min_group_size}, "
+            f"prox_stddev={hunt_proximity_stddev}, instability_min={hunt_instability_min})",
+            OUTPUT_DEBUG,
+        )
+
+        # 標準解析を待つ（ownership取得のため）
+        self.wait_for_analysis()
+
+        # --- Stage 1: humanSLProfile付きクエリ（9段固定） ---
+        human_profile = "rank_9d"
+        override_settings = {
+            "humanSLProfile": human_profile,
+            "ignorePreRootHistory": False,
+            "maxVisits": 800,
+        }
+        self.game.katrain.log(
+            f"[HuntStrategy] Stage 1: requesting humanSL analysis ({human_profile})",
+            OUTPUT_DEBUG,
+        )
+
+        analysis = None
+        error = False
+
+        def set_analysis(a, partial_result):
+            nonlocal analysis
+            if not partial_result:
+                analysis = a
+
+        def set_error(a):
+            nonlocal error
+            error = True
+            self.game.katrain.log(f"[HuntStrategy] Error in Stage 1: {a}", OUTPUT_ERROR)
+
+        engine = self.game.engines[self.cn.player]
+        engine.request_analysis(
+            self.cn,
+            callback=set_analysis,
+            error_callback=set_error,
+            priority=PRIORITY_EXTRA_AI_QUERY,
+            include_policy=True,
+            extra_settings=override_settings,
+        )
+
+        while not (error or analysis):
+            time.sleep(0.01)
+            engine.check_alive(exception_if_dead=True)
+
+        if error or not analysis or "humanPolicy" not in analysis:
+            self.game.katrain.log("[HuntStrategy] Stage 1 failed, passing", OUTPUT_DEBUG)
+            return Move(None, player=self.cn.next_player), "Stage 1 failed."
+
+        human_policy = analysis["humanPolicy"]
+
+        # --- Stage 2: クリーンクエリ（正確なスコア取得） ---
+        clean_override_settings = {
+            "ignorePreRootHistory": False,
+            "maxVisits": 600,
+            "wideRootNoise": 0.0,
+        }
+        clean_analysis = None
+        clean_error = False
+
+        def set_clean_analysis(a, partial_result):
+            nonlocal clean_analysis
+            if not partial_result:
+                clean_analysis = a
+
+        def set_clean_error(a):
+            nonlocal clean_error
+            clean_error = True
+            self.game.katrain.log(f"[HuntStrategy] Error in Stage 2: {a}", OUTPUT_ERROR)
+
+        self.game.katrain.log("[HuntStrategy] Stage 2: requesting clean analysis", OUTPUT_DEBUG)
+        engine.request_analysis(
+            self.cn,
+            callback=set_clean_analysis,
+            error_callback=set_clean_error,
+            priority=PRIORITY_EXTRA_AI_QUERY,
+            include_policy=False,
+            extra_settings=clean_override_settings,
+        )
+
+        while not (clean_error or clean_analysis):
+            time.sleep(0.01)
+            engine.check_alive(exception_if_dead=True)
+
+        if clean_analysis and not clean_error:
+            move_infos = clean_analysis.get("moveInfos", [])
+            self.game.katrain.log(
+                f"[HuntStrategy] Using clean moveInfos ({len(move_infos)} moves)", OUTPUT_DEBUG
+            )
+        else:
+            move_infos = analysis.get("moveInfos", [])
+            self.game.katrain.log("[HuntStrategy] Clean query failed, using biased moveInfos", OUTPUT_DEBUG)
+
+        # --- 基本情報 ---
+        _ruleset = self.cn.ruleset
+        _rules = KataGoEngine.get_rules(_ruleset)
+        is_area_scoring = (
+            (isinstance(_rules, str) and _rules.lower() in ["chinese", "aga", "tromp-taylor", "new zealand", "stone_scoring"])
+            or (isinstance(_rules, dict) and _rules.get("scoring", "").lower() == "area")
+        )
+
+        player_sign = 1 if self.cn.next_player == "B" else -1
+        current_move = self.cn.depth
+
+        good_moves = set()
+        best_gtp_by_score = None
+        best_score = None
+
+        if move_infos:
+            best_score = max(mi.get("scoreLead", 0) * player_sign for mi in move_infos) / player_sign
+            best_gtp_by_score = max(
+                move_infos, key=lambda mi: mi.get("scoreLead", 0) * player_sign
+            ).get("move", "")
+
+            if best_gtp_by_score == "pass":
+                self.game.katrain.log("[HuntStrategy] Best move is pass, forcing pass", OUTPUT_DEBUG)
+                return Move(None, player=self.cn.next_player), "Best move is pass, forcing pass."
+
+            # --- 悪手フィルタ（hunt_max_loss 統一閾値） ---
+            self.game.katrain.log(
+                f"[HuntStrategy] Move {current_move}: threshold={hunt_max_loss}, best_score={best_score:.1f}",
+                OUTPUT_DEBUG,
+            )
+
+            for mi in move_infos:
+                gtp_move = mi.get("move", "")
+                score = mi.get("scoreLead", 0)
+                loss = player_sign * (best_score - score)
+                if loss <= hunt_max_loss:
+                    good_moves.add(gtp_move)
+
+            total_candidates = len([mi for mi in move_infos if mi.get("move", "") != "pass"])
+            self.game.katrain.log(
+                f"[HuntStrategy] {len(good_moves)} moves pass score filter out of {total_candidates} "
+                f"(threshold={hunt_max_loss})",
+                OUTPUT_DEBUG,
+            )
+
+            # 段階的緩和
+            if not good_moves:
+                original_threshold = hunt_max_loss
+                for relaxed in [hunt_max_loss * 1.5, hunt_max_loss * 2.0, 9.0]:
+                    for mi in move_infos:
+                        gtp_move = mi.get("move", "")
+                        score = mi.get("scoreLead", 0)
+                        loss = player_sign * (best_score - score)
+                        if loss <= relaxed:
+                            good_moves.add(gtp_move)
+                    if good_moves:
+                        self.game.katrain.log(
+                            f"[HuntStrategy] Filter relaxed: threshold {original_threshold} -> {relaxed:.1f}, "
+                            f"found {len(good_moves)} moves",
+                            OUTPUT_DEBUG,
+                        )
+                        break
+
+            # 最終フォールバック
+            if not good_moves and best_gtp_by_score:
+                good_moves.add(best_gtp_by_score)
+                self.game.katrain.log(
+                    f"[HuntStrategy] Filter failsafe: forcing best-score move {best_gtp_by_score}",
+                    OUTPUT_DEBUG,
+                )
+                if best_gtp_by_score == "pass":
+                    return Move(None, player=self.cn.next_player), "Filter failsafe: best move is pass."
+                return Move.from_gtp(best_gtp_by_score, player=self.cn.next_player), (
+                    f"Filter failsafe: no moves within cap, forced {best_gtp_by_score}."
+                )
+
+            # --- 安全弁クロスバリデーション用ヘルパー ---
+            def _safety_valve_cross_check(forced_gtp, candidate_gtp, p_sign, label="v1"):
+                _CROSS_CHECK_MAX_LOSS = 2.0
+                _reg_moves = self.cn.analysis.get("moves", {})
+                _reg_forced = _reg_moves.get(forced_gtp)
+                _reg_candidate = _reg_moves.get(candidate_gtp)
+                if _reg_forced is None:
+                    self.game.katrain.log(
+                        f"[HuntStrategy] Safety {label}: {forced_gtp} not in regular analysis, skipping force",
+                        OUTPUT_DEBUG,
+                    )
+                    return False
+                if _reg_candidate is None:
+                    return True
+                reg_forced_score = _reg_forced.get("scoreLead", 0)
+                reg_cand_score = _reg_candidate.get("scoreLead", 0)
+                reg_loss = p_sign * (reg_cand_score - reg_forced_score)
+                if reg_loss > _CROSS_CHECK_MAX_LOSS:
+                    self.game.katrain.log(
+                        f"[HuntStrategy] Safety {label} cross-check FAILED: "
+                        f"{forced_gtp} loses {reg_loss:.2f}pt vs {candidate_gtp} in regular analysis",
+                        OUTPUT_DEBUG,
+                    )
+                    return False
+                return True
+
+            # 安全弁v1
+            _SAFETY_LOSS_THRESHOLD = 4.0
+            max_visit_mi = max(move_infos, key=lambda mi: mi.get("visits", 0))
+            max_visit_gtp = max_visit_mi.get("move", "")
+            max_visit_score = max_visit_mi.get("scoreLead", 0)
+            max_visit_loss = player_sign * (best_score - max_visit_score)
+            if max_visit_loss >= _SAFETY_LOSS_THRESHOLD and best_gtp_by_score and best_gtp_by_score != max_visit_gtp:
+                if _safety_valve_cross_check(best_gtp_by_score, max_visit_gtp, player_sign, "v1"):
+                    self.game.katrain.log(
+                        f"[HuntStrategy] Safety valve: max-visit move {max_visit_gtp} "
+                        f"loss={max_visit_loss:.2f} >= {_SAFETY_LOSS_THRESHOLD}, "
+                        f"forcing best-score move {best_gtp_by_score}",
+                        OUTPUT_DEBUG,
+                    )
+                    if best_gtp_by_score == "pass":
+                        return Move(None, player=self.cn.next_player), "Safety valve: best move is pass."
+                    return Move.from_gtp(best_gtp_by_score, player=self.cn.next_player), (
+                        f"Safety valve: max-visit {max_visit_gtp} had loss={max_visit_loss:.2f}, "
+                        f"forced best-score move {best_gtp_by_score}."
+                    )
+
+        # --- ターゲット検出 ---
+        targets = find_targets(self.game, self.cn, hunt_min_group_size, hunt_instability_min)
+        has_targets = len(targets) > 0
+
+        if has_targets:
+            primary_target = targets[0]
+            target_instability = primary_target[1]
+            target_coords = set(primary_target[2])
+            if len(targets) > 1:
+                target_coords = target_coords | targets[1][2]
+            self.game.katrain.log(
+                f"[HuntStrategy] Phase: Attack (targets={len(targets)}, "
+                f"primary: size={len(primary_target[2])}, instability={target_instability:.2f})",
+                OUTPUT_DEBUG,
+            )
+        else:
+            self.game.katrain.log("[HuntStrategy] Phase: No targets, playing as 9-dan", OUTPUT_DEBUG)
+
+        # --- humanPolicy × (proximity × instability | 1.0) で候補構築 ---
+        prox_var = hunt_proximity_stddev ** 2
+        moves = []
+        filtered_count = 0
+        has_filter = len(good_moves) > 0
+
+        for x in range(bx):
+            for y in range(by):
+                idx = (by - y - 1) * bx + x
+                if idx < len(human_policy) and human_policy[idx] > 0:
+                    m = Move((x, y), player=self.cn.next_player)
+                    if has_filter and m.gtp() not in good_moves:
+                        filtered_count += 1
+                    else:
+                        hp_weight = human_policy[idx]
+                        if has_targets:
+                            min_dist_sq = min((x - tx) ** 2 + (y - ty) ** 2 for tx, ty in target_coords)
+                            proximity = math.exp(-0.5 * min_dist_sq / prox_var)
+                            combined = hp_weight * proximity * target_instability
+                        else:
+                            combined = hp_weight
+                        moves.append((m, combined))
+
+        # パス候補
+        if len(human_policy) > bx * by and human_policy[-1] > 0:
+            if not has_filter or "pass" in good_moves:
+                moves.append((Move(None, player=self.cn.next_player), human_policy[-1]))
+
+        self.game.katrain.log(
+            f"[HuntStrategy] {len(moves)} candidate moves ({filtered_count} filtered)",
+            OUTPUT_DEBUG,
+        )
+
+        # 安全弁v2
+        _SAFETY_LOSS_THRESHOLD = 4.0
+        if moves and move_infos and best_gtp_by_score:
+            _score_by_gtp_v2 = {mi.get("move", ""): mi.get("scoreLead", 0) for mi in move_infos}
+            top_move_v2, _ = max(moves, key=lambda x: x[1])
+            top_gtp_v2 = top_move_v2.gtp()
+            if top_gtp_v2 in _score_by_gtp_v2 and top_gtp_v2 != best_gtp_by_score:
+                top_loss_v2 = player_sign * (best_score - _score_by_gtp_v2[top_gtp_v2])
+                self.game.katrain.log(
+                    f"[HuntStrategy] Safety v2: top weighted move {top_gtp_v2} loss={top_loss_v2:.2f}",
+                    OUTPUT_DEBUG,
+                )
+                if top_loss_v2 >= _SAFETY_LOSS_THRESHOLD:
+                    if _safety_valve_cross_check(best_gtp_by_score, top_gtp_v2, player_sign, "v2"):
+                        self.game.katrain.log(
+                            f"[HuntStrategy] Safety valve v2: top weighted {top_gtp_v2} "
+                            f"loss={top_loss_v2:.2f} >= {_SAFETY_LOSS_THRESHOLD}, "
+                            f"forcing best-score move {best_gtp_by_score}",
+                            OUTPUT_DEBUG,
+                        )
+                        if best_gtp_by_score == "pass":
+                            return Move(None, player=self.cn.next_player), "Safety valve v2: best move is pass."
+                        return Move.from_gtp(best_gtp_by_score, player=self.cn.next_player), (
+                            f"Safety valve v2: top weighted {top_gtp_v2} had loss={top_loss_v2:.2f}, "
+                            f"forced best-score move {best_gtp_by_score}."
+                        )
+
+        # 全手フィルタ時のフォールバック
+        if not moves:
+            self.game.katrain.log("[HuntStrategy] All moves filtered, using best search move", OUTPUT_DEBUG)
+            if move_infos:
+                best_gtp = best_gtp_by_score if best_gtp_by_score else move_infos[0].get("move", "pass")
+                if best_gtp == "pass":
+                    return Move(None, player=self.cn.next_player), "All moves filtered, playing best move."
+                return Move.from_gtp(best_gtp, player=self.cn.next_player), "All moves filtered, playing best move."
+            return Move(None, player=self.cn.next_player), "No valid moves found."
+
+        # パス処理
+        if any(m.is_pass for m, _ in moves):
+            if is_area_scoring:
+                _AREA_PASS_MARGIN = 0.5
+                pass_mi = next((mi for mi in (move_infos or []) if mi.get("move") == "pass"), None)
+                if pass_mi is not None:
+                    pass_score_lead = pass_mi.get("scoreLead", best_score)
+                    pass_loss = player_sign * (best_score - pass_score_lead)
+                    if pass_loss < _AREA_PASS_MARGIN:
+                        self.game.katrain.log(
+                            f"[HuntStrategy] Area scoring: pass within {_AREA_PASS_MARGIN}pt of best "
+                            f"(loss={pass_loss:.2f}), forcing pass",
+                            OUTPUT_DEBUG,
+                        )
+                        return Move(None, player=self.cn.next_player), "Area scoring: pass near-optimal, forcing pass."
+                moves_without_pass = [(m, w) for m, w in moves if not m.is_pass]
+                if moves_without_pass:
+                    moves = moves_without_pass
+                    self.game.katrain.log("[HuntStrategy] Area scoring: pass removed from candidates", OUTPUT_DEBUG)
+                else:
+                    if best_gtp_by_score and best_gtp_by_score != "pass":
+                        return Move.from_gtp(best_gtp_by_score, player=self.cn.next_player), \
+                            "Area scoring: playing best non-pass move."
+                    return Move(None, player=self.cn.next_player), "Area scoring: no non-pass candidates."
+            else:
+                self.game.katrain.log("[HuntStrategy] Pass is among candidates, forcing pass", OUTPUT_DEBUG)
+                return Move(None, player=self.cn.next_player), "Pass is in candidates, forcing pass."
+
+        # エンドゲーム: humanPolicy最上位手（ターゲット重み無視）
+        endgame_threshold = math.ceil(bx * by * 0.5)
+        if current_move >= endgame_threshold:
+            endgame_moves = []
+            for x in range(bx):
+                for y in range(by):
+                    idx = (by - y - 1) * bx + x
+                    if idx < len(human_policy) and human_policy[idx] > 0:
+                        m = Move((x, y), player=self.cn.next_player)
+                        if not has_filter or m.gtp() in good_moves:
+                            endgame_moves.append((m, human_policy[idx]))
+            if endgame_moves:
+                top_move = max(endgame_moves, key=lambda x: x[1])
+                self.game.katrain.log(
+                    f"[HuntStrategy] Endgame: playing top humanPolicy move {top_move[0].gtp()}",
+                    OUTPUT_DEBUG,
+                )
+                return top_move[0], f"Endgame: played top humanPolicy move {top_move[0].gtp()}."
+
+        # デバッグ: 上位5手表示
+        top5 = sorted(moves, key=lambda x: -x[1])[:5]
+        top_str = "\n".join([f"#{i+1}: {m.gtp()} weight={w:.4f}" for i, (m, w) in enumerate(top5)])
+        self.game.katrain.log(f"[HuntStrategy] Top 5:\n{top_str}", OUTPUT_DEBUG)
+
+        # タイブレーク
+        _TIEBREAK_WEIGHT_RATIO = 1.05
+        _TIEBREAK_VISITS_REVERSAL_RATIO = 2.0
+        _TIEBREAK_SCORE_DIFF = 2.0
+        if len(top5) >= 2 and move_infos:
+            _score_by_gtp = {mi.get("move", ""): mi.get("scoreLead", 0) * player_sign for mi in move_infos}
+            _visits_by_gtp = {mi.get("move", ""): mi.get("visits", 0) for mi in move_infos}
+            top1_move, top1_w = top5[0]
+            top2_move, top2_w = top5[1]
+            top1_visits = _visits_by_gtp.get(top1_move.gtp(), 0)
+            top2_visits = _visits_by_gtp.get(top2_move.gtp(), 0)
+            is_policy_close = top2_w > 0 and top1_w / top2_w < _TIEBREAK_WEIGHT_RATIO
+            is_visits_reversal = top2_visits > top1_visits * _TIEBREAK_VISITS_REVERSAL_RATIO
+            is_mcts_nonprefer = top1_visits > 0 and top2_visits >= top1_visits
+            if is_policy_close or is_visits_reversal or is_mcts_nonprefer:
+                s1 = _score_by_gtp.get(top1_move.gtp())
+                s2 = _score_by_gtp.get(top2_move.gtp())
+                if s1 is not None and s2 is not None and abs(s1 - s2) >= _TIEBREAK_SCORE_DIFF:
+                    winner = top1_move if s1 > s2 else top2_move
+                    loser = top2_move if s1 > s2 else top1_move
+                    trigger = "policy" if is_policy_close else ("visits_reversal" if is_visits_reversal else "mcts_nonprefer")
+                    self.game.katrain.log(
+                        f"[HuntStrategy] Tiebreak({trigger}): {winner.gtp()} over {loser.gtp()} "
+                        f"(score diff={abs(s1-s2):.1f}pt, "
+                        f"policy_ratio={top1_w/top2_w:.3f}, visits={top1_visits}/{top2_visits})",
+                        OUTPUT_DEBUG,
+                    )
+                    return winner, (
+                        f"\n{top_str}\n\nScore tiebreak({trigger}): played {winner.gtp()} "
+                        f"(score diff={abs(s1-s2):.1f}pt). ({filtered_count} filtered)"
+                    )
+
+        # 重み付き選択
+        selected = weighted_selection_without_replacement(moves, 1)[0]
+        move = selected[0]
+        phase = "Hunt(attack)" if has_targets else "Hunt(9-dan)"
+        self.game.katrain.log(f"[HuntStrategy] Selected: {move.gtp()} ({phase})", OUTPUT_DEBUG)
+
+        ai_thoughts = (
+            f"\n{top_str}\n\n{phase}: played {move.gtp()} "
+            f"({filtered_count} bad moves filtered)"
+        )
+        return move, ai_thoughts
 
 
 def generate_ai_move(game: Game, ai_mode: str, ai_settings: Dict) -> Tuple[Move, GameNode]:

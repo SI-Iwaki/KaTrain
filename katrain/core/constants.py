@@ -57,13 +57,14 @@ AI_HUMAN = "ai:human"
 AI_PRO = "ai:pro"
 AI_DIVERGE = "ai:diverge_move"
 AI_SIEGE = "ai:siege"
+AI_HUNT = "ai:hunt"
 
 AI_CONFIG_DEFAULT = AI_RANK
 
 AI_STRATEGIES_ENGINE = [AI_DEFAULT, AI_HANDICAP, AI_SCORELOSS, AI_SIMPLE_OWNERSHIP, AI_JIGO, AI_ANTIMIRROR]
 AI_STRATEGIES_PICK = [AI_PICK, AI_LOCAL, AI_TENUKI, AI_INFLUENCE, AI_TERRITORY, AI_FIGHTING, AI_RANK]
 AI_STRATEGIES_POLICY = [AI_WEIGHTED, AI_POLICY] + AI_STRATEGIES_PICK
-AI_STRATEGIES = AI_STRATEGIES_ENGINE + AI_STRATEGIES_POLICY + [AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE]
+AI_STRATEGIES = AI_STRATEGIES_ENGINE + AI_STRATEGIES_POLICY + [AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT]
 AI_STRATEGIES_RECOMMENDED_ORDER = [
     AI_DEFAULT,
     AI_HUMAN,
@@ -84,6 +85,7 @@ AI_STRATEGIES_RECOMMENDED_ORDER = [
     AI_INFLUENCE,
     AI_FIGHTING,
     AI_SIEGE,
+    AI_HUNT,
 ]
 
 AI_STRENGTH = {  # dan ranks, backup if model is missing. TODO: remove some?
@@ -106,6 +108,7 @@ AI_STRENGTH = {  # dan ranks, backup if model is missing. TODO: remove some?
     AI_PRO: float("nan"),
     AI_DIVERGE: float("nan"),
     AI_SIEGE: float("nan"),
+    AI_HUNT: float("nan"),
 }
 
 AI_OPTION_VALUES = {
@@ -147,7 +150,6 @@ AI_OPTION_VALUES = {
         ("classic", "[fighting:classic]"),
         ("scoreloss", "[fighting:scoreloss]"),
         ("human", "[fighting:human]"),
-        ("hunt", "[fighting:hunt]"),
     ],
     "fighting_max_loss": [x / 2 for x in range(1, 21)],  # 0.5〜10.0（0.5刻み）
     "force_tengen_opening": "bool",
@@ -195,10 +197,10 @@ AI_OPTION_ORDER = {
     "siege_max_loss": 11,
     "siege_proximity_stddev": 20,
     "siege_instability_min": 21,
-    "hunt_max_loss": 6,
-    "hunt_min_group_size": 7,
-    "hunt_proximity_stddev": 8,
-    "hunt_instability_min": 9,
+    "hunt_max_loss": 0,
+    "hunt_min_group_size": 1,
+    "hunt_proximity_stddev": 10,
+    "hunt_instability_min": 11,
 }
 
 AI_KEY_PROPERTIES = {

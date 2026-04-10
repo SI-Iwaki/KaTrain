@@ -168,7 +168,9 @@
             "pick_frac": 0.2,
             "endgame": 0.45,
             "unsettled_power": 2.0,
-            "proximity_stddev": 3.0,
+            "proximity_stddev": 3.0
+        },
+        "ai:hunt": {
             "hunt_max_loss": 6.0,
             "hunt_min_group_size": 5,
             "hunt_proximity_stddev": 3.0,
