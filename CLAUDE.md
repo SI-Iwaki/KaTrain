@@ -31,6 +31,7 @@ katrain/
   config.json         -- パッケージ同梱のデフォルト設定
   i18n/               -- 多言語リソース
 tests/                -- テスト
+katrain_debug/        -- 戦略デバッグCLIツール（KaTrain本体と独立）
 ```
 
 **ランタイム設定ファイル**（`C:\Users\iwaki\.katrain\`）:
@@ -50,6 +51,12 @@ python -m katrain
 
 デバッグ: `C:\Users\iwaki\.katrain\config.json` の `"debug_level": 0` → `1` に変更して起動。確認後 `0` に戻す。
 
+**戦略デバッグCLI**: 対局不要で任意の局面の戦略意思決定を再現・確認（KataGo起動あり、約30秒）:
+```bash
+python -m katrain_debug --sgf FILE --move N --strategy hunt [--settings key=val ...] [--output text|json]
+```
+対応戦略: `human`, `pro`, `fighting`, `siege`, `hunt`, `hunt_diverge`, `diverge` 等22種。`--output json` でパース可能な構造化出力。
+
 ## コーディング規約
 
 - コミットメッセージは**日本語**で書く
@@ -65,6 +72,7 @@ python -m katrain
 - **i18nの`.po`ファイルだけ編集して終わらない** — `python tools/compile_mo.py` で`.mo`にコンパイルしないと翻訳が反映されない
 - **偏差/dodgeメカニズムで生humanPolicyを順位判定に使わない** — proximity/intensity込みのcombined weightを使わないと、攻撃対象から遠い手に差し替わり棋風が崩壊する
 - **空間的に離れた2点の座標平均をフォーカス/ターゲット中心に使わない** — 盤の反対側にある2点の平均は「どちらにも近くない幻影中心」になり、実際の戦闘エリアの手がペナルティを受ける。代わりに独立したGaussianのmaxを取る（2アンカーmax方式）
+- **Kivyモジュールをimportするスクリプトでargparseを使う場合、`os.environ["KIVY_NO_ARGS"] = "1"` を先頭で設定する** — KivyのConfigが`--help`等のCLI引数を横取りする
 
 ## 開発ワークフロー
 
@@ -90,6 +98,12 @@ python -m katrain
    - dodge効果: `Best-move dodge:`（HuntDivergenceStrategy）/ `Post-temp safety:`（HuntStrategy温度選択後安全チェック）
    - フォーカス効果: `Focus: anchors=`（HuntStrategy注意フォーカスのアンカー座標とstddev）
 4. 確認後、`debug_level` を `0` に戻す
+
+**CLI検証（対局不要）**: 特定局面でのAI戦略の挙動を即座に確認:
+```bash
+python -m katrain_debug --sgf tests/data/ogs.sgf --move 30 --strategy hunt --output text
+python -m katrain_debug --sgf tests/data/ogs.sgf --move 30 --strategy hunt --output json 2>/dev/null | python -c "import sys,json; print(json.dumps(json.loads(sys.stdin.read()), indent=2))"
+```
 
 ## 現在のパラメータ値
 
