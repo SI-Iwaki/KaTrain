@@ -1,7 +1,7 @@
 import json
 
 from katrain.core.base_katrain import Player
-from katrain.core.constants import OUTPUT_ERROR, OUTPUT_INFO, PLAYER_AI
+from katrain.core.constants import OUTPUT_ERROR, OUTPUT_INFO
 
 
 class _NoOp:

@@ -1,6 +1,5 @@
 # tests/test_debug_stub.py
 import json
-import os
 import pytest
 from katrain_debug.katrain_stub import KaTrainStub
 
