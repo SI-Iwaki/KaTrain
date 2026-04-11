@@ -86,7 +86,7 @@ katrain_debug/
 10. KataGoプロセスをシャットダウン
 
 **Gameクラスの扱い**:
-`Game.__init__`は`analyze_all_nodes`をスレッドで自動実行する。CLIではこれは不要なので、`Game`のサブクラスで自動分析をスキップするか、`BaseGame`ベースで手動構築する。
+`Game.__init__`は`analyze_all_nodes`をスレッドで自動実行する。CLIではこれは不要。推奨方法: `Game`のサブクラス`DebugGame`を作り、`__init__`で`analyze_all_nodes`スレッドを起動しないようにオーバーライドする。`BaseGame`ベースは`engines`属性等が欠けるため不適。
 
 ### cli.py — CLIエントリポイント
 
