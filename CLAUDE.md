@@ -120,6 +120,7 @@ python -m katrain_debug --sgf FILE --strategy hunt --batch --settings hunt_max_l
    - フェーズ確認: `Phase:`（SiegeStrategy / HuntStrategy）/ `Mode:`（FightingStrategy）
    - dodge効果: `Best-move dodge:`（HuntDivergenceStrategy）/ `Post-temp safety:`（HuntStrategy温度選択後安全チェック）
    - フォーカス効果: `Focus: anchors=`（HuntStrategy注意フォーカスのアンカー座標とstddev）
+   - 追撃効果: `Pursue:`（HuntStrategy攻め合い追撃の発動/スキップ）
 4. 確認後、`debug_level` を `0` に戻す
 
 **CLI検証（対局不要）**: 特定局面でのAI戦略の挙動を即座に確認:
