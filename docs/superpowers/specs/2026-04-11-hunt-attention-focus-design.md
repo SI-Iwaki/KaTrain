@@ -53,11 +53,11 @@ combined *= focus_penalty
 
 **パラメータ:**
 
-| パラメータ | 値 | 備考 |
+| パラメータ | 値 | 説明 |
 |---|---|---|
-| `hunt_focus_stddev` | 19路: 7.0, 13路: 5.0 | GUIから調整可能 |
-| `focus_floor` | 0.05（固定） | 遠い手でも最低5%の重みは残す |
-| `focus_var` | `hunt_focus_stddev ** 2` | 内部計算用 |
+| `hunt_focus_stddev` | 19路: 7.0, 13路: 5.0 | 注意フォーカスの広がりを制御するGaussian標準偏差。小さいほどフォーカス中心付近に集中し遠い手を強く抑制する。大きいほど緩やかになり広範囲の手を許容する。GUIから調整可能 |
+| `focus_floor` | 0.05（固定） | フォーカスペナルティの下限値。どれだけ遠い手でも元の重みの5%は維持され、完全排除を防ぐ。温度w^0.5適用後は実効約22%になる |
+| `focus_var` | `hunt_focus_stddev ** 2` | 内部計算用の分散値。Gaussian関数 `exp(-0.5 * dist² / focus_var)` で使用 |
 
 **stddev=7.0の効果（19路）:**
 
@@ -70,7 +70,7 @@ combined *= focus_penalty
 | 14路 | 0.14 |
 | 18路 | 0.05（floor） |
 
-**適用タイミング:** `combined = hp_weight * proximity * intensity * territory_avoid` の直後、`moves.append()` の直前。温度変換の前に適用されるため、温度で平坦化されても遠い手の抑制が効く。
+**適用タイミング:** `combined = hp_weight * proximity * intensity * territory_avoid` の直後、`moves.append()` の直前。温度変換 `w^(1/inv_temp)` の前に適用されるため、温度で平坦化されても遠い手の抑制が効く。ただし温度はペナルティを緩和する方向に作用する（例: ペナルティ0.14 → 温度2.0適用後は実効0.37）。それでもフォーカスなし（重み比1.25倍）と比べ十分な差（3倍）が残るため問題にならない。
 
 **適用条件:** Invade・Hunt両フェーズで適用。ターゲットがない場合は適用しない。
 
