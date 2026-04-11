@@ -1,7 +1,7 @@
 import json
 import pytest
 from katrain_debug.katrain_stub import KaTrainStub
-from katrain_debug.runner import DebugGame
+from katrain_debug.runner import DebugGame, STRATEGY_NAME_MAP, load_sgf_to_move
 
 
 class TestDebugGame:
@@ -48,3 +48,40 @@ class TestDebugGame:
         played_node = game.play(move)
         assert played_node is not None
         assert game.current_node == played_node
+
+
+class TestStrategyNameMapping:
+    def test_known_strategies(self):
+        assert STRATEGY_NAME_MAP["hunt"] == "ai:hunt"
+        assert STRATEGY_NAME_MAP["siege"] == "ai:siege"
+        assert STRATEGY_NAME_MAP["human"] == "ai:human"
+        assert STRATEGY_NAME_MAP["fighting"] == "ai:p:fighting"
+        assert STRATEGY_NAME_MAP["hunt_diverge"] == "ai:hunt_diverge"
+        assert STRATEGY_NAME_MAP["diverge"] == "ai:diverge_move"
+
+    def test_pro_strategy(self):
+        assert STRATEGY_NAME_MAP["pro"] == "ai:pro"
+
+    def test_default_strategy(self):
+        assert STRATEGY_NAME_MAP["default"] == "ai:default"
+
+    def test_unknown_strategy_not_in_map(self):
+        assert "nonexistent" not in STRATEGY_NAME_MAP
+
+
+class TestLoadSGFAndNavigate:
+    def test_navigate_to_move(self):
+        game_node = load_sgf_to_move("tests/data/ogs.sgf", move_number=5)
+        assert game_node.depth == 5
+
+    def test_navigate_to_move_1(self):
+        game_node = load_sgf_to_move("tests/data/ogs.sgf", move_number=1)
+        assert game_node.depth == 1
+
+    def test_navigate_to_move_0_returns_root(self):
+        game_node = load_sgf_to_move("tests/data/ogs.sgf", move_number=0)
+        assert game_node.depth == 0
+
+    def test_move_number_exceeds_game_length(self):
+        with pytest.raises(ValueError, match="exceeds"):
+            load_sgf_to_move("tests/data/ogs.sgf", move_number=9999)
