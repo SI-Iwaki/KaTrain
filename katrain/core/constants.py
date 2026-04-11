@@ -175,6 +175,7 @@ AI_OPTION_VALUES = {
     "hunt_invasion_proximity_stddev": [x / 2 for x in range(4, 17)],  # 2.0〜8.0（0.5刻み）
     "hunt_invasion_temperature": [1.0, 1.5, 2.0, 2.5, 3.0],  # 侵入時の選択温度（高い＝分散）
     "hunt_focus_stddev": [x / 2 for x in range(6, 21)],  # 3.0〜10.0（0.5刻み）
+    "hunt_endgame_move": list(range(150, 260, 10)),  # 150〜250（10刻み）
     "hunt_dodge_max_loss": [x / 2 for x in range(1, 7)],  # 0.5〜3.0（0.5刻み）
     "hunt_dodge_top_n": list(range(2, 6)),  # 2〜5
 }
@@ -218,6 +219,7 @@ AI_OPTION_ORDER = {
     "hunt_invasion_proximity_stddev": 23,
     "hunt_invasion_temperature": 24,
     "hunt_focus_stddev": 25,
+    "hunt_endgame_move": 26,
     "hunt_dodge_max_loss": 0,
     "hunt_dodge_top_n": 1,
 }

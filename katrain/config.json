@@ -180,7 +180,8 @@
             "hunt_invasion_max": 0.7,
             "hunt_invasion_proximity_stddev": 3.0,
             "hunt_invasion_temperature": 1.5,
-            "hunt_focus_stddev": 7.0
+            "hunt_focus_stddev": 7.0,
+            "hunt_endgame_move": 200
         },
         "ai:hunt_diverge": {
             "hunt_max_loss": 6.0,
@@ -192,7 +193,8 @@
             "hunt_invasion_max": 0.7,
             "hunt_invasion_proximity_stddev": 3.0,
             "hunt_dodge_max_loss": 1.0,
-            "hunt_dodge_top_n": 3
+            "hunt_dodge_top_n": 3,
+            "hunt_endgame_move": 200
         },
         "ai:p:rank": {
             "kyu_rank": 4.0

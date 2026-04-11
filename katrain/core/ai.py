@@ -4051,7 +4051,10 @@ class HuntStrategy(AIStrategy):
                 return Move(None, player=self.cn.next_player), "Pass is in candidates, forcing pass."
 
         # エンドゲーム: humanPolicy最上位手（ターゲット重み無視）
-        endgame_threshold = math.ceil(bx * by * 0.5)
+        if bx >= 19 and by >= 19:
+            endgame_threshold = int(self.settings.get("hunt_endgame_move", 200))
+        else:
+            endgame_threshold = math.ceil(bx * by * 0.5)
         if current_move >= endgame_threshold:
             endgame_moves = []
             for x in range(bx):
