@@ -2,8 +2,6 @@ import os
 import time
 
 from katrain.core.game import BaseGame, Game, KaTrainSGF
-from katrain.core.game_node import GameNode
-from katrain.core.sgf_parser import Move
 from katrain.core.constants import (
     DATA_FOLDER,
     AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE,
@@ -52,7 +50,7 @@ def load_sgf_to_move(sgf_path, move_number):
 
     Args:
         sgf_path: SGFファイルパス
-        move_number: 手番（0=ルート, 1=最初の着手, ...）
+        move_number: 手番（1-indexed。1=最初の着手, 2=2手目, ...。0でルートノード）
     Returns:
         指定手番のGameNode
     Raises:
