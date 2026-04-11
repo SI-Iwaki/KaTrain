@@ -35,7 +35,8 @@ katrain/
 tests/                -- テスト
 katrain_debug/        -- 戦略デバッグCLIツール（KaTrain本体と独立）
   cli.py              -- argparseエントリポイント
-  runner.py           -- SGF→局面構築→戦略実行パイプライン
+  runner.py           -- SGF→局面構築→戦略実行パイプライン（単一局面）
+  batch_eval.py       -- 1局通しバッチ評価（AI一致率・損失算出）
   katrain_stub.py     -- Kivy依存なしのKaTrainスタブ
 ```
 
@@ -65,6 +66,19 @@ python -m katrain_debug --sgf FILE --move N --strategy hunt [--settings key=val 
 ```
 対応戦略: `human`, `pro`, `fighting`, `siege`, `hunt`, `hunt_diverge`, `diverge` 等22種。`--output json` でパース可能な構造化出力。
 
+**バッチ評価モード（`--batch`）**: 1局通しでAI最善手一致率・平均損失・正確度を算出。パラメータ調整に使用:
+```bash
+# 全手・両色で評価
+python -m katrain_debug --sgf FILE --strategy hunt --batch
+# 白番のみ評価
+python -m katrain_debug --sgf FILE --strategy hunt --batch --player W
+# 手数範囲を指定（中盤のみ）
+python -m katrain_debug --sgf FILE --strategy hunt --batch --move-range 51-180
+# パラメータを変えて比較
+python -m katrain_debug --sgf FILE --strategy hunt --batch --settings hunt_max_loss=4.0 hunt_focus_stddev=5.0
+```
+出力: Settings（パラメータ値）、Aggregate Stats（Overall/B/W/Opening/Middle/Endgame別の Top1一致率・Top5一致率・平均損失・正確度）、Notable Divergences（損失2.0超の手一覧）。`--output json` で全手の詳細をJSON出力。KataGoは1回だけ起動し、205手の局で約10分。
+
 ## コーディング規約
 
 - コミットメッセージは**日本語**で書く
@@ -76,6 +90,7 @@ python -m katrain_debug --sgf FILE --move N --strategy hunt [--settings key=val 
 - **ログファイルをReadで全読みしない** — 数百KB〜1MB超あるため、必ずGrepで必要行だけ抽出する
 - **Stage 1（humanSLProfile付き）の`scoreLead`をフィルタ判定に使わない** — バイアスされているため、必ずStage 2のクリーンクエリの値を使う
 - **パッケージ`config.json`だけ更新して終わらない** — ユーザーのローカル設定`C:\Users\iwaki\.katrain\config.json`にもキーを追加しないとGUIに表示されない
+- **ユーザーローカル`config.json`（`C:\Users\iwaki\.katrain\config.json`）の編集をサブエージェントに委任しない** — サブエージェントが成功を報告しても実際に反映されないことがある。このファイルは必ずメインセッションで直接Editする
 - **`analysis_config.cfg`や`katago.exe`を直接編集しない** — ランタイムエンジン設定は手動管理
 - **i18nの`.po`ファイルだけ編集して終わらない** — `python tools/compile_mo.py` で`.mo`にコンパイルしないと翻訳が反映されない
 - **偏差/dodgeメカニズムで生humanPolicyを順位判定に使わない** — proximity/intensity込みのcombined weightを使わないと、攻撃対象から遠い手に差し替わり棋風が崩壊する
@@ -111,6 +126,11 @@ python -m katrain_debug --sgf FILE --move N --strategy hunt [--settings key=val 
 ```bash
 python -m katrain_debug --sgf tests/data/ogs.sgf --move 30 --strategy hunt --output text
 python -m katrain_debug --sgf tests/data/ogs.sgf --move 30 --strategy hunt --output json 2>/dev/null | python -c "import sys,json; print(json.dumps(json.loads(sys.stdin.read()), indent=2))"
+```
+
+**バッチ評価（1局通し）**: 戦略のAI一致率・損失を一括計測してパラメータ調整:
+```bash
+python -m katrain_debug --sgf tests/data/panda1.sgf --strategy hunt --batch --player W
 ```
 
 ## 現在のパラメータ値
