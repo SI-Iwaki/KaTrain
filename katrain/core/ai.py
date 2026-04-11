@@ -3670,6 +3670,13 @@ class HuntStrategy(AIStrategy):
         hunt_pursue_min_liberties = self.settings.get("hunt_pursue_min_liberties", 3)
         hunt_pursue_ownership_threshold = self.settings.get("hunt_pursue_ownership_threshold", 0.85)
 
+        # スコア適応型損失制御の定数
+        _LOSING_THRESHOLD = -6.0  # この値未満で劣勢と判定
+        _LOSING_MAX_LOSS = 4.0    # 劣勢時の損失上限
+        _WINNING_THRESHOLD = 15.0   # この値超で勝勢と判定
+        _WINNING_SUPPRESS_FACTOR = 0.3  # 最善手のweight抑制係数
+        hunt_winning_suppress = self.settings.get("hunt_winning_suppress_enabled", False)
+
         self.game.katrain.log(
             f"[HuntStrategy] Starting move generation "
             f"(max_loss={hunt_max_loss}, min_group={hunt_min_group_size}, "
@@ -3795,6 +3802,20 @@ class HuntStrategy(AIStrategy):
             if best_gtp_by_score == "pass":
                 self.game.katrain.log("[HuntStrategy] Best move is pass, forcing pass", OUTPUT_DEBUG)
                 return Move(None, player=self.cn.next_player), "Best move is pass, forcing pass."
+
+            # --- 劣勢時の損失制限 ---
+            score_lead = best_score * player_sign  # 正=自分が有利, 負=自分が不利
+            if score_lead < _LOSING_THRESHOLD:
+                original_hunt_max_loss = hunt_max_loss
+                original_invasion_max_loss = hunt_invasion_max_loss
+                hunt_max_loss = min(hunt_max_loss, _LOSING_MAX_LOSS)
+                hunt_invasion_max_loss = min(hunt_invasion_max_loss, _LOSING_MAX_LOSS)
+                self.game.katrain.log(
+                    f"[HuntStrategy] Losing restrict: score_lead={score_lead:.1f}, "
+                    f"max_loss {original_hunt_max_loss} -> {hunt_max_loss}, "
+                    f"invasion_max_loss {original_invasion_max_loss} -> {hunt_invasion_max_loss}",
+                    OUTPUT_DEBUG,
+                )
 
             # --- 悪手フィルタ（hunt_max_loss 統一閾値） ---
             self.game.katrain.log(
