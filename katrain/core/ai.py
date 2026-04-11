@@ -4187,6 +4187,22 @@ class HuntStrategy(AIStrategy):
             OUTPUT_DEBUG,
         )
 
+        # --- 勝勢時の最善手weight抑制 ---
+        if hunt_winning_suppress and moves and best_gtp_by_score and best_score is not None:
+            score_lead_for_suppress = best_score * player_sign
+            if score_lead_for_suppress > _WINNING_THRESHOLD:
+                for i, (m, w) in enumerate(moves):
+                    if m.gtp() == best_gtp_by_score:
+                        original_w = w
+                        suppressed_w = w * _WINNING_SUPPRESS_FACTOR
+                        moves[i] = (m, suppressed_w)
+                        self.game.katrain.log(
+                            f"[HuntStrategy] Winning suppress: score_lead={score_lead_for_suppress:.1f}, "
+                            f"best_move={best_gtp_by_score} weight {original_w:.4f} -> {suppressed_w:.4f}",
+                            OUTPUT_DEBUG,
+                        )
+                        break
+
         # 安全弁v2
         _SAFETY_LOSS_THRESHOLD = 4.0
         if moves and move_infos and best_gtp_by_score:
