@@ -7,6 +7,7 @@ import json
 import sys
 
 from katrain_debug.runner import run_strategy, STRATEGY_NAME_MAP
+from katrain_debug.batch_eval import batch_evaluate
 
 
 def parse_settings(settings_list):
@@ -81,13 +82,90 @@ def format_json_output(result, sgf_path, move_number):
     return json.dumps(output, indent=2, ensure_ascii=False)
 
 
+def format_batch_text(result):
+    """バッチ評価結果のテキスト出力を生成"""
+    lines = []
+    s_range = result["evaluated_range"]
+    pf = result.get("player_filter")
+    player_label = {"B": "Black", "W": "White"}.get(pf, "Both (B/W)")
+
+    lines.append(f"=== Batch Evaluation: {result['strategy_class']} ===")
+    lines.append(f"SGF: {result['sgf']} ({result['total_moves']} moves)")
+    lines.append(f"Evaluated: move {s_range[0]}-{s_range[1]} | Strategy: {result['strategy']} | Player: {player_label}")
+    lines.append("")
+
+    # 設定（パラメータ名と数値を明示）
+    lines.append("--- Settings ---")
+    for key, value in sorted(result["settings"].items()):
+        lines.append(f"  {key} = {value}")
+    lines.append("")
+
+    # 集計テーブル
+    stats = result["stats"]
+    lines.append("--- Aggregate Stats ---")
+    header = f"  {'':16s} {'Count':>6s} {'Top1':>8s} {'Top5':>8s} {'MeanLoss':>9s} {'Accuracy':>9s}"
+    lines.append(header)
+    lines.append("  " + "-" * (len(header) - 2))
+
+    row_order = ["overall", "B", "W", "opening", "middle", "endgame"]
+    row_labels = {
+        "overall": "Overall",
+        "B": "Black",
+        "W": "White",
+        "opening": "Opening",
+        "middle": "Middle",
+        "endgame": "Endgame",
+    }
+    for key in row_order:
+        if key not in stats:
+            continue
+        s = stats[key]
+        label = row_labels.get(key, key)
+        lines.append(
+            f"  {label:16s} {s['count']:6d} {s['ai_top_move']:7.1%} {s['ai_top5_move']:7.1%}"
+            f" {s['mean_ptloss']:9.2f} {s['accuracy']:8.1f}"
+        )
+    lines.append("")
+
+    # 不一致手のハイライト（損失 >= 2.0 のみ表示）
+    bad_moves = [m for m in result["moves"] if m["point_loss"] is not None and m["point_loss"] >= 2.0]
+    if bad_moves:
+        lines.append(f"--- Notable Divergences (loss >= 2.0, {len(bad_moves)} moves) ---")
+        for m in bad_moves[:20]:  # 上位20件
+            mark = "OK" if m["match_top"] else "**"
+            lines.append(
+                f"  Move {m['move_num']:3d} ({m['player']}): "
+                f"AI={m['ai_top']:4s} Strategy={m['selected']:4s} "
+                f"loss={m['point_loss']:.1f} {mark}"
+            )
+        if len(bad_moves) > 20:
+            lines.append(f"  ... and {len(bad_moves) - 20} more")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def format_batch_json(result):
+    """バッチ評価結果のJSON出力を生成"""
+    return json.dumps(result, indent=2, ensure_ascii=False)
+
+
+def parse_move_range(value):
+    """'10-50' -> (10, 50), '30' -> (30, 30)"""
+    if "-" in value:
+        parts = value.split("-", 1)
+        return int(parts[0]), int(parts[1])
+    n = int(value)
+    return n, n
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="katrain_debug",
         description="KaTrain AI戦略デバッグツール - SGFの指定局面で戦略の意思決定過程を再現・可視化",
     )
     parser.add_argument("--sgf", required=True, help="SGFファイルパス")
-    parser.add_argument("--move", type=int, required=True, help="解析する手番（1-indexed）")
+    parser.add_argument("--move", type=int, default=None, help="解析する手番（1-indexed、--batch時は不要）")
     parser.add_argument(
         "--strategy", required=True,
         choices=sorted(STRATEGY_NAME_MAP.keys()),
@@ -100,9 +178,22 @@ def main():
     parser.add_argument("--config", default=None, help="config.jsonのパス（デフォルト: ~/.katrain/config.json）")
     parser.add_argument("--output", choices=["text", "json"], default="text", help="出力形式")
     parser.add_argument("--log-level", type=int, default=1, choices=[1, 2], help="ログ詳細度（1=通常, 2=全ログ）")
+    parser.add_argument("--batch", action="store_true", help="1局通しのバッチ評価モード")
+    parser.add_argument("--move-range", type=str, default=None, help="バッチ評価の手数範囲（例: 1-100, 50-200）")
+    parser.add_argument("--player", choices=["B", "W"], default=None, help="バッチ評価で戦略AIの手番を指定（B=黒, W=白）")
 
     args = parser.parse_args()
 
+    if args.batch:
+        _run_batch(args)
+    else:
+        if args.move is None:
+            parser.error("--move is required (or use --batch for full-game evaluation)")
+        _run_single(args)
+
+
+def _run_single(args):
+    """単一局面のデバッグ実行"""
     settings_overrides = parse_settings(args.settings)
 
     try:
@@ -129,3 +220,35 @@ def main():
         print(format_json_output(result, args.sgf, args.move))
     else:
         print(format_text_output(result, args.sgf, args.move))
+
+
+def _run_batch(args):
+    """1局通しのバッチ評価実行"""
+    settings_overrides = parse_settings(args.settings)
+    move_range = parse_move_range(args.move_range) if args.move_range else None
+
+    try:
+        result = batch_evaluate(
+            sgf_path=args.sgf,
+            strategy_name=args.strategy,
+            config_path=args.config,
+            settings_overrides=settings_overrides,
+            move_range=move_range,
+            player_filter=args.player,
+        )
+    except KeyError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Unexpected error: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(1)
+
+    if args.output == "json":
+        print(format_batch_json(result))
+    else:
+        print(format_batch_text(result))
