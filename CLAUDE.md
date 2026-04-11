@@ -74,6 +74,7 @@ python -m katrain
   - `**/*.log` 分析時 → `log-analysis.md`（Grepパターン、サブエージェントテンプレート）
 - **i18n変更時は `.po` 編集後に `python tools/compile_mo.py` で `.mo` を再コンパイルすること**
 - **パラメータ変更時は `.claude/rules/ai-parameters.md` のテーブルも同時に更新すること**
+- **`.claude/rules/` 配下のファイル編集時の注意**: `settings.local.json` で `Edit(.claude/rules/*)` を許可していても、`dontAsk` モードでEditが拒否されることがある（既知の問題）。拒否された場合は **サブエージェント（Agent tool）経由で編集・コミット** すること
 
 ## 変更の検証方法
 
