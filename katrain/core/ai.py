@@ -3539,12 +3539,14 @@ class HuntStrategy(AIStrategy):
             default_prox_stddev = 2.5
             default_invasion_max_loss = 6.0
             default_invasion_prox_stddev = 3.0
+            default_focus_stddev = 5.0
         else:
             default_max_loss = 6.0
             default_min_group = 5
             default_prox_stddev = 3.0
             default_invasion_max_loss = 8.0
             default_invasion_prox_stddev = 3.0
+            default_focus_stddev = 7.0
 
         hunt_max_loss = self.settings.get("hunt_max_loss", default_max_loss)
         hunt_min_group_size = self.settings.get("hunt_min_group_size", default_min_group)
@@ -3555,6 +3557,7 @@ class HuntStrategy(AIStrategy):
         hunt_invasion_max = self.settings.get("hunt_invasion_max", 0.7)
         hunt_invasion_prox_stddev = self.settings.get("hunt_invasion_proximity_stddev", default_invasion_prox_stddev)
         hunt_invasion_temperature = self.settings.get("hunt_invasion_temperature", 1.5)
+        hunt_focus_stddev = self.settings.get("hunt_focus_stddev", default_focus_stddev)
 
         self.game.katrain.log(
             f"[HuntStrategy] Starting move generation "
@@ -3562,7 +3565,7 @@ class HuntStrategy(AIStrategy):
             f"prox_stddev={hunt_proximity_stddev}, instability_min={hunt_instability_min}, "
             f"inv_max_loss={hunt_invasion_max_loss}, inv_min={hunt_invasion_min}, "
             f"inv_max={hunt_invasion_max}, inv_prox_stddev={hunt_invasion_prox_stddev}, "
-            f"inv_temperature={hunt_invasion_temperature})",
+            f"inv_temperature={hunt_invasion_temperature}, focus_stddev={hunt_focus_stddev})",
             OUTPUT_DEBUG,
         )
 
@@ -3814,6 +3817,58 @@ class HuntStrategy(AIStrategy):
         all_target_coords = invasion_coords | group_coords
         has_targets = len(all_target_coords) > 0
 
+        # --- 注意フォーカス中心の算出 ---
+        focus_center = None
+        _FOCUS_FLOOR = 0.05
+        focus_var = hunt_focus_stddev ** 2
+
+        if has_targets and hunt_focus_stddev > 0:
+            # (1) 直前着手の座標を取得
+            last_move_coords = None
+            if self.cn.move and self.cn.move.coords:
+                last_move_coords = self.cn.move.coords  # (x, y)
+
+            # (2) 最も不安定なターゲットの重心を取得
+            unstable_center = None
+            if has_group_targets:
+                # group_targetsの中で最大instabilityのグループの重心
+                primary_coords = targets[0][2]  # set of (x, y)
+                if primary_coords:
+                    uc_x = sum(c[0] for c in primary_coords) / len(primary_coords)
+                    uc_y = sum(c[1] for c in primary_coords) / len(primary_coords)
+                    unstable_center = (uc_x, uc_y)
+            else:
+                # Invadeフェーズ: opp_strength_mapで最大強度の侵入座標
+                if opp_strength_map:
+                    max_coord = max(opp_strength_map, key=opp_strength_map.get)
+                    unstable_center = (float(max_coord[0]), float(max_coord[1]))
+
+            # (3) フォーカス中心の合成
+            if last_move_coords and unstable_center:
+                focus_center = (
+                    0.5 * last_move_coords[0] + 0.5 * unstable_center[0],
+                    0.5 * last_move_coords[1] + 0.5 * unstable_center[1],
+                )
+                focus_source = (
+                    f"last_move({Move(last_move_coords, player=self.cn.next_player).gtp()})"
+                    f"+unstable({'group' if has_group_targets else 'invasion'}"
+                    f"({unstable_center[0]:.0f},{unstable_center[1]:.0f}))"
+                )
+            elif unstable_center:
+                focus_center = unstable_center
+                focus_source = (
+                    f"unstable_only({'group' if has_group_targets else 'invasion'}"
+                    f"({unstable_center[0]:.0f},{unstable_center[1]:.0f}))"
+                )
+            # last_move_coordsだけでunstable_centerがない場合はフォーカスなし
+
+            if focus_center:
+                self.game.katrain.log(
+                    f"[HuntStrategy] Focus: center=({focus_center[0]:.1f}, {focus_center[1]:.1f}) "
+                    f"stddev={hunt_focus_stddev} source={focus_source}",
+                    OUTPUT_DEBUG,
+                )
+
         # フェーズ判定とログ
         if has_group_targets:
             phase_name = "Hunt"
@@ -3920,6 +3975,13 @@ class HuntStrategy(AIStrategy):
                             combined = hp_weight * proximity * intensity * territory_avoid
                         else:
                             combined = hp_weight * territory_avoid
+
+                        # 注意フォーカスペナルティ
+                        if focus_center:
+                            focus_dist_sq = (x - focus_center[0]) ** 2 + (y - focus_center[1]) ** 2
+                            focus_penalty = max(_FOCUS_FLOOR, math.exp(-0.5 * focus_dist_sq / focus_var))
+                            combined *= focus_penalty
+
                         moves.append((m, combined))
 
         # パス候補
