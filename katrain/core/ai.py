@@ -3665,6 +3665,10 @@ class HuntStrategy(AIStrategy):
         hunt_invasion_prox_stddev = self.settings.get("hunt_invasion_proximity_stddev", default_invasion_prox_stddev)
         hunt_invasion_temperature = self.settings.get("hunt_invasion_temperature", 1.5)
         hunt_focus_stddev = self.settings.get("hunt_focus_stddev", default_focus_stddev)
+        hunt_pursue_enabled = self.settings.get("hunt_pursue_enabled", True)
+        hunt_pursue_proximity = self.settings.get("hunt_pursue_proximity", 2)
+        hunt_pursue_min_liberties = self.settings.get("hunt_pursue_min_liberties", 3)
+        hunt_pursue_ownership_threshold = self.settings.get("hunt_pursue_ownership_threshold", 0.85)
 
         self.game.katrain.log(
             f"[HuntStrategy] Starting move generation "
@@ -3672,7 +3676,8 @@ class HuntStrategy(AIStrategy):
             f"prox_stddev={hunt_proximity_stddev}, instability_min={hunt_instability_min}, "
             f"inv_max_loss={hunt_invasion_max_loss}, inv_min={hunt_invasion_min}, "
             f"inv_max={hunt_invasion_max}, inv_prox_stddev={hunt_invasion_prox_stddev}, "
-            f"inv_temperature={hunt_invasion_temperature}, focus_stddev={hunt_focus_stddev})",
+            f"inv_temperature={hunt_invasion_temperature}, focus_stddev={hunt_focus_stddev}, "
+            f"pursue_enabled={hunt_pursue_enabled})",
             OUTPUT_DEBUG,
         )
 
@@ -3892,6 +3897,75 @@ class HuntStrategy(AIStrategy):
         # --- ターゲット検出 ---
         targets = find_targets(self.game, self.cn, hunt_min_group_size, hunt_instability_min)
         has_group_targets = len(targets) > 0
+
+        # --- 攻め合い追撃判定 ---
+        if hunt_pursue_enabled and not has_group_targets:
+            if bx >= 19 and by >= 19:
+                _endgame_threshold = int(self.settings.get("hunt_endgame_move", 200))
+            else:
+                _endgame_threshold = math.ceil(bx * by * 0.5)
+
+            if current_move < _endgame_threshold:
+                prev_node = self.cn.parent
+                prev_prev_node = prev_node.parent if prev_node else None
+                prev_targets = getattr(prev_prev_node, "hunt_previous_targets", None) if prev_prev_node else None
+
+                if prev_targets and self.cn.move and self.cn.move.coords:
+                    opponent_move_coords = self.cn.move.coords
+
+                    current_opponent_coords = set()
+                    for s in self.game.stones:
+                        if s.player != self.cn.next_player and s.coords:
+                            current_opponent_coords.add(s.coords)
+
+                    _ownership = self.cn.ownership
+                    _ownership_grid = var_to_grid(_ownership, board_size) if _ownership else None
+
+                    pursuit_results = evaluate_pursuit_targets(
+                        previous_targets=prev_targets,
+                        opponent_move_coords=opponent_move_coords,
+                        current_opponent_coords=current_opponent_coords,
+                        board=self.game.board,
+                        board_size=board_size,
+                        ownership_grid=_ownership_grid,
+                        player_sign=player_sign,
+                        pursue_proximity=hunt_pursue_proximity,
+                        pursue_min_liberties=hunt_pursue_min_liberties,
+                        pursue_ownership_threshold=hunt_pursue_ownership_threshold,
+                    )
+
+                    if pursuit_results:
+                        for score, instab, group in pursuit_results:
+                            targets.append((score, instab, group))
+                            liberties = count_group_liberties(self.game.board, group, board_size)
+                            if _ownership_grid:
+                                avg_own = sum(_ownership_grid[y][x] for x, y in group) / len(group)
+                            else:
+                                avg_own = 0.0
+                            self.game.katrain.log(
+                                f"[HuntStrategy] Pursue: opponent played "
+                                f"[{Move(opponent_move_coords, player=self.cn.next_player).gtp()}] "
+                                f"near previous target (size={len(group)}, liberties={liberties}, "
+                                f"ownership={abs(avg_own):.2f}) → re-targeting",
+                                OUTPUT_DEBUG,
+                            )
+                        targets.sort(key=lambda t: t[0], reverse=True)
+                        has_group_targets = True
+                    else:
+                        for prev_target in prev_targets:
+                            prev_coords = set(tuple(c) for c in prev_target["coords"])
+                            ox, oy = opponent_move_coords
+                            min_dist = min(
+                                (max(abs(ox - cx), abs(oy - cy)) for cx, cy in prev_coords),
+                                default=999,
+                            )
+                            if min_dist <= hunt_pursue_proximity:
+                                self.game.katrain.log(
+                                    f"[HuntStrategy] Pursue: opponent played "
+                                    f"[{Move(opponent_move_coords, player=self.cn.next_player).gtp()}] "
+                                    f"near previous target but stones confirmed dead → no pursuit",
+                                    OUTPUT_DEBUG,
+                                )
 
         # --- 侵入対象の検出（ownershipベース） ---
         # player_sign は 3585行付近で定義済み (1=Black, -1=White)
@@ -4178,6 +4252,16 @@ class HuntStrategy(AIStrategy):
                     OUTPUT_DEBUG,
                 )
                 return top_move[0], f"Endgame: played top humanPolicy move {top_move[0].gtp()}."
+
+        # --- ターゲット記憶保存 ---
+        if hunt_pursue_enabled:
+            self.cn.hunt_previous_targets = [
+                {
+                    "coords": list(group),
+                    "size": len(group),
+                }
+                for _, _, group in targets
+            ]
 
         # デバッグ: 上位5手表示
         top5 = sorted(moves, key=lambda x: -x[1])[:5]
