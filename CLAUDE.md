@@ -20,18 +20,23 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 
 ```
 katrain/
-  core/               -- コアロジック
+  core/               -- コアロジック（主要ファイルのみ記載）
     ai.py             -- AI着手生成（HumanStyleStrategy, FightingStrategy, SiegeStrategy, HuntStrategy, HuntDivergenceStrategy, DivergenceStrategy = 主な改修箇所）
     constants.py      -- 定数、AI設定ウィジェット定義（AI_OPTION_VALUES）
     engine.py         -- KataGoエンジン管理
     game.py           -- ゲーム状態管理
     game_node.py      -- 棋譜ノード
     sgf_parser.py     -- SGFパーサ
+    base_katrain.py   -- 設定管理・アプリベース
+    ...               -- utils.py, lang.py, contribute_engine.py, tsumego_frame.py 等
   gui/                -- Kivy GUIウィジェット
   config.json         -- パッケージ同梱のデフォルト設定
   i18n/               -- 多言語リソース
 tests/                -- テスト
 katrain_debug/        -- 戦略デバッグCLIツール（KaTrain本体と独立）
+  cli.py              -- argparseエントリポイント
+  runner.py           -- SGF→局面構築→戦略実行パイプライン
+  katrain_stub.py     -- Kivy依存なしのKaTrainスタブ
 ```
 
 **ランタイム設定ファイル**（`C:\Users\iwaki\.katrain\`）:
@@ -44,10 +49,13 @@ katrain_debug/        -- 戦略デバッグCLIツール（KaTrain本体と独立
 
 ```bash
 cd C:\Users\iwaki\Documents\katrain-1.17.1.1\katrain-1.17.1.1
+uv sync          # 依存パッケージのインストール
 python -m katrain
 ```
 
 テスト: `pytest`（SGFパーサ、盤面ロジック、AI着手生成のユニットテスト）。AI系テスト（`test_ai.py`）はhumanSLモデルが必要なため、モデル未配置の環境では `pytest --ignore=tests/test_ai.py` で除外する
+
+フォーマッタ: `black katrain/`（line-length=120、設定は`pyproject.toml`）
 
 デバッグ: `C:\Users\iwaki\.katrain\config.json` の `"debug_level": 0` → `1` に変更して起動。確認後 `0` に戻す。
 
@@ -87,7 +95,7 @@ python -m katrain_debug --sgf FILE --move N --strategy hunt [--settings key=val 
 
 ## 変更の検証方法
 
-1. `C:\Users\iwaki\.katrain\config.json` の `"debug_level": 0` → `1` に変更
+1. デバッグモードを有効化（「起動・デバッグ」セクションの debug_level 切り替え参照）
 2. `python -m katrain` で起動し、対局を実施
 3. ログをGrepで確認（`log-analysis.md` のパターン参照）:
    - 着手結果（共通）: `Selected:|Safety valve.*forced|Tiebreak|Endgame: played`

@@ -24,6 +24,9 @@ cpp/out
 dist_sgf
 
 
+# Claude Code local config
+.claude.local.md
+
 # debug
 outdated_log.txt
 
