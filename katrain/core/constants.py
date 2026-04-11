@@ -177,6 +177,7 @@ AI_OPTION_VALUES = {
     "hunt_focus_stddev": [x / 2 for x in range(6, 21)],  # 3.0〜10.0（0.5刻み）
     "hunt_endgame_move": list(range(150, 260, 10)),  # 150〜250（10刻み）
     "hunt_pursue_enabled": "bool",
+    "hunt_winning_suppress_enabled": "bool",
     "hunt_dodge_max_loss": [x / 2 for x in range(1, 7)],  # 0.5〜3.0（0.5刻み）
     "hunt_dodge_top_n": list(range(2, 6)),  # 2〜5
 }
@@ -222,6 +223,7 @@ AI_OPTION_ORDER = {
     "hunt_focus_stddev": 25,
     "hunt_endgame_move": 26,
     "hunt_pursue_enabled": 27,
+    "hunt_winning_suppress_enabled": 28,
     "hunt_dodge_max_loss": 0,
     "hunt_dodge_top_n": 1,
 }
