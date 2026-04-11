@@ -76,6 +76,93 @@ def count_group_liberties(board, group_coords, board_size):
     return len(liberties)
 
 
+def evaluate_pursuit_targets(
+    previous_targets,
+    opponent_move_coords,
+    current_opponent_coords,
+    board,
+    board_size,
+    ownership_grid,
+    player_sign,
+    pursue_proximity,
+    pursue_min_liberties,
+    pursue_ownership_threshold,
+):
+    """前手番のターゲットに対して追撃すべきかを判定する。
+
+    Args:
+        previous_targets: list of dicts with "coords" (list of (x,y)) and "size" (int)
+        opponent_move_coords: (x, y) of opponent's last move, or None
+        current_opponent_coords: set of (x, y) of current opponent stones on board
+        board: 2D list [y][x] of chain IDs (-1 = empty)
+        board_size: (width, height)
+        ownership_grid: 2D list [y][x] of ownership values, or None
+        player_sign: 1 for Black, -1 for White
+        pursue_proximity: max Chebyshev distance for "near target" detection
+        pursue_min_liberties: liberty count threshold for unconditional pursuit
+        pursue_ownership_threshold: base ownership threshold for pursuit decision
+    Returns:
+        list of (target_score, instability, group_coords_set) to inject into targets
+    """
+    if not previous_targets or opponent_move_coords is None:
+        return []
+
+    pursuit_targets = []
+    ox, oy = opponent_move_coords
+
+    for prev_target in previous_targets:
+        prev_coords = set(tuple(c) for c in prev_target["coords"])
+        prev_size = prev_target["size"]
+
+        # Check proximity: is opponent's move near this previous target?
+        min_dist = min(
+            max(abs(ox - cx), abs(oy - cy))  # Chebyshev distance
+            for cx, cy in prev_coords
+        )
+        if min_dist > pursue_proximity:
+            continue
+
+        # Step 1: Are stones still on the board?
+        surviving_coords = prev_coords & current_opponent_coords
+        if not surviving_coords:
+            continue
+
+        # Re-group surviving stones (some may have been captured)
+        groups = find_connected_groups(surviving_coords)
+        for group in groups:
+            group_size = len(group)
+
+            # Step 2: Liberty check
+            liberties = count_group_liberties(board, group, board_size)
+            if liberties >= pursue_min_liberties:
+                # Unconditional pursuit
+                instability = max(0.2, min(1.0, liberties * 0.1))
+                target_score = group_size * instability
+                pursuit_targets.append((target_score, instability, group))
+                continue
+
+            # Step 3: Ownership check
+            if ownership_grid is not None:
+                total_ownership = sum(ownership_grid[y][x] for x, y in group)
+                avg_ownership = total_ownership / group_size
+                abs_ownership = abs(avg_ownership)
+
+                # Adjust threshold by group size
+                threshold = pursue_ownership_threshold
+                if group_size >= 15:
+                    threshold += 0.10
+                elif group_size >= 10:
+                    threshold += 0.05
+
+                if abs_ownership < threshold:
+                    # Ownership not confirmed enough — pursue
+                    instability = max(0.2, 1.0 - abs_ownership)
+                    target_score = group_size * instability
+                    pursuit_targets.append((target_score, instability, group))
+
+    return pursuit_targets
+
+
 def find_targets(game, cn, min_group_size, instability_min):
     """ターゲットとなる不安定な相手石群を特定する（共有関数）。
 

@@ -145,3 +145,165 @@ class TestCountGroupLiberties:
         # (1,1) → left (0,1)=empty, right (2,1)=empty, up (1,0)=group, down (1,2)=empty → {(0,1),(2,1),(1,2)}
         # Total unique: {(0,1), (2,0), (2,1), (1,2)} = 4
         assert libs == 4
+
+
+from katrain.core.ai import evaluate_pursuit_targets
+
+
+class TestEvaluatePursuitTargets:
+    def _make_board(self, size=9):
+        return [[-1] * size for _ in range(size)]
+
+    def test_no_previous_targets(self):
+        result = evaluate_pursuit_targets(
+            previous_targets=[],
+            opponent_move_coords=(4, 4),
+            current_opponent_coords={(3, 3), (3, 4)},
+            board=[[-1] * 9 for _ in range(9)],
+            board_size=(9, 9),
+            ownership_grid=None,
+            player_sign=1,
+            pursue_proximity=2,
+            pursue_min_liberties=3,
+            pursue_ownership_threshold=0.85,
+        )
+        assert result == []
+
+    def test_opponent_move_far_from_target(self):
+        result = evaluate_pursuit_targets(
+            previous_targets=[{"coords": [(0, 0), (1, 0), (0, 1)], "size": 3}],
+            opponent_move_coords=(8, 8),  # Far away
+            current_opponent_coords={(0, 0), (1, 0), (0, 1)},
+            board=[[-1] * 9 for _ in range(9)],
+            board_size=(9, 9),
+            ownership_grid=None,
+            player_sign=1,
+            pursue_proximity=2,
+            pursue_min_liberties=3,
+            pursue_ownership_threshold=0.85,
+        )
+        assert result == []
+
+    def test_stones_removed_from_board(self):
+        # Previous target coords no longer in current_opponent_coords
+        result = evaluate_pursuit_targets(
+            previous_targets=[{"coords": [(3, 3), (3, 4), (3, 5)], "size": 3}],
+            opponent_move_coords=(3, 6),  # Near previous target
+            current_opponent_coords=set(),  # Stones removed
+            board=[[-1] * 9 for _ in range(9)],
+            board_size=(9, 9),
+            ownership_grid=None,
+            player_sign=1,
+            pursue_proximity=2,
+            pursue_min_liberties=3,
+            pursue_ownership_threshold=0.85,
+        )
+        assert result == []
+
+    def test_pursue_high_liberties(self):
+        board = [[-1] * 9 for _ in range(9)]
+        # Place opponent stones — chain 0
+        board[3][3] = 0
+        board[4][3] = 0
+        board[5][3] = 0
+        target_coords = [(3, 3), (3, 4), (3, 5)]
+        result = evaluate_pursuit_targets(
+            previous_targets=[{"coords": target_coords, "size": 3}],
+            opponent_move_coords=(3, 6),  # Adjacent to target
+            current_opponent_coords={(3, 3), (3, 4), (3, 5)},
+            board=board,
+            board_size=(9, 9),
+            ownership_grid=None,
+            player_sign=1,
+            pursue_proximity=2,
+            pursue_min_liberties=3,
+            pursue_ownership_threshold=0.85,
+        )
+        # Group has many liberties (>= 3), should pursue
+        assert len(result) == 1
+        assert result[0][2] == {(3, 3), (3, 4), (3, 5)}  # group coords
+
+    def test_no_pursue_low_liberties_high_ownership(self):
+        board = [[-1] * 9 for _ in range(9)]
+        # Place opponent stone — chain 0
+        board[4][4] = 0
+        # Surround most sides — chain 1 (our stones)
+        board[3][4] = 1
+        board[5][4] = 1
+        board[4][3] = 1
+        # (4,5) is the only liberty
+        target_coords = [(4, 4)]
+        # ownership_grid: opponent's stone has high ownership for us
+        ownership_grid = [[0.0] * 9 for _ in range(9)]
+        ownership_grid[4][4] = 0.90  # Black owns this area strongly (player_sign=1)
+        result = evaluate_pursuit_targets(
+            previous_targets=[{"coords": target_coords, "size": 1}],
+            opponent_move_coords=(4, 5),  # Adjacent to target
+            current_opponent_coords={(4, 4)},
+            board=board,
+            board_size=(9, 9),
+            ownership_grid=ownership_grid,
+            player_sign=1,
+            pursue_proximity=2,
+            pursue_min_liberties=3,
+            pursue_ownership_threshold=0.85,
+        )
+        # 1 liberty (< 3), ownership |0.90| >= 0.85, size < 10 → no pursuit
+        assert result == []
+
+    def test_pursue_low_liberties_low_ownership(self):
+        board = [[-1] * 9 for _ in range(9)]
+        board[4][4] = 0
+        board[3][4] = 1
+        board[5][4] = 1
+        board[4][3] = 1
+        target_coords = [(4, 4)]
+        ownership_grid = [[0.0] * 9 for _ in range(9)]
+        ownership_grid[4][4] = 0.70  # Not fully confirmed
+        result = evaluate_pursuit_targets(
+            previous_targets=[{"coords": target_coords, "size": 1}],
+            opponent_move_coords=(4, 5),
+            current_opponent_coords={(4, 4)},
+            board=board,
+            board_size=(9, 9),
+            ownership_grid=ownership_grid,
+            player_sign=1,
+            pursue_proximity=2,
+            pursue_min_liberties=3,
+            pursue_ownership_threshold=0.85,
+        )
+        # 1 liberty (< 3), but ownership |0.70| < 0.85 → pursue
+        assert len(result) == 1
+
+    def test_large_group_stricter_threshold(self):
+        board = [[-1] * 19 for _ in range(19)]
+        target_coords = []
+        for i in range(12):
+            board[5][i] = 0
+            target_coords.append((i, 5))
+        # Place our stones to limit liberties to 2
+        for i in range(12):
+            board[4][i] = 1  # above
+            board[6][i] = 1  # below
+        board[5][12] = 1  # right end
+        # Remove two blockers to create 2 liberties
+        board[4][0] = -1  # open above (0,5)
+        board[4][1] = -1  # open above (1,5)
+        ownership_grid = [[0.0] * 19 for _ in range(19)]
+        for i in range(12):
+            ownership_grid[5][i] = 0.88  # player_sign=1, so this is ours (high)
+        result = evaluate_pursuit_targets(
+            previous_targets=[{"coords": target_coords, "size": 12}],
+            opponent_move_coords=(0, 4),  # Near target (distance 1 from (0,5))
+            current_opponent_coords=set(target_coords),
+            board=board,
+            board_size=(19, 19),
+            ownership_grid=ownership_grid,
+            player_sign=1,
+            pursue_proximity=2,
+            pursue_min_liberties=3,
+            pursue_ownership_threshold=0.85,
+        )
+        # 2 liberties (< 3), size=12 (>=10) → threshold bumped to 0.90
+        # |ownership| = 0.88 < 0.90 → pursue
+        assert len(result) == 1
