@@ -1,4 +1,5 @@
 import json
+import os
 import pytest
 from katrain_debug.katrain_stub import KaTrainStub
 from katrain_debug.runner import DebugGame, STRATEGY_NAME_MAP, load_sgf_to_move
@@ -85,3 +86,73 @@ class TestLoadSGFAndNavigate:
     def test_move_number_exceeds_game_length(self):
         with pytest.raises(ValueError, match="exceeds"):
             load_sgf_to_move("tests/data/ogs.sgf", move_number=9999)
+
+
+@pytest.mark.skipif(
+    not os.path.exists(os.path.expanduser("~/.katrain/katago.exe")),
+    reason="KataGo not installed",
+)
+class TestRunStrategyIntegration:
+    """実際のKataGoプロセスを使う結合テスト"""
+
+    def test_run_hunt_strategy(self):
+        from katrain_debug.runner import run_strategy
+
+        result = run_strategy(
+            sgf_path="tests/data/ogs.sgf",
+            move_number=30,
+            strategy_name="hunt",
+        )
+        assert result["move"] is not None
+        assert result["player"] in ("B", "W")
+        assert result["strategy"] == "hunt"
+        assert result["strategy_class"] == "HuntStrategy"
+        assert len(result["logs"]) > 0
+
+    def test_run_human_strategy(self):
+        from katrain_debug.runner import run_strategy
+
+        result = run_strategy(
+            sgf_path="tests/data/ogs.sgf",
+            move_number=10,
+            strategy_name="human",
+        )
+        assert result["move"] is not None
+        assert result["strategy_class"] == "HumanStyleStrategy"
+
+    def test_settings_override(self):
+        from katrain_debug.runner import run_strategy
+
+        result = run_strategy(
+            sgf_path="tests/data/ogs.sgf",
+            move_number=30,
+            strategy_name="hunt",
+            settings_overrides={"hunt_max_loss": 3.0},
+        )
+        assert result["settings"]["hunt_max_loss"] == 3.0
+        assert result["move"] is not None
+
+    def test_invalid_strategy_raises(self):
+        from katrain_debug.runner import run_strategy
+
+        with pytest.raises(KeyError, match="Unknown strategy"):
+            run_strategy(
+                sgf_path="tests/data/ogs.sgf",
+                move_number=10,
+                strategy_name="nonexistent",
+            )
+
+    def test_json_output_is_valid(self):
+        from katrain_debug.runner import run_strategy
+        from katrain_debug.cli import format_json_output
+
+        result = run_strategy(
+            sgf_path="tests/data/ogs.sgf",
+            move_number=10,
+            strategy_name="human",
+        )
+        json_str = format_json_output(result, "tests/data/ogs.sgf", 10)
+        parsed = json.loads(json_str)
+        assert parsed["move_number"] == 10
+        assert "result" in parsed
+        assert "logs" in parsed
