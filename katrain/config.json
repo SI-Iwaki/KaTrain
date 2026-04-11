@@ -182,7 +182,8 @@
             "hunt_invasion_temperature": 1.5,
             "hunt_focus_stddev": 7.0,
             "hunt_endgame_move": 200,
-            "hunt_pursue_enabled": true
+            "hunt_pursue_enabled": true,
+            "hunt_winning_suppress_enabled": false
         },
         "ai:hunt_diverge": {
             "hunt_max_loss": 6.0,
@@ -196,7 +197,8 @@
             "hunt_dodge_max_loss": 1.0,
             "hunt_dodge_top_n": 3,
             "hunt_endgame_move": 200,
-            "hunt_pursue_enabled": true
+            "hunt_pursue_enabled": true,
+            "hunt_winning_suppress_enabled": false
         },
         "ai:p:rank": {
             "kyu_rank": 4.0
