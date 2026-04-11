@@ -113,6 +113,7 @@ def main():
             config_path=args.config,
             settings_overrides=settings_overrides,
             debug_level=args.log_level,
+            quiet=(args.output == "json"),
         )
     except KeyError as e:
         print(f"Error: {e}", file=sys.stderr)

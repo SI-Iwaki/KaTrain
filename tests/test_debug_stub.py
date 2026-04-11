@@ -8,6 +8,7 @@ class TestKaTrainStubLog:
     def test_log_accumulates_messages(self):
         stub = KaTrainStub.__new__(KaTrainStub)
         stub.debug_level = 1
+        stub.quiet = False
         stub.logs = []
         stub.log("test message", 1)
         assert len(stub.logs) == 1
@@ -16,6 +17,7 @@ class TestKaTrainStubLog:
     def test_log_accumulates_all_levels(self):
         stub = KaTrainStub.__new__(KaTrainStub)
         stub.debug_level = 1
+        stub.quiet = False
         stub.logs = []
         stub.log("debug", 1)
         stub.log("info", 0)
@@ -25,6 +27,7 @@ class TestKaTrainStubLog:
     def test_log_prints_when_level_sufficient(self, capsys):
         stub = KaTrainStub.__new__(KaTrainStub)
         stub.debug_level = 1
+        stub.quiet = False
         stub.logs = []
         stub.log("visible", 1)
         captured = capsys.readouterr()
@@ -33,6 +36,7 @@ class TestKaTrainStubLog:
     def test_log_suppresses_when_level_insufficient(self, capsys):
         stub = KaTrainStub.__new__(KaTrainStub)
         stub.debug_level = 0
+        stub.quiet = False
         stub.logs = []
         stub.log("hidden", 1)
         captured = capsys.readouterr()

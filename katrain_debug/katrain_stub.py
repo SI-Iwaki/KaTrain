@@ -20,10 +20,11 @@ class _NoOp:
 class KaTrainStub:
     """KaTrainBaseの最小スタブ。Kivy依存なしでai.pyの戦略コードが動作する。"""
 
-    def __init__(self, config_path, debug_level=1):
+    def __init__(self, config_path, debug_level=1, quiet=False):
         with open(config_path, "r", encoding="utf-8") as f:
             self._config = json.load(f)
         self.debug_level = debug_level
+        self.quiet = quiet
         self.logs = []
         self.game = None
         self.pondering = False
@@ -32,6 +33,8 @@ class KaTrainStub:
 
     def log(self, message, level=OUTPUT_INFO):
         self.logs.append((message, level))
+        if self.quiet:
+            return
         if level == OUTPUT_ERROR:
             print(f"ERROR: {message}")
         elif self.debug_level >= level:

@@ -106,7 +106,7 @@ class DebugGame(Game):
 # --- run_strategy パイプライン ---
 
 def run_strategy(sgf_path, move_number, strategy_name, config_path=None,
-                 settings_overrides=None, debug_level=1):
+                 settings_overrides=None, debug_level=1, quiet=False):
     """SGFの指定局面で戦略を実行し、結果とログを返す。
 
     Args:
@@ -126,7 +126,7 @@ def run_strategy(sgf_path, move_number, strategy_name, config_path=None,
         config_path = os.path.expanduser(os.path.join(DATA_FOLDER, "config.json"))
 
     # 1. スタブ初期化
-    stub = KaTrainStub(config_path, debug_level=debug_level)
+    stub = KaTrainStub(config_path, debug_level=debug_level, quiet=quiet)
 
     # 2. 戦略名の解決
     if strategy_name not in STRATEGY_NAME_MAP:
