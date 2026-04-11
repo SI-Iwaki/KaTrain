@@ -56,6 +56,26 @@ def find_connected_groups(stones: set) -> list:
     return groups
 
 
+def count_group_liberties(board, group_coords, board_size):
+    """石群のリバティ数（呼吸点＝隣接する空点の数）を算出する。
+
+    Args:
+        board: 2D list [y][x] of chain IDs (-1 = empty)
+        group_coords: set of (x, y) coordinates of the group
+        board_size: (width, height)
+    Returns:
+        int: number of unique liberties
+    """
+    bx, by = board_size
+    liberties = set()
+    for x, y in group_coords:
+        for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < bx and 0 <= ny < by and board[ny][nx] == -1:
+                liberties.add((nx, ny))
+    return len(liberties)
+
+
 def find_targets(game, cn, min_group_size, instability_min):
     """ターゲットとなる不安定な相手石群を特定する（共有関数）。
 

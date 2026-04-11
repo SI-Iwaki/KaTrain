@@ -98,3 +98,50 @@ class TestFindTargets:
         assert 1 - abs(-1.0) == 0.0
         assert 1 - abs(0.0) == 1.0
         assert abs(1 - abs(-0.3) - 0.7) < 0.01
+
+
+from katrain.core.ai import count_group_liberties
+
+
+class TestCountGroupLiberties:
+    def test_corner_group_liberties(self):
+        # 19x19 board, -1 = empty, 0+ = chain id
+        board = [[-1] * 19 for _ in range(19)]
+        # Place a 2-stone group at (0,0) and (1,0) — chain id 0
+        board[0][0] = 0
+        board[0][1] = 0
+        group_coords = {(0, 0), (1, 0)}
+        board_size = (19, 19)
+        libs = count_group_liberties(board, group_coords, board_size)
+        # (0,0) neighbors: (1,0)=same group, (0,1)=empty → 1 liberty
+        # (1,0) neighbors: (0,0)=same group, (2,0)=empty, (1,1)=empty → 2 liberties
+        # Total unique: {(0,1), (2,0), (1,1)} = 3
+        assert libs == 3
+
+    def test_surrounded_group_zero_liberties(self):
+        board = [[-1] * 5 for _ in range(5)]
+        # Target stone at (2,2) — chain 0
+        board[2][2] = 0
+        # Surround with chain 1
+        board[2][1] = 1
+        board[2][3] = 1
+        board[1][2] = 1
+        board[3][2] = 1
+        group_coords = {(2, 2)}
+        libs = count_group_liberties(board, group_coords, (5, 5))
+        assert libs == 0
+
+    def test_large_group_shared_liberties(self):
+        board = [[-1] * 9 for _ in range(9)]
+        # L-shape group at (0,0), (1,0), (1,1)
+        board[0][0] = 0
+        board[0][1] = 0
+        board[1][1] = 0
+        group_coords = {(0, 0), (1, 0), (1, 1)}
+        libs = count_group_liberties(board, group_coords, (9, 9))
+        # Unique empty neighbors: (0,1), (2,0), (2,1), (1,2), (0,1) counted once
+        # (0,0) → right (1,0)=group, down (0,1)=empty → {(0,1)}
+        # (1,0) → left (0,0)=group, right (2,0)=empty, down (1,1)=group → {(2,0)}
+        # (1,1) → left (0,1)=empty, right (2,1)=empty, up (1,0)=group, down (1,2)=empty → {(0,1),(2,1),(1,2)}
+        # Total unique: {(0,1), (2,0), (2,1), (1,2)} = 4
+        assert libs == 4
