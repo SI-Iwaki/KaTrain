@@ -688,6 +688,50 @@ class AntimirrorStrategy(AIStrategy):
         self.game.katrain.log(f"[AntimirrorStrategy] Final decision: {top_cand.gtp()}", OUTPUT_DEBUG)
         return top_cand, ai_thoughts
 
+
+# ==============================================================================
+# JigoStrategy pure-function helpers
+# ==============================================================================
+def _jigo_filter_candidates(candidates, max_loss, min_hp):
+    """フィルタ通過手のみを返す。各候補は {move, score, loss, hp} を持つ dict。"""
+    return [c for c in candidates if c["loss"] <= max_loss and c["hp"] >= min_hp]
+
+
+def _jigo_relax_filters(candidates, max_loss, min_hp):
+    """両フィルタ不通過時の段階緩和。
+    返り値: (filtered_list, reason) — reason は "hp_half" / "hp_quarter" / "loss_150" / "safety_valve"。
+    hp×0.5 → hp×0.25 → loss×1.5 → safety valve。
+    """
+    reason_map = [("hp_half", 0.5), ("hp_quarter", 0.25)]
+    for reason, hp_factor in reason_map:
+        f = [c for c in candidates
+             if c["loss"] <= max_loss and c["hp"] >= min_hp * hp_factor]
+        if f:
+            return f, reason
+    f = [c for c in candidates
+         if c["loss"] <= max_loss * 1.5 and c["hp"] >= min_hp * 0.25]
+    if f:
+        return f, "loss_150"
+    # Safety valve: 先頭候補（呼び出し側で KataGo 最善手が先頭に来るよう渡す前提）
+    return ([candidates[0]] if candidates else []), "safety_valve"
+
+
+def _jigo_select_move(candidates, current_lead, target_score, target_score_max, mode):
+    """現在リード × Mode で着手を選択。
+    - current_lead < target_score → target 最接近
+    - target_score <= lead <= target_score_max & mode=natural → humanPolicy 重み付き
+    - Mode=maintain または lead > target_score_max → target 最接近
+    """
+    in_range = target_score <= current_lead <= target_score_max
+    if current_lead < target_score:
+        return min(candidates, key=lambda c: abs(c["score"] - target_score))
+    if in_range and mode == "natural":
+        weighted = [(c, c["hp"]) for c in candidates]
+        selected = weighted_selection_without_replacement(weighted, 1)[0]
+        return selected[0]  # (candidate_dict, weight) の tuple なので [0] で dict
+    return min(candidates, key=lambda c: abs(c["score"] - target_score))
+
+
 @register_strategy(AI_JIGO)
 class JigoStrategy(AIStrategy):
     """Jigo strategy - aims for a specific score difference"""
