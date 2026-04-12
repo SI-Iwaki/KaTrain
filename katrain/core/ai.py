@@ -4236,6 +4236,53 @@ class HuntStrategy(AIStrategy):
             OUTPUT_DEBUG,
         )
 
+        # --- 死石周辺の無駄手抑制 (Dead Stone Avoidance) ---
+        if hunt_dead_stone_avoid and moves and move_infos and self.cn.ownership:
+            _ownership_grid_dsa = var_to_grid(self.cn.ownership, board_size)
+            _own_stone_coords_dsa = {
+                s.coords for s in self.game.stones
+                if s.player == self.cn.next_player and s.coords
+            }
+            _score_by_gtp_dsa = {mi.get("move", ""): mi.get("scoreLead", 0) for mi in move_infos}
+            _penalized_count = 0
+            for i, (m, w) in enumerate(moves):
+                gtp = m.gtp()
+                if gtp not in _score_by_gtp_dsa or best_score is None:
+                    continue
+                loss_m = player_sign * (best_score - _score_by_gtp_dsa[gtp])
+                if is_dead_zone_move(
+                    move_coords=m.coords,
+                    ownership_grid=_ownership_grid_dsa,
+                    own_stone_coords=_own_stone_coords_dsa,
+                    player_sign=player_sign,
+                    loss=loss_m,
+                    board_size=board_size,
+                ):
+                    own_val = (
+                        _ownership_grid_dsa[m.coords[1]][m.coords[0]] * player_sign
+                        if m.coords else 0.0
+                    )
+                    new_w = w * _DEAD_WEIGHT_FACTOR
+                    moves[i] = (m, new_w)
+                    _penalized_count += 1
+                    self.game.katrain.log(
+                        f"[HuntStrategy] Dead stone avoid: {gtp} "
+                        f"(own={own_val:.2f}, loss={loss_m:.2f}) "
+                        f"weight {w:.4f} -> {new_w:.4f}",
+                        OUTPUT_DEBUG,
+                    )
+            if _penalized_count > 0:
+                self.game.katrain.log(
+                    f"[HuntStrategy] Dead stone avoid: {_penalized_count} moves penalized "
+                    f"(scanned {len(moves)} candidates)",
+                    OUTPUT_DEBUG,
+                )
+        elif hunt_dead_stone_avoid and (not self.cn.ownership or not move_infos):
+            self.game.katrain.log(
+                "[HuntStrategy] Dead stone avoid: skipped (no ownership/move_infos data)",
+                OUTPUT_DEBUG,
+            )
+
         # --- 勝勢時の最善手weight抑制 ---
         if hunt_winning_suppress and moves and best_gtp_by_score and best_score is not None:
             score_lead_for_suppress = best_score * player_sign
