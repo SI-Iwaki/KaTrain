@@ -79,6 +79,8 @@ python -m katrain_debug --sgf FILE --strategy hunt --batch --settings hunt_max_l
 ```
 出力: Settings（パラメータ値）、Aggregate Stats（Overall/B/W/Opening/Middle/Endgame別の Top1一致率・Top5一致率・平均損失・正確度）、Notable Divergences（損失2.0超の手一覧）。`--output json` で全手の詳細をJSON出力。KataGoは1回だけ起動し、205手の局で約10分。
 
+**`--batch` はログ要約モード**: per-move `[StrategyName]` debug ログ（`Fallback triggered` / `Safety valve` / `Filter: N → M passed` 等）は抑制される。フィルタ動作やフォールバック発動率を確認したい場合は `--move N` で個別実行すること。
+
 ## コーディング規約
 
 - コミットメッセージは**日本語**で書く

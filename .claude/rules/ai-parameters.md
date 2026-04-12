@@ -112,3 +112,24 @@ humanモードの悪手フィルタ閾値はHumanStyleStrategyと同じBAD_MOVE_
 | siege_max_loss | 6.0 | 4.0 | 攻撃時の許容最大損失（目） |
 | siege_proximity_stddev | 3.0 | 2.5 | ターゲット近接重みの標準偏差 |
 | siege_instability_min | 0.3 | 0.3 | ターゲット判定の最小不安定度 |
+
+## 持碁戦略（JigoStrategy）
+
+指定した目差範囲（0.5〜10目）で僅差勝ちを目指す戦略。人間らしくない大損失手・humanPolicy≒0 の手を除外して、サボタージュ的挙動を防ぐ。対応盤面: 全盤面（19路・13路・9路）。
+
+**着手選択**: HumanStyle と同じ2段階クエリ方式（Stage1 humanSL 9段固定 / Stage2 クリーンスコア）。フィルタ = `loss ≤ max_loss_per_move AND humanPolicy ≥ min_human_policy`。候補ゼロ時は段階緩和（hp×0.5 → hp×0.25 → loss×1.5 → KataGo 最善手）。
+
+**選択ロジック**:
+- `current_lead < target_score`: target 最接近手（最善近辺）
+- `target_score ≤ lead ≤ target_score_max` & Mode=natural: humanPolicy 重み付き（HumanStyle 相当）
+- Mode=maintain または `lead > target_score_max`: target 最接近手
+
+| パラメータ | デフォルト値 | 備考 |
+|---|---|---|
+| target_score | 0.5 | 狙う目差（既存流用） |
+| target_score_max | 10.0 | 許容上限。これ以下なら Natural モードは普通に打つ |
+| max_loss_per_move | 5.6 | 1手あたり許容損失（HumanStyle NORMAL_THRESHOLD と同値） |
+| min_human_policy | 0.01 | humanPolicy 最低閾値（1%） |
+| jigo_mode | "natural" | "natural"=範囲内は最善手 / "maintain"=常にtargetに寄せる |
+
+**設計上の限界**: 相手が毎手 6 目以上の大損失手を連続で打つような極端な棋力差の対局では、1 手あたり損失上限 `max_loss_per_move (5.6)` を AI 側が超えられず、target 範囲への収束が保証されない。ただし人間らしい着手は維持されるため「バレないこと」という主目的は達成される。相手の棋力が持碁モード（humanSL 9段相当）と釣り合うときのみ目差収束を期待する設計。
