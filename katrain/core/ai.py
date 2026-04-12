@@ -4245,10 +4245,12 @@ class HuntStrategy(AIStrategy):
             }
             _score_by_gtp_dsa = {mi.get("move", ""): mi.get("scoreLead", 0) for mi in move_infos}
             _penalized_count = 0
+            _evaluated_count = 0
             for i, (m, w) in enumerate(moves):
                 gtp = m.gtp()
                 if gtp not in _score_by_gtp_dsa or best_score is None:
                     continue
+                _evaluated_count += 1
                 loss_m = player_sign * (best_score - _score_by_gtp_dsa[gtp])
                 if is_dead_zone_move(
                     move_coords=m.coords,
@@ -4274,7 +4276,7 @@ class HuntStrategy(AIStrategy):
             if _penalized_count > 0:
                 self.game.katrain.log(
                     f"[HuntStrategy] Dead stone avoid: {_penalized_count} moves penalized "
-                    f"(scanned {len(moves)} candidates)",
+                    f"(evaluated {_evaluated_count}/{len(moves)} candidates)",
                     OUTPUT_DEBUG,
                 )
         elif hunt_dead_stone_avoid and (not self.cn.ownership or not move_infos):
