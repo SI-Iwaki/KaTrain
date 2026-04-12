@@ -28,6 +28,54 @@ def register_strategy(strategy_name):
         return strategy_class
     return decorator
 
+
+# --- Hunt Dead Stone Avoidance 定数 ---
+_DEAD_OWNERSHIP_THRESHOLD = 0.85  # |ownership * player_sign| > 0.85 で死と判定
+_DEAD_LOSS_MIN = 0.5              # loss > 0.5 でなければ対象外
+_DEAD_WEIGHT_FACTOR = 0.05        # 検出時のweight減衰係数
+
+
+def is_dead_zone_move(move_coords, ownership_grid, own_stone_coords, player_sign, loss, board_size):
+    """候補手が『死んだ自石の周辺の無駄手』かを判定する。
+
+    Args:
+        move_coords: (x, y) タプル、またはパスの場合 None
+        ownership_grid: 2次元配列 [y][x] → [-1, +1] の KataGo ownership
+        own_stone_coords: 現プレイヤー自石の座標 set {(x, y), ...}
+        player_sign: +1 (Black) or -1 (White)
+        loss: 候補手の損失（目数、正=損）
+        board_size: (bx, by) タプル
+
+    Returns:
+        bool: True なら減衰対象
+    """
+    if move_coords is None:
+        return False
+    if loss <= _DEAD_LOSS_MIN:
+        return False
+
+    x, y = move_coords
+    bx, by = board_size
+
+    # 条件(A): 候補点自体が強く相手地
+    own_xy = ownership_grid[y][x] * player_sign
+    if own_xy < -_DEAD_OWNERSHIP_THRESHOLD:
+        return True
+
+    # 条件(B): 4近傍に死んだ自石
+    for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+        nx, ny = x + dx, y + dy
+        if not (0 <= nx < bx and 0 <= ny < by):
+            continue
+        if (nx, ny) not in own_stone_coords:
+            continue
+        own_neighbor = ownership_grid[ny][nx] * player_sign
+        if own_neighbor < -_DEAD_OWNERSHIP_THRESHOLD:
+            return True
+
+    return False
+
+
 def find_connected_groups(stones: set) -> list:
     """石の座標集合を連結グループに分類する。上下左右の隣接で接続判定。
 
