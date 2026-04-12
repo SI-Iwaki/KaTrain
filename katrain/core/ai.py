@@ -734,55 +734,199 @@ def _jigo_select_move(candidates, current_lead, target_score, target_score_max, 
 
 @register_strategy(AI_JIGO)
 class JigoStrategy(AIStrategy):
-    """Jigo strategy - aims for a specific score difference"""
-    
+    """Jigo strategy - target を狙いつつ大差時も人間らしさを維持する戦略。
+
+    ロジック:
+        1. Stage 1 (humanSL 9段固定) で humanPolicy を取得
+        2. Stage 2 (clean) で正確な scoreLead を取得
+        3. loss <= max_loss_per_move AND hp >= min_human_policy でフィルタ
+        4. current_lead × jigo_mode で選択ロジック分岐
+        5. 候補ゼロ時は段階緩和 → 最終的に KataGo 最善手へフォールバック
+    """
+
     def generate_move(self) -> Tuple[Move, str]:
+        import time
         self.game.katrain.log(f"[JigoStrategy] Starting move generation", OUTPUT_DEBUG)
         self.wait_for_analysis()
-        
-        candidate_moves = self.cn.candidate_moves
-        self.game.katrain.log(f"[JigoStrategy] Analysis found {len(candidate_moves)} candidate moves", OUTPUT_DEBUG)
-        
-        if not candidate_moves:
-            self.game.katrain.log(f"[JigoStrategy] No candidate moves found, will play pass", OUTPUT_DEBUG)
-            return Move(is_pass=True, player=self.cn.next_player), "No candidate moves found, passing"
-        
-        # Get top engine move for reference
-        top_cand = Move.from_gtp(candidate_moves[0]["move"], player=self.cn.next_player)
-        self.game.katrain.log(f"[JigoStrategy] Top engine move would be: {top_cand.gtp()}", OUTPUT_DEBUG)
-        
-        # Calculate player sign (1 for black, -1 for white)
-        sign = self.cn.player_sign(self.cn.next_player)
-        self.game.katrain.log(f"[JigoStrategy] Player sign: {sign}", OUTPUT_DEBUG)
-        
-        # Get target score from settings
-        target_score = self.settings["target_score"]
-        self.game.katrain.log(f"[JigoStrategy] Target score: {target_score}", OUTPUT_DEBUG)
-        
-        # Log score leads before selecting jigo move
-        self.game.katrain.log("[JigoStrategy] Candidate move score leads:", OUTPUT_DEBUG)
-        for i, move_data in enumerate(candidate_moves[:5]):
-            move = Move.from_gtp(move_data["move"], player=self.cn.next_player)
-            score_diff = abs(sign * move_data["scoreLead"] - target_score)
-            self.game.katrain.log(f"[JigoStrategy] - {move.gtp()}: scoreLead={move_data['scoreLead']}, diff from target={score_diff}", OUTPUT_DEBUG)
-        
-        # Find the move that gives a score closest to the target
-        jigo_move = min(
-            candidate_moves, 
-            key=lambda move: abs(sign * move["scoreLead"] - target_score)
+
+        # ---- 設定読み込み ----
+        target_score     = self.settings.get("target_score", 0.5)
+        target_score_max = self.settings.get("target_score_max", 10.0)
+        max_loss         = self.settings.get("max_loss_per_move", 5.6)
+        min_hp           = self.settings.get("min_human_policy", 0.01)
+        mode             = self.settings.get("jigo_mode", "natural")
+        self.game.katrain.log(
+            f"[JigoStrategy] Settings: target={target_score}, max={target_score_max}, "
+            f"max_loss={max_loss}, min_hp={min_hp}, mode={mode}", OUTPUT_DEBUG
         )
-        
-        aimove = Move.from_gtp(jigo_move["move"], player=self.cn.next_player)
-        jigo_score_diff = abs(sign * jigo_move["scoreLead"] - target_score)
-        
-        self.game.katrain.log(f"[JigoStrategy] Selected move: {aimove.gtp()}", OUTPUT_DEBUG)
-        self.game.katrain.log(f"[JigoStrategy] Selected move score lead: {jigo_move['scoreLead']}", OUTPUT_DEBUG)
-        self.game.katrain.log(f"[JigoStrategy] Distance from target: {jigo_score_diff}", OUTPUT_DEBUG)
-        
-        ai_thoughts = f"Jigo strategy found {len(candidate_moves)} candidate moves (best {top_cand.gtp()}) and chose {aimove.gtp()} as closest to 0.5 point win"
-        
-        self.game.katrain.log(f"[JigoStrategy] Final decision: {aimove.gtp()}", OUTPUT_DEBUG)
+
+        sign = self.cn.player_sign(self.cn.next_player)
+        engine = self.game.engines[self.cn.player]
+
+        # ---- Stage 1: humanSL 9段固定クエリ ----
+        human_profile = "rank_9d"  # 9段固定（HuntStrategy/SiegeStrategy/FightingStrategy と同じ表記）
+        stage1_override = {
+            "humanSLProfile": human_profile,
+            "ignorePreRootHistory": False,
+            "maxVisits": 800,
+        }
+        stage1_analysis = None
+        stage1_error = False
+
+        def _set_stage1(a, partial):
+            nonlocal stage1_analysis
+            if not partial:
+                stage1_analysis = a
+
+        def _err_stage1(a):
+            nonlocal stage1_error
+            stage1_error = True
+            self.game.katrain.log(f"[JigoStrategy] Stage1 error: {a}", OUTPUT_ERROR)
+
+        engine.request_analysis(
+            self.cn, callback=_set_stage1, error_callback=_err_stage1,
+            priority=PRIORITY_EXTRA_AI_QUERY, include_policy=True,
+            extra_settings=stage1_override,
+        )
+        while not (stage1_error or stage1_analysis):
+            time.sleep(0.01)
+            engine.check_alive(exception_if_dead=True)
+
+        if stage1_error or not stage1_analysis or "humanPolicy" not in stage1_analysis:
+            self.game.katrain.log(
+                "[JigoStrategy] Stage1 failed, falling back to KataGo top move", OUTPUT_DEBUG
+            )
+            candidate_moves = self.cn.candidate_moves
+            if not candidate_moves:
+                return Move(None, player=self.cn.next_player), "Stage1 failed, no candidates"
+            top = Move.from_gtp(candidate_moves[0]["move"], player=self.cn.next_player)
+            return top, "Stage1 failed — using KataGo top move"
+
+        human_policy = stage1_analysis["humanPolicy"]
+        self.game.katrain.log(
+            f"[JigoStrategy] Stage1 query complete (humanPolicy len={len(human_policy)})",
+            OUTPUT_DEBUG,
+        )
+
+        # ---- Stage 2: クリーンクエリ（scoreLead 用） ----
+        stage2_override = {
+            "ignorePreRootHistory": False,
+            "maxVisits": 600,
+            "wideRootNoise": 0.0,
+        }
+        stage2_analysis = None
+        stage2_error = False
+
+        def _set_stage2(a, partial):
+            nonlocal stage2_analysis
+            if not partial:
+                stage2_analysis = a
+
+        def _err_stage2(a):
+            nonlocal stage2_error
+            stage2_error = True
+            self.game.katrain.log(f"[JigoStrategy] Stage2 error: {a}", OUTPUT_ERROR)
+
+        engine.request_analysis(
+            self.cn, callback=_set_stage2, error_callback=_err_stage2,
+            priority=PRIORITY_EXTRA_AI_QUERY, include_policy=False,
+            extra_settings=stage2_override,
+        )
+        while not (stage2_error or stage2_analysis):
+            time.sleep(0.01)
+            engine.check_alive(exception_if_dead=True)
+
+        # Stage 2 失敗時は Stage 1 にフォールバック
+        if stage2_error or not stage2_analysis:
+            self.game.katrain.log(
+                "[JigoStrategy] Stage2 failed, using Stage1 moveInfos (biased)", OUTPUT_DEBUG
+            )
+            score_analysis = stage1_analysis
+        else:
+            score_analysis = stage2_analysis
+        move_infos = score_analysis.get("moveInfos", [])
+        if not move_infos:
+            self.game.katrain.log("[JigoStrategy] No moveInfos, passing", OUTPUT_DEBUG)
+            return Move(None, player=self.cn.next_player), "No moveInfos, passing"
+
+        # ---- 候補リスト構築（すべて自分視点 = sign を掛けた値） ----
+        scores_player = [mi.get("scoreLead", 0) * sign for mi in move_infos]
+        best_score = max(scores_player)  # 自分視点の最善スコア
+
+        # Stage 1 のhumanPolicy をフラット配列から gtp → value のルックアップに変換
+        bx, by = self.game.board_size
+        def _hp_for_gtp(gtp):
+            if gtp == "pass":
+                return human_policy[-1] if len(human_policy) > bx * by else 0.0
+            try:
+                m = Move.from_gtp(gtp, player=self.cn.next_player)
+                if m.coords is None:
+                    return 0.0
+                x, y = m.coords
+                idx = (by - y - 1) * bx + x
+                return human_policy[idx] if 0 <= idx < len(human_policy) else 0.0
+            except Exception:
+                return 0.0
+
+        candidates = []
+        for mi, score in zip(move_infos, scores_player):
+            gtp = mi.get("move", "")
+            candidates.append({
+                "move": gtp,
+                "score": score,           # 自分視点
+                "loss": best_score - score,
+                "hp": _hp_for_gtp(gtp),
+            })
+        self.game.katrain.log(
+            f"[JigoStrategy] Stage2 query complete ({len(candidates)} candidates, "
+            f"best_score={best_score:.2f})", OUTPUT_DEBUG
+        )
+
+        # ---- フィルタ適用 ----
+        filtered = _jigo_filter_candidates(candidates, max_loss, min_hp)
+        passed = len(filtered)
+        self.game.katrain.log(
+            f"[JigoStrategy] Filter: {len(candidates)} → {passed} passed "
+            f"(loss<={max_loss}, hp>={min_hp})", OUTPUT_DEBUG
+        )
+
+        # ---- フォールバック段階緩和 ----
+        if not filtered:
+            filtered, reason = _jigo_relax_filters(candidates, max_loss, min_hp)
+            self.game.katrain.log(
+                f"[JigoStrategy] Fallback triggered: reason={reason}, {len(filtered)} candidates",
+                OUTPUT_DEBUG
+            )
+            if reason == "safety_valve":
+                self.game.katrain.log(
+                    "[JigoStrategy] Safety valve: using KataGo top move", OUTPUT_ERROR
+                )
+
+        # ---- 現在リード & 選択分岐 ----
+        current_lead = score_analysis.get("rootInfo", {}).get("scoreLead", 0) * sign
+        in_range = target_score <= current_lead <= target_score_max
+        self.game.katrain.log(
+            f"[JigoStrategy] Mode: {mode}, lead={current_lead:.2f}, in_range={in_range}",
+            OUTPUT_DEBUG,
+        )
+        pick = _jigo_select_move(filtered, current_lead, target_score, target_score_max, mode)
+
+        # ---- 結果 ----
+        if pick["move"] == "pass":
+            aimove = Move(None, player=self.cn.next_player)
+        else:
+            aimove = Move.from_gtp(pick["move"], player=self.cn.next_player)
+        ai_thoughts = (
+            f"Jigo (mode={mode}, lead={current_lead:.1f}): chose {pick['move']} "
+            f"(loss={pick['loss']:.2f}, hp={pick['hp']:.3f}, score={pick['score']:.2f})"
+        )
+        self.game.katrain.log(
+            f"[JigoStrategy] Selected: {pick['move']} "
+            f"(loss={pick['loss']:.2f}, hp={pick['hp']:.3f}, score={pick['score']:.2f})",
+            OUTPUT_DEBUG,
+        )
         return aimove, ai_thoughts
+
 
 @register_strategy(AI_SCORELOSS)
 class ScoreLossStrategy(AIStrategy):
