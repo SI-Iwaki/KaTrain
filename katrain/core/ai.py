@@ -3724,6 +3724,7 @@ class HuntStrategy(AIStrategy):
         _WINNING_THRESHOLD = 15.0   # この値超で勝勢と判定
         _WINNING_SUPPRESS_FACTOR = 0.3  # 最善手のweight抑制係数
         hunt_winning_suppress = self.settings.get("hunt_winning_suppress_enabled", False)
+        hunt_dead_stone_avoid = self.settings.get("hunt_dead_stone_avoid_enabled", True)
 
         self.game.katrain.log(
             f"[HuntStrategy] Starting move generation "
