@@ -183,7 +183,8 @@
             "hunt_focus_stddev": 7.0,
             "hunt_endgame_move": 200,
             "hunt_pursue_enabled": true,
-            "hunt_winning_suppress_enabled": false
+            "hunt_winning_suppress_enabled": false,
+            "hunt_dead_stone_avoid_enabled": true
         },
         "ai:hunt_diverge": {
             "hunt_max_loss": 6.0,
