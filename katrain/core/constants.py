@@ -181,6 +181,14 @@ AI_OPTION_VALUES = {
     "hunt_dead_stone_avoid_enabled": "bool",
     "hunt_dodge_max_loss": [x / 2 for x in range(1, 7)],  # 0.5〜3.0（0.5刻み）
     "hunt_dodge_top_n": list(range(2, 6)),  # 2〜5
+    # ===== JigoStrategy =====
+    "target_score_max": [5.0, 10.0, 15.0],
+    "max_loss_per_move": [3.0, 4.0, 5.6, 7.0],
+    "min_human_policy": [(0.005, "0.5%"), (0.01, "1%"), (0.02, "2%"), (0.05, "5%")],
+    "jigo_mode": [
+        ("natural", "natural"),
+        ("maintain", "maintain"),
+    ],
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）
@@ -228,6 +236,11 @@ AI_OPTION_ORDER = {
     "hunt_dead_stone_avoid_enabled": 29,
     "hunt_dodge_max_loss": 0,
     "hunt_dodge_top_n": 1,
+    "target_score": 0,
+    "target_score_max": 1,
+    "max_loss_per_move": 2,
+    "min_human_policy": 3,
+    "jigo_mode": 4,
 }
 
 AI_KEY_PROPERTIES = {
