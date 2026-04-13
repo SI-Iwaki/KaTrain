@@ -131,3 +131,39 @@ class TestJigoSelectMove:
             target_score_max=10.0, mode="maintain"
         )
         assert pick["move"] == "B2"
+
+
+class TestJigoExcludeSharpMoves:
+    def test_excludes_moves_with_score_above_current_lead(self):
+        from katrain.core.ai import _jigo_exclude_sharp_moves
+        cands = [
+            _c("A1", 22.0, 0.0, 0.10),  # score > lead=20.0 → 除外
+            _c("B2", 18.0, 4.0, 0.05),  # score < lead → 残る
+            _c("C3", 15.0, 7.0, 0.05),  # score < lead → 残る
+        ]
+        result = _jigo_exclude_sharp_moves(cands, current_lead=20.0)
+        assert [c["move"] for c in result] == ["B2", "C3"]
+
+    def test_epsilon_tolerates_tiny_overshoot(self):
+        from katrain.core.ai import _jigo_exclude_sharp_moves
+        cands = [
+            _c("A1", 20.4, 0.0, 0.10),  # +0.4 over, within epsilon=0.5
+            _c("B2", 20.6, 0.0, 0.10),  # +0.6 over, beyond epsilon
+        ]
+        result = _jigo_exclude_sharp_moves(cands, current_lead=20.0)
+        assert [c["move"] for c in result] == ["A1"]
+
+    def test_returns_original_when_all_candidates_would_be_excluded(self):
+        from katrain.core.ai import _jigo_exclude_sharp_moves
+        cands = [
+            _c("A1", 25.0, 0.0, 0.10),
+            _c("B2", 30.0, 0.0, 0.10),
+        ]
+        result = _jigo_exclude_sharp_moves(cands, current_lead=20.0)
+        # 全滅なら元のリストを返す（安全弁）
+        assert result == cands
+
+    def test_empty_input_returns_empty(self):
+        from katrain.core.ai import _jigo_exclude_sharp_moves
+        result = _jigo_exclude_sharp_moves([], current_lead=20.0)
+        assert result == []

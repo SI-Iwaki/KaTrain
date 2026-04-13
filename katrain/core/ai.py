@@ -716,6 +716,20 @@ def _jigo_relax_filters(candidates, max_loss, min_hp):
     return ([candidates[0]] if candidates else []), "safety_valve"
 
 
+# 鋭手除外用バッファ（KataGo scoreLead の微細ノイズを許容）
+SHARP_EPSILON = 0.5
+
+
+def _jigo_exclude_sharp_moves(candidates, current_lead, epsilon=SHARP_EPSILON):
+    """圧勝時に「現在リードをさらに広げる手」を除外する。
+
+    score > current_lead + epsilon の候補を落とす。
+    除外結果が空になる場合は元のリストを返す（安全弁）。
+    """
+    non_sharp = [c for c in candidates if c["score"] <= current_lead + epsilon]
+    return non_sharp if non_sharp else candidates
+
+
 def _jigo_select_move(candidates, current_lead, target_score, target_score_max, mode):
     """現在リード × Mode で着手を選択。
     - current_lead < target_score → target 最接近
