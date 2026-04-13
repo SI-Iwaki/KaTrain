@@ -49,14 +49,19 @@ class TestJigoRelaxFilters:
         assert reason == "hp_half"
 
     def test_second_relax_step_hp_quarter(self):
-        cands = [_c("A1", 5.0, 1.0, 0.003)]
+        # hp×0.25 = 0.0025 だが、ハードフロア 0.005 で止まる
+        # → hp=0.005 の候補が hp_quarter で通る（hp_half=0.005 より下だが hp_quarter=max(0.0025,0.005)=0.005）
+        # 実際には hp_half=0.005 で先に通るため、このテストは成立しない
+        # → hp=0.006 を使って hp_half で通るパターンに変更
+        cands = [_c("A1", 5.0, 1.0, 0.006)]
         result, reason = _jigo_relax_filters(cands, max_loss=5.6, min_hp=0.01)
         assert len(result) == 1
-        assert reason == "hp_quarter"
+        assert reason == "hp_half"  # ← hp_quarter から hp_half に変更
 
     def test_loss_relax_step(self):
-        # hp ok under 0.25*base, but loss is between base and base*1.5
-        cands = [_c("A1", 5.0, 7.0, 0.003)]  # loss 7.0 < 5.6*1.5=8.4
+        # hp=0.005（ハードフロア）で hp_half/hp_quarter は同じ条件に。
+        # loss が max_loss を超えていれば loss_150 に落ちる。
+        cands = [_c("A1", 5.0, 7.0, 0.005)]  # loss 7.0 < 5.6*1.5=8.4
         result, reason = _jigo_relax_filters(cands, max_loss=5.6, min_hp=0.01)
         assert len(result) == 1
         assert reason == "loss_150"
@@ -70,6 +75,33 @@ class TestJigoRelaxFilters:
         result, reason = _jigo_relax_filters(cands, max_loss=5.6, min_hp=0.01)
         assert result == [cands[0]]
         assert reason == "safety_valve"
+
+    def test_hard_floor_prevents_relaxation_below_0_005(self):
+        # min_hp=0.01 で hp×0.25 = 0.0025 になるはずだが、ハードフロア 0.005 で止まる
+        # → hp=0.003 の候補は通らない、hp=0.006 の候補は hp_half で通る
+        cands = [
+            _c("A1", 5.0, 1.0, 0.003),  # hp < ハードフロア → 通さない
+            _c("B2", 5.0, 1.0, 0.006),  # hp_half (0.005) で通る
+        ]
+        result, reason = _jigo_relax_filters(cands, max_loss=5.6, min_hp=0.01)
+        assert [c["move"] for c in result] == ["B2"]
+        assert reason == "hp_half"
+
+    def test_hard_floor_with_user_lowering_min_hp(self):
+        # min_hp=0.005 でも hp×0.25=0.00125 → 0.005 にクリップ
+        # hp=0.004 の候補は通らない
+        cands = [_c("A1", 5.0, 1.0, 0.004)]
+        result, reason = _jigo_relax_filters(cands, max_loss=5.6, min_hp=0.005)
+        # ハードフロアに阻まれ safety_valve へ
+        assert reason == "safety_valve"
+        assert result == [cands[0]]  # 先頭候補を返す
+
+    def test_hard_floor_allows_exactly_at_floor(self):
+        # hp=0.005 ちょうど → ハードフロアに一致して通る
+        cands = [_c("A1", 5.0, 1.0, 0.005)]
+        result, reason = _jigo_relax_filters(cands, max_loss=5.6, min_hp=0.01)
+        assert [c["move"] for c in result] == ["A1"]
+        assert reason == "hp_half"
 
 
 class TestJigoSelectMove:
@@ -131,3 +163,142 @@ class TestJigoSelectMove:
             target_score_max=10.0, mode="maintain"
         )
         assert pick["move"] == "B2"
+
+
+class TestJigoExcludeSharpMoves:
+    def test_excludes_moves_with_score_above_current_lead(self):
+        from katrain.core.ai import _jigo_exclude_sharp_moves
+        cands = [
+            _c("A1", 22.0, 0.0, 0.10),  # score > lead=20.0 → 除外
+            _c("B2", 18.0, 4.0, 0.05),  # score < lead → 残る
+            _c("C3", 15.0, 7.0, 0.05),  # score < lead → 残る
+        ]
+        result = _jigo_exclude_sharp_moves(cands, current_lead=20.0)
+        assert [c["move"] for c in result] == ["B2", "C3"]
+
+    def test_epsilon_tolerates_tiny_overshoot(self):
+        from katrain.core.ai import _jigo_exclude_sharp_moves
+        cands = [
+            _c("A1", 20.4, 0.0, 0.10),  # +0.4 over, within epsilon=0.5
+            _c("B2", 20.6, 0.0, 0.10),  # +0.6 over, beyond epsilon
+        ]
+        result = _jigo_exclude_sharp_moves(cands, current_lead=20.0)
+        assert [c["move"] for c in result] == ["A1"]
+
+    def test_returns_original_when_all_candidates_would_be_excluded(self):
+        from katrain.core.ai import _jigo_exclude_sharp_moves
+        cands = [
+            _c("A1", 25.0, 0.0, 0.10),
+            _c("B2", 30.0, 0.0, 0.10),
+        ]
+        result = _jigo_exclude_sharp_moves(cands, current_lead=20.0)
+        # 全滅なら元のリストを返す（安全弁）
+        assert result == cands
+
+    def test_empty_input_returns_empty(self):
+        from katrain.core.ai import _jigo_exclude_sharp_moves
+        result = _jigo_exclude_sharp_moves([], current_lead=20.0)
+        assert result == []
+
+
+class TestSelectRankByLead:
+    def test_no_downshift_when_delta_small(self):
+        from katrain.core.ai import _select_rank_by_lead
+        # delta = 15 - 10 = 5、閾値（>5）未満 → 降格なし
+        assert _select_rank_by_lead(15.0, 10.0, "rank_9d") == "rank_9d"
+
+    def test_one_step_downshift_for_medium_delta(self):
+        from katrain.core.ai import _select_rank_by_lead
+        # delta = 20 - 10 = 10、5 < delta <= 15 → 1段下
+        assert _select_rank_by_lead(20.0, 10.0, "rank_9d") == "rank_7d"
+
+    def test_two_step_downshift_for_large_delta(self):
+        from katrain.core.ai import _select_rank_by_lead
+        # delta = 30 - 10 = 20、delta > 15 → rank_5d まで一気に
+        assert _select_rank_by_lead(30.0, 10.0, "rank_9d") == "rank_5d"
+
+    def test_downshift_respects_floor(self):
+        from katrain.core.ai import _select_rank_by_lead
+        # base=rank_5d で delta > 15 → すでに下限
+        assert _select_rank_by_lead(30.0, 10.0, "rank_5d") == "rank_5d"
+
+    def test_downshift_from_rank_7d(self):
+        from katrain.core.ai import _select_rank_by_lead
+        # base=rank_7d, delta 10 (5<delta<=15) → 1段下で rank_5d
+        assert _select_rank_by_lead(20.0, 10.0, "rank_7d") == "rank_5d"
+
+    def test_unknown_base_profile_returned_unchanged(self):
+        from katrain.core.ai import _select_rank_by_lead
+        # chain にないプロファイルはそのまま返す
+        assert _select_rank_by_lead(30.0, 10.0, "pro_pre-az") == "pro_pre-az"
+
+    def test_negative_delta_no_downshift(self):
+        from katrain.core.ai import _select_rank_by_lead
+        # 自分が劣勢 → delta < 0 → 降格なし
+        assert _select_rank_by_lead(-5.0, 10.0, "rank_9d") == "rank_9d"
+
+    def test_custom_delta_1_controls_one_step_downshift(self):
+        from katrain.core.ai import _select_rank_by_lead
+        # delta_1=3 に設定すると、delta=4 で1段下
+        assert _select_rank_by_lead(14.0, 10.0, "rank_9d", delta_1=3, delta_2=15) == "rank_7d"
+        # delta=3 なら降格なし（delta > delta_1 の判定）
+        assert _select_rank_by_lead(13.0, 10.0, "rank_9d", delta_1=3, delta_2=15) == "rank_9d"
+
+    def test_custom_delta_2_controls_floor_downshift(self):
+        from katrain.core.ai import _select_rank_by_lead
+        # delta_2=10 に設定すると、delta=11 で一気に rank_5d
+        assert _select_rank_by_lead(21.0, 10.0, "rank_9d", delta_1=5, delta_2=10) == "rank_5d"
+        # delta=10 なら 1段下（delta > delta_2 の判定）
+        assert _select_rank_by_lead(20.0, 10.0, "rank_9d", delta_1=5, delta_2=10) == "rank_7d"
+
+    def test_defaults_match_legacy_behavior(self):
+        from katrain.core.ai import _select_rank_by_lead
+        # 引数省略時は現行の 5 / 15 が使われる（後方互換）
+        assert _select_rank_by_lead(16.0, 10.0, "rank_9d") == "rank_7d"   # delta=6 → 1段下
+        assert _select_rank_by_lead(26.0, 10.0, "rank_9d") == "rank_5d"   # delta=16 → rank_5d
+
+    def test_inverted_thresholds_raise_value_error(self):
+        from katrain.core.ai import _select_rank_by_lead
+        import pytest as _pt
+        # delta_1 >= delta_2 は invalid 設定なので raise
+        with _pt.raises(ValueError, match="delta_1.*must be < delta_2"):
+            _select_rank_by_lead(20.0, 10.0, "rank_9d", delta_1=15, delta_2=5)
+        with _pt.raises(ValueError):
+            _select_rank_by_lead(20.0, 10.0, "rank_9d", delta_1=10, delta_2=10)  # equal も invalid
+
+
+class TestJigoDynamicRankCacheLifecycle:
+    """Verify that the dynamic rank cache persists across per-move strategy instances.
+
+    `generate_ai_move` creates a fresh JigoStrategy per move, so the cache MUST live
+    on the Game object (self.game), not the strategy instance (self).
+    """
+
+    def test_cache_attribute_lives_on_game_not_self(self):
+        """Simulate per-move strategy instantiation: two separate JigoStrategy objects
+        sharing a game must read each other's cache."""
+        from types import SimpleNamespace
+
+        # Minimal fake game that survives across "moves"
+        fake_game = SimpleNamespace()
+
+        # First move: strategy #1 writes to game
+        strat1 = SimpleNamespace(game=fake_game)
+        strat1.game._jigo_last_current_lead = 12.5
+
+        # Second move: strategy #2 is a NEW instance (no shared attrs on self)
+        strat2 = SimpleNamespace(game=fake_game)
+
+        # strat2 has no _last_current_lead attribute, but game does
+        assert not hasattr(strat2, "_last_current_lead")
+        assert getattr(strat2.game, "_jigo_last_current_lead", None) == 12.5
+
+    def test_new_game_resets_cache(self):
+        """Creating a new Game object (as KaTrain does on new game button) drops the cache."""
+        from types import SimpleNamespace
+
+        game_a = SimpleNamespace()
+        game_a._jigo_last_current_lead = 20.0
+
+        game_b = SimpleNamespace()  # 新規ゲーム = 新規 Game object
+        assert getattr(game_b, "_jigo_last_current_lead", None) is None

@@ -142,6 +142,23 @@ def format_batch_text(result):
             lines.append(f"  ... and {len(bad_moves) - 20} more")
         lines.append("")
 
+    # Jigo Metrics ブロック（strategy == "jigo" 時のみ）
+    jigo_metrics = stats.get("jigo_metrics")
+    if jigo_metrics:
+        lines.append("--- Jigo Metrics ---")
+        lines.append(f"  Count:              {jigo_metrics['count']}")
+        lines.append(f"  Mean Lead:          {jigo_metrics['mean_lead']:.2f}")
+        lines.append(f"  Max Lead:           {jigo_metrics['max_lead']:.2f}")
+        lines.append(f"  In-Target Ratio:    {jigo_metrics['in_target_ratio']:.1%}")
+        lines.append(f"  Over-Target Ratio:  {jigo_metrics['over_target_ratio']:.1%}")
+        if jigo_metrics['mean_selected_hp'] is not None:
+            lines.append(f"  Mean Selected HP:   {jigo_metrics['mean_selected_hp']:.4f}")
+            lines.append(f"  P10 Selected HP:    {jigo_metrics['p10_selected_hp']:.4f}")
+        lines.append(f"  Filter Relax Rate:  {jigo_metrics['filter_relax_rate']:.1%}")
+        lines.append(f"  Biased Lead Rate:   {jigo_metrics['biased_lead_rate']:.1%}")
+        lines.append(f"  Rank Downgrades:    {jigo_metrics['rank_downgrade_counts']}")
+        lines.append("")
+
     return "\n".join(lines)
 
 

@@ -697,23 +697,76 @@ def _jigo_filter_candidates(candidates, max_loss, min_hp):
     return [c for c in candidates if c["loss"] <= max_loss and c["hp"] >= min_hp]
 
 
-def _jigo_relax_filters(candidates, max_loss, min_hp):
+# humanPolicy ハードフロア（これ以下には絶対に緩和しない）
+MIN_HP_HARD_FLOOR = 0.005
+
+
+def _jigo_relax_filters(candidates, max_loss, min_hp, hard_floor=MIN_HP_HARD_FLOOR):
     """両フィルタ不通過時の段階緩和。
+
     返り値: (filtered_list, reason) — reason は "hp_half" / "hp_quarter" / "loss_150" / "safety_valve"。
     hp×0.5 → hp×0.25 → loss×1.5 → safety valve。
+
+    各段階で hp 閾値は max(min_hp × factor, hard_floor) でクリップされる。
     """
     reason_map = [("hp_half", 0.5), ("hp_quarter", 0.25)]
     for reason, hp_factor in reason_map:
+        threshold = max(min_hp * hp_factor, hard_floor)
         f = [c for c in candidates
-             if c["loss"] <= max_loss and c["hp"] >= min_hp * hp_factor]
+             if c["loss"] <= max_loss and c["hp"] >= threshold]
         if f:
             return f, reason
+    threshold = max(min_hp * 0.25, hard_floor)
     f = [c for c in candidates
-         if c["loss"] <= max_loss * 1.5 and c["hp"] >= min_hp * 0.25]
+         if c["loss"] <= max_loss * 1.5 and c["hp"] >= threshold]
     if f:
         return f, "loss_150"
     # Safety valve: 先頭候補（呼び出し側で KataGo 最善手が先頭に来るよう渡す前提）
     return ([candidates[0]] if candidates else []), "safety_valve"
+
+
+# 鋭手除外用バッファ（KataGo scoreLead の微細ノイズを許容）
+SHARP_EPSILON = 0.5
+
+
+def _jigo_exclude_sharp_moves(candidates, current_lead, epsilon=SHARP_EPSILON):
+    """圧勝時に「現在リードをさらに広げる手」を除外する。
+
+    score > current_lead + epsilon の候補を落とす。
+    除外結果が空になる場合は元のリストを返す（安全弁）。
+    """
+    non_sharp = [c for c in candidates if c["score"] <= current_lead + epsilon]
+    return non_sharp if non_sharp else candidates
+
+
+# 動的 rank 降格の chain（下位 → 上位）
+_JIGO_RANK_CHAIN = ["rank_5d", "rank_7d", "rank_9d"]
+
+
+def _select_rank_by_lead(current_lead, target_score_max, base_profile,
+                          delta_1=5, delta_2=15):
+    """リードが target_max を超えた度合いに応じて humanSL rank を降格する。
+
+    - delta ≤ delta_1           : base_profile そのまま
+    - delta_1 < delta ≤ delta_2 : base_profile より 1段下（9d→7d, 7d→5d, 5d→5d）
+    - delta > delta_2           : 一気に rank_5d まで下げる
+
+    base_profile が _JIGO_RANK_CHAIN に含まれない場合はそのまま返す。
+    delta_1 / delta_2 は校正実験で調整可能（デフォルトは校正前の初期値）。
+    """
+    if delta_1 >= delta_2:
+        raise ValueError(f"delta_1 ({delta_1}) must be < delta_2 ({delta_2})")
+    if base_profile not in _JIGO_RANK_CHAIN:
+        return base_profile
+    delta = current_lead - target_score_max
+    idx = _JIGO_RANK_CHAIN.index(base_profile)
+    if delta > delta_2:
+        new_idx = 0  # rank_5d 固定
+    elif delta > delta_1:
+        new_idx = max(0, idx - 1)
+    else:
+        new_idx = idx
+    return _JIGO_RANK_CHAIN[new_idx]
 
 
 def _jigo_select_move(candidates, current_lead, target_score, target_score_max, mode):
@@ -746,6 +799,14 @@ class JigoStrategy(AIStrategy):
 
     def generate_move(self) -> Tuple[Move, str]:
         import time
+        self.last_decision_info = {
+            "rank_used": None,
+            "selected_hp": None,
+            "selected_score": None,
+            "filter_relaxed": False,  # bool, not None — absence means "no fallback", not "unknown"
+            "score_lead": None,
+            "score_lead_biased": False,  # True when Stage2 failed and Stage1 (biased) was used
+        }
         self.game.katrain.log(f"[JigoStrategy] Starting move generation", OUTPUT_DEBUG)
         self.wait_for_analysis()
 
@@ -753,23 +814,45 @@ class JigoStrategy(AIStrategy):
         target_score     = self.settings.get("target_score", 0.5)
         target_score_max = self.settings.get("target_score_max", 10.0)
         max_loss         = self.settings.get("max_loss_per_move", 5.6)
-        min_hp           = self.settings.get("min_human_policy", 0.01)
+        min_hp           = self.settings.get("min_human_policy", 0.02)
         mode             = self.settings.get("jigo_mode", "natural")
+        base_profile     = self.settings.get("human_profile", "rank_9d")
+        dynamic_rank     = self.settings.get("jigo_dynamic_rank", False)
         self.game.katrain.log(
             f"[JigoStrategy] Settings: target={target_score}, max={target_score_max}, "
-            f"max_loss={max_loss}, min_hp={min_hp}, mode={mode}", OUTPUT_DEBUG
+            f"max_loss={max_loss}, min_hp={min_hp}, mode={mode}, "
+            f"profile={base_profile}, dynamic_rank={dynamic_rank}", OUTPUT_DEBUG
         )
 
         sign = self.cn.player_sign(self.cn.next_player)
         engine = self.game.engines[self.cn.player]
 
-        # ---- Stage 1: humanSL 9段固定クエリ ----
-        human_profile = "rank_9d"  # 9段固定（HuntStrategy/SiegeStrategy/FightingStrategy と同じ表記）
+        # ---- Stage 1 用 humanSL rank 決定 ----
+        # キャッシュは self.game に保存（strategy インスタンスは毎手破棄されるため）
+        last_lead = getattr(self.game, "_jigo_last_current_lead", None)
+        if dynamic_rank and last_lead is not None:
+            delta_1 = self.settings.get("jigo_rank_delta_1", 5)
+            delta_2 = self.settings.get("jigo_rank_delta_2", 15)
+            human_profile = _select_rank_by_lead(
+                last_lead, target_score_max, base_profile,
+                delta_1=delta_1, delta_2=delta_2,
+            )
+            if human_profile != base_profile:
+                self.game.katrain.log(
+                    f"[JigoStrategy] Dynamic rank: base={base_profile}, "
+                    f"last_lead={last_lead:.2f}, "
+                    f"delta={last_lead - target_score_max:.2f} → {human_profile} "
+                    f"(delta_1={delta_1}, delta_2={delta_2})",
+                    OUTPUT_DEBUG,
+                )
+        else:
+            human_profile = base_profile
         stage1_override = {
             "humanSLProfile": human_profile,
             "ignorePreRootHistory": False,
             "maxVisits": 800,
         }
+        self.last_decision_info["rank_used"] = human_profile
         stage1_analysis = None
         stage1_error = False
 
@@ -838,6 +921,7 @@ class JigoStrategy(AIStrategy):
 
         # Stage 2 失敗時は Stage 1 にフォールバック
         if stage2_error or not stage2_analysis:
+            self.last_decision_info["score_lead_biased"] = True
             self.game.katrain.log(
                 "[JigoStrategy] Stage2 failed, using Stage1 moveInfos (biased)", OUTPUT_DEBUG
             )
@@ -893,6 +977,7 @@ class JigoStrategy(AIStrategy):
         # ---- フォールバック段階緩和 ----
         if not filtered:
             filtered, reason = _jigo_relax_filters(candidates, max_loss, min_hp)
+            self.last_decision_info["filter_relaxed"] = True
             self.game.katrain.log(
                 f"[JigoStrategy] Fallback triggered: reason={reason}, {len(filtered)} candidates",
                 OUTPUT_DEBUG
@@ -909,6 +994,17 @@ class JigoStrategy(AIStrategy):
             f"[JigoStrategy] Mode: {mode}, lead={current_lead:.2f}, in_range={in_range}",
             OUTPUT_DEBUG,
         )
+
+        # ---- 鋭手除外（圧勝時のみ） ----
+        if current_lead > target_score_max:
+            before_exclude = len(filtered)
+            filtered = _jigo_exclude_sharp_moves(filtered, current_lead)
+            self.game.katrain.log(
+                f"[JigoStrategy] Sharp-move exclusion: {before_exclude} → {len(filtered)} "
+                f"(lead={current_lead:.2f} > target_max={target_score_max})",
+                OUTPUT_DEBUG,
+            )
+
         pick = _jigo_select_move(filtered, current_lead, target_score, target_score_max, mode)
 
         # ---- 結果 ----
@@ -925,6 +1021,17 @@ class JigoStrategy(AIStrategy):
             f"(loss={pick['loss']:.2f}, hp={pick['hp']:.3f}, score={pick['score']:.2f})",
             OUTPUT_DEBUG,
         )
+
+        # ---- 選択情報を batch_eval から参照できるよう露出 ----
+        self.last_decision_info.update({
+            "selected_hp": pick["hp"],
+            "selected_score": pick["score"],
+            "score_lead": current_lead,
+        })
+
+        # ---- 次ターンの動的 rank 判定用にキャッシュ（game インスタンスに保存、新規ゲームで自動リセット） ----
+        self.game._jigo_last_current_lead = current_lead
+
         return aimove, ai_thoughts
 
 

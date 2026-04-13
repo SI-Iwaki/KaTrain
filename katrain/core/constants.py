@@ -189,6 +189,12 @@ AI_OPTION_VALUES = {
         ("natural", "natural"),
         ("maintain", "maintain"),
     ],
+    "human_profile": [
+        ("rank_5d", "5[strength:dan]"),
+        ("rank_7d", "7[strength:dan]"),
+        ("rank_9d", "9[strength:dan]"),
+    ],
+    "jigo_dynamic_rank": "bool",
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）
@@ -241,6 +247,8 @@ AI_OPTION_ORDER = {
     "max_loss_per_move": 2,
     "min_human_policy": 3,
     "jigo_mode": 4,
+    "human_profile": 5,
+    "jigo_dynamic_rank": 6,
 }
 
 AI_KEY_PROPERTIES = {

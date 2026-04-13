@@ -103,8 +103,10 @@
             "target_score": 0.5,
             "target_score_max": 10.0,
             "max_loss_per_move": 5.6,
-            "min_human_policy": 0.01,
-            "jigo_mode": "natural"
+            "min_human_policy": 0.02,
+            "jigo_mode": "natural",
+            "human_profile": "rank_9d",
+            "jigo_dynamic_rank": false
         },
         "ai:scoreloss": {
             "strength": 0.2
