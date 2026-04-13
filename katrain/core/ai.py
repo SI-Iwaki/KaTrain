@@ -958,6 +958,17 @@ class JigoStrategy(AIStrategy):
             f"[JigoStrategy] Mode: {mode}, lead={current_lead:.2f}, in_range={in_range}",
             OUTPUT_DEBUG,
         )
+
+        # ---- 鋭手除外（圧勝時のみ） ----
+        if current_lead > target_score_max:
+            before_exclude = len(filtered)
+            filtered = _jigo_exclude_sharp_moves(filtered, current_lead)
+            self.game.katrain.log(
+                f"[JigoStrategy] Sharp-move exclusion: {before_exclude} → {len(filtered)} "
+                f"(lead={current_lead:.2f} > target_max={target_score_max})",
+                OUTPUT_DEBUG,
+            )
+
         pick = _jigo_select_move(filtered, current_lead, target_score, target_score_max, mode)
 
         # ---- 結果 ----
