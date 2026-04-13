@@ -730,6 +730,32 @@ def _jigo_exclude_sharp_moves(candidates, current_lead, epsilon=SHARP_EPSILON):
     return non_sharp if non_sharp else candidates
 
 
+# 動的 rank 降格の chain（下位 → 上位）
+_JIGO_RANK_CHAIN = ["rank_5d", "rank_7d", "rank_9d"]
+
+
+def _select_rank_by_lead(current_lead, target_score_max, base_profile):
+    """リードが target_max を超えた度合いに応じて humanSL rank を降格する。
+
+    - delta ≤ 5  : base_profile そのまま
+    - 5 < delta ≤ 15 : base_profile より 1段下（9d→7d, 7d→5d, 5d→5d）
+    - delta > 15 : 一気に rank_5d まで下げる
+
+    base_profile が _JIGO_RANK_CHAIN に含まれない場合はそのまま返す。
+    """
+    if base_profile not in _JIGO_RANK_CHAIN:
+        return base_profile
+    delta = current_lead - target_score_max
+    idx = _JIGO_RANK_CHAIN.index(base_profile)
+    if delta > 15:
+        new_idx = 0  # rank_5d 固定
+    elif delta > 5:
+        new_idx = max(0, idx - 1)
+    else:
+        new_idx = idx
+    return _JIGO_RANK_CHAIN[new_idx]
+
+
 def _jigo_select_move(candidates, current_lead, target_score, target_score_max, mode):
     """現在リード × Mode で着手を選択。
     - current_lead < target_score → target 最接近

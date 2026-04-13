@@ -167,3 +167,40 @@ class TestJigoExcludeSharpMoves:
         from katrain.core.ai import _jigo_exclude_sharp_moves
         result = _jigo_exclude_sharp_moves([], current_lead=20.0)
         assert result == []
+
+
+class TestSelectRankByLead:
+    def test_no_downshift_when_delta_small(self):
+        from katrain.core.ai import _select_rank_by_lead
+        # delta = 15 - 10 = 5、閾値（>5）未満 → 降格なし
+        assert _select_rank_by_lead(15.0, 10.0, "rank_9d") == "rank_9d"
+
+    def test_one_step_downshift_for_medium_delta(self):
+        from katrain.core.ai import _select_rank_by_lead
+        # delta = 20 - 10 = 10、5 < delta <= 15 → 1段下
+        assert _select_rank_by_lead(20.0, 10.0, "rank_9d") == "rank_7d"
+
+    def test_two_step_downshift_for_large_delta(self):
+        from katrain.core.ai import _select_rank_by_lead
+        # delta = 30 - 10 = 20、delta > 15 → rank_5d まで一気に
+        assert _select_rank_by_lead(30.0, 10.0, "rank_9d") == "rank_5d"
+
+    def test_downshift_respects_floor(self):
+        from katrain.core.ai import _select_rank_by_lead
+        # base=rank_5d で delta > 15 → すでに下限
+        assert _select_rank_by_lead(30.0, 10.0, "rank_5d") == "rank_5d"
+
+    def test_downshift_from_rank_7d(self):
+        from katrain.core.ai import _select_rank_by_lead
+        # base=rank_7d, delta 10 (5<delta<=15) → 1段下で rank_5d
+        assert _select_rank_by_lead(20.0, 10.0, "rank_7d") == "rank_5d"
+
+    def test_unknown_base_profile_returned_unchanged(self):
+        from katrain.core.ai import _select_rank_by_lead
+        # chain にないプロファイルはそのまま返す
+        assert _select_rank_by_lead(30.0, 10.0, "pro_pre-az") == "pro_pre-az"
+
+    def test_negative_delta_no_downshift(self):
+        from katrain.core.ai import _select_rank_by_lead
+        # 自分が劣勢 → delta < 0 → 降格なし
+        assert _select_rank_by_lead(-5.0, 10.0, "rank_9d") == "rank_9d"
