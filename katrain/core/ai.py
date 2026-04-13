@@ -799,6 +799,13 @@ class JigoStrategy(AIStrategy):
 
     def generate_move(self) -> Tuple[Move, str]:
         import time
+        self.last_decision_info = {
+            "rank_used": None,
+            "selected_hp": None,
+            "selected_score": None,
+            "filter_relaxed": False,
+            "score_lead": None,
+        }
         self.game.katrain.log(f"[JigoStrategy] Starting move generation", OUTPUT_DEBUG)
         self.wait_for_analysis()
 
@@ -844,6 +851,7 @@ class JigoStrategy(AIStrategy):
             "ignorePreRootHistory": False,
             "maxVisits": 800,
         }
+        self.last_decision_info["rank_used"] = human_profile
         stage1_analysis = None
         stage1_error = False
 
@@ -967,6 +975,7 @@ class JigoStrategy(AIStrategy):
         # ---- フォールバック段階緩和 ----
         if not filtered:
             filtered, reason = _jigo_relax_filters(candidates, max_loss, min_hp)
+            self.last_decision_info["filter_relaxed"] = True
             self.game.katrain.log(
                 f"[JigoStrategy] Fallback triggered: reason={reason}, {len(filtered)} candidates",
                 OUTPUT_DEBUG
@@ -1010,6 +1019,13 @@ class JigoStrategy(AIStrategy):
             f"(loss={pick['loss']:.2f}, hp={pick['hp']:.3f}, score={pick['score']:.2f})",
             OUTPUT_DEBUG,
         )
+
+        # ---- 選択情報を batch_eval から参照できるよう露出 ----
+        self.last_decision_info.update({
+            "selected_hp": pick["hp"],
+            "selected_score": pick["score"],
+            "score_lead": current_lead,
+        })
 
         # ---- 次ターンの動的 rank 判定用にキャッシュ（game インスタンスに保存、新規ゲームで自動リセット） ----
         self.game._jigo_last_current_lead = current_lead
