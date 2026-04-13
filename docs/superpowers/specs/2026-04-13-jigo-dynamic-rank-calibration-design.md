@@ -47,7 +47,7 @@ self.last_decision_info = {
     "rank_used": human_profile,        # Stage1 で実際に使われた humanSL rank
     "selected_hp": selected["hp"],     # 選択手の humanPolicy
     "selected_score": selected["score"], # 選択手の Stage2 scoreLead（現プレイヤー視点）
-    "filter_relaxed": was_relaxed,     # 段階緩和が発動したか
+    "filter_relaxed": was_relaxed,     # 段階緩和（hp×0.5 / hp×0.25 / loss×1.5 / KataGo最善手フォールバック）のいずれかが発動したら True
     "score_lead": current_lead,        # 親ノード時点の lead（現プレイヤー視点）
 }
 ```
@@ -163,14 +163,14 @@ convergence_score = in_target_ratio - 0.5 × over_target_ratio - 0.02 × mean_le
 
 ### 7.3 Step 3: 採用判定
 
-- 最良スコアの config が現行 `5-15` を **0.05 以上上回る** かつ **3-run 標準偏差を超える** → 採用
+- 最良スコアの config が現行 `5-15` を **0.05 以上上回る** かつ **その差が `convergence_score` の 3-run 標準偏差（2 config 分の std の最大値）を超える** → 採用
 - 差が誤差範囲 → **現行 `5-15` 維持**（保守的バイアス）
 - 全候補が gate 落ち → `off`（`dynamic_rank=False` 推奨）を結論に記載
 
 ### 7.4 分散の扱い
 
 - 各指標について 3-run 平均と標準偏差の両方を記録
-- 平均差が 3-run 標準偏差以下なら「有意差なし」扱い
+- `convergence_score` も 3-run の std を算出し、採用判定に使う
 - 判定レポートに `mean ± std` 形式で全指標を記載
 
 ## 8. 実装順序
