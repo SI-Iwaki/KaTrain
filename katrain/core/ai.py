@@ -743,22 +743,24 @@ def _jigo_exclude_sharp_moves(candidates, current_lead, epsilon=SHARP_EPSILON):
 _JIGO_RANK_CHAIN = ["rank_5d", "rank_7d", "rank_9d"]
 
 
-def _select_rank_by_lead(current_lead, target_score_max, base_profile):
+def _select_rank_by_lead(current_lead, target_score_max, base_profile,
+                          delta_1=5, delta_2=15):
     """リードが target_max を超えた度合いに応じて humanSL rank を降格する。
 
-    - delta ≤ 5  : base_profile そのまま
-    - 5 < delta ≤ 15 : base_profile より 1段下（9d→7d, 7d→5d, 5d→5d）
-    - delta > 15 : 一気に rank_5d まで下げる
+    - delta ≤ delta_1           : base_profile そのまま
+    - delta_1 < delta ≤ delta_2 : base_profile より 1段下（9d→7d, 7d→5d, 5d→5d）
+    - delta > delta_2           : 一気に rank_5d まで下げる
 
     base_profile が _JIGO_RANK_CHAIN に含まれない場合はそのまま返す。
+    delta_1 / delta_2 は校正実験で調整可能（デフォルトは校正前の初期値）。
     """
     if base_profile not in _JIGO_RANK_CHAIN:
         return base_profile
     delta = current_lead - target_score_max
     idx = _JIGO_RANK_CHAIN.index(base_profile)
-    if delta > 15:
+    if delta > delta_2:
         new_idx = 0  # rank_5d 固定
-    elif delta > 5:
+    elif delta > delta_1:
         new_idx = max(0, idx - 1)
     else:
         new_idx = idx
@@ -819,14 +821,18 @@ class JigoStrategy(AIStrategy):
         # キャッシュは self.game に保存（strategy インスタンスは毎手破棄されるため）
         last_lead = getattr(self.game, "_jigo_last_current_lead", None)
         if dynamic_rank and last_lead is not None:
+            delta_1 = self.settings.get("jigo_rank_delta_1", 5)
+            delta_2 = self.settings.get("jigo_rank_delta_2", 15)
             human_profile = _select_rank_by_lead(
-                last_lead, target_score_max, base_profile
+                last_lead, target_score_max, base_profile,
+                delta_1=delta_1, delta_2=delta_2,
             )
             if human_profile != base_profile:
                 self.game.katrain.log(
                     f"[JigoStrategy] Dynamic rank: base={base_profile}, "
                     f"last_lead={last_lead:.2f}, "
-                    f"delta={last_lead - target_score_max:.2f} → {human_profile}",
+                    f"delta={last_lead - target_score_max:.2f} → {human_profile} "
+                    f"(delta_1={delta_1}, delta_2={delta_2})",
                     OUTPUT_DEBUG,
                 )
         else:

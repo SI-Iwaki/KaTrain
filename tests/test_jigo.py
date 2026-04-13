@@ -237,6 +237,26 @@ class TestSelectRankByLead:
         # 自分が劣勢 → delta < 0 → 降格なし
         assert _select_rank_by_lead(-5.0, 10.0, "rank_9d") == "rank_9d"
 
+    def test_custom_delta_1_controls_one_step_downshift(self):
+        from katrain.core.ai import _select_rank_by_lead
+        # delta_1=3 に設定すると、delta=4 で1段下
+        assert _select_rank_by_lead(14.0, 10.0, "rank_9d", delta_1=3, delta_2=15) == "rank_7d"
+        # delta=3 なら降格なし（delta > delta_1 の判定）
+        assert _select_rank_by_lead(13.0, 10.0, "rank_9d", delta_1=3, delta_2=15) == "rank_9d"
+
+    def test_custom_delta_2_controls_floor_downshift(self):
+        from katrain.core.ai import _select_rank_by_lead
+        # delta_2=10 に設定すると、delta=11 で一気に rank_5d
+        assert _select_rank_by_lead(21.0, 10.0, "rank_9d", delta_1=5, delta_2=10) == "rank_5d"
+        # delta=10 なら 1段下（delta > delta_2 の判定）
+        assert _select_rank_by_lead(20.0, 10.0, "rank_9d", delta_1=5, delta_2=10) == "rank_7d"
+
+    def test_defaults_match_legacy_behavior(self):
+        from katrain.core.ai import _select_rank_by_lead
+        # 引数省略時は現行の 5 / 15 が使われる（後方互換）
+        assert _select_rank_by_lead(16.0, 10.0, "rank_9d") == "rank_7d"   # delta=6 → 1段下
+        assert _select_rank_by_lead(26.0, 10.0, "rank_9d") == "rank_5d"   # delta=16 → rank_5d
+
 
 class TestJigoDynamicRankCacheLifecycle:
     """Verify that the dynamic rank cache persists across per-move strategy instances.
