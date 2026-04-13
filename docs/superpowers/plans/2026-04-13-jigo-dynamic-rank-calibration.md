@@ -691,6 +691,168 @@ python -c "import json; d=json.load(open('docs/superpowers/specs/calibration-dat
 
 ---
 
+## Task 7.5: SGF メインライン化と human_profile デフォルト対応
+
+**Files:**
+- Create: `docs/superpowers/specs/calibration-data/clean_sgf_main_line.py`
+- Modify (overwrite): `docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413.sgf`
+
+**背景:** 2026-04-13 セッションで Task 7 のスモークテストを実施した結果、以下 2 件の問題が判明:
+
+1. **SGF が 18 手しか評価されない（実際は 120 手）**: テスト SGF は KaTrain で対局保存されたもので、189 個の variation を含む。`batch_eval.py` の `node = node.children[0]` traversal が短い分岐を選んで打ち切られる。最長パスは 120 手だが、最初の分岐点 (move 17) で `children[0]` が 1 手だけ、`children[1]` が 103 手の長いパスとなる。
+2. **ユーザのローカル `~/.katrain/config.json` の `human_profile` デフォルトが `rank_5d`**: 実対局では `rank_9d` を使用していたため、Task 8 の校正条件と一致させるには `human_profile=rank_9d` を明示する必要がある。
+
+**方針 (Option A: SGF 前処理):** `batch_eval.py` のセマンティクスは変えず、データ側を SGF main-line 慣習に合致させる。汎用前処理スクリプトとして `clean_sgf_main_line.py` を追加し、校正用 SGF を最長パスのみのクリーン版に置き換える。
+
+- [ ] **Step 1: スクリプト作成**
+
+`docs/superpowers/specs/calibration-data/clean_sgf_main_line.py` を新規作成:
+
+```python
+"""SGF の variation を全て落として、最長パス（actually-played main line）のみを残す前処理ツール。
+
+KaTrain で保存された SGF は AI の代替手や user の探索が variation として保存されるため、
+batch_eval の `node.children[0]` traversal が短い分岐に陥る。本ツールは最長パスを
+辿ってその path 上の手だけを含む新 SGF を出力する。
+
+使用:
+    python clean_sgf_main_line.py <input.sgf> <output.sgf>
+"""
+import sys
+from pathlib import Path
+
+from katrain.core.game import KaTrainSGF
+
+
+def longest_depth(node):
+    """Return the depth of the longest path from this node to any leaf."""
+    if not node.children:
+        return 0
+    return 1 + max(longest_depth(c) for c in node.children)
+
+
+def collect_main_line_nodes(root):
+    """Walk root → leaf following the longest child at each branch.
+
+    Returns a list of nodes (excluding root) representing the main line.
+    """
+    nodes = []
+    node = root
+    while node.children:
+        node = max(node.children, key=longest_depth)
+        nodes.append(node)
+    return nodes
+
+
+def serialize_node_props(node):
+    """Serialize a single node's properties as SGF string (excluding semicolon)."""
+    parts = []
+    for key, values in node.properties.items():
+        # values is a list per SGF spec
+        joined = "".join(f"[{v}]" for v in values)
+        parts.append(f"{key}{joined}")
+    return "".join(parts)
+
+
+def main():
+    if len(sys.argv) != 3:
+        print(f"Usage: {sys.argv[0]} <input.sgf> <output.sgf>", file=sys.stderr)
+        sys.exit(1)
+    input_path, output_path = Path(sys.argv[1]), Path(sys.argv[2])
+
+    root = KaTrainSGF.parse_file(str(input_path))
+    main_nodes = collect_main_line_nodes(root)
+
+    # Build SGF: (root_props ;move1 ;move2 ... ;moveN)
+    parts = ["(;"]
+    parts.append(serialize_node_props(root))
+    for n in main_nodes:
+        parts.append(";")
+        parts.append(serialize_node_props(n))
+    parts.append(")")
+
+    output_path.write_text("".join(parts), encoding="utf-8")
+    print(f"Wrote {len(main_nodes)} main-line moves to {output_path}", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+- [ ] **Step 2: 元 SGF をバックアップしてからクリーン版で上書き**
+
+```bash
+cp docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413.sgf \
+   docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413.sgf.orig
+
+python docs/superpowers/specs/calibration-data/clean_sgf_main_line.py \
+   docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413.sgf.orig \
+   docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413.sgf
+```
+
+期待出力（stderr）: `Wrote 120 main-line moves to ...`
+
+- [ ] **Step 3: クリーン版 SGF の検証**
+
+```bash
+python -c "
+from katrain.core.game import KaTrainSGF
+root = KaTrainSGF.parse_file('docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413.sgf')
+def count_first(node, d=0):
+    if not node.children: return d
+    return count_first(node.children[0], d+1)
+def count_longest(node, d=0):
+    if not node.children: return d
+    return max(count_longest(c, d+1) for c in node.children)
+print(f'children[0] path: {count_first(root)} moves')
+print(f'longest path: {count_longest(root)} moves')
+"
+```
+
+期待出力: 両方とも `120 moves`（分岐がなくなったので一致）
+
+- [ ] **Step 4: 元の variation 入り SGF (`.orig`) を gitignore に追加**
+
+`docs/superpowers/specs/calibration-data/.gitignore` を編集:
+
+```
+runs/
+*.sgf.orig
+```
+
+- [ ] **Step 5: スモークテストを再実行（クリーン版で 60 手程度の評価が出ることを確認）**
+
+```bash
+python -m katrain_debug \
+  --sgf docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413.sgf \
+  --strategy jigo --batch --player W \
+  --settings target_score_max=5.0 max_loss_per_move=7.0 jigo_dynamic_rank=false \
+             human_profile=rank_9d \
+  --output text 2>/dev/null | tee docs/superpowers/specs/calibration-data/runs/smoketest_off_v2.txt
+```
+
+期待出力: `Count: ~60`（白番のみ、120 手の半分前後）、Rank Downgrades が `{rank_9d: N, rank_7d: 0, rank_5d: 0}`
+
+- [ ] **Step 6: コミット**
+
+```bash
+git add docs/superpowers/specs/calibration-data/clean_sgf_main_line.py \
+        docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413.sgf \
+        docs/superpowers/specs/calibration-data/.gitignore
+git commit -m "$(cat <<'EOF'
+chore: 校正用 SGF を最長パスにクリーン化、human_profile 対応
+
+KaTrain で保存された SGF が 189 個の variation を含み、batch_eval の
+children[0] traversal が短い分岐で打ち切られていた問題を修正。
+clean_sgf_main_line.py で最長パスを抽出し、main-line のみの SGF に
+上書き（元ファイルは .orig として gitignore）。
+これにより Task 8 のバッチ評価が 120 手の actual game を全て評価可能。
+EOF
+)"
+```
+
+---
+
 ## Task 8: 5 config × 3 run バッチ評価実行
 
 **Files:** 生成のみ（`docs/superpowers/specs/calibration-data/runs/*.json`、gitignore 配下）
@@ -712,7 +874,7 @@ SGF="docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413.sgf"
 RUNS_DIR="docs/superpowers/specs/calibration-data/runs"
 mkdir -p "$RUNS_DIR"
 
-COMMON_SETTINGS="target_score_max=5.0 max_loss_per_move=7.0"
+COMMON_SETTINGS="target_score_max=5.0 max_loss_per_move=7.0 human_profile=rank_9d"
 
 run_config() {
     local config_id="$1"
