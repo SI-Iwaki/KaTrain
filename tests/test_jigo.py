@@ -302,3 +302,69 @@ class TestJigoDynamicRankCacheLifecycle:
 
         game_b = SimpleNamespace()  # 新規ゲーム = 新規 Game object
         assert getattr(game_b, "_jigo_last_current_lead", None) is None
+
+
+from katrain.core.ai import _jigo_compute_effective_max_loss
+
+
+class TestJigoComputeEffectiveMaxLoss:
+    def test_returns_base_when_lead_below_threshold(self):
+        # lead=14 < target_max(10) + delta(5) = 15 → 緩和発動せず
+        result = _jigo_compute_effective_max_loss(
+            current_lead=14.0, target_score_max=10.0, base_max_loss=5.6,
+            large_lead_delta=5.0, large_lead_max_loss=8.0, board_size=19,
+        )
+        assert result == 5.6
+
+    def test_returns_large_lead_value_when_threshold_exceeded(self):
+        # lead=15 == 10 + 5 → 緩和発動
+        result = _jigo_compute_effective_max_loss(
+            current_lead=15.0, target_score_max=10.0, base_max_loss=5.6,
+            large_lead_delta=5.0, large_lead_max_loss=8.0, board_size=19,
+        )
+        assert result == 8.0
+
+    def test_caps_at_5_for_9x9_board(self):
+        # 9路盤では effective を 5.0 にキャップ
+        result = _jigo_compute_effective_max_loss(
+            current_lead=20.0, target_score_max=10.0, base_max_loss=3.3,
+            large_lead_delta=5.0, large_lead_max_loss=8.0, board_size=9,
+        )
+        assert result == 5.0
+
+    def test_does_not_cap_at_5_for_13x13_board(self):
+        # 13路は 9路扱いしない
+        result = _jigo_compute_effective_max_loss(
+            current_lead=20.0, target_score_max=10.0, base_max_loss=4.0,
+            large_lead_delta=5.0, large_lead_max_loss=8.0, board_size=13,
+        )
+        assert result == 8.0
+
+    def test_never_goes_below_base_max_loss(self):
+        # ユーザーが large_lead_max_loss を base より小さく設定しても base を維持
+        result = _jigo_compute_effective_max_loss(
+            current_lead=20.0, target_score_max=10.0, base_max_loss=5.6,
+            large_lead_delta=5.0, large_lead_max_loss=3.0, board_size=19,
+        )
+        assert result == 5.6
+
+    def test_threshold_follows_target_score_max(self):
+        # target_score_max=5 にすると発動閾値も 5+5=10 に追随
+        result = _jigo_compute_effective_max_loss(
+            current_lead=10.0, target_score_max=5.0, base_max_loss=5.6,
+            large_lead_delta=5.0, large_lead_max_loss=8.0, board_size=19,
+        )
+        assert result == 8.0
+
+    def test_custom_delta(self):
+        # delta=3 にすると 10+3=13 で発動
+        result_below = _jigo_compute_effective_max_loss(
+            current_lead=12.5, target_score_max=10.0, base_max_loss=5.6,
+            large_lead_delta=3.0, large_lead_max_loss=8.0, board_size=19,
+        )
+        result_above = _jigo_compute_effective_max_loss(
+            current_lead=13.0, target_score_max=10.0, base_max_loss=5.6,
+            large_lead_delta=3.0, large_lead_max_loss=8.0, board_size=19,
+        )
+        assert result_below == 5.6
+        assert result_above == 8.0

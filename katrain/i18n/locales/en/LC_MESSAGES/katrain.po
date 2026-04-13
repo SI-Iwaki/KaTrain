@@ -833,7 +833,13 @@ msgid "aihelp:antimirror"
 msgstr "Anti Mirror-go Mode of KataGo."
 
 msgid "aihelp:jigo"
-msgstr "Aims to win by a narrow margin of target_score..target_score_max points. Picks moves with per-move loss <= max_loss_per_move and humanPolicy >= min_human_policy, avoiding unnaturally bad moves. jigo_mode: natural=best move within range / maintain=always push toward target. human_profile: humanSL rank (rank_5d/7d/9d). jigo_dynamic_rank: ON to auto-downshift rank based on lead delta (handles weaker opponents). Sharp moves that widen the lead are excluded when overshooting."
+msgstr "Aims to win by a narrow margin of target_score..target_score_max points. Picks moves with per-move loss <= max_loss_per_move and humanPolicy >= min_human_policy, avoiding unnaturally bad moves. jigo_mode: natural=best move within range / maintain=always push toward target. human_profile: humanSL rank (rank_5d/7d/9d). jigo_dynamic_rank: ON to auto-downshift rank based on lead delta (handles weaker opponents). Sharp moves that widen the lead are excluded when overshooting. When current_lead exceeds target_score_max + jigo_large_lead_delta, max_loss is temporarily relaxed to jigo_large_lead_max_loss to improve convergence into the target range (capped at 5.0 on 9x9)."
+
+msgid "jigo_large_lead_delta"
+msgstr "Large-lead trigger delta"
+
+msgid "jigo_large_lead_max_loss"
+msgstr "Large-lead max loss (points)"
 
 msgid "ai:scoreloss"
 msgstr "Score Loss"
