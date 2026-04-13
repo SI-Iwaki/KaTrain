@@ -81,6 +81,8 @@ python -m katrain_debug --sgf FILE --strategy hunt --batch --settings hunt_max_l
 
 **`--batch` はログ要約モード**: per-move `[StrategyName]` debug ログ（`Fallback triggered` / `Safety valve` / `Filter: N → M passed` 等）は抑制される。フィルタ動作やフォールバック発動率を確認したい場合は `--move N` で個別実行すること。
 
+**戦略別 runtime の差**: `jigo` は温度サンプリングを使わず argmax 選択のみで事実上 deterministic。120-220 手の SGF で **約 2-3 分/run**、3-run 分散も 0.001-0.005 と極小のため校正時に多 run 並列する意義が他戦略より薄い（hunt/fighting 等は ~10 分/run）。
+
 ## コーディング規約
 
 - コミットメッセージは**日本語**で書く
@@ -101,6 +103,7 @@ python -m katrain_debug --sgf FILE --strategy hunt --batch --settings hunt_max_l
 - **KaTrainのコンソール出力を grep する時は `grep -a` を付ける** — ログ内の `→` 等の非ASCII文字で grep がバイナリ扱いになり `Binary file (standard input) matches` 表示で出力抑制される
 - **SGF の構造保存 round-trip で `root.sgf()` / `GameNode.sgf()` を使わない** — `GameNode.sgf_properties` が root の `C/CA/AP/KTV` を自動書換えるため元プロパティが失われる。保存的に出力したいなら `node.properties` を直接シリアライズする（例: `docs/superpowers/specs/calibration-data/clean_sgf_main_line.py`）
 - **KaTrain 保存 SGF は variation 多数で `node.children[0]` traversal が main line に届かない** — 短い分岐に落ち込んで数手で打ち切られる。batch_eval 等で実戦全手を評価するには `clean_sgf_main_line.py` で最長パスに前処理する
+- **Python スクリプトで `±` や日本語を `>` でファイル書き出す時は `PYTHONIOENCODING=utf-8` を付ける** — Windows デフォルトは cp932 で書き出され `±` 等が壊れバイトになる。ターミナル表示だけなら文字化けで済むがファイル書き出しは後工程（git diff, レビュー, 再集計）で破綻する
 
 ## 開発ワークフロー
 
