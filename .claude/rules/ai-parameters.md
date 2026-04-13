@@ -146,4 +146,4 @@ humanモードの悪手フィルタ閾値はHumanStyleStrategyと同じBAD_MOVE_
   - chain: `["rank_5d", "rank_7d", "rank_9d"]`
   - 初手（キャッシュなし）や chain 外プロファイルは base_profile を使用
 
-**校正が必要な項目**: 動的 rank 降格閾値（`5` / `15`）は初期値のため、バッチ評価（`katrain_debug --batch`）で要校正。
+**校正履歴**: 動的 rank 降格閾値は 2026-04-13 に 3段 vs Jigo 白番 SGF でバッチ評価したが、差が誤差範囲のため現行値 `delta_1=5, delta_2=15` を維持（`docs/superpowers/specs/calibration-data/jigo-dynamic-rank-results-20260413.md` 参照）。
