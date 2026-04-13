@@ -141,6 +141,9 @@ def batch_evaluate(sgf_path, strategy_name, config_path=None,
             else:
                 phase = "middle"
 
+            # Jigo 固有情報（他戦略では None）
+            jigo_info = getattr(strategy, "last_decision_info", None)
+
             move_results.append({
                 "move_num": move_num,
                 "player": player,
@@ -152,6 +155,12 @@ def batch_evaluate(sgf_path, strategy_name, config_path=None,
                 "match_approved": selected_gtp in ai_approved,
                 "point_loss": point_loss,
                 "explanation": explanation.split("\n")[0] if explanation else "",
+                "rank_used": jigo_info.get("rank_used") if jigo_info else None,
+                "selected_hp": jigo_info.get("selected_hp") if jigo_info else None,
+                "selected_score": jigo_info.get("selected_score") if jigo_info else None,
+                "filter_relaxed": jigo_info.get("filter_relaxed") if jigo_info else None,
+                "score_lead": jigo_info.get("score_lead") if jigo_info else None,
+                "score_lead_biased": jigo_info.get("score_lead_biased") if jigo_info else None,
             })
 
         print("", file=sys.stderr)  # 進捗表示の改行
