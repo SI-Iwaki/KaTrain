@@ -129,7 +129,21 @@ humanモードの悪手フィルタ閾値はHumanStyleStrategyと同じBAD_MOVE_
 | target_score | 0.5 | 狙う目差（既存流用） |
 | target_score_max | 10.0 | 許容上限。これ以下なら Natural モードは普通に打つ |
 | max_loss_per_move | 5.6 | 1手あたり許容損失（HumanStyle NORMAL_THRESHOLD と同値） |
-| min_human_policy | 0.01 | humanPolicy 最低閾値（1%） |
+| min_human_policy | 0.02 | humanPolicy 最低閾値（1%） |
 | jigo_mode | "natural" | "natural"=範囲内は最善手 / "maintain"=常にtargetに寄せる |
+| human_profile | "rank_9d" | humanSL 段位（rank_5d / rank_7d / rank_9d）。Stage 1 クエリで使用 |
+| jigo_dynamic_rank | false | ON でリード差（`current_lead - target_score_max`）に応じて rank を自動降格（delta > 5 で1段下、> 15 で rank_5d まで） |
 
 **設計上の限界**: 相手が毎手 6 目以上の大損失手を連続で打つような極端な棋力差の対局では、1 手あたり損失上限 `max_loss_per_move (5.6)` を AI 側が超えられず、target 範囲への収束が保証されない。ただし人間らしい着手は維持されるため「バレないこと」という主目的は達成される。相手の棋力が持碁モード（humanSL 9段相当）と釣り合うときのみ目差収束を期待する設計。
+
+**弱相手対応（2026-04-13 追加）**: 以下の機構で改善:
+- **鋭手除外**: 圧勝時（`current_lead > target_score_max`）、`score > current_lead + 0.5` の候補を選択肢から除外（`_jigo_exclude_sharp_moves`）。全滅時は元の候補リストを返す安全弁あり
+- **humanPolicy ハードフロア**: 段階緩和の hp 閾値が **0.005（0.5%）未満に落ちない**（`MIN_HP_HARD_FLOOR`）。ユーザが `min_human_policy` を下げても「人間なら打たない手」までは到達しない
+- **動的 rank 切替（opt-in）**: `jigo_dynamic_rank=true` で、前ターンの `current_lead` をキャッシュし、`delta = current_lead - target_score_max` に応じて Stage 1 の rank を降格:
+  - `delta ≤ 5`: base_profile そのまま
+  - `5 < delta ≤ 15`: chain で1段下（rank_9d → rank_7d, rank_7d → rank_5d）
+  - `delta > 15`: 一気に rank_5d まで下げる
+  - chain: `["rank_5d", "rank_7d", "rank_9d"]`
+  - 初手（キャッシュなし）や chain 外プロファイルは base_profile を使用
+
+**校正が必要な項目**: 動的 rank 降格閾値（`5` / `15`）は初期値のため、バッチ評価（`katrain_debug --batch`）で要校正。
