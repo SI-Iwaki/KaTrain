@@ -257,6 +257,15 @@ class TestSelectRankByLead:
         assert _select_rank_by_lead(16.0, 10.0, "rank_9d") == "rank_7d"   # delta=6 → 1段下
         assert _select_rank_by_lead(26.0, 10.0, "rank_9d") == "rank_5d"   # delta=16 → rank_5d
 
+    def test_inverted_thresholds_raise_value_error(self):
+        from katrain.core.ai import _select_rank_by_lead
+        import pytest as _pt
+        # delta_1 >= delta_2 は invalid 設定なので raise
+        with _pt.raises(ValueError, match="delta_1.*must be < delta_2"):
+            _select_rank_by_lead(20.0, 10.0, "rank_9d", delta_1=15, delta_2=5)
+        with _pt.raises(ValueError):
+            _select_rank_by_lead(20.0, 10.0, "rank_9d", delta_1=10, delta_2=10)  # equal も invalid
+
 
 class TestJigoDynamicRankCacheLifecycle:
     """Verify that the dynamic rank cache persists across per-move strategy instances.

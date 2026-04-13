@@ -754,6 +754,8 @@ def _select_rank_by_lead(current_lead, target_score_max, base_profile,
     base_profile が _JIGO_RANK_CHAIN に含まれない場合はそのまま返す。
     delta_1 / delta_2 は校正実験で調整可能（デフォルトは校正前の初期値）。
     """
+    if delta_1 >= delta_2:
+        raise ValueError(f"delta_1 ({delta_1}) must be < delta_2 ({delta_2})")
     if base_profile not in _JIGO_RANK_CHAIN:
         return base_profile
     delta = current_lead - target_score_max
