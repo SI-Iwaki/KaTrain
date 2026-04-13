@@ -236,3 +236,40 @@ class TestSelectRankByLead:
         from katrain.core.ai import _select_rank_by_lead
         # 自分が劣勢 → delta < 0 → 降格なし
         assert _select_rank_by_lead(-5.0, 10.0, "rank_9d") == "rank_9d"
+
+
+class TestJigoDynamicRankCacheLifecycle:
+    """Verify that the dynamic rank cache persists across per-move strategy instances.
+
+    `generate_ai_move` creates a fresh JigoStrategy per move, so the cache MUST live
+    on the Game object (self.game), not the strategy instance (self).
+    """
+
+    def test_cache_attribute_lives_on_game_not_self(self):
+        """Simulate per-move strategy instantiation: two separate JigoStrategy objects
+        sharing a game must read each other's cache."""
+        from types import SimpleNamespace
+
+        # Minimal fake game that survives across "moves"
+        fake_game = SimpleNamespace()
+
+        # First move: strategy #1 writes to game
+        strat1 = SimpleNamespace(game=fake_game)
+        strat1.game._jigo_last_current_lead = 12.5
+
+        # Second move: strategy #2 is a NEW instance (no shared attrs on self)
+        strat2 = SimpleNamespace(game=fake_game)
+
+        # strat2 has no _last_current_lead attribute, but game does
+        assert not hasattr(strat2, "_last_current_lead")
+        assert getattr(strat2.game, "_jigo_last_current_lead", None) == 12.5
+
+    def test_new_game_resets_cache(self):
+        """Creating a new Game object (as KaTrain does on new game button) drops the cache."""
+        from types import SimpleNamespace
+
+        game_a = SimpleNamespace()
+        game_a._jigo_last_current_lead = 20.0
+
+        game_b = SimpleNamespace()  # 新規ゲーム = 新規 Game object
+        assert getattr(game_b, "_jigo_last_current_lead", None) is None

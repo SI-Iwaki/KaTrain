@@ -793,11 +793,6 @@ class JigoStrategy(AIStrategy):
         5. 候補ゼロ時は段階緩和 → 最終的に KataGo 最善手へフォールバック
     """
 
-    def __init__(self, game: Game, ai_settings: Dict):
-        super().__init__(game, ai_settings)
-        # 動的 rank 用: 前ターン末尾の current_lead をキャッシュ
-        self._last_current_lead = None
-
     def generate_move(self) -> Tuple[Move, str]:
         import time
         self.game.katrain.log(f"[JigoStrategy] Starting move generation", OUTPUT_DEBUG)
@@ -821,15 +816,17 @@ class JigoStrategy(AIStrategy):
         engine = self.game.engines[self.cn.player]
 
         # ---- Stage 1 用 humanSL rank 決定 ----
-        if dynamic_rank and self._last_current_lead is not None:
+        # キャッシュは self.game に保存（strategy インスタンスは毎手破棄されるため）
+        last_lead = getattr(self.game, "_jigo_last_current_lead", None)
+        if dynamic_rank and last_lead is not None:
             human_profile = _select_rank_by_lead(
-                self._last_current_lead, target_score_max, base_profile
+                last_lead, target_score_max, base_profile
             )
             if human_profile != base_profile:
                 self.game.katrain.log(
                     f"[JigoStrategy] Dynamic rank: base={base_profile}, "
-                    f"last_lead={self._last_current_lead:.2f}, "
-                    f"delta={self._last_current_lead - target_score_max:.2f} → {human_profile}",
+                    f"last_lead={last_lead:.2f}, "
+                    f"delta={last_lead - target_score_max:.2f} → {human_profile}",
                     OUTPUT_DEBUG,
                 )
         else:
@@ -1006,8 +1003,8 @@ class JigoStrategy(AIStrategy):
             OUTPUT_DEBUG,
         )
 
-        # ---- 次ターンの動的 rank 判定用にキャッシュ ----
-        self._last_current_lead = current_lead
+        # ---- 次ターンの動的 rank 判定用にキャッシュ（game インスタンスに保存、新規ゲームで自動リセット） ----
+        self.game._jigo_last_current_lead = current_lead
 
         return aimove, ai_thoughts
 
