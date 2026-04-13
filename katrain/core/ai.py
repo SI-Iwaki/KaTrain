@@ -802,18 +802,21 @@ class JigoStrategy(AIStrategy):
         target_score     = self.settings.get("target_score", 0.5)
         target_score_max = self.settings.get("target_score_max", 10.0)
         max_loss         = self.settings.get("max_loss_per_move", 5.6)
-        min_hp           = self.settings.get("min_human_policy", 0.01)
+        min_hp           = self.settings.get("min_human_policy", 0.02)
         mode             = self.settings.get("jigo_mode", "natural")
+        base_profile     = self.settings.get("human_profile", "rank_9d")
+        dynamic_rank     = self.settings.get("jigo_dynamic_rank", False)
         self.game.katrain.log(
             f"[JigoStrategy] Settings: target={target_score}, max={target_score_max}, "
-            f"max_loss={max_loss}, min_hp={min_hp}, mode={mode}", OUTPUT_DEBUG
+            f"max_loss={max_loss}, min_hp={min_hp}, mode={mode}, "
+            f"profile={base_profile}, dynamic_rank={dynamic_rank}", OUTPUT_DEBUG
         )
 
         sign = self.cn.player_sign(self.cn.next_player)
         engine = self.game.engines[self.cn.player]
 
-        # ---- Stage 1: humanSL 9段固定クエリ ----
-        human_profile = "rank_9d"  # 9段固定（HuntStrategy/SiegeStrategy/FightingStrategy と同じ表記）
+        # ---- Stage 1 用 humanSL rank 決定（Task 9 で dynamic_rank を統合） ----
+        human_profile = base_profile
         stage1_override = {
             "humanSLProfile": human_profile,
             "ignorePreRootHistory": False,
