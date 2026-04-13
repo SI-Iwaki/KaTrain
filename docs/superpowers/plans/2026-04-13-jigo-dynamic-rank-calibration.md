@@ -691,16 +691,19 @@ python -c "import json; d=json.load(open('docs/superpowers/specs/calibration-dat
 
 ---
 
-## Task 7.5: SGF メインライン化と human_profile デフォルト対応
+## Task 7.5: SGF メインライン化（白/黒 2 本）と human_profile デフォルト対応
 
 **Files:**
 - Create: `docs/superpowers/specs/calibration-data/clean_sgf_main_line.py`
-- Modify (overwrite): `docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413.sgf`
+- Rename + overwrite: `docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413.sgf` → `jigo-vs-3dan-20260413-white.sgf`
+- Create (新規、外部ソースから): `docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413-black.sgf`
+- Modify: `docs/superpowers/specs/calibration-data/.gitignore`
 
-**背景:** 2026-04-13 セッションで Task 7 のスモークテストを実施した結果、以下 2 件の問題が判明:
+**背景:** 2026-04-13 セッションで Task 7 のスモークテストを実施した結果、以下 3 件の問題が判明:
 
 1. **SGF が 18 手しか評価されない（実際は 120 手）**: テスト SGF は KaTrain で対局保存されたもので、189 個の variation を含む。`batch_eval.py` の `node = node.children[0]` traversal が短い分岐を選んで打ち切られる。最長パスは 120 手だが、最初の分岐点 (move 17) で `children[0]` が 1 手だけ、`children[1]` が 103 手の長いパスとなる。
 2. **ユーザのローカル `~/.katrain/config.json` の `human_profile` デフォルトが `rank_5d`**: 実対局では `rank_9d` を使用していたため、Task 8 の校正条件と一致させるには `human_profile=rank_9d` を明示する必要がある。
+3. **単一 SGF で過学習リスク**: 3段 vs Jigo 白番の 1 局のみだと game-specificity に校正が引き摺られる可能性。同じく 3段 vs Jigo だが **AI 黒番** の 222 手 SGF（`C:\Users\iwaki\Documents\katrain-1.17.1.1\katrain-1.17.1.1\sgfout\KaTrain_AI (Kata持碁) vs 人間 (通常対局) 2026-04-13 13 12 25.sgf`）を追加ソースとして同じクリーン化パイプラインに通す。Task 8 の本番バッチは白 SGF のみで 5×3=15 run を維持（計算コスト変更なし）、Task 10 で winner config + off baseline を黒 SGF で 1 run ずつ post-hoc 検証することで汎化性を確認する（Option B）。
 
 **方針 (Option A: SGF 前処理):** `batch_eval.py` のセマンティクスは変えず、データ側を SGF main-line 慣習に合致させる。汎用前処理スクリプトとして `clean_sgf_main_line.py` を追加し、校正用 SGF を最長パスのみのクリーン版に置き換える。
 
@@ -779,25 +782,55 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 2: 元 SGF をバックアップしてからクリーン版で上書き**
+- [ ] **Step 2a: 白番 SGF をリネーム＋バックアップ＋クリーン化**
+
+既存の `jigo-vs-3dan-20260413.sgf` は variation 入りの元ファイル。まず `-white` suffix を付けてリネームし、それを `.orig` として温存してからクリーン版で上書き:
 
 ```bash
-cp docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413.sgf \
-   docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413.sgf.orig
+# 1) リネーム（git mv で履歴保持）
+git mv docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413.sgf \
+       docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413-white.sgf
 
+# 2) バックアップ（.orig は後で gitignore される）
+cp docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413-white.sgf \
+   docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413-white.sgf.orig
+
+# 3) クリーン化（.orig → 上書き）
 python docs/superpowers/specs/calibration-data/clean_sgf_main_line.py \
-   docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413.sgf.orig \
-   docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413.sgf
+   docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413-white.sgf.orig \
+   docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413-white.sgf
 ```
 
 期待出力（stderr）: `Wrote 120 main-line moves to ...`
 
-- [ ] **Step 3: クリーン版 SGF の検証**
+- [ ] **Step 2b: 黒番 SGF を外部ソースからコピー＋クリーン化**
+
+黒番 SGF は KaTrain の sgfout ディレクトリにある実対局保存ファイル。まず `.orig` としてコピーし、クリーン版を生成:
 
 ```bash
-python -c "
+# 1) sgfout/ からコピー（元ファイルは .orig にリネームして保存）
+cp "C:/Users/iwaki/Documents/katrain-1.17.1.1/katrain-1.17.1.1/sgfout/KaTrain_AI (Kata持碁) vs 人間 (通常対局) 2026-04-13 13 12 25.sgf" \
+   docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413-black.sgf.orig
+
+# 2) クリーン化（.orig → クリーン版）
+python docs/superpowers/specs/calibration-data/clean_sgf_main_line.py \
+   docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413-black.sgf.orig \
+   docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413-black.sgf
+```
+
+期待出力（stderr）: `Wrote 222 main-line moves to ...`（黒番 SGF は約 222 手）
+
+- [ ] **Step 3: 両クリーン版 SGF の検証**
+
+```bash
+for path in \
+  docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413-white.sgf \
+  docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413-black.sgf
+do
+  echo "=== $path ==="
+  python -c "
 from katrain.core.game import KaTrainSGF
-root = KaTrainSGF.parse_file('docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413.sgf')
+root = KaTrainSGF.parse_file('$path')
 def count_first(node, d=0):
     if not node.children: return d
     return count_first(node.children[0], d+1)
@@ -807,9 +840,10 @@ def count_longest(node, d=0):
 print(f'children[0] path: {count_first(root)} moves')
 print(f'longest path: {count_longest(root)} moves')
 "
+done
 ```
 
-期待出力: 両方とも `120 moves`（分岐がなくなったので一致）
+期待出力: 白 SGF が `120 moves`（両方一致）、黒 SGF が `222 moves` 前後（両方一致）
 
 - [ ] **Step 4: 元の variation 入り SGF (`.orig`) を gitignore に追加**
 
@@ -820,33 +854,53 @@ runs/
 *.sgf.orig
 ```
 
-- [ ] **Step 5: スモークテストを再実行（クリーン版で 60 手程度の評価が出ることを確認）**
+- [ ] **Step 5a: 白番 SGF でスモークテスト再実行**
 
 ```bash
 python -m katrain_debug \
-  --sgf docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413.sgf \
+  --sgf docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413-white.sgf \
   --strategy jigo --batch --player W \
   --settings target_score_max=5.0 max_loss_per_move=7.0 jigo_dynamic_rank=false \
              human_profile=rank_9d \
-  --output text 2>/dev/null | tee docs/superpowers/specs/calibration-data/runs/smoketest_off_v2.txt
+  --output text 2>/dev/null | tee docs/superpowers/specs/calibration-data/runs/smoketest_white_off_v2.txt
 ```
 
 期待出力: `Count: ~60`（白番のみ、120 手の半分前後）、Rank Downgrades が `{rank_9d: N, rank_7d: 0, rank_5d: 0}`
+
+- [ ] **Step 5b: 黒番 SGF でスモークテスト（`--player B`）**
+
+```bash
+python -m katrain_debug \
+  --sgf docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413-black.sgf \
+  --strategy jigo --batch --player B \
+  --settings target_score_max=5.0 max_loss_per_move=7.0 jigo_dynamic_rank=false \
+             human_profile=rank_9d \
+  --output text 2>/dev/null | tee docs/superpowers/specs/calibration-data/runs/smoketest_black_off_v2.txt
+```
+
+期待出力: `Count: ~111`（黒番のみ、222 手の半分前後）、Rank Downgrades が `{rank_9d: N, rank_7d: 0, rank_5d: 0}`
 
 - [ ] **Step 6: コミット**
 
 ```bash
 git add docs/superpowers/specs/calibration-data/clean_sgf_main_line.py \
-        docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413.sgf \
+        docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413-white.sgf \
+        docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413-black.sgf \
         docs/superpowers/specs/calibration-data/.gitignore
+# リネーム（git mv）は Step 2a で既に staging 済み
 git commit -m "$(cat <<'EOF'
-chore: 校正用 SGF を最長パスにクリーン化、human_profile 対応
+chore: 校正用 SGF を最長パスにクリーン化（白/黒 2 本）、human_profile 対応
 
-KaTrain で保存された SGF が 189 個の variation を含み、batch_eval の
+KaTrain で保存された SGF が大量の variation を含み、batch_eval の
 children[0] traversal が短い分岐で打ち切られていた問題を修正。
 clean_sgf_main_line.py で最長パスを抽出し、main-line のみの SGF に
 上書き（元ファイルは .orig として gitignore）。
-これにより Task 8 のバッチ評価が 120 手の actual game を全て評価可能。
+
+さらに同じ 3段対局の AI 黒番 SGF（222 手）を追加。Task 8 の本番バッチ
+は白 SGF のみの 15 run を維持し、黒 SGF は Task 10 で winner config の
+post-hoc 汎化検証に使用する（Option B）。
+
+これにより Task 8 のバッチ評価が白 120 手の actual game を全て評価可能。
 EOF
 )"
 ```
@@ -870,7 +924,7 @@ EOF
 
 set -euo pipefail
 
-SGF="docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413.sgf"
+SGF="docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413-white.sgf"
 RUNS_DIR="docs/superpowers/specs/calibration-data/runs"
 mkdir -p "$RUNS_DIR"
 
@@ -1168,10 +1222,13 @@ EOF
 # Jigo Dynamic Rank Calibration Results (2026-04-13)
 
 ## Test Data
-- SGF: `docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413.sgf`
+- Primary SGF: `docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413-white.sgf`
   - 19 路、白=AI Jigo、黒=人間3段、120 手で黒投了、最終 lead +33
+- Post-hoc validation SGF: `docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413-black.sgf`
+  - 19 路、黒=AI Jigo、白=人間3段、222 手
 - Base settings: `target_score=0.5`, `target_score_max=5.0`, `max_loss_per_move=7.0`, `min_human_policy=0.02`, `jigo_mode=natural`, `human_profile=rank_9d`
-- Evaluation: White moves only, 3 runs per config, 5 configs total (15 runs)
+- Main evaluation: White moves only on primary SGF, 3 runs per config, 5 configs total (15 runs)
+- Post-hoc validation: Black moves on secondary SGF, 1 run of winner config + 1 run of `off` baseline (2 runs)
 
 ## Results (3-run mean ± std)
 
@@ -1215,22 +1272,73 @@ cat docs/superpowers/specs/calibration-data/_aggregate_output.md
 - **現行維持**: 差 < 0.05 または std 内 → 5-15 維持、Decision に「差が誤差範囲」と記載
 - **off 推奨**: 全 dynamic_rank config が gate 落ち → off を採用（`jigo_dynamic_rank=False` 推奨）と記載
 
-- [ ] **Step 3: 判定が決まったら `_aggregate_output.md` は削除**
+- [ ] **Step 3: Post-hoc validation — winner config + off baseline を黒番 SGF で 1 run ずつ**
+
+Task 10 Step 2 で決まった判定（winner config = best scoring config）と baseline `off` を、`jigo-vs-3dan-20260413-black.sgf` で各 1 run 実行して汎化性を確認する。計算コスト: 約 40 分（2 run × 20 分）。
+
+```bash
+# 例: winner が "5-15" で off が baseline の場合
+BLACK_SGF="docs/superpowers/specs/calibration-data/jigo-vs-3dan-20260413-black.sgf"
+COMMON="target_score_max=5.0 max_loss_per_move=7.0 human_profile=rank_9d"
+
+# off baseline
+python -m katrain_debug --sgf "$BLACK_SGF" --strategy jigo --batch --player B \
+  --settings $COMMON jigo_dynamic_rank=false \
+  --output json 2>/dev/null > docs/superpowers/specs/calibration-data/runs/posthoc_black_off.json
+
+# winner config（例: 5-15 の場合）
+python -m katrain_debug --sgf "$BLACK_SGF" --strategy jigo --batch --player B \
+  --settings $COMMON jigo_dynamic_rank=true jigo_rank_delta_1=5 jigo_rank_delta_2=15 \
+  --output json 2>/dev/null > docs/superpowers/specs/calibration-data/runs/posthoc_black_winner.json
+```
+
+（winner が `off` の場合は posthoc_black_off.json だけで十分。winner が `3-10`, `5-10`, `3-15` の場合は該当する `jigo_rank_delta_1/2` に差し替え）
+
+- [ ] **Step 4: Post-hoc 結果を結果文書に追記**
+
+`jigo-dynamic-rank-results-20260413.md` に新セクションを追加:
+
+```markdown
+## Post-hoc Generalization Check (black SGF, N=1 run each)
+
+| Config | loss_mean (white 3-run) | loss_mean (black 1-run) | Δ | Within white ±1σ? |
+|--------|-------------------------|-------------------------|----|-------------------|
+| off    | <w_mean> ± <w_std>     | <b_mean>                | <Δ> | <YES/NO>          |
+| <winner> | <w_mean> ± <w_std>   | <b_mean>                | <Δ> | <YES/NO>          |
+
+**Generalization verdict:**
+- ✅ 両方とも白 SGF 3-run の ±1σ 内 → winner 判定は汎化する
+- ⚠️ winner のみ外れた → winner が白番特有の局面に過学習している可能性。判定を保守的に現行維持へ再考
+- ⚠️ 両方外れた → 両局面の難易度や基調が大きく異なるため、白 SGF 単独の判定は慎重に扱う
+```
+
+数値は `posthoc_black_off.json` と `posthoc_black_winner.json` の集計結果（`summary.loss_mean`）から手動転記。Task 9 の aggregate.py は 3-run 前提で書かれているので、post-hoc は jq などで直接取得:
+
+```bash
+jq '.summary.loss_mean' docs/superpowers/specs/calibration-data/runs/posthoc_black_off.json
+jq '.summary.loss_mean' docs/superpowers/specs/calibration-data/runs/posthoc_black_winner.json
+```
+
+判定に「winner のみ外れ」または「両方外れ」が出た場合、**Decision** セクションで最終判定を保守方向（現行維持）に切り替えるか、結果文書に警告として残すかを選ぶ。
+
+- [ ] **Step 5: 判定が決まったら `_aggregate_output.md` は削除**
 
 ```bash
 rm docs/superpowers/specs/calibration-data/_aggregate_output.md
 ```
 
-- [ ] **Step 4: 結果文書をコミット**
+- [ ] **Step 6: 結果文書をコミット**
 
 ```bash
 git add docs/superpowers/specs/calibration-data/jigo-dynamic-rank-results-20260413.md
 git commit -m "$(cat <<'EOF'
 docs: Jigo 動的 rank 校正の結果と判定を記録
 
-N=1 SGF (3段 vs Jigo 白番) でバッチ評価した 5 config × 3 run の結果。
+N=1 primary SGF (3段 vs Jigo 白番、120 手) でバッチ評価した 5 config × 3 run
+および N=1 secondary SGF (3段 vs Jigo 黒番、222 手) での post-hoc 汎化検証
+を含む。
 採用: <delta_1>/<delta_2> （または現行維持／off 推奨）
-判定根拠は convergence_score diff と人間らしさ gate を併用。
+判定根拠は convergence_score diff・人間らしさ gate・post-hoc 汎化を併用。
 EOF
 )"
 ```
