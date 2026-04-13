@@ -697,19 +697,28 @@ def _jigo_filter_candidates(candidates, max_loss, min_hp):
     return [c for c in candidates if c["loss"] <= max_loss and c["hp"] >= min_hp]
 
 
-def _jigo_relax_filters(candidates, max_loss, min_hp):
+# humanPolicy ハードフロア（これ以下には絶対に緩和しない）
+MIN_HP_HARD_FLOOR = 0.005
+
+
+def _jigo_relax_filters(candidates, max_loss, min_hp, hard_floor=MIN_HP_HARD_FLOOR):
     """両フィルタ不通過時の段階緩和。
+
     返り値: (filtered_list, reason) — reason は "hp_half" / "hp_quarter" / "loss_150" / "safety_valve"。
     hp×0.5 → hp×0.25 → loss×1.5 → safety valve。
+
+    各段階で hp 閾値は max(min_hp × factor, hard_floor) でクリップされる。
     """
     reason_map = [("hp_half", 0.5), ("hp_quarter", 0.25)]
     for reason, hp_factor in reason_map:
+        threshold = max(min_hp * hp_factor, hard_floor)
         f = [c for c in candidates
-             if c["loss"] <= max_loss and c["hp"] >= min_hp * hp_factor]
+             if c["loss"] <= max_loss and c["hp"] >= threshold]
         if f:
             return f, reason
+    threshold = max(min_hp * 0.25, hard_floor)
     f = [c for c in candidates
-         if c["loss"] <= max_loss * 1.5 and c["hp"] >= min_hp * 0.25]
+         if c["loss"] <= max_loss * 1.5 and c["hp"] >= threshold]
     if f:
         return f, "loss_150"
     # Safety valve: 先頭候補（呼び出し側で KataGo 最善手が先頭に来るよう渡す前提）

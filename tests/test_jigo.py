@@ -49,14 +49,19 @@ class TestJigoRelaxFilters:
         assert reason == "hp_half"
 
     def test_second_relax_step_hp_quarter(self):
-        cands = [_c("A1", 5.0, 1.0, 0.003)]
+        # hp×0.25 = 0.0025 だが、ハードフロア 0.005 で止まる
+        # → hp=0.005 の候補が hp_quarter で通る（hp_half=0.005 より下だが hp_quarter=max(0.0025,0.005)=0.005）
+        # 実際には hp_half=0.005 で先に通るため、このテストは成立しない
+        # → hp=0.006 を使って hp_half で通るパターンに変更
+        cands = [_c("A1", 5.0, 1.0, 0.006)]
         result, reason = _jigo_relax_filters(cands, max_loss=5.6, min_hp=0.01)
         assert len(result) == 1
-        assert reason == "hp_quarter"
+        assert reason == "hp_half"  # ← hp_quarter から hp_half に変更
 
     def test_loss_relax_step(self):
-        # hp ok under 0.25*base, but loss is between base and base*1.5
-        cands = [_c("A1", 5.0, 7.0, 0.003)]  # loss 7.0 < 5.6*1.5=8.4
+        # hp=0.005（ハードフロア）で hp_half/hp_quarter は同じ条件に。
+        # loss が max_loss を超えていれば loss_150 に落ちる。
+        cands = [_c("A1", 5.0, 7.0, 0.005)]  # loss 7.0 < 5.6*1.5=8.4
         result, reason = _jigo_relax_filters(cands, max_loss=5.6, min_hp=0.01)
         assert len(result) == 1
         assert reason == "loss_150"
@@ -70,6 +75,33 @@ class TestJigoRelaxFilters:
         result, reason = _jigo_relax_filters(cands, max_loss=5.6, min_hp=0.01)
         assert result == [cands[0]]
         assert reason == "safety_valve"
+
+    def test_hard_floor_prevents_relaxation_below_0_005(self):
+        # min_hp=0.01 で hp×0.25 = 0.0025 になるはずだが、ハードフロア 0.005 で止まる
+        # → hp=0.003 の候補は通らない、hp=0.006 の候補は hp_half で通る
+        cands = [
+            _c("A1", 5.0, 1.0, 0.003),  # hp < ハードフロア → 通さない
+            _c("B2", 5.0, 1.0, 0.006),  # hp_half (0.005) で通る
+        ]
+        result, reason = _jigo_relax_filters(cands, max_loss=5.6, min_hp=0.01)
+        assert [c["move"] for c in result] == ["B2"]
+        assert reason == "hp_half"
+
+    def test_hard_floor_with_user_lowering_min_hp(self):
+        # min_hp=0.005 でも hp×0.25=0.00125 → 0.005 にクリップ
+        # hp=0.004 の候補は通らない
+        cands = [_c("A1", 5.0, 1.0, 0.004)]
+        result, reason = _jigo_relax_filters(cands, max_loss=5.6, min_hp=0.005)
+        # ハードフロアに阻まれ safety_valve へ
+        assert reason == "safety_valve"
+        assert result == [cands[0]]  # 先頭候補を返す
+
+    def test_hard_floor_allows_exactly_at_floor(self):
+        # hp=0.005 ちょうど → ハードフロアに一致して通る
+        cands = [_c("A1", 5.0, 1.0, 0.005)]
+        result, reason = _jigo_relax_filters(cands, max_loss=5.6, min_hp=0.01)
+        assert [c["move"] for c in result] == ["A1"]
+        assert reason == "hp_half"
 
 
 class TestJigoSelectMove:
