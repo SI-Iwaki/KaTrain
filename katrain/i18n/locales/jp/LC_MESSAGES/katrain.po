@@ -524,7 +524,7 @@ msgid "ai:jigo"
 msgstr "Kata持碁"
 
 msgid "aihelp:jigo"
-msgstr "target_score〜target_score_max 目の僅差で勝つことをめざします。1手あたり max_loss_per_move 目以下 & humanPolicy >= min_human_policy の手のみ選び、人間らしくない悪手を避けます。jigo_mode: natural=範囲内は最善手 / maintain=常に target に寄せる."
+msgstr "target_score〜target_score_max 目の僅差で勝つことをめざします。1手あたり max_loss_per_move 目以下 & humanPolicy >= min_human_policy の手のみ選び、人間らしくない悪手を避けます。jigo_mode: natural=範囲内は最善手 / maintain=常に target に寄せる。human_profile: humanSL の段位（rank_5d/7d/9d）。jigo_dynamic_rank: ON でリード差に応じて rank を自動降格（弱い相手にも対応）。圧勝時は「リードを広げる鋭手」を自動除外。"
 
 msgid "ai:scoreloss"
 msgstr "損も混ぜて"
