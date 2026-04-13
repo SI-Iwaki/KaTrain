@@ -106,7 +106,9 @@
             "min_human_policy": 0.02,
             "jigo_mode": "natural",
             "human_profile": "rank_9d",
-            "jigo_dynamic_rank": false
+            "jigo_dynamic_rank": false,
+            "jigo_large_lead_delta": 5.0,
+            "jigo_large_lead_max_loss": 8.0
         },
         "ai:scoreloss": {
             "strength": 0.2

@@ -195,6 +195,8 @@ AI_OPTION_VALUES = {
         ("rank_9d", "9[strength:dan]"),
     ],
     "jigo_dynamic_rank": "bool",
+    "jigo_large_lead_delta": [3.0, 5.0, 7.0, 10.0],
+    "jigo_large_lead_max_loss": [6.0, 7.0, 8.0, 9.0, 10.0],
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）
@@ -249,6 +251,8 @@ AI_OPTION_ORDER = {
     "jigo_mode": 4,
     "human_profile": 5,
     "jigo_dynamic_rank": 6,
+    "jigo_large_lead_delta": 7,
+    "jigo_large_lead_max_loss": 8,
 }
 
 AI_KEY_PROPERTIES = {
