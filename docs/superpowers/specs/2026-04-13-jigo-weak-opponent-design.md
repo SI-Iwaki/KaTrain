@@ -225,8 +225,8 @@ def _select_rank_by_lead(current_lead, target_score_max, base_profile):
     """リードが target_max をどれだけ超えているかで rank を降格する。
 
     - delta ≤ 5  : base_profile そのまま
-    - delta 5-15 : base_profile より 2段下（9d → 7d, 7d → 5d, 5d → 5d）
-    - delta > 15 : base_profile より 4段下（9d → 5d, それ以外 5d）
+    - 5 < delta ≤ 15 : chain で1段下（9d → 7d, 7d → 5d, 5d → 5d）
+    - delta > 15 : 一気に rank_5d まで下げる（9d → 5d, 7d → 5d, 5d → 5d）
     """
     delta = current_lead - target_score_max
     rank_chain = ["rank_5d", "rank_7d", "rank_9d"]
