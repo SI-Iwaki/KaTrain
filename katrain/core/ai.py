@@ -803,8 +803,9 @@ class JigoStrategy(AIStrategy):
             "rank_used": None,
             "selected_hp": None,
             "selected_score": None,
-            "filter_relaxed": False,
+            "filter_relaxed": False,  # bool, not None — absence means "no fallback", not "unknown"
             "score_lead": None,
+            "score_lead_biased": False,  # True when Stage2 failed and Stage1 (biased) was used
         }
         self.game.katrain.log(f"[JigoStrategy] Starting move generation", OUTPUT_DEBUG)
         self.wait_for_analysis()
@@ -920,6 +921,7 @@ class JigoStrategy(AIStrategy):
 
         # Stage 2 失敗時は Stage 1 にフォールバック
         if stage2_error or not stage2_analysis:
+            self.last_decision_info["score_lead_biased"] = True
             self.game.katrain.log(
                 "[JigoStrategy] Stage2 failed, using Stage1 moveInfos (biased)", OUTPUT_DEBUG
             )
