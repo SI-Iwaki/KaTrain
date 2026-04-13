@@ -167,6 +167,12 @@ def batch_evaluate(sgf_path, strategy_name, config_path=None,
 
         # 集計
         stats = _aggregate_stats(move_results)
+        if strategy_name == "jigo":
+            stats["jigo_metrics"] = _aggregate_jigo_metrics(
+                move_results,
+                target_score=ai_settings.get("target_score", 0.5),
+                target_score_max=ai_settings.get("target_score_max", 10.0),
+            )
         return {
             "sgf": sgf_path,
             "total_moves": total_moves,
@@ -180,6 +186,67 @@ def batch_evaluate(sgf_path, strategy_name, config_path=None,
         }
     finally:
         engine.shutdown(finish=False)
+
+
+def _aggregate_jigo_metrics(move_results, target_score, target_score_max):
+    """Jigo 戦略専用の集計指標を計算する。
+
+    Args:
+        move_results: batch_evaluate の move_results（Jigo 固有フィールド含む）
+        target_score: Jigo の目標目差下限
+        target_score_max: Jigo の目標目差上限
+
+    Returns:
+        Jigo 固有指標 dict、もしくは空 dict（有効行ゼロの場合）
+    """
+    # score_lead が None でない行のみ集計対象
+    valid = [m for m in move_results if m.get("score_lead") is not None]
+    if not valid:
+        return {}
+
+    n = len(valid)
+    leads = [m["score_lead"] for m in valid]
+    hps = [m["selected_hp"] for m in valid if m.get("selected_hp") is not None]
+
+    mean_lead = sum(leads) / n
+    max_lead = max(leads)
+    in_target = sum(1 for l in leads if target_score <= l <= target_score_max)
+    over_target = sum(1 for l in leads if l > target_score_max)
+
+    # p10: 下位10%値（nearest-rank 方式: ceil(0.1 * n) 番目の値）
+    sorted_hps = sorted(hps) if hps else []
+    if sorted_hps:
+        mean_hp = sum(sorted_hps) / len(sorted_hps)
+        rank = max(1, math.ceil(0.1 * len(sorted_hps)))
+        p10_hp = sorted_hps[rank - 1]
+    else:
+        mean_hp = None
+        p10_hp = None
+
+    relax_count = sum(1 for m in valid if m.get("filter_relaxed"))
+    filter_relax_rate = relax_count / n
+
+    biased_count = sum(1 for m in valid if m.get("score_lead_biased"))
+    biased_lead_rate = biased_count / n
+
+    rank_counts = {"rank_9d": 0, "rank_7d": 0, "rank_5d": 0}
+    for m in valid:
+        r = m.get("rank_used")
+        if r in rank_counts:
+            rank_counts[r] += 1
+
+    return {
+        "count": n,
+        "mean_lead": mean_lead,
+        "max_lead": max_lead,
+        "in_target_ratio": in_target / n,
+        "over_target_ratio": over_target / n,
+        "mean_selected_hp": mean_hp,
+        "p10_selected_hp": p10_hp,
+        "filter_relax_rate": filter_relax_rate,
+        "biased_lead_rate": biased_lead_rate,
+        "rank_downgrade_counts": rank_counts,
+    }
 
 
 def _aggregate_stats(move_results):
