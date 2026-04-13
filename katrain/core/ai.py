@@ -769,6 +769,28 @@ def _select_rank_by_lead(current_lead, target_score_max, base_profile,
     return _JIGO_RANK_CHAIN[new_idx]
 
 
+# 9路盤での圧勝時 max_loss 上限（9路は HumanStyle NORMAL_THRESHOLD=3.3 のため緩和を控えめにする）
+JIGO_LARGE_LEAD_9X9_CAP = 5.0
+
+
+def _jigo_compute_effective_max_loss(
+    current_lead, target_score_max, base_max_loss,
+    large_lead_delta, large_lead_max_loss, board_size,
+):
+    """current_lead が target_score_max + large_lead_delta を超えた場合のみ max_loss を緩和する。
+
+    9路盤 (board_size <= 9) では effective 値を JIGO_LARGE_LEAD_9X9_CAP (5.0) にキャップする。
+    緩和発動しない場合・large_lead_max_loss が base より小さい場合は base_max_loss を返す。
+    """
+    threshold = target_score_max + large_lead_delta
+    if current_lead < threshold:
+        return base_max_loss
+    effective = large_lead_max_loss
+    if board_size <= 9:
+        effective = min(effective, JIGO_LARGE_LEAD_9X9_CAP)
+    return max(base_max_loss, effective)
+
+
 def _jigo_select_move(candidates, current_lead, target_score, target_score_max, mode):
     """現在リード × Mode で着手を選択。
     - current_lead < target_score → target 最接近
