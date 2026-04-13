@@ -190,9 +190,9 @@ AI_OPTION_VALUES = {
         ("maintain", "maintain"),
     ],
     "human_profile": [
-        ("rank_5d", "5段"),
-        ("rank_7d", "7段"),
-        ("rank_9d", "9段"),
+        ("rank_5d", "5[strength:dan]"),
+        ("rank_7d", "7[strength:dan]"),
+        ("rank_9d", "9[strength:dan]"),
     ],
     "jigo_dynamic_rank": "bool",
 }
