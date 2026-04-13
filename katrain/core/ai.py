@@ -840,10 +840,14 @@ class JigoStrategy(AIStrategy):
         mode             = self.settings.get("jigo_mode", "natural")
         base_profile     = self.settings.get("human_profile", "rank_9d")
         dynamic_rank     = self.settings.get("jigo_dynamic_rank", False)
+        large_lead_delta    = self.settings.get("jigo_large_lead_delta", 5.0)
+        large_lead_max_loss = self.settings.get("jigo_large_lead_max_loss", 8.0)
         self.game.katrain.log(
             f"[JigoStrategy] Settings: target={target_score}, max={target_score_max}, "
             f"max_loss={max_loss}, min_hp={min_hp}, mode={mode}, "
-            f"profile={base_profile}, dynamic_rank={dynamic_rank}", OUTPUT_DEBUG
+            f"profile={base_profile}, dynamic_rank={dynamic_rank}, "
+            f"large_lead_delta={large_lead_delta}, large_lead_max_loss={large_lead_max_loss}",
+            OUTPUT_DEBUG,
         )
 
         sign = self.cn.player_sign(self.cn.next_player)
@@ -955,6 +959,9 @@ class JigoStrategy(AIStrategy):
             self.game.katrain.log("[JigoStrategy] No moveInfos, passing", OUTPUT_DEBUG)
             return Move(None, player=self.cn.next_player), "No moveInfos, passing"
 
+        # current_lead を前倒し計算（effective max_loss 判定のため）
+        current_lead = score_analysis.get("rootInfo", {}).get("scoreLead", 0) * sign
+
         # ---- 候補リスト構築（すべて自分視点 = sign を掛けた値） ----
         scores_player = [mi.get("scoreLead", 0) * sign for mi in move_infos]
         best_score = max(scores_player)  # 自分視点の最善スコア
@@ -988,17 +995,35 @@ class JigoStrategy(AIStrategy):
             f"best_score={best_score:.2f})", OUTPUT_DEBUG
         )
 
+        # ---- 圧勝時の max_loss 動的緩和 ----
+        board_size = max(self.game.board_size)
+        effective_max_loss = _jigo_compute_effective_max_loss(
+            current_lead=current_lead,
+            target_score_max=target_score_max,
+            base_max_loss=max_loss,
+            large_lead_delta=large_lead_delta,
+            large_lead_max_loss=large_lead_max_loss,
+            board_size=board_size,
+        )
+        if effective_max_loss != max_loss:
+            self.game.katrain.log(
+                f"[JigoStrategy] Large lead expansion: lead={current_lead:.2f} ≥ "
+                f"target_max+{large_lead_delta} = {target_score_max + large_lead_delta:.2f}, "
+                f"max_loss: {max_loss} → {effective_max_loss}",
+                OUTPUT_DEBUG,
+            )
+
         # ---- フィルタ適用 ----
-        filtered = _jigo_filter_candidates(candidates, max_loss, min_hp)
+        filtered = _jigo_filter_candidates(candidates, effective_max_loss, min_hp)
         passed = len(filtered)
         self.game.katrain.log(
             f"[JigoStrategy] Filter: {len(candidates)} → {passed} passed "
-            f"(loss<={max_loss}, hp>={min_hp})", OUTPUT_DEBUG
+            f"(loss<={effective_max_loss}, hp>={min_hp})", OUTPUT_DEBUG
         )
 
         # ---- フォールバック段階緩和 ----
         if not filtered:
-            filtered, reason = _jigo_relax_filters(candidates, max_loss, min_hp)
+            filtered, reason = _jigo_relax_filters(candidates, effective_max_loss, min_hp)
             self.last_decision_info["filter_relaxed"] = True
             self.game.katrain.log(
                 f"[JigoStrategy] Fallback triggered: reason={reason}, {len(filtered)} candidates",
@@ -1010,7 +1035,6 @@ class JigoStrategy(AIStrategy):
                 )
 
         # ---- 現在リード & 選択分岐 ----
-        current_lead = score_analysis.get("rootInfo", {}).get("scoreLead", 0) * sign
         in_range = target_score <= current_lead <= target_score_max
         self.game.katrain.log(
             f"[JigoStrategy] Mode: {mode}, lead={current_lead:.2f}, in_range={in_range}",
