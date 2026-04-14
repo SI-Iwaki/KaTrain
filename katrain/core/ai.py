@@ -876,7 +876,7 @@ class JigoStrategy(AIStrategy):
         stage1_override = {
             "humanSLProfile": human_profile,
             "ignorePreRootHistory": False,
-            "maxVisits": 800,
+            "maxVisits": 1,
         }
         self.last_decision_info["rank_used"] = human_profile
         stage1_analysis = None
