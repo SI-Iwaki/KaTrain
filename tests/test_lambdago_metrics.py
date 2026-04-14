@@ -144,6 +144,30 @@ class TestAggregateChoiceVsMedian:
             "ai_suspect_loss": 0.25,
         }
 
+    def test_excludes_dominant_winrate_positions(self):
+        # Rows where winrate_player > 0.95 are excluded from Choice-vs-Median.
+        rows = [
+            _row(point_loss_raw=0.0, cand_median_loss=1.0, winrate_player=0.5),   # kept
+            _row(point_loss_raw=0.0, cand_median_loss=20.0, winrate_player=0.99), # excluded (dominant)
+            _row(point_loss_raw=0.0, cand_median_loss=2.0, winrate_player=0.95),  # kept (at threshold, <=)
+        ]
+        result = _aggregate_lambdago_metrics(rows)
+        cvm = result["choice_vs_median"]["overall"]
+        assert cvm["count"] == 2  # the winrate=0.99 row is filtered out
+        # kept gaps: -1.0, -2.0 → mean -1.5
+        assert cvm["mean"] == pytest.approx(-1.5)
+
+    def test_winrate_none_rows_still_included(self):
+        # Rows with winrate_player=None are included (no evidence of dominance).
+        rows = [
+            _row(point_loss_raw=0.0, cand_median_loss=2.0, winrate_player=None),
+            _row(point_loss_raw=0.0, cand_median_loss=4.0, winrate_player=None),
+        ]
+        result = _aggregate_lambdago_metrics(rows)
+        cvm = result["choice_vs_median"]["overall"]
+        assert cvm["count"] == 2
+        assert cvm["mean"] == pytest.approx(-3.0)  # gaps -2.0, -4.0 → mean -3.0
+
 
 class TestAggregateSlack:
     def _row_slack(self, player, move_num, winrate_player, point_loss):

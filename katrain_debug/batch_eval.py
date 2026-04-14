@@ -298,6 +298,14 @@ def _aggregate_jigo_metrics(move_results, target_score, target_score_max):
     }
 
 
+# Choice-vs-Median is unreliable in dominant positions: when the player already
+# wins, KataGo's candidate median loss balloons (many "still wins but sloppier"
+# alternatives exist), creating a structurally negative gap that is not an
+# AI-like signal. Filter these out. Slack detection (98% threshold) is separate
+# and not affected.
+CVM_DOMINANT_WINRATE_THRESHOLD = 0.95
+
+
 def _aggregate_lambdago_metrics(move_results):
     """Aggregate lambdago paper-derived metrics across move_results.
 
@@ -317,8 +325,13 @@ def _aggregate_lambdago_metrics(move_results):
     if not move_results:
         return {}
 
-    eligible = [m for m in move_results if m.get("cand_median_loss") is not None
-                and m.get("point_loss_raw") is not None]
+    eligible = [
+        m for m in move_results
+        if m.get("cand_median_loss") is not None
+        and m.get("point_loss_raw") is not None
+        and (m.get("winrate_player") is None
+             or m["winrate_player"] <= CVM_DOMINANT_WINRATE_THRESHOLD)
+    ]
     if not eligible:
         return {}
 

@@ -170,7 +170,7 @@ def format_batch_text(result):
         )
         lines.append("")
 
-        lines.append("  Choice-vs-Median Gap (lower = more AI-like):")
+        lines.append("  Choice-vs-Median Gap (lower = more AI-like; excludes moves with winrate>95%):")
         cvm = lambdago_metrics["choice_vs_median"]
         for key in ("overall", "B", "W"):
             if key not in cvm:
