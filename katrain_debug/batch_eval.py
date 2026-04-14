@@ -6,6 +6,7 @@ game_report() と同じ指標（ai_top_move, ai_top5_move, mean_ptloss, accuracy
 
 import math
 import os
+import statistics
 import sys
 import time
 
@@ -129,9 +130,23 @@ def batch_evaluate(sgf_path, strategy_name, config_path=None,
             selected_move, explanation = strategy.generate_move()
             selected_gtp = selected_move.gtp()
 
-            # 選択手の損失を計算
+            # 選択手の損失を計算（クランプ済み: 既存ユーザー向け / 生: lambdago 用）
             selected_info = next((d for d in cands if d["move"] == selected_gtp), None)
-            point_loss = max(0.0, selected_info["pointsLost"]) if selected_info else None
+            if selected_info is not None:
+                point_loss_raw = selected_info["pointsLost"]
+                point_loss = max(0.0, point_loss_raw)
+            else:
+                point_loss_raw = None
+                point_loss = None
+
+            # lambdago 用: 候補手の median 損失と 打つ側視点 winrate
+            # parent_node.winrate は手を打つ前の root winrate（黒視点固定）
+            cand_median_loss = _candidate_median_loss(cands)
+            wr_black_root = parent_node.winrate
+            winrate_player = (
+                _winrate_for_player(wr_black_root, player)
+                if wr_black_root is not None else None
+            )
 
             # フェーズ判定
             if move_num <= opening_boundary:
@@ -154,6 +169,14 @@ def batch_evaluate(sgf_path, strategy_name, config_path=None,
                 "match_top": selected_gtp == ai_top_move,
                 "match_approved": selected_gtp in ai_approved,
                 "point_loss": point_loss,
+                "point_loss_raw": point_loss_raw,
+                "cand_median_loss": cand_median_loss,
+                "winrate_player": winrate_player,
+                "choice_vs_median": (
+                    point_loss_raw - cand_median_loss
+                    if point_loss_raw is not None and cand_median_loss is not None
+                    else None
+                ),
                 "explanation": explanation.split("\n")[0] if explanation else "",
                 "rank_used": jigo_info.get("rank_used") if jigo_info else None,
                 "selected_hp": jigo_info.get("selected_hp") if jigo_info else None,
@@ -173,6 +196,7 @@ def batch_evaluate(sgf_path, strategy_name, config_path=None,
                 target_score=ai_settings.get("target_score", 0.5),
                 target_score_max=ai_settings.get("target_score_max", 10.0),
             )
+        stats["lambdago_metrics"] = _aggregate_lambdago_metrics(move_results)
         return {
             "sgf": sgf_path,
             "total_moves": total_moves,
@@ -186,6 +210,31 @@ def batch_evaluate(sgf_path, strategy_name, config_path=None,
         }
     finally:
         engine.shutdown(finish=False)
+
+
+def _winrate_for_player(wr_black, player):
+    """Convert KataGo's BLACK-perspective winrate to the given player's perspective.
+
+    KataGo is configured with reportAnalysisWinratesAs=BLACK (engine.py:108),
+    so all candidate winrates are from Black's viewpoint regardless of the player to move.
+    """
+    return wr_black if player == "B" else (1.0 - wr_black)
+
+
+def _candidate_median_loss(cands):
+    """Median pointsLost across visited candidates that have a policy prior assigned.
+
+    Returns None if no eligible candidates. Does NOT clamp negative pointsLost
+    (preserving the paper's signed effect ε(a) for Choice-vs-Median).
+    """
+    losses = [
+        c["pointsLost"]
+        for c in cands
+        if c["order"] < ADDITIONAL_MOVE_ORDER and "prior" in c
+    ]
+    if not losses:
+        return None
+    return statistics.median(losses)
 
 
 def _aggregate_jigo_metrics(move_results, target_score, target_score_max):
@@ -246,6 +295,116 @@ def _aggregate_jigo_metrics(move_results, target_score, target_score_max):
         "filter_relax_rate": filter_relax_rate,
         "biased_lead_rate": biased_lead_rate,
         "rank_downgrade_counts": rank_counts,
+    }
+
+
+# Choice-vs-Median is unreliable in dominant positions: when the player already
+# wins, KataGo's candidate median loss balloons (many "still wins but sloppier"
+# alternatives exist), creating a structurally negative gap that is not an
+# AI-like signal. Filter these out. Slack detection (98% threshold) is separate
+# and not affected.
+CVM_DOMINANT_WINRATE_THRESHOLD = 0.95
+
+# Gap below this threshold counts toward negative_ratio (spec: "clearly AI-like" selections).
+CVM_NEGATIVE_GAP_THRESHOLD = -0.5
+
+# Winrate at or above which Post-98% Slack tracking begins.
+SLACK_WINRATE_TRIGGER = 0.98
+
+# Below this post-count, slack_delta is flagged low_sample=True.
+SLACK_LOW_SAMPLE_THRESHOLD = 30
+
+
+def _aggregate_lambdago_metrics(move_results):
+    """Aggregate lambdago paper-derived metrics across move_results.
+
+    Choice-vs-Median Gap (per overall/B/W):
+        gap = point_loss_raw - cand_median_loss  (unclamped, stored as per-move
+        "choice_vs_median" field in batch_evaluate output).
+        Negative gap = AI-like (better than candidate median).
+        Excludes moves where winrate_player > CVM_DOMINANT_WINRATE_THRESHOLD (0.95)
+        to avoid the candidate-median inflation artifact in dominant positions.
+
+    Post-98% Slack (per B/W):
+        Detects if point_loss increases after the player's winrate first reaches 98%.
+        pre_98_avg_loss: mean clamped point_loss before first_98_move
+        post_98_avg_loss: mean clamped point_loss from first_98_move onward
+        slack_delta: post - pre (positive = more mistakes after winning)
+        low_sample: True if n_post < 30 (interpret with caution)
+
+    Returns {} when no eligible rows are present.
+    """
+    if not move_results:
+        return {}
+
+    eligible = [
+        m for m in move_results
+        if m.get("choice_vs_median") is not None
+        # winrate_player=None: included (no evidence of dominance; see M-3 comment below)
+        and (m.get("winrate_player") is None
+             or m["winrate_player"] <= CVM_DOMINANT_WINRATE_THRESHOLD)
+    ]
+    if not eligible:
+        return {}
+
+    def _summarize(rows):
+        gaps = [m["choice_vs_median"] for m in rows]
+        n = len(gaps)
+        return {
+            "count": n,
+            "mean": sum(gaps) / n,
+            "negative_ratio": sum(1 for g in gaps if g < CVM_NEGATIVE_GAP_THRESHOLD) / n,
+        }
+
+    cvm = {"overall": _summarize(eligible)}
+    for bw in ("B", "W"):
+        group = [m for m in eligible if m["player"] == bw]
+        if group:
+            cvm[bw] = _summarize(group)
+
+    def _slack_for_player(player):
+        rows = [m for m in move_results
+                if m.get("player") == player
+                # winrate_player=None: excluded here (can't determine 98% crossing; see
+                # M-3: CVM is more lenient because None rows can still contribute to the
+                # gap signal, whereas Slack specifically needs the winrate axis)
+                and m.get("winrate_player") is not None
+                and m.get("point_loss") is not None]
+        if not rows:
+            return None
+
+        first_98 = None
+        for m in rows:
+            if m["winrate_player"] >= SLACK_WINRATE_TRIGGER:
+                first_98 = m["move_num"]
+                break
+        if first_98 is None:
+            return None
+
+        pre = [m["point_loss"] for m in rows if m["move_num"] < first_98]
+        post = [m["point_loss"] for m in rows if m["move_num"] >= first_98]
+        if not pre or not post:
+            return None
+
+        pre_avg = sum(pre) / len(pre)
+        post_avg = sum(post) / len(post)
+        return {
+            "first_98_move": first_98,
+            "n_pre": len(pre),
+            "n_post": len(post),
+            "low_sample": len(post) < SLACK_LOW_SAMPLE_THRESHOLD,
+            "pre_98_avg_loss": pre_avg,
+            "post_98_avg_loss": post_avg,
+            "slack_delta": post_avg - pre_avg,
+        }
+
+    return {
+        "reference": {"human_amateur_loss": 0.65, "ai_suspect_loss": 0.25},
+        "choice_vs_median": cvm,
+        "post_98_slack": {
+            "B": _slack_for_player("B"),
+            "W": _slack_for_player("W"),
+        },
     }
 
 

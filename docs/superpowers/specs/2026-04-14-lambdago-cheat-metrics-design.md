@@ -84,9 +84,16 @@ KataGo エンジンは `engine.py:108` で `reportAnalysisWinratesAs = "BLACK"` 
 **すべての winrate は黒視点で固定** されており、打つ側 (next_player) の勝率を得るには変換が必要:
 
 ```python
-wr_black = parent_node.candidate_moves[0]["winrate"]  # 黒視点（固定）
+# parent_node.winrate は手を打つ前の root winrate（手を打った後ではない）
+# game_node.py:299-302 で analysis["root"]["winrate"] を返す
+wr_black = parent_node.winrate
 wr_player = wr_black if player == "B" else (1.0 - wr_black)
 ```
+
+`parent_node.candidate_moves[0]["winrate"]` ではなく `parent_node.winrate` を使う理由:
+前者は「最善手を打った後の winrate」で、Post-98% Slack 検出の本来の関心事である
+「現在の局面の勝率（手を打つ前）」と意味的にずれる。差は通常極小だが、勝率 0.98
+境界付近で `first_98_move` が 1 手ずれる可能性がある。
 
 ### (b) Choice-vs-Median Gap
 
