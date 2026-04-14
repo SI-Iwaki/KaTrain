@@ -130,9 +130,23 @@ def batch_evaluate(sgf_path, strategy_name, config_path=None,
             selected_move, explanation = strategy.generate_move()
             selected_gtp = selected_move.gtp()
 
-            # 選択手の損失を計算
+            # 選択手の損失を計算（クランプ済み: 既存ユーザー向け / 生: lambdago 用）
             selected_info = next((d for d in cands if d["move"] == selected_gtp), None)
-            point_loss = max(0.0, selected_info["pointsLost"]) if selected_info else None
+            if selected_info is not None:
+                point_loss_raw = selected_info["pointsLost"]
+                point_loss = max(0.0, point_loss_raw)
+            else:
+                point_loss_raw = None
+                point_loss = None
+
+            # lambdago 用: 候補手の median 損失と 打つ側視点 winrate
+            # parent_node.winrate は手を打つ前の root winrate（黒視点固定）
+            cand_median_loss = _candidate_median_loss(cands)
+            wr_black_root = parent_node.winrate
+            winrate_player = (
+                _winrate_for_player(wr_black_root, player)
+                if wr_black_root is not None else None
+            )
 
             # フェーズ判定
             if move_num <= opening_boundary:
@@ -155,6 +169,14 @@ def batch_evaluate(sgf_path, strategy_name, config_path=None,
                 "match_top": selected_gtp == ai_top_move,
                 "match_approved": selected_gtp in ai_approved,
                 "point_loss": point_loss,
+                "point_loss_raw": point_loss_raw,
+                "cand_median_loss": cand_median_loss,
+                "winrate_player": winrate_player,
+                "choice_vs_median": (
+                    point_loss_raw - cand_median_loss
+                    if point_loss_raw is not None and cand_median_loss is not None
+                    else None
+                ),
                 "explanation": explanation.split("\n")[0] if explanation else "",
                 "rank_used": jigo_info.get("rank_used") if jigo_info else None,
                 "selected_hp": jigo_info.get("selected_hp") if jigo_info else None,
@@ -174,6 +196,7 @@ def batch_evaluate(sgf_path, strategy_name, config_path=None,
                 target_score=ai_settings.get("target_score", 0.5),
                 target_score_max=ai_settings.get("target_score_max", 10.0),
             )
+        stats["lambdago_metrics"] = _aggregate_lambdago_metrics(move_results)
         return {
             "sgf": sgf_path,
             "total_moves": total_moves,
