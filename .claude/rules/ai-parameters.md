@@ -28,7 +28,8 @@ Stage1とGUI/analysis_configの3箇所を同じ値に揃える。Stage2は独立
 
 | 場所 | 現在値 | 役割 |
 |---|---|---|
-| ai.py `override_settings["maxVisits"]` | 800 | Stage1: HumanSL着手選択 |
+| ai.py `override_settings["maxVisits"]` (HumanStyle/Fighting/Siege/Hunt) | 800 | Stage1: HumanSL着手選択 |
+| ai.py `stage1_override["maxVisits"]` (Jigo) | 1 | Stage1: humanPolicy 取得のみ（humanSL NN の root policy 出力で visits 不変） |
 | ai.py `clean_override_settings["maxVisits"]` | 600 | Stage2: クリーンスコア検証（独立値） |
 | GUI `max_visits` / `analysis_config.cfg` | 800 | 事後分析クエリ（Stage1と揃える） |
 
