@@ -917,22 +917,43 @@ class JigoStrategy(AIStrategy):
             OUTPUT_DEBUG,
         )
 
-        # ---- Stage 2 を既定解析 (cn.analysis) で置換 — 案C ----
-        # wait_for_analysis() で analysis_complete=True 保証済（generate_move 冒頭）
-        # trade-off: visits 600→800 (+33%), wideRootNoise 0.0→0.04 (小ノイズ)
-        move_dicts = list(self.cn.analysis.get("moves", {}).values())
-        root_info = self.cn.analysis.get("root")
-        if move_dicts and root_info:
-            score_analysis = {
-                "moveInfos": move_dicts,
-                "rootInfo": root_info,
-            }
-        else:
+        # ---- Stage 2: クリーンクエリ（scoreLead 用） ----
+        stage2_override = {
+            "ignorePreRootHistory": False,
+            "maxVisits": 600,
+            "wideRootNoise": 0.0,
+        }
+        stage2_analysis = None
+        stage2_error = False
+
+        def _set_stage2(a, partial):
+            nonlocal stage2_analysis
+            if not partial:
+                stage2_analysis = a
+
+        def _err_stage2(a):
+            nonlocal stage2_error
+            stage2_error = True
+            self.game.katrain.log(f"[JigoStrategy] Stage2 error: {a}", OUTPUT_ERROR)
+
+        engine.request_analysis(
+            self.cn, callback=_set_stage2, error_callback=_err_stage2,
+            priority=PRIORITY_EXTRA_AI_QUERY, include_policy=False,
+            extra_settings=stage2_override,
+        )
+        while not (stage2_error or stage2_analysis):
+            time.sleep(0.01)
+            engine.check_alive(exception_if_dead=True)
+
+        # Stage 2 失敗時は Stage 1 にフォールバック
+        if stage2_error or not stage2_analysis:
             self.last_decision_info["score_lead_biased"] = True
             self.game.katrain.log(
-                "[JigoStrategy] cn.analysis incomplete, using Stage1 (biased)", OUTPUT_DEBUG
+                "[JigoStrategy] Stage2 failed, using Stage1 moveInfos (biased)", OUTPUT_DEBUG
             )
             score_analysis = stage1_analysis
+        else:
+            score_analysis = stage2_analysis
         move_infos = score_analysis.get("moveInfos", [])
         if not move_infos:
             self.game.katrain.log("[JigoStrategy] No moveInfos, passing", OUTPUT_DEBUG)
