@@ -143,3 +143,75 @@ class TestAggregateChoiceVsMedian:
             "human_amateur_loss": 0.65,
             "ai_suspect_loss": 0.25,
         }
+
+
+class TestAggregateSlack:
+    def _row_slack(self, player, move_num, winrate_player, point_loss):
+        return {
+            "player": player,
+            "move_num": move_num,
+            "winrate_player": winrate_player,
+            "point_loss": point_loss,
+            "point_loss_raw": point_loss,
+            # cand_median_loss must be present so the row is "eligible";
+            # use a value such that the row also passes choice_vs_median filtering
+            "cand_median_loss": 0.0,
+        }
+
+    def test_slack_detected_with_clear_pre_post(self):
+        # B reaches 98% at move 3. pre = [0.2, 0.4] → 0.3, post = [0.8, 1.0] → 0.9
+        # delta = +0.6
+        rows = [
+            self._row_slack("B", 1, 0.50, 0.2),
+            self._row_slack("B", 2, 0.70, 0.4),
+            self._row_slack("B", 3, 0.99, 0.8),  # first ≥ 0.98
+            self._row_slack("B", 4, 0.99, 1.0),
+        ]
+        result = _aggregate_lambdago_metrics(rows)
+        b_slack = result["post_98_slack"]["B"]
+        assert b_slack["first_98_move"] == 3
+        assert b_slack["n_pre"] == 2
+        assert b_slack["n_post"] == 2
+        assert b_slack["pre_98_avg_loss"] == pytest.approx(0.3)
+        assert b_slack["post_98_avg_loss"] == pytest.approx(0.9)
+        assert b_slack["slack_delta"] == pytest.approx(0.6)
+        assert b_slack["low_sample"] is True  # n_post < 30
+
+    def test_slack_not_reached_returns_none(self):
+        rows = [
+            self._row_slack("B", 1, 0.50, 0.2),
+            self._row_slack("B", 2, 0.55, 0.3),
+        ]
+        result = _aggregate_lambdago_metrics(rows)
+        assert result["post_98_slack"]["B"] is None
+
+    def test_white_perspective_separate_from_black(self):
+        # W reaches 98% at move 2; B never does.
+        rows = [
+            self._row_slack("W", 1, 0.50, 0.5),
+            self._row_slack("W", 2, 0.98, 1.0),
+            self._row_slack("B", 1, 0.50, 0.5),
+            self._row_slack("B", 2, 0.02, 0.5),  # B's perspective is 0.02, not 0.98
+        ]
+        result = _aggregate_lambdago_metrics(rows)
+        assert result["post_98_slack"]["W"] is not None
+        assert result["post_98_slack"]["W"]["first_98_move"] == 2
+        assert result["post_98_slack"]["B"] is None
+
+    def test_low_sample_flag_false_when_n_post_30_or_more(self):
+        rows = [self._row_slack("B", i, 0.50, 0.3) for i in range(1, 11)]   # 10 pre
+        rows += [self._row_slack("B", i, 0.99, 0.5) for i in range(11, 41)] # 30 post
+        result = _aggregate_lambdago_metrics(rows)
+        assert result["post_98_slack"]["B"]["low_sample"] is False
+
+    def test_slack_skips_rows_with_missing_winrate(self):
+        # winrate_player=None rows must be ignored entirely (e.g. legacy data).
+        rows = [
+            self._row_slack("B", 1, None, 0.2),
+            self._row_slack("B", 2, 0.99, 0.5),
+            self._row_slack("B", 3, 0.99, 1.0),
+        ]
+        result = _aggregate_lambdago_metrics(rows)
+        # After filtering: move 2 is the first ≥ 0.98, n_pre=0, n_post=2 → return None
+        # (no pre data → cannot compute delta → return None)
+        assert result["post_98_slack"]["B"] is None

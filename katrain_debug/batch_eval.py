@@ -282,7 +282,12 @@ def _aggregate_lambdago_metrics(move_results):
         gap = point_loss_raw - cand_median_loss  (unclamped)
         Negative gap = AI-like (better than candidate median).
 
-    Post-98% Slack: implemented in Task 3 (returns empty dict for now).
+    Post-98% Slack (per B/W):
+        Detects if point_loss increases after the player's winrate first reaches 98%.
+        pre_98_avg_loss: mean clamped point_loss before first_98_move
+        post_98_avg_loss: mean clamped point_loss from first_98_move onward
+        slack_delta: post - pre (positive = more mistakes after winning)
+        low_sample: True if n_post < 30 (interpret with caution)
 
     Returns {} when no eligible rows are present.
     """
@@ -311,9 +316,48 @@ def _aggregate_lambdago_metrics(move_results):
         if group:
             cvm[bw] = _summarize(group)
 
+    SLACK_LOW_SAMPLE_THRESHOLD = 30
+
+    def _slack_for_player(player):
+        rows = [m for m in move_results
+                if m.get("player") == player
+                and m.get("winrate_player") is not None
+                and m.get("point_loss") is not None]
+        if not rows:
+            return None
+
+        first_98 = None
+        for m in rows:
+            if m["winrate_player"] >= 0.98:
+                first_98 = m["move_num"]
+                break
+        if first_98 is None:
+            return None
+
+        pre = [m["point_loss"] for m in rows if m["move_num"] < first_98]
+        post = [m["point_loss"] for m in rows if m["move_num"] >= first_98]
+        if not pre or not post:
+            return None
+
+        pre_avg = sum(pre) / len(pre)
+        post_avg = sum(post) / len(post)
+        return {
+            "first_98_move": first_98,
+            "n_pre": len(pre),
+            "n_post": len(post),
+            "low_sample": len(post) < SLACK_LOW_SAMPLE_THRESHOLD,
+            "pre_98_avg_loss": pre_avg,
+            "post_98_avg_loss": post_avg,
+            "slack_delta": post_avg - pre_avg,
+        }
+
     return {
         "reference": {"human_amateur_loss": 0.65, "ai_suspect_loss": 0.25},
         "choice_vs_median": cvm,
+        "post_98_slack": {
+            "B": _slack_for_player("B"),
+            "W": _slack_for_player("W"),
+        },
     }
 
 
