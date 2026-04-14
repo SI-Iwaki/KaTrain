@@ -159,6 +159,50 @@ def format_batch_text(result):
         lines.append(f"  Rank Downgrades:    {jigo_metrics['rank_downgrade_counts']}")
         lines.append("")
 
+    # Lambdago Metrics ブロック（全戦略で常に表示）
+    lambdago_metrics = stats.get("lambdago_metrics")
+    if lambdago_metrics:
+        lines.append("--- Lambdago Metrics (paper-derived) ---")
+        ref = lambdago_metrics["reference"]
+        lines.append(
+            f"  Reference: human amateur ≈ -{ref['human_amateur_loss']} mean loss; "
+            f"AI suspect ≈ -{ref['ai_suspect_loss']}"
+        )
+        lines.append("")
+
+        lines.append("  Choice-vs-Median Gap (lower = more AI-like):")
+        cvm = lambdago_metrics["choice_vs_median"]
+        for key in ("overall", "B", "W"):
+            if key not in cvm:
+                continue
+            block = cvm[key]
+            label = {"overall": "Overall", "B": "Black  ", "W": "White  "}[key]
+            lines.append(
+                f"    {label}: {block['mean']:+.2f}  "
+                f"(n={block['count']}, neg_ratio={block['negative_ratio']:.0%})"
+            )
+        lines.append("")
+
+        lines.append("  Post-98% Slack (positive delta = sloppy after winning):")
+        slack = lambdago_metrics["post_98_slack"]
+        for player in ("B", "W"):
+            label = {"B": "Black", "W": "White"}[player]
+            block = slack.get(player)
+            if block is None:
+                lines.append(f"    {label}: not reached")
+                continue
+            sample_marker = " (low N)" if block["low_sample"] else ""
+            lines.append(
+                f"    {label}: pre={block['pre_98_avg_loss']:.2f}  "
+                f"post={block['post_98_avg_loss']:.2f}  "
+                f"delta={block['slack_delta']:+.2f}"
+            )
+            lines.append(
+                f"           reached at move {block['first_98_move']} "
+                f"(n_pre={block['n_pre']}, n_post={block['n_post']}{sample_marker})"
+            )
+        lines.append("")
+
     return "\n".join(lines)
 
 
