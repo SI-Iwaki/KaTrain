@@ -6,6 +6,7 @@ game_report() と同じ指標（ai_top_move, ai_top5_move, mean_ptloss, accuracy
 
 import math
 import os
+import statistics
 import sys
 import time
 
@@ -186,6 +187,31 @@ def batch_evaluate(sgf_path, strategy_name, config_path=None,
         }
     finally:
         engine.shutdown(finish=False)
+
+
+def _winrate_for_player(wr_black, player):
+    """Convert KataGo's BLACK-perspective winrate to the given player's perspective.
+
+    KataGo is configured with reportAnalysisWinratesAs=BLACK (engine.py:108),
+    so all candidate winrates are from Black's viewpoint regardless of the player to move.
+    """
+    return wr_black if player == "B" else (1.0 - wr_black)
+
+
+def _candidate_median_loss(cands):
+    """Median pointsLost across visited candidates that have a policy prior assigned.
+
+    Returns None if no eligible candidates. Does NOT clamp negative pointsLost
+    (preserving the paper's signed effect ε(a) for Choice-vs-Median).
+    """
+    losses = [
+        c["pointsLost"]
+        for c in cands
+        if c["order"] < ADDITIONAL_MOVE_ORDER and "prior" in c
+    ]
+    if not losses:
+        return None
+    return statistics.median(losses)
 
 
 def _aggregate_jigo_metrics(move_results, target_score, target_score_max):
