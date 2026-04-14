@@ -164,6 +164,9 @@ def format_batch_text(result):
     if lambdago_metrics:
         lines.append("--- Lambdago Metrics (paper-derived) ---")
         ref = lambdago_metrics["reference"]
+        # JSON keys store positive magnitudes (0.65, 0.25). The text output
+        # prepends "-" to match the paper's ε(a) convention where losses are signed
+        # negative. Readers of JSON and text see different signs by design.
         lines.append(
             f"  Reference: human amateur ~ -{ref['human_amateur_loss']} mean loss; "
             f"AI suspect ~ -{ref['ai_suspect_loss']}"

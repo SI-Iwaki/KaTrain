@@ -305,13 +305,25 @@ def _aggregate_jigo_metrics(move_results, target_score, target_score_max):
 # and not affected.
 CVM_DOMINANT_WINRATE_THRESHOLD = 0.95
 
+# Gap below this threshold counts toward negative_ratio (spec: "clearly AI-like" selections).
+CVM_NEGATIVE_GAP_THRESHOLD = -0.5
+
+# Winrate at or above which Post-98% Slack tracking begins.
+SLACK_WINRATE_TRIGGER = 0.98
+
+# Below this post-count, slack_delta is flagged low_sample=True.
+SLACK_LOW_SAMPLE_THRESHOLD = 30
+
 
 def _aggregate_lambdago_metrics(move_results):
     """Aggregate lambdago paper-derived metrics across move_results.
 
     Choice-vs-Median Gap (per overall/B/W):
-        gap = point_loss_raw - cand_median_loss  (unclamped)
+        gap = point_loss_raw - cand_median_loss  (unclamped, stored as per-move
+        "choice_vs_median" field in batch_evaluate output).
         Negative gap = AI-like (better than candidate median).
+        Excludes moves where winrate_player > CVM_DOMINANT_WINRATE_THRESHOLD (0.95)
+        to avoid the candidate-median inflation artifact in dominant positions.
 
     Post-98% Slack (per B/W):
         Detects if point_loss increases after the player's winrate first reaches 98%.
@@ -327,23 +339,21 @@ def _aggregate_lambdago_metrics(move_results):
 
     eligible = [
         m for m in move_results
-        if m.get("cand_median_loss") is not None
-        and m.get("point_loss_raw") is not None
+        if m.get("choice_vs_median") is not None
+        # winrate_player=None: included (no evidence of dominance; see M-3 comment below)
         and (m.get("winrate_player") is None
              or m["winrate_player"] <= CVM_DOMINANT_WINRATE_THRESHOLD)
     ]
     if not eligible:
         return {}
 
-    NEGATIVE_THRESHOLD = -0.5
-
     def _summarize(rows):
-        gaps = [m["point_loss_raw"] - m["cand_median_loss"] for m in rows]
+        gaps = [m["choice_vs_median"] for m in rows]
         n = len(gaps)
         return {
             "count": n,
             "mean": sum(gaps) / n,
-            "negative_ratio": sum(1 for g in gaps if g < NEGATIVE_THRESHOLD) / n,
+            "negative_ratio": sum(1 for g in gaps if g < CVM_NEGATIVE_GAP_THRESHOLD) / n,
         }
 
     cvm = {"overall": _summarize(eligible)}
@@ -352,11 +362,12 @@ def _aggregate_lambdago_metrics(move_results):
         if group:
             cvm[bw] = _summarize(group)
 
-    SLACK_LOW_SAMPLE_THRESHOLD = 30
-
     def _slack_for_player(player):
         rows = [m for m in move_results
                 if m.get("player") == player
+                # winrate_player=None: excluded here (can't determine 98% crossing; see
+                # M-3: CVM is more lenient because None rows can still contribute to the
+                # gap signal, whereas Slack specifically needs the winrate axis)
                 and m.get("winrate_player") is not None
                 and m.get("point_loss") is not None]
         if not rows:
@@ -364,7 +375,7 @@ def _aggregate_lambdago_metrics(move_results):
 
         first_98 = None
         for m in rows:
-            if m["winrate_player"] >= 0.98:
+            if m["winrate_player"] >= SLACK_WINRATE_TRIGGER:
                 first_98 = m["move_num"]
                 break
         if first_98 is None:

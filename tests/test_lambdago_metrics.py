@@ -72,8 +72,15 @@ class TestCandidateMedianLoss:
 
 
 def _row(player="B", point_loss_raw=0.0, cand_median_loss=0.0,
-         point_loss=None, winrate_player=None):
-    """Minimal move_result shorthand for lambdago aggregation tests."""
+         point_loss=None, winrate_player=None, choice_vs_median=None):
+    """Minimal move_result shorthand for lambdago aggregation tests.
+
+    choice_vs_median defaults to point_loss_raw - cand_median_loss (mirrors
+    production computation in batch_evaluate). Pass choice_vs_median=None explicitly
+    to simulate a row with missing gap data.
+    """
+    if choice_vs_median is None and point_loss_raw is not None and cand_median_loss is not None:
+        choice_vs_median = point_loss_raw - cand_median_loss
     return {
         "player": player,
         "point_loss_raw": point_loss_raw,
@@ -81,6 +88,7 @@ def _row(player="B", point_loss_raw=0.0, cand_median_loss=0.0,
         "point_loss": point_loss if point_loss is not None else max(0.0, point_loss_raw),
         "winrate_player": winrate_player,
         "move_num": 1,
+        "choice_vs_median": choice_vs_median,
     }
 
 
@@ -180,6 +188,7 @@ class TestAggregateSlack:
             # cand_median_loss must be present so the row is "eligible";
             # use a value such that the row also passes choice_vs_median filtering
             "cand_median_loss": 0.0,
+            "choice_vs_median": point_loss - 0.0,  # point_loss_raw - cand_median_loss
         }
 
     def test_slack_detected_with_clear_pre_post(self):
