@@ -165,8 +165,8 @@ def format_batch_text(result):
         lines.append("--- Lambdago Metrics (paper-derived) ---")
         ref = lambdago_metrics["reference"]
         lines.append(
-            f"  Reference: human amateur ≈ -{ref['human_amateur_loss']} mean loss; "
-            f"AI suspect ≈ -{ref['ai_suspect_loss']}"
+            f"  Reference: human amateur ~ -{ref['human_amateur_loss']} mean loss; "
+            f"AI suspect ~ -{ref['ai_suspect_loss']}"
         )
         lines.append("")
 
