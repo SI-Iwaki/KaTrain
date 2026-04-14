@@ -1,5 +1,7 @@
 # Jigo Stage 2 既定解析置換 設計書（案C）
 
+> **判定: REJECT (2026-04-14)** — 校正で 9/16 指標が spec §7.4 のパス基準を外れたため不採用。Stage 2 を `git revert`（commit `18a6eac`）で復元。詳細は `docs/superpowers/specs/calibration-data/jigo-speedup/planC-results-20260414.md` 参照。
+
 ## 概要
 
 `JigoStrategy.generate_move()` の Stage 2（クリーン scoreLead クエリ, 600 visits）を、既定解析 (`self.cn.analysis`) で置換し、1手あたりのクエリを 1本に削減する。
