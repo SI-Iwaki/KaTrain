@@ -9,6 +9,7 @@ from katrain.core.constants import ADDITIONAL_MOVE_ORDER
 from katrain_debug.batch_eval import (
     _winrate_for_player,
     _candidate_median_loss,
+    _aggregate_lambdago_metrics,
 )
 
 
@@ -68,3 +69,77 @@ class TestCandidateMedianLoss:
         cands = [self._c(-0.5), self._c(0.0, order=1), self._c(2.0, order=2)]
         # Median of [-0.5, 0.0, 2.0] = 0.0
         assert _candidate_median_loss(cands) == pytest.approx(0.0)
+
+
+def _row(player="B", point_loss_raw=0.0, cand_median_loss=0.0,
+         point_loss=None, winrate_player=None):
+    """Minimal move_result shorthand for lambdago aggregation tests."""
+    return {
+        "player": player,
+        "point_loss_raw": point_loss_raw,
+        "cand_median_loss": cand_median_loss,
+        "point_loss": point_loss if point_loss is not None else max(0.0, point_loss_raw),
+        "winrate_player": winrate_player,
+        "move_num": 1,
+    }
+
+
+class TestAggregateChoiceVsMedian:
+    def test_empty_input_returns_empty_dict(self):
+        result = _aggregate_lambdago_metrics([])
+        assert result == {}
+
+    def test_overall_mean_basic(self):
+        # gaps: -1.0, -0.5, 0.0 → mean -0.5
+        rows = [
+            _row(point_loss_raw=0.0, cand_median_loss=1.0),  # gap -1.0
+            _row(point_loss_raw=0.5, cand_median_loss=1.0),  # gap -0.5
+            _row(point_loss_raw=1.0, cand_median_loss=1.0),  # gap  0.0
+        ]
+        result = _aggregate_lambdago_metrics(rows)
+        cvm = result["choice_vs_median"]
+        assert cvm["overall"]["count"] == 3
+        assert cvm["overall"]["mean"] == pytest.approx(-0.5)
+
+    def test_negative_ratio_threshold(self):
+        # gaps: -0.6 (counts), -0.4 (does not), -1.0 (counts), 0.5 (does not)
+        # Threshold is gap < -0.5
+        rows = [
+            _row(point_loss_raw=0.0, cand_median_loss=0.6),   # gap -0.6 ✓
+            _row(point_loss_raw=0.6, cand_median_loss=1.0),   # gap -0.4 ✗
+            _row(point_loss_raw=0.0, cand_median_loss=1.0),   # gap -1.0 ✓
+            _row(point_loss_raw=1.5, cand_median_loss=1.0),   # gap +0.5 ✗
+        ]
+        result = _aggregate_lambdago_metrics(rows)
+        assert result["choice_vs_median"]["overall"]["negative_ratio"] == pytest.approx(0.5)
+
+    def test_b_w_split(self):
+        rows = [
+            _row(player="B", point_loss_raw=0.0, cand_median_loss=2.0),  # B gap -2.0
+            _row(player="B", point_loss_raw=0.0, cand_median_loss=2.0),  # B gap -2.0
+            _row(player="W", point_loss_raw=1.0, cand_median_loss=1.0),  # W gap  0.0
+        ]
+        result = _aggregate_lambdago_metrics(rows)
+        cvm = result["choice_vs_median"]
+        assert cvm["B"]["count"] == 2
+        assert cvm["B"]["mean"] == pytest.approx(-2.0)
+        assert cvm["W"]["count"] == 1
+        assert cvm["W"]["mean"] == pytest.approx(0.0)
+
+    def test_skips_rows_with_missing_data(self):
+        # Rows where cand_median_loss is None (e.g. no eligible candidates) are skipped.
+        rows = [
+            _row(point_loss_raw=0.0, cand_median_loss=None),
+            _row(point_loss_raw=0.0, cand_median_loss=1.0),  # gap -1.0
+        ]
+        result = _aggregate_lambdago_metrics(rows)
+        assert result["choice_vs_median"]["overall"]["count"] == 1
+        assert result["choice_vs_median"]["overall"]["mean"] == pytest.approx(-1.0)
+
+    def test_reference_block_included(self):
+        rows = [_row(point_loss_raw=0.0, cand_median_loss=1.0)]
+        result = _aggregate_lambdago_metrics(rows)
+        assert result["reference"] == {
+            "human_amateur_loss": 0.65,
+            "ai_suspect_loss": 0.25,
+        }

@@ -275,6 +275,48 @@ def _aggregate_jigo_metrics(move_results, target_score, target_score_max):
     }
 
 
+def _aggregate_lambdago_metrics(move_results):
+    """Aggregate lambdago paper-derived metrics across move_results.
+
+    Choice-vs-Median Gap (per overall/B/W):
+        gap = point_loss_raw - cand_median_loss  (unclamped)
+        Negative gap = AI-like (better than candidate median).
+
+    Post-98% Slack: implemented in Task 3 (returns empty dict for now).
+
+    Returns {} when no eligible rows are present.
+    """
+    if not move_results:
+        return {}
+
+    eligible = [m for m in move_results if m.get("cand_median_loss") is not None
+                and m.get("point_loss_raw") is not None]
+    if not eligible:
+        return {}
+
+    NEGATIVE_THRESHOLD = -0.5
+
+    def _summarize(rows):
+        gaps = [m["point_loss_raw"] - m["cand_median_loss"] for m in rows]
+        n = len(gaps)
+        return {
+            "count": n,
+            "mean": sum(gaps) / n,
+            "negative_ratio": sum(1 for g in gaps if g < NEGATIVE_THRESHOLD) / n,
+        }
+
+    cvm = {"overall": _summarize(eligible)}
+    for bw in ("B", "W"):
+        group = [m for m in eligible if m["player"] == bw]
+        if group:
+            cvm[bw] = _summarize(group)
+
+    return {
+        "reference": {"human_amateur_loss": 0.65, "ai_suspect_loss": 0.25},
+        "choice_vs_median": cvm,
+    }
+
+
 def _aggregate_stats(move_results):
     """手ごとの結果を集計してgame_report互換の統計を算出する。"""
     if not move_results:
