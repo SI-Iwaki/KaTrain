@@ -1,5 +1,7 @@
 # Jigo 応答速度改善 フェーズ2（既定解析を Jigo 専用に scoped クリーン化）設計書
 
+> **判定: REJECT（2026-04-15）** — 実装後の校正で Jigo の手一致率が 75.5%（KataGo 固有ノイズ ~80% すら下回る）、不一致手の 33% が \|Δloss\|>1.0 目の顕著な損失増加。原因は既定解析 (800 visits, top-move 集中) と Stage 2 (600 visits, 候補均等) の visit 分布差が Jigo の候補プールを変え選択パターンを崩すこと。wideRootNoise は両者とも 0.0 で同等だったにもかかわらず発生。commit `114b654` で revert 済。memory `project_jigo_widerootnoise_impact.md` の「scoreLead 依存戦略の Stage 2 削減は困難」を再確認。校正データと結果サマリは `docs/superpowers/specs/calibration-data/jigo-speedup/phase2-*` に歴史資産として保持。
+
 ## 概要
 
 持碁モード（JigoStrategy）の「相手が打ってから AI が打つまで」の応答時間を、精度を落とさずにさらに短縮する第2段階。
