@@ -453,9 +453,6 @@ class KataGoEngine(BaseEngine):
                 settings["wideRootNoise"] = 0.0
         except Exception:
             pass
-        # [TEMP_DIAG] TODO(Task4): remove before after-baseline
-        # wideRootNoise 実効値を確認。debug_level=1 (katrain_debug) で可視化
-        self.katrain.log(f"[JigoScoped] wideRootNoise={settings['wideRootNoise']}", OUTPUT_DEBUG)
         if time_limit:
             settings["maxTime"] = self.config["max_time"]
 
