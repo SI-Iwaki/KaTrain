@@ -20,6 +20,7 @@ from katrain.core.constants import (
     DATA_FOLDER,
     KATAGO_EXCEPTION,
     PONDERING_REPORT_DT,
+    AI_JIGO,
 )
 from katrain.core.game_node import GameNode
 from katrain.core.lang import i18n
@@ -115,17 +116,17 @@ class KataGoEngine(BaseEngine):
         if config.get("altcommand", ""):
             self.command = config["altcommand"]
             self.shell = True
-        else:    
+        else:
             model = find_package_resource(config["model"])
             cfg = find_package_resource(config["config"])
             exe = self.get_engine_path(config.get("katago", "").strip())
-            
+
             if not exe:
                 return
-                
+
             # Add human model to command if provided
             if config.get("humanlike_model", ""):
-                human_model_path = find_package_resource(config.get("humanlike_model",""))
+                human_model_path = find_package_resource(config.get("humanlike_model", ""))
                 if os.path.isfile(human_model_path):
                     self.command = shlex.split(
                         f'"{exe}" analysis -model "{model}" -human-model "{human_model_path}" -config "{cfg}" -override-config "homeDataDir={os.path.expanduser(DATA_FOLDER)}"'
@@ -443,6 +444,17 @@ class KataGoEngine(BaseEngine):
 
         settings = copy.copy(self.override_settings)
         settings["wideRootNoise"] = self.config["wide_root_noise"]
+        # Jigo 戦略はクリーンな scoreLead を必要とする。次の打ち手が Jigo のときだけ
+        # 既定解析の wideRootNoise を 0.0 に上書きする（他 AI モード・他戦略への影響なし）
+        try:
+            next_player = analysis_node.next_player
+            player_info = self.katrain.players_info.get(next_player)
+            if player_info is not None and player_info.ai and player_info.strategy == AI_JIGO:
+                settings["wideRootNoise"] = 0.0
+        except Exception:
+            pass
+        # [TEMP_DIAG] wideRootNoise 実効値を確認（Task 4 で撤去）
+        self.katrain.log(f"[JigoScoped] wideRootNoise={settings['wideRootNoise']}", OUTPUT_ERROR)
         if time_limit:
             settings["maxTime"] = self.config["max_time"]
 
