@@ -134,6 +134,11 @@ def run_strategy(sgf_path, move_number, strategy_name, config_path=None,
         raise KeyError(f"Unknown strategy '{strategy_name}'. Available: {available}")
     ai_mode = STRATEGY_NAME_MAP[strategy_name]
 
+    # engine.py の AI モード scoping（Jigo 等）が効くよう players_info を AI に設定
+    from katrain.core.constants import PLAYER_AI
+    stub.players_info["B"].update(player_type=PLAYER_AI, player_subtype=ai_mode)
+    stub.players_info["W"].update(player_type=PLAYER_AI, player_subtype=ai_mode)
+
     # 3. SGF読み込み・ノード移動
     target_node = load_sgf_to_move(sgf_path, move_number)
     player = target_node.next_player
