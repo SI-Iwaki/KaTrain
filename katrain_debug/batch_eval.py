@@ -46,11 +46,6 @@ def batch_evaluate(sgf_path, strategy_name, config_path=None,
     # スタブ初期化（quiet=Trueでstderr出力を抑制）
     stub = KaTrainStub(config_path, debug_level=0, quiet=True)
 
-    # engine.py の AI モード scoping（Jigo 等）が効くよう players_info を AI に設定
-    from katrain.core.constants import PLAYER_AI
-    stub.players_info["B"].update(player_type=PLAYER_AI, player_subtype=ai_mode)
-    stub.players_info["W"].update(player_type=PLAYER_AI, player_subtype=ai_mode)
-
     # SGF読み込み — 全ノードを収集
     root = KaTrainSGF.parse_file(sgf_path)
     all_nodes = []
