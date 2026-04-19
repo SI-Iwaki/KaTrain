@@ -108,7 +108,8 @@
             "human_profile": "rank_9d",
             "jigo_dynamic_rank": false,
             "jigo_large_lead_delta": 5.0,
-            "jigo_large_lead_max_loss": 8.0
+            "jigo_large_lead_max_loss": 8.0,
+            "jigo_equivalent_epsilon": 0.5
         },
         "ai:scoreloss": {
             "strength": 0.2
