@@ -879,11 +879,13 @@ class JigoStrategy(AIStrategy):
         dynamic_rank     = self.settings.get("jigo_dynamic_rank", False)
         large_lead_delta    = self.settings.get("jigo_large_lead_delta", 5.0)
         large_lead_max_loss = self.settings.get("jigo_large_lead_max_loss", 8.0)
+        equivalent_epsilon  = self.settings.get("jigo_equivalent_epsilon", 0.5)
         self.game.katrain.log(
             f"[JigoStrategy] Settings: target={target_score}, max={target_score_max}, "
             f"max_loss={max_loss}, min_hp={min_hp}, mode={mode}, "
             f"profile={base_profile}, dynamic_rank={dynamic_rank}, "
-            f"large_lead_delta={large_lead_delta}, large_lead_max_loss={large_lead_max_loss}",
+            f"large_lead_delta={large_lead_delta}, large_lead_max_loss={large_lead_max_loss}, "
+            f"equivalent_epsilon={equivalent_epsilon}",
             OUTPUT_DEBUG,
         )
 
@@ -1088,7 +1090,7 @@ class JigoStrategy(AIStrategy):
                 OUTPUT_DEBUG,
             )
 
-        pick = _jigo_select_move(filtered, current_lead, target_score, target_score_max, mode)
+        pick = _jigo_select_move(filtered, current_lead, target_score, target_score_max, mode, equivalent_epsilon)
 
         # ---- 結果 ----
         if pick["move"] == "pass":
