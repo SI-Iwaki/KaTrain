@@ -368,3 +368,73 @@ class TestJigoComputeEffectiveMaxLoss:
         )
         assert result_below == 5.6
         assert result_above == 8.0
+
+
+from katrain.core.ai import _pick_target_closest_with_epsilon
+
+
+class TestPickTargetClosestWithEpsilon:
+    def test_empty_candidates_returns_none(self):
+        assert _pick_target_closest_with_epsilon([], target=0.5, epsilon=0.5) is None
+
+    def test_single_candidate_returned_regardless_of_epsilon(self):
+        cands = [_c("A1", 3.0, 0.0, 0.10)]
+        pick = _pick_target_closest_with_epsilon(cands, target=0.5, epsilon=0.5)
+        assert pick["move"] == "A1"
+
+    def test_epsilon_zero_matches_argmin_deterministic(self):
+        # epsilon=0 なら現行 argmin と同じ手を返す（レグレッション保証）
+        cands = [
+            _c("A1", 5.0, 0.0, 0.90),  # diff=4.5
+            _c("B2", 0.5, 4.5, 0.05),  # diff=0 ← closest
+            _c("C3", 1.0, 4.0, 0.10),  # diff=0.5
+        ]
+        pick = _pick_target_closest_with_epsilon(cands, target=0.5, epsilon=0.0)
+        assert pick["move"] == "B2"
+
+    def test_epsilon_zero_with_exact_tie_returns_first_in_list(self):
+        # 完全タイ(diff 同値)は入力順で先頭を返す（current min() と同挙動）
+        cands = [
+            _c("A1", 1.0, 0.0, 0.05),  # diff=0.5
+            _c("B2", 0.0, 1.0, 0.10),  # diff=0.5（タイ）
+        ]
+        pick = _pick_target_closest_with_epsilon(cands, target=0.5, epsilon=0.0)
+        assert pick["move"] == "A1"
+
+    def test_band_multiple_candidates_uses_humanpolicy_weighted(self, monkeypatch):
+        # diff 最小=0（B2）、band = diff <= 0 + 0.5 = 0.5 → {A1(0.5), B2(0), C3(0.5)}
+        cands = [
+            _c("A1", 1.0, 0.0, 0.20),
+            _c("B2", 0.5, 0.5, 0.05),
+            _c("C3", 0.0, 1.0, 0.60),  # hp 最大、band 内
+            _c("D4", 5.0, -4.5, 0.50),  # diff=4.5、band 外
+        ]
+        from katrain.core import ai as ai_mod
+
+        def fake_weighted(items, n):
+            return [max(items, key=lambda t: t[1])]
+
+        monkeypatch.setattr(ai_mod, "weighted_selection_without_replacement", fake_weighted)
+        pick = _pick_target_closest_with_epsilon(cands, target=0.5, epsilon=0.5)
+        assert pick["move"] == "C3"  # band 内で hp 最大
+
+    def test_band_all_zero_humanpolicy_falls_back_to_argmin(self):
+        # band 内 hp 全ゼロ → argmin 決定的選択（safety net）
+        cands = [
+            _c("A1", 1.0, 0.0, 0.0),  # diff=0.5
+            _c("B2", 0.5, 0.5, 0.0),  # diff=0、argmin
+        ]
+        pick = _pick_target_closest_with_epsilon(cands, target=0.5, epsilon=0.5)
+        assert pick["move"] == "B2"
+
+    def test_band_excludes_candidates_beyond_epsilon(self):
+        # diff 最小=0 (B2)、ε=0.3 → band = diff <= 0.3、C3(diff=1.0) は除外
+        cands = [
+            _c("A1", 0.8, 0.0, 0.10),  # diff=0.3（境界内）
+            _c("B2", 0.5, 0.3, 0.20),  # diff=0、argmin
+            _c("C3", 1.5, -1.0, 0.50),  # diff=1.0、除外
+        ]
+        # hp 全ゼロ fallback path を使って決定的に検証
+        cands_zero_hp = [{**c, "hp": 0.0} for c in cands]
+        pick = _pick_target_closest_with_epsilon(cands_zero_hp, target=0.5, epsilon=0.3)
+        assert pick["move"] == "B2"  # band 内 hp ゼロ → argmin → B2

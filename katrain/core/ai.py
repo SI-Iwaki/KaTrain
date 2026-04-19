@@ -791,6 +791,27 @@ def _jigo_compute_effective_max_loss(
     return max(base_max_loss, effective)
 
 
+def _pick_target_closest_with_epsilon(candidates, target, epsilon):
+    """target に近い候補群を同点扱いし、humanPolicy 重みで選択する。
+
+    - epsilon <= 0 または候補1個 → argmin と同じ手を返す（band[0]）
+    - candidates 空 → None
+    - バンド内 hp 全ゼロ → argmin 決定的選択（safety net）
+    """
+    if not candidates:
+        return None
+    diffs = [(c, abs(c["score"] - target)) for c in candidates]
+    min_diff = min(d for _, d in diffs)
+    band = [c for c, d in diffs if d <= min_diff + epsilon]
+    if epsilon <= 0 or len(band) <= 1:
+        return band[0]
+    total_hp = sum(c["hp"] for c in band)
+    if total_hp <= 0:
+        return min(band, key=lambda c: abs(c["score"] - target))
+    weighted = [(c, c["hp"]) for c in band]
+    return weighted_selection_without_replacement(weighted, 1)[0][0]
+
+
 def _jigo_select_move(candidates, current_lead, target_score, target_score_max, mode):
     """現在リード × Mode で着手を選択。
     - current_lead < target_score → target 最接近
