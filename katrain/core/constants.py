@@ -197,6 +197,7 @@ AI_OPTION_VALUES = {
     "jigo_dynamic_rank": "bool",
     "jigo_large_lead_delta": [3.0, 5.0, 7.0, 10.0],
     "jigo_large_lead_max_loss": [6.0, 7.0, 8.0, 9.0, 10.0],
+    "jigo_equivalent_epsilon": [0.0, 0.3, 0.5, 1.0],
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）
@@ -253,6 +254,7 @@ AI_OPTION_ORDER = {
     "jigo_dynamic_rank": 6,
     "jigo_large_lead_delta": 7,
     "jigo_large_lead_max_loss": 8,
+    "jigo_equivalent_epsilon": 9,
 }
 
 AI_KEY_PROPERTIES = {
