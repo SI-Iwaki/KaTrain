@@ -818,6 +818,8 @@ def _jigo_select_move(candidates, current_lead, target_score, target_score_max, 
     - 分岐2: in_range & natural → humanPolicy 重み単体（ε 無視）
     - 分岐3: in_range & maintain → target 近傍 ε バンド + humanPolicy 重み
     - 分岐4: lead > target_max → argmin(|score-target|) 決定的（ε 無視、削り意図を保つ）
+
+    in_range かつ未知 mode は ValueError。
     """
     in_range = target_score <= current_lead <= target_score_max
 
@@ -825,18 +827,21 @@ def _jigo_select_move(candidates, current_lead, target_score, target_score_max, 
     if current_lead < target_score:
         return _pick_target_closest_with_epsilon(candidates, target_score, epsilon)
 
-    # 分岐2: in_range & natural（ε 無視）
-    if in_range and mode == "natural":
+    # 分岐4: 圧勝（ε 無視、鋭手除外後の決定的選択）
+    if current_lead > target_score_max:
+        return min(candidates, key=lambda c: abs(c["score"] - target_score))
+
+    # in_range 確定後の mode 分岐
+    if mode == "natural":
+        # 分岐2: humanPolicy 重み単体（ε 無視）
         weighted = [(c, c["hp"]) for c in candidates]
         selected = weighted_selection_without_replacement(weighted, 1)[0]
         return selected[0]
-
-    # 分岐3: in_range & maintain
-    if in_range and mode == "maintain":
+    if mode == "maintain":
+        # 分岐3: target 近傍 ε バンド + humanPolicy 重み
         return _pick_target_closest_with_epsilon(candidates, target_score, epsilon)
 
-    # 分岐4: lead > target_max（ε 無視、鋭手除外後の決定的選択）
-    return min(candidates, key=lambda c: abs(c["score"] - target_score))
+    raise ValueError(f"unknown jigo_mode: {mode!r}")
 
 
 @register_strategy(AI_JIGO)

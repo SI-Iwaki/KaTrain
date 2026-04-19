@@ -179,9 +179,11 @@ class TestJigoSelectMove:
 
     def test_epsilon_applied_in_below_target_branch(self, monkeypatch):
         # lead < target_score → 分岐1 → ε バンドで humanPolicy 重み
+        # C3 は band 外だが hp 最大 → band フィルタが働かないと C3 が選ばれる（退行検知）
         cands = [
             _c("A1", 0.5, 0.0, 0.10),  # diff=0（argmin）
-            _c("B2", 0.8, -0.3, 0.80),  # diff=0.3、hp 最大
+            _c("B2", 0.8, -0.3, 0.80),  # diff=0.3、band 内で hp 最大
+            _c("C3", 5.0, -4.5, 0.99),  # diff=4.5、band 外、全体で hp 最大
         ]
         from katrain.core import ai as ai_mod
 
@@ -193,14 +195,17 @@ class TestJigoSelectMove:
             cands, current_lead=-3.0, target_score=0.5,
             target_score_max=10.0, mode="natural", epsilon=0.5
         )
-        # band = {A1(diff=0), B2(diff=0.3)} → hp 最大 B2
+        # band = {A1(diff=0), B2(diff=0.3)} → band 内の hp 最大 B2
+        # C3 は band 外なので選ばれない
         assert pick["move"] == "B2"
 
     def test_epsilon_applied_in_in_range_maintain_branch(self, monkeypatch):
         # in_range & mode=maintain → 分岐3 → ε バンドで humanPolicy 重み
+        # C3 は band 外だが hp 最大 → band フィルタが働かないと C3 が選ばれる（退行検知）
         cands = [
             _c("A1", 0.5, 0.0, 0.10),  # diff=0
-            _c("B2", 1.0, -0.5, 0.80),  # diff=0.5、hp 最大
+            _c("B2", 1.0, -0.5, 0.80),  # diff=0.5、band 内で hp 最大
+            _c("C3", 5.0, -4.5, 0.99),  # diff=4.5、band 外、全体で hp 最大
         ]
         from katrain.core import ai as ai_mod
 
@@ -213,6 +218,16 @@ class TestJigoSelectMove:
             target_score_max=10.0, mode="maintain", epsilon=0.5
         )
         assert pick["move"] == "B2"
+
+    def test_unknown_mode_in_range_raises_value_error(self):
+        # 未知の mode で in_range なら ValueError
+        cands = [_c("A1", 5.0, 0.0, 0.10)]
+        import pytest as _pt
+        with _pt.raises(ValueError, match="unknown jigo_mode"):
+            _jigo_select_move(
+                cands, current_lead=5.0, target_score=0.5,
+                target_score_max=10.0, mode="aggressive", epsilon=0.5
+            )
 
     def test_epsilon_ignored_in_in_range_natural_branch(self, monkeypatch):
         # 分岐2(natural) は ε を無視して既存 humanPolicy 重み単体
