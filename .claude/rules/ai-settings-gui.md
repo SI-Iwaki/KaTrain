@@ -69,6 +69,8 @@ if not star_moves:
 - [ ] `katrain/core/ai.py` — 対象Strategyクラスにロジック追加
 - [ ] `katrain/config.json` — 対象戦略セクションにデフォルト値追加
 - [ ] `C:\Users\iwaki\.katrain\config.json` — 同じキー追加（GUIに表示するため）
+- [ ] `katrain/i18n/locales/{en,jp}/katrain.po` — `msgid "<param_name>"` 短ラベルに加え、既存 `aihelp:<strategy>` 本文にも動作説明を追記（短ラベルだけでは意図が伝わらない）
+- [ ] `python tools/compile_mo.py` で `.mo` 再コンパイル
 - [ ] CLAUDE.md を更新（新機能の説明、パラメータ等）
 - [ ] 起動時リセットが必要な場合は `base_katrain.py` の `_load_config` 末尾に追加
 
