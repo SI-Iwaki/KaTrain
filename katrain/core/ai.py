@@ -821,8 +821,6 @@ def _jigo_select_move(candidates, current_lead, target_score, target_score_max, 
 
     in_range かつ未知 mode は ValueError。
     """
-    in_range = target_score <= current_lead <= target_score_max
-
     # 分岐1: 負け〜互角
     if current_lead < target_score:
         return _pick_target_closest_with_epsilon(candidates, target_score, epsilon)
