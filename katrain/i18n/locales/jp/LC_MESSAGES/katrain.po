@@ -532,6 +532,9 @@ msgstr "圧勝発動目数差 (target_max + Δ で発動)"
 msgid "jigo_large_lead_max_loss"
 msgstr "圧勝時の許容損失 (目)"
 
+msgid "jigo_equivalent_epsilon"
+msgstr "target 同点扱い幅 ε (目、0=無効)"
+
 msgid "ai:scoreloss"
 msgstr "損も混ぜて"
 

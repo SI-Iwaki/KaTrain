@@ -841,6 +841,9 @@ msgstr "Large-lead trigger delta"
 msgid "jigo_large_lead_max_loss"
 msgstr "Large-lead max loss (points)"
 
+msgid "jigo_equivalent_epsilon"
+msgstr "target-equivalent band (pt, 0=off)"
+
 msgid "ai:scoreloss"
 msgstr "Score Loss"
 
