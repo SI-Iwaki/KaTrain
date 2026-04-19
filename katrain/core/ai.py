@@ -812,19 +812,30 @@ def _pick_target_closest_with_epsilon(candidates, target, epsilon):
     return weighted_selection_without_replacement(weighted, 1)[0][0]
 
 
-def _jigo_select_move(candidates, current_lead, target_score, target_score_max, mode):
-    """現在リード × Mode で着手を選択。
-    - current_lead < target_score → target 最接近
-    - target_score <= lead <= target_score_max & mode=natural → humanPolicy 重み付き
-    - Mode=maintain または lead > target_score_max → target 最接近
+def _jigo_select_move(candidates, current_lead, target_score, target_score_max, mode, epsilon=0.0):
+    """現在リード × Mode × ε で着手を選択。
+    - 分岐1: current_lead < target_score → target 近傍 ε バンド + humanPolicy 重み
+    - 分岐2: in_range & natural → humanPolicy 重み単体（ε 無視）
+    - 分岐3: in_range & maintain → target 近傍 ε バンド + humanPolicy 重み
+    - 分岐4: lead > target_max → argmin(|score-target|) 決定的（ε 無視、削り意図を保つ）
     """
     in_range = target_score <= current_lead <= target_score_max
+
+    # 分岐1: 負け〜互角
     if current_lead < target_score:
-        return min(candidates, key=lambda c: abs(c["score"] - target_score))
+        return _pick_target_closest_with_epsilon(candidates, target_score, epsilon)
+
+    # 分岐2: in_range & natural（ε 無視）
     if in_range and mode == "natural":
         weighted = [(c, c["hp"]) for c in candidates]
         selected = weighted_selection_without_replacement(weighted, 1)[0]
-        return selected[0]  # (candidate_dict, weight) の tuple なので [0] で dict
+        return selected[0]
+
+    # 分岐3: in_range & maintain
+    if in_range and mode == "maintain":
+        return _pick_target_closest_with_epsilon(candidates, target_score, epsilon)
+
+    # 分岐4: lead > target_max（ε 無視、鋭手除外後の決定的選択）
     return min(candidates, key=lambda c: abs(c["score"] - target_score))
 
 

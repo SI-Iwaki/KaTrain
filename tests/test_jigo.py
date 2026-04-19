@@ -164,6 +164,87 @@ class TestJigoSelectMove:
         )
         assert pick["move"] == "B2"
 
+    def test_epsilon_kwarg_defaults_to_zero_preserves_current_behavior(self):
+        # epsilon 省略時は現行 argmin 挙動と同じ
+        cands = [
+            _c("A1", 5.0, 0.0, 0.10),
+            _c("B2", 1.0, 4.0, 0.05),
+            _c("C3", 0.5, 4.5, 0.05),  # closest to target=0.5
+        ]
+        pick = _jigo_select_move(
+            cands, current_lead=-3.0, target_score=0.5,
+            target_score_max=10.0, mode="natural"
+        )
+        assert pick["move"] == "C3"
+
+    def test_epsilon_applied_in_below_target_branch(self, monkeypatch):
+        # lead < target_score → 分岐1 → ε バンドで humanPolicy 重み
+        cands = [
+            _c("A1", 0.5, 0.0, 0.10),  # diff=0（argmin）
+            _c("B2", 0.8, -0.3, 0.80),  # diff=0.3、hp 最大
+        ]
+        from katrain.core import ai as ai_mod
+
+        def fake_weighted(items, n):
+            return [max(items, key=lambda t: t[1])]
+
+        monkeypatch.setattr(ai_mod, "weighted_selection_without_replacement", fake_weighted)
+        pick = _jigo_select_move(
+            cands, current_lead=-3.0, target_score=0.5,
+            target_score_max=10.0, mode="natural", epsilon=0.5
+        )
+        # band = {A1(diff=0), B2(diff=0.3)} → hp 最大 B2
+        assert pick["move"] == "B2"
+
+    def test_epsilon_applied_in_in_range_maintain_branch(self, monkeypatch):
+        # in_range & mode=maintain → 分岐3 → ε バンドで humanPolicy 重み
+        cands = [
+            _c("A1", 0.5, 0.0, 0.10),  # diff=0
+            _c("B2", 1.0, -0.5, 0.80),  # diff=0.5、hp 最大
+        ]
+        from katrain.core import ai as ai_mod
+
+        def fake_weighted(items, n):
+            return [max(items, key=lambda t: t[1])]
+
+        monkeypatch.setattr(ai_mod, "weighted_selection_without_replacement", fake_weighted)
+        pick = _jigo_select_move(
+            cands, current_lead=5.0, target_score=0.5,
+            target_score_max=10.0, mode="maintain", epsilon=0.5
+        )
+        assert pick["move"] == "B2"
+
+    def test_epsilon_ignored_in_in_range_natural_branch(self, monkeypatch):
+        # 分岐2(natural) は ε を無視して既存 humanPolicy 重み単体
+        cands = [
+            _c("A1", 5.0, 0.0, 0.90),  # hp 最大
+            _c("B2", 0.5, 4.5, 0.05),  # target 最近接
+        ]
+        from katrain.core import ai as ai_mod
+
+        def fake_weighted(items, n):
+            return [max(items, key=lambda t: t[1])]
+
+        monkeypatch.setattr(ai_mod, "weighted_selection_without_replacement", fake_weighted)
+        pick = _jigo_select_move(
+            cands, current_lead=5.0, target_score=0.5,
+            target_score_max=10.0, mode="natural", epsilon=0.5
+        )
+        # 分岐2: ε 無視、全候補 hp 重み → A1
+        assert pick["move"] == "A1"
+
+    def test_epsilon_ignored_in_above_target_max_branch(self):
+        # 分岐4(lead > target_max) は ε を無視して argmin
+        cands = [
+            _c("A1", 25.0, 0.0, 0.80),  # hp 大だが diff 大
+            _c("B2", 0.5, 24.5, 0.05),  # diff=0、argmin
+        ]
+        pick = _jigo_select_move(
+            cands, current_lead=30.0, target_score=0.5,
+            target_score_max=10.0, mode="natural", epsilon=0.5
+        )
+        assert pick["move"] == "B2"
+
 
 class TestJigoExcludeSharpMoves:
     def test_excludes_moves_with_score_above_current_lead(self):
