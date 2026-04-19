@@ -147,3 +147,41 @@ README に記載の Ctrl+D/E/W 系を初回起動時に実物で確認する。p
 - WSL / Git Bash からの ccmux 起動 — Windows Terminal + Windows バイナリの組み合わせのみ対象
 - VS Code 統合ターミナル内での ccmux 動作保証
 - Rust ソースからのビルド
+
+## 付録: 実導入時の記録（2026-04-19）
+
+### インストール結果
+
+| 項目 | 実測値 |
+|---|---|
+| 導入バージョン | `ccmux-cli@0.5.4`（`npm list -g ccmux-cli` で確認） |
+| npm global prefix | `C:\Users\iwaki\AppData\Roaming\npm` |
+| コマンドシム | `C:\Users\iwaki\AppData\Roaming\npm\ccmux.cmd` と POSIX 用 `ccmux` |
+| 実バイナリ | `C:\Users\iwaki\AppData\Roaming\npm\node_modules\ccmux-cli\bin\ccmux.exe` |
+| 同梱ランチャ | `C:\Users\iwaki\AppData\Roaming\npm\node_modules\ccmux-cli\bin\cli.js` |
+
+**注**: npm パッケージ内ではバイナリが `ccmux-windows-x64.exe` ではなく単に `ccmux.exe` にリネームされて配置されている。spec §3.2 のフォールバックパスは実在バイナリ名 `ccmux.exe` に置き換える必要がある。
+
+### Windows Terminal プロファイル
+
+| 項目 | 実測値 |
+|---|---|
+| settings.json パス | `C:\Users\iwaki\AppData\Local\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json` |
+| プロファイル名 | `ccmux (KaTrain)` |
+| GUID | `{c4cc3983-c0ed-4f29-b8cd-21ebe9f6d968}` |
+| commandline | `ccmux.cmd`（フォールバック不要で動作） |
+| icon | 🟧（`\ud83d\udfe7` escape で格納） |
+
+### 動作確認結果（Task 4〜7）
+
+- ✅ プロファイル一覧に「ccmux (KaTrain)」表示
+- ✅ 起動時に KaTrain リポジトリのファイルツリーが表示される
+- ✅ 初期ペインで `claude` 実行時にペイン枠がオレンジに変化
+- ✅ ペイン縦分割で独立 PTY が動作
+- ✅ 新規タブ作成 + `cd` でファイルツリーが追従
+
+### 運用上の気づき
+
+1. **ccmux は CLI フラグ非対応**: `ccmux --version` / `ccmux --help` ともに "not a directory: --version" エラーとなる。引数はすべて開始ディレクトリとして扱われる仕様。バージョン確認は `npm list -g ccmux-cli` を使う
+2. **settings.json の非 ASCII 文字は Unicode escape 保存**: Windows Terminal が既存プロファイル名（「コマンド プロンプト」）を `\u30b3...` 形式で保存しているため、アイコン絵文字も同じ escape 形式で格納した（生絵文字のままでもパース可能だが、ファイル慣習に合わせた）
+3. **commandline は `ccmux.cmd` のファイル名のみで動作**: npm global bin が PATH に通っているため絶対パス不要。フォールバック条件（絶対パス指定）は今回発動せず
