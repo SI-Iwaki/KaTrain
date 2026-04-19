@@ -68,7 +68,7 @@ pre-1.0（3 日で 6 リリースの非常に活発な開発）のため、**明
   "name": "ccmux (KaTrain)",
   "commandline": "ccmux.cmd",
   "startingDirectory": "C:\\Users\\iwaki\\Documents\\katrain-1.17.1.1\\katrain-1.17.1.1",
-  "icon": "\ud83d\udfe7",
+  "icon": "🟧",
   "hidden": false,
   "guid": "{新規 GUID を生成}"
 }
@@ -116,7 +116,7 @@ C:\Users\iwaki\AppData\Roaming\npm\node_modules\ccmux-cli\bin\ccmux-windows-x64.
 
 ### 4.5 キーバインド
 
-README の Ctrl+D/E/W 系を初回起動時に実物で確認。pre-1.0 のため本 spec ではバインドを固定記載しない。
+README に記載の Ctrl+D/E/W 系を初回起動時に実物で確認する。pre-1.0 で変動の可能性があるため本 spec 内には固定記載せず、使用時に GitHub の最新 README を参照する運用とする。
 
 ## 5. リスク / 失敗時対応
 
