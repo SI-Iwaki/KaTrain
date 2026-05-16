@@ -773,6 +773,69 @@ def _select_rank_by_lead(current_lead, target_score_max, base_profile,
 JIGO_LARGE_LEAD_9X9_CAP = 5.0
 
 
+# ----------------------------------------------------------------
+# Jigo deception Phase 機構
+# ----------------------------------------------------------------
+# 手数ベースの phase 境界（盤面サイズ → [(境界手数, phase 名), ...]）
+JIGO_DECEPTION_PHASE_TABLE = {
+    19: [(30, "phase1"), (80, "phase2"), (150, "phase3")],
+    13: [(17, "phase1"), (44, "phase2"), (83, "phase3")],
+    9:  [(8,  "phase1"), (20, "phase2"), (38, "phase3")],
+}
+
+# (board_size, phase) → (target_score, target_score_max) または None
+# None は「ユーザ設定 target_score / target_score_max をそのまま使用」を意味
+JIGO_DECEPTION_TARGETS = {
+    (19, "phase0"): None,
+    (19, "phase1"): (-3.0, -2.0),
+    (19, "phase2"): (-1.5, -0.5),
+    (19, "phase3"): None,
+    (13, "phase0"): None,
+    (13, "phase1"): (-2.0, -1.0),
+    (13, "phase2"): (-1.0,  0.0),
+    (13, "phase3"): None,
+    (9,  "phase0"): None,
+    (9,  "phase1"): (-1.5, -0.5),
+    (9,  "phase2"): (-0.5,  0.0),
+    (9,  "phase3"): None,
+}
+
+# 過剰優勢/過剰劣勢の安全弁閾値（目数）
+JIGO_DECEPTION_SAFETY_OVERSHOOT = 5.0
+
+
+def _jigo_resolve_phase(board_size, move_num, current_lead):
+    """手数 + 安全弁から有効 phase を返す。
+
+    Args:
+        board_size: 19/13/9 等。テーブル未登録なら 19 路にフォールバック
+        move_num: 1-indexed の現在手数（self.cn.depth 相当）
+        current_lead: 前ターンの current_lead（None なら安全弁スキップ）
+
+    Returns:
+        "phase0" | "phase1" | "phase2" | "phase3"
+    """
+    table = JIGO_DECEPTION_PHASE_TABLE.get(board_size, JIGO_DECEPTION_PHASE_TABLE[19])
+    base_phase = "phase0"
+    for boundary, phase in table:
+        if move_num >= boundary:
+            base_phase = phase
+
+    # 安全弁は phase1/phase2 のみ
+    if base_phase in ("phase1", "phase2") and current_lead is not None:
+        # 安全弁判定用 target_max を自己ルックアップ（未登録 board_size は 19 路フォールバック）
+        targets = JIGO_DECEPTION_TARGETS.get((board_size, base_phase))
+        if targets is None:
+            targets = JIGO_DECEPTION_TARGETS.get((19, base_phase))
+        if targets is not None:
+            _, base_target_max = targets
+            if current_lead > base_target_max + JIGO_DECEPTION_SAFETY_OVERSHOOT:
+                return "phase3"  # 過剰優勢: 早期に勝ちにいく
+            if current_lead < base_target_max - JIGO_DECEPTION_SAFETY_OVERSHOOT:
+                return "phase3"  # 過剰劣勢: 回復に専念
+    return base_phase
+
+
 def _jigo_compute_effective_max_loss(
     current_lead, target_score_max, base_max_loss,
     large_lead_delta, large_lead_max_loss, board_size,

@@ -1,0 +1,174 @@
+# tests/test_jigo_deception.py
+"""Jigo deception Phase 解決のユニットテスト"""
+import pytest
+
+from katrain.core.ai import (
+    JIGO_DECEPTION_PHASE_TABLE,
+    JIGO_DECEPTION_TARGETS,
+    JIGO_DECEPTION_SAFETY_OVERSHOOT,
+    _jigo_resolve_phase,
+)
+
+
+class TestJigoPhaseBoundaries19:
+    """19 路盤の手数ベース phase 境界"""
+
+    def test_move_1_is_phase0(self):
+        assert _jigo_resolve_phase(19, 1, None) == "phase0"
+
+    def test_move_29_is_phase0(self):
+        assert _jigo_resolve_phase(19, 29, None) == "phase0"
+
+    def test_move_30_is_phase1(self):
+        assert _jigo_resolve_phase(19, 30, None) == "phase1"
+
+    def test_move_79_is_phase1(self):
+        assert _jigo_resolve_phase(19, 79, None) == "phase1"
+
+    def test_move_80_is_phase2(self):
+        assert _jigo_resolve_phase(19, 80, None) == "phase2"
+
+    def test_move_149_is_phase2(self):
+        assert _jigo_resolve_phase(19, 149, None) == "phase2"
+
+    def test_move_150_is_phase3(self):
+        assert _jigo_resolve_phase(19, 150, None) == "phase3"
+
+    def test_move_250_is_phase3(self):
+        assert _jigo_resolve_phase(19, 250, None) == "phase3"
+
+
+class TestJigoPhaseBoundaries13:
+    """13 路盤の手数ベース phase 境界"""
+
+    def test_move_16_is_phase0(self):
+        assert _jigo_resolve_phase(13, 16, None) == "phase0"
+
+    def test_move_17_is_phase1(self):
+        assert _jigo_resolve_phase(13, 17, None) == "phase1"
+
+    def test_move_44_is_phase2(self):
+        assert _jigo_resolve_phase(13, 44, None) == "phase2"
+
+    def test_move_83_is_phase3(self):
+        assert _jigo_resolve_phase(13, 83, None) == "phase3"
+
+
+class TestJigoPhaseBoundaries9:
+    """9 路盤の手数ベース phase 境界"""
+
+    def test_move_7_is_phase0(self):
+        assert _jigo_resolve_phase(9, 7, None) == "phase0"
+
+    def test_move_8_is_phase1(self):
+        assert _jigo_resolve_phase(9, 8, None) == "phase1"
+
+    def test_move_20_is_phase2(self):
+        assert _jigo_resolve_phase(9, 20, None) == "phase2"
+
+    def test_move_38_is_phase3(self):
+        assert _jigo_resolve_phase(9, 38, None) == "phase3"
+
+
+class TestJigoSafetyValve:
+    """安全弁: ±5 目で phase3 ジャンプ"""
+
+    def test_phase1_overshoot_jumps_to_phase3(self):
+        # 19路 phase1 target_max=-2.0、+5 超過 → lead > 3.0 で phase3
+        assert _jigo_resolve_phase(19, 30, current_lead=3.5) == "phase3"
+
+    def test_phase1_undershoot_jumps_to_phase3(self):
+        # 19路 phase1 target_max=-2.0、-5 不足 → lead < -7.0 で phase3
+        assert _jigo_resolve_phase(19, 30, current_lead=-7.5) == "phase3"
+
+    def test_phase1_in_range_stays(self):
+        # lead が ±5 目以内なら phase1 維持
+        assert _jigo_resolve_phase(19, 30, current_lead=0.0) == "phase1"
+        assert _jigo_resolve_phase(19, 30, current_lead=-4.0) == "phase1"
+
+    def test_phase2_overshoot_jumps_to_phase3(self):
+        # 19路 phase2 target_max=-0.5、+5 超過 → lead > 4.5 で phase3
+        assert _jigo_resolve_phase(19, 80, current_lead=5.0) == "phase3"
+
+    def test_phase2_undershoot_jumps_to_phase3(self):
+        # 19路 phase2 target_max=-0.5、-5 不足 → lead < -5.5 で phase3
+        assert _jigo_resolve_phase(19, 80, current_lead=-6.0) == "phase3"
+
+    def test_phase0_no_safety_valve(self):
+        # phase0 は安全弁発動しない（巨大 lead でも phase0 維持）
+        assert _jigo_resolve_phase(19, 10, current_lead=100.0) == "phase0"
+        assert _jigo_resolve_phase(19, 10, current_lead=-100.0) == "phase0"
+
+    def test_phase3_no_safety_valve(self):
+        # phase3 は終局フェーズ、lead 変動で再ジャンプしない
+        assert _jigo_resolve_phase(19, 200, current_lead=100.0) == "phase3"
+        assert _jigo_resolve_phase(19, 200, current_lead=-100.0) == "phase3"
+
+    def test_last_lead_none_skips_safety_valve(self):
+        # 初手や lead 未取得時は安全弁スキップ
+        assert _jigo_resolve_phase(19, 30, current_lead=None) == "phase1"
+
+
+class TestJigoUnknownBoardSize:
+    """未対応盤面サイズは 19 路にフォールバック"""
+
+    def test_board_size_15_falls_back_to_19(self):
+        assert _jigo_resolve_phase(15, 30, None) == "phase1"
+        assert _jigo_resolve_phase(15, 150, None) == "phase3"
+
+    def test_board_size_7_falls_back_to_19(self):
+        # 7 路の 30 手目 → 19 路テーブルで phase1
+        assert _jigo_resolve_phase(7, 30, None) == "phase1"
+
+
+class TestJigoDeceptionTargetsLookup:
+    """JIGO_DECEPTION_TARGETS の中身検証"""
+
+    def test_19_phase0_is_none(self):
+        assert JIGO_DECEPTION_TARGETS[(19, "phase0")] is None
+
+    def test_19_phase1_targets(self):
+        assert JIGO_DECEPTION_TARGETS[(19, "phase1")] == (-3.0, -2.0)
+
+    def test_19_phase2_targets(self):
+        assert JIGO_DECEPTION_TARGETS[(19, "phase2")] == (-1.5, -0.5)
+
+    def test_19_phase3_is_none(self):
+        assert JIGO_DECEPTION_TARGETS[(19, "phase3")] is None
+
+    def test_13_phase1_targets(self):
+        assert JIGO_DECEPTION_TARGETS[(13, "phase1")] == (-2.0, -1.0)
+
+    def test_13_phase2_targets(self):
+        assert JIGO_DECEPTION_TARGETS[(13, "phase2")] == (-1.0, 0.0)
+
+    def test_9_phase1_targets(self):
+        assert JIGO_DECEPTION_TARGETS[(9, "phase1")] == (-1.5, -0.5)
+
+    def test_9_phase2_targets(self):
+        assert JIGO_DECEPTION_TARGETS[(9, "phase2")] == (-0.5, 0.0)
+
+    def test_safety_overshoot_value(self):
+        assert JIGO_DECEPTION_SAFETY_OVERSHOOT == 5.0
+
+
+class TestJigoPhaseTableStructure:
+    """JIGO_DECEPTION_PHASE_TABLE の構造検証"""
+
+    def test_19_has_three_phases(self):
+        assert len(JIGO_DECEPTION_PHASE_TABLE[19]) == 3
+
+    def test_19_boundaries(self):
+        assert JIGO_DECEPTION_PHASE_TABLE[19] == [
+            (30, "phase1"), (80, "phase2"), (150, "phase3"),
+        ]
+
+    def test_13_boundaries(self):
+        assert JIGO_DECEPTION_PHASE_TABLE[13] == [
+            (17, "phase1"), (44, "phase2"), (83, "phase3"),
+        ]
+
+    def test_9_boundaries(self):
+        assert JIGO_DECEPTION_PHASE_TABLE[9] == [
+            (8, "phase1"), (20, "phase2"), (38, "phase3"),
+        ]
