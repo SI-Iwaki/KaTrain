@@ -327,6 +327,61 @@ python -m katrain_debug --sgf tests/data/panda1.sgf --strategy jigo \
 9. batch_eval 校正（3-run 平均 × deception 2 値 × SGF 2〜3）
 10. 校正結果を本 spec の付録に追記
 
+## 校正結果（2026-05-16）
+
+**実行条件**:
+- SGF: `tests/data/panda1.sgf`（19 路、205 手の実戦譜、白勝 +37 目）
+- `--player W`, `--strategy jigo`, `--batch`
+- 3-run 平均（jigo は argmax のため戦略側決定的だが、KataGo 事後解析の非決定性で多少のばらつきあり）
+
+### 全体メトリクス（baseline vs deception）
+
+| 指標 | baseline 平均 | deception 平均 | 差分 | 評価 |
+|---|---|---|---|---|
+| ai_top_move | 32.4% | 29.7% | -2.6% | AI 一致率が意図通り低下 |
+| ai_top5_move | 46.7% | 42.5% | -4.3% | 上位 5 手一致率も低下 |
+| mean_ptloss | 1.24 | 1.30 | +0.05 目 | 劣化は KataGo run 間 stdev (0.04-0.05) 範囲内、許容範囲内 |
+| accuracy | 69.9% | 68.9% | -1.0% | 微減、許容範囲内 |
+
+### Phase 別メトリクス
+
+| Phase | 指標 | baseline | deception | 差分 |
+|---|---|---|---|---|
+| opening | ai_top_move | 64.1% | 60.3% | -3.8% |
+| opening | mean_ptloss | 0.18 | 0.22 | +0.04 |
+| middle | ai_top_move | 21.9% | 19.8% | -2.1% |
+| middle | mean_ptloss | 1.82 | 1.89 | +0.07 |
+| endgame | ai_top_move | 19.4% | 16.7% | -2.8% |
+| endgame | mean_ptloss | 0.48 | 0.48 | 0.00 |
+
+### 内部 Phase 分布（deception runs、全 3 run で一致）
+
+- phase0: 15 手（手数 1-29、定石期間）
+- phase1: 11 手（手数 30-79、中盤入口で控えロジック適用）
+- phase2: **0 手**（安全弁が phase3 にジャンプさせた）
+- phase3: 77 手（手数 80 以降、panda1.sgf では既に白 +20 目以上で安全弁発動）
+
+### 手選択の差分（run1、計 25 手 / 103 手で異なる選択）
+
+| Phase | 差分手数 | 備考 |
+|---|---|---|
+| phase0 | 4 手 | ε バンド tiebreak の確率分散（既存機能） |
+| phase1 | 6 手 | **Deception 機構の本来作用**: -3 目方向の手を選択 |
+| phase3 | 15 手 | ε バンド tiebreak + 内部キャッシュ差（user 設定復帰中） |
+
+### 校正所見
+
+1. **Phase 解決層は決定論的に動作**: 3 run すべてで内部 phase 分布が完全一致（15/11/0/77）
+2. **安全弁が設計通り発動**: panda1.sgf は白優勢ゲームのため Phase 2 入りすべき手数 80+ では実 lead +20 目超 → +4.5 目（target_max -0.5 + 安全弁 +5）を遥かに超え phase3 強制ジャンプ。Phase 2 がスキップされる挙動は spec 通り
+3. **AI 一致率の低下 (-2.6%)** は Phase 1（11 手）と Phase 0/3 の ε バンド tiebreak からの寄与の合算
+4. **mean_ptloss の劣化 +0.05 目** は KataGo run 間ノイズ範囲内、設計目標（+1.0 目以内）を大幅クリア
+
+### 校正の限界
+
+- panda1.sgf は実戦譜のため score_lead trajectory（手数 30/80/150 時点）は両条件で同一。spec の合格基準「30 手目時点の score_lead 中央値が 0 ~ -2 目程度」は **AI 同士の実対局でしか検証不可**（バッチ評価は手選択の評価のみ、対局再生は行わない）
+- 弱い対戦相手（loss > 5.6 連発）を想定した到達性検証は本校正では未実施
+- 真の「序中盤で -3 目劣勢を作る」挙動は GUI での AI vs AI 対局・人間 vs AI 対局ログで確認すること
+
 ## 参考
 
 - 関連 spec: `docs/superpowers/specs/2026-04-12-jigo-humanlike-design.md`（JigoStrategy 本体）
