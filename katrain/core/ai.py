@@ -997,7 +997,7 @@ class JigoStrategy(AIStrategy):
                 self.game.katrain.log(
                     f"[JigoStrategy] Dynamic rank: base={base_profile}, "
                     f"last_lead={last_lead:.2f}, "
-                    f"delta={last_lead - target_score_max:.2f} → {human_profile} "
+                    f"delta={last_lead - eff_target_max:.2f} → {human_profile} "
                     f"(delta_1={delta_1}, delta_2={delta_2})",
                     OUTPUT_DEBUG,
                 )
