@@ -941,14 +941,44 @@ class JigoStrategy(AIStrategy):
         large_lead_delta    = self.settings.get("jigo_large_lead_delta", 5.0)
         large_lead_max_loss = self.settings.get("jigo_large_lead_max_loss", 8.0)
         equivalent_epsilon  = self.settings.get("jigo_equivalent_epsilon", 0.5)
+        deception_enabled = self.settings.get("jigo_deception", False)
         self.game.katrain.log(
             f"[JigoStrategy] Settings: target={target_score}, max={target_score_max}, "
             f"max_loss={max_loss}, min_hp={min_hp}, mode={mode}, "
             f"profile={base_profile}, dynamic_rank={dynamic_rank}, "
             f"large_lead_delta={large_lead_delta}, large_lead_max_loss={large_lead_max_loss}, "
-            f"equivalent_epsilon={equivalent_epsilon}",
+            f"equivalent_epsilon={equivalent_epsilon}, deception={deception_enabled}",
             OUTPUT_DEBUG,
         )
+
+        # ---- Phase 解決（jigo_deception=True 時のみ有効値を上書き） ----
+        eff_target = target_score
+        eff_target_max = target_score_max
+        eff_mode = mode
+        eff_large_lead_delta = large_lead_delta
+        phase = "phase0"
+        if deception_enabled:
+            # board_size は既存呼び出し規約に合わせ max(width, height) を採用
+            board_size_for_phase = max(self.game.board_size)
+            move_num = self.cn.depth
+            last_lead = getattr(self.game, "_jigo_last_current_lead", None)
+            phase = _jigo_resolve_phase(board_size_for_phase, move_num, last_lead)
+            overrides = JIGO_DECEPTION_TARGETS.get((board_size_for_phase, phase))
+            if overrides is None:
+                overrides = JIGO_DECEPTION_TARGETS.get((19, phase))
+            if overrides is not None:
+                eff_target, eff_target_max = overrides
+            # Phase 1/2 中は mode を maintain に固定（natural だと in_range で target に寄らない）
+            if phase in ("phase1", "phase2"):
+                eff_mode = "maintain"
+                # Phase 1/2 中は large_lead 緩和を無効化（小さい eff_target_max で誤発動を防ぐ）
+                eff_large_lead_delta = float("inf")
+            self.game.katrain.log(
+                f"[JigoStrategy] Deception: move={move_num}, phase={phase}, "
+                f"eff_target={eff_target}, eff_target_max={eff_target_max}, "
+                f"eff_mode={eff_mode}, last_lead={last_lead}",
+                OUTPUT_DEBUG,
+            )
 
         sign = self.cn.player_sign(self.cn.next_player)
         engine = self.game.engines[self.cn.player]
@@ -960,7 +990,7 @@ class JigoStrategy(AIStrategy):
             delta_1 = self.settings.get("jigo_rank_delta_1", 5)
             delta_2 = self.settings.get("jigo_rank_delta_2", 15)
             human_profile = _select_rank_by_lead(
-                last_lead, target_score_max, base_profile,
+                last_lead, eff_target_max, base_profile,
                 delta_1=delta_1, delta_2=delta_2,
             )
             if human_profile != base_profile:
@@ -1099,16 +1129,16 @@ class JigoStrategy(AIStrategy):
         board_size = max(self.game.board_size)
         effective_max_loss = _jigo_compute_effective_max_loss(
             current_lead=current_lead,
-            target_score_max=target_score_max,
+            target_score_max=eff_target_max,
             base_max_loss=max_loss,
-            large_lead_delta=large_lead_delta,
+            large_lead_delta=eff_large_lead_delta,
             large_lead_max_loss=large_lead_max_loss,
             board_size=board_size,
         )
         if effective_max_loss != max_loss:
             self.game.katrain.log(
                 f"[JigoStrategy] Large lead expansion: lead={current_lead:.2f} ≥ "
-                f"target_max+{large_lead_delta} = {target_score_max + large_lead_delta:.2f}, "
+                f"eff_target_max+{eff_large_lead_delta} = {eff_target_max + eff_large_lead_delta:.2f}, "
                 f"max_loss: {max_loss} → {effective_max_loss}",
                 OUTPUT_DEBUG,
             )
@@ -1135,23 +1165,23 @@ class JigoStrategy(AIStrategy):
                 )
 
         # ---- 現在リード & 選択分岐 ----
-        in_range = target_score <= current_lead <= target_score_max
+        in_range = eff_target <= current_lead <= eff_target_max
         self.game.katrain.log(
-            f"[JigoStrategy] Mode: {mode}, lead={current_lead:.2f}, in_range={in_range}",
+            f"[JigoStrategy] Mode: {eff_mode}, lead={current_lead:.2f}, in_range={in_range}",
             OUTPUT_DEBUG,
         )
 
         # ---- 鋭手除外（圧勝時のみ） ----
-        if current_lead > target_score_max:
+        if current_lead > eff_target_max:
             before_exclude = len(filtered)
             filtered = _jigo_exclude_sharp_moves(filtered, current_lead)
             self.game.katrain.log(
                 f"[JigoStrategy] Sharp-move exclusion: {before_exclude} → {len(filtered)} "
-                f"(lead={current_lead:.2f} > target_max={target_score_max})",
+                f"(lead={current_lead:.2f} > eff_target_max={eff_target_max})",
                 OUTPUT_DEBUG,
             )
 
-        pick = _jigo_select_move(filtered, current_lead, target_score, target_score_max, mode, equivalent_epsilon)
+        pick = _jigo_select_move(filtered, current_lead, eff_target, eff_target_max, eff_mode, equivalent_epsilon)
 
         # ---- 結果 ----
         if pick["move"] == "pass":
@@ -1159,7 +1189,7 @@ class JigoStrategy(AIStrategy):
         else:
             aimove = Move.from_gtp(pick["move"], player=self.cn.next_player)
         ai_thoughts = (
-            f"Jigo (mode={mode}, lead={current_lead:.1f}): chose {pick['move']} "
+            f"Jigo (mode={eff_mode}, phase={phase}, lead={current_lead:.1f}): chose {pick['move']} "
             f"(loss={pick['loss']:.2f}, hp={pick['hp']:.3f}, score={pick['score']:.2f})"
         )
         self.game.katrain.log(
