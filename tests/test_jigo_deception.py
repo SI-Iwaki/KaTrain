@@ -172,3 +172,31 @@ class TestJigoPhaseTableStructure:
         assert JIGO_DECEPTION_PHASE_TABLE[9] == [
             (8, "phase1"), (20, "phase2"), (38, "phase3"),
         ]
+
+
+class TestJigoPhaseTableOverride:
+    """phase_table_override 引数で境界手数をカスタマイズ"""
+
+    def test_override_replaces_default_table(self):
+        # Override で 13路の boundaries を 10/40/100 に変更
+        override = [(10, "phase1"), (40, "phase2"), (100, "phase3")]
+        # 手数 9 は phase0、10 は phase1
+        assert _jigo_resolve_phase(13, 9, None, phase_table_override=override) == "phase0"
+        assert _jigo_resolve_phase(13, 10, None, phase_table_override=override) == "phase1"
+        # 手数 50 は phase2 (40 <= 50 < 100)
+        assert _jigo_resolve_phase(13, 50, None, phase_table_override=override) == "phase2"
+        # 手数 100 は phase3
+        assert _jigo_resolve_phase(13, 100, None, phase_table_override=override) == "phase3"
+
+    def test_override_none_uses_default_table(self):
+        # phase_table_override=None なら既存挙動（17/44/83）
+        assert _jigo_resolve_phase(13, 17, None, phase_table_override=None) == "phase1"
+        assert _jigo_resolve_phase(13, 44, None, phase_table_override=None) == "phase2"
+
+    def test_order_disorder_no_exception(self):
+        # 順序矛盾でも例外なし、ループの「最後にマッチ」が勝つ
+        override = [(35, "phase1"), (30, "phase2"), (110, "phase3")]
+        # 手数 31: phase1 boundary=35 は False、phase2 boundary=30 は True → phase2
+        assert _jigo_resolve_phase(13, 31, None, phase_table_override=override) == "phase2"
+        # 手数 36: phase1=True で base=phase1、続けて phase2=True で base=phase2
+        assert _jigo_resolve_phase(13, 36, None, phase_table_override=override) == "phase2"

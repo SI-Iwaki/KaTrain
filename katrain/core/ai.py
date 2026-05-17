@@ -804,18 +804,21 @@ JIGO_DECEPTION_TARGETS = {
 JIGO_DECEPTION_SAFETY_OVERSHOOT = 5.0
 
 
-def _jigo_resolve_phase(board_size, move_num, current_lead):
+def _jigo_resolve_phase(board_size, move_num, current_lead, phase_table_override=None):
     """手数 + 安全弁から有効 phase を返す。
 
     Args:
         board_size: 19/13/9 等。テーブル未登録なら 19 路にフォールバック
         move_num: 1-indexed の現在手数（self.cn.depth 相当）
         current_lead: 前ターンの current_lead（None なら安全弁スキップ）
+        phase_table_override: 指定すると JIGO_DECEPTION_PHASE_TABLE の代わりに
+            このリスト [(境界手数, phase 名), ...] を使う。13路スライダー用。
 
     Returns:
         "phase0" | "phase1" | "phase2" | "phase3"
     """
-    table = JIGO_DECEPTION_PHASE_TABLE.get(board_size, JIGO_DECEPTION_PHASE_TABLE[19])
+    table = phase_table_override if phase_table_override is not None else \
+        JIGO_DECEPTION_PHASE_TABLE.get(board_size, JIGO_DECEPTION_PHASE_TABLE[19])
     base_phase = "phase0"
     for boundary, phase in table:
         if move_num >= boundary:
@@ -830,9 +833,10 @@ def _jigo_resolve_phase(board_size, move_num, current_lead):
         if targets is not None:
             _, base_target_max = targets
             if current_lead > base_target_max + JIGO_DECEPTION_SAFETY_OVERSHOOT:
-                return "phase3"  # 過剰優勢: 早期に勝ちにいく
+                return "phase3"
             if current_lead < base_target_max - JIGO_DECEPTION_SAFETY_OVERSHOOT:
-                return "phase3"  # 過剰劣勢: 回復に専念
+                return "phase3"
+
     return base_phase
 
 
