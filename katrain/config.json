@@ -110,7 +110,12 @@
             "jigo_large_lead_delta": 5.0,
             "jigo_large_lead_max_loss": 8.0,
             "jigo_equivalent_epsilon": 0.5,
-            "jigo_deception": false
+            "jigo_deception": false,
+            "jigo_deception_13_phase1_start": 17,
+            "jigo_deception_13_phase2_start": 44,
+            "jigo_deception_13_phase3_start": 83,
+            "jigo_deception_13_phase1_target": -2.0,
+            "jigo_deception_13_phase2_target": -1.0
         },
         "ai:scoreloss": {
             "strength": 0.2
