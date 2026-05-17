@@ -7,6 +7,7 @@ from katrain.core.ai import (
     JIGO_DECEPTION_TARGETS,
     JIGO_DECEPTION_SAFETY_OVERSHOOT,
     _jigo_resolve_phase,
+    _jigo_resolve_13path_overrides,  # 新規
 )
 
 
@@ -230,3 +231,39 @@ class TestJigoTargetOverrides:
         # 13路 phase1 default target_max=-1.0、lead=+5.0 → +5.0 > -1.0+5.0=+4.0 → phase3
         result = _jigo_resolve_phase(13, 17, +5.0, target_overrides=None)
         assert result == "phase3"
+
+
+class TestJigo13PathOverrides:
+    """_jigo_resolve_13path_overrides の挙動"""
+
+    def test_phase0_passthrough(self):
+        # phase0 は default をそのまま返す
+        result = _jigo_resolve_13path_overrides("phase0", -3.0, -2.0, {})
+        assert result == (-3.0, -2.0)
+
+    def test_phase3_passthrough(self):
+        # phase3 も default をそのまま返す
+        result = _jigo_resolve_13path_overrides("phase3", 0.5, 10.0, {})
+        assert result == (0.5, 10.0)
+
+    def test_phase1_uses_setting(self):
+        # phase1 で settings から target を読む、target_max は target+1.0
+        settings = {"jigo_deception_13_phase1_target": -3.0}
+        result = _jigo_resolve_13path_overrides("phase1", 0.0, 0.0, settings)
+        assert result == (-3.0, -2.0)
+
+    def test_phase2_uses_setting(self):
+        # phase2 で settings から target を読む
+        settings = {"jigo_deception_13_phase2_target": -0.5}
+        result = _jigo_resolve_13path_overrides("phase2", 0.0, 0.0, settings)
+        assert result == (-0.5, 0.5)
+
+    def test_phase1_setting_missing_uses_default(self):
+        # settings に該当キーがなければ default 値 -2.0 を使う
+        result = _jigo_resolve_13path_overrides("phase1", 0.0, 0.0, {})
+        assert result == (-2.0, -1.0)
+
+    def test_phase2_setting_missing_uses_default(self):
+        # settings に該当キーがなければ default 値 -1.0 を使う
+        result = _jigo_resolve_13path_overrides("phase2", 0.0, 0.0, {})
+        assert result == (-1.0, 0.0)

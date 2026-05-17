@@ -848,6 +848,31 @@ def _jigo_resolve_phase(board_size, move_num, current_lead,
     return base_phase
 
 
+def _jigo_resolve_13path_overrides(phase, default_target, default_target_max, settings):
+    """13路盤の deception 有効時、Phase 1/2 で eff_target/eff_target_max を
+    settings (スライダー値) に置換して返す。
+
+    Phase 0/3 は default をそのまま返す（既存挙動）。
+    target_max は target + 1.0 で自動算出（既存 1.0 目幅維持）。
+
+    Args:
+        phase: "phase0" | "phase1" | "phase2" | "phase3"
+        default_target: phase0/phase3 用フォールバック値
+        default_target_max: phase0/phase3 用フォールバック値
+        settings: JigoStrategy.settings 相当の dict-like
+
+    Returns:
+        (eff_target, eff_target_max)
+    """
+    if phase == "phase1":
+        t = settings.get("jigo_deception_13_phase1_target", -2.0)
+        return t, t + 1.0
+    if phase == "phase2":
+        t = settings.get("jigo_deception_13_phase2_target", -1.0)
+        return t, t + 1.0
+    return default_target, default_target_max
+
+
 def _jigo_compute_effective_max_loss(
     current_lead, target_score_max, base_max_loss,
     large_lead_delta, large_lead_max_loss, board_size,
