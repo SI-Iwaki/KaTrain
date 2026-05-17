@@ -999,12 +999,41 @@ class JigoStrategy(AIStrategy):
             board_size_for_phase = max(self.game.board_size)
             move_num = self.cn.depth
             last_lead = getattr(self.game, "_jigo_last_current_lead", None)
-            phase = _jigo_resolve_phase(board_size_for_phase, move_num, last_lead)
-            overrides = JIGO_DECEPTION_TARGETS.get((board_size_for_phase, phase))
-            if overrides is None:
-                overrides = JIGO_DECEPTION_TARGETS.get((19, phase))
-            if overrides is not None:
-                eff_target, eff_target_max = overrides
+
+            # 13路盤限定: スライダー値で phase 境界と target_overrides を構築
+            phase_table_override = None
+            target_overrides = None
+            if board_size_for_phase == 13:
+                phase_table_override = [
+                    (self.settings.get("jigo_deception_13_phase1_start", 17), "phase1"),
+                    (self.settings.get("jigo_deception_13_phase2_start", 44), "phase2"),
+                    (self.settings.get("jigo_deception_13_phase3_start", 83), "phase3"),
+                ]
+                p1_target = self.settings.get("jigo_deception_13_phase1_target", -2.0)
+                p2_target = self.settings.get("jigo_deception_13_phase2_target", -1.0)
+                target_overrides = {
+                    "phase1": (p1_target, p1_target + 1.0),
+                    "phase2": (p2_target, p2_target + 1.0),
+                }
+
+            phase = _jigo_resolve_phase(
+                board_size_for_phase, move_num, last_lead,
+                phase_table_override=phase_table_override,
+                target_overrides=target_overrides,
+            )
+
+            # Phase 1/2 の eff_target/eff_target_max を決定
+            if board_size_for_phase == 13:
+                eff_target, eff_target_max = _jigo_resolve_13path_overrides(
+                    phase, target_score, target_score_max, self.settings
+                )
+            else:
+                overrides = JIGO_DECEPTION_TARGETS.get((board_size_for_phase, phase))
+                if overrides is None:
+                    overrides = JIGO_DECEPTION_TARGETS.get((19, phase))
+                if overrides is not None:
+                    eff_target, eff_target_max = overrides
+
             # Phase 1/2 中は mode を maintain に固定（natural だと in_range で target に寄らない）
             if phase in ("phase1", "phase2"):
                 eff_mode = "maintain"
@@ -1013,7 +1042,8 @@ class JigoStrategy(AIStrategy):
             self.game.katrain.log(
                 f"[JigoStrategy] Deception: move={move_num}, phase={phase}, "
                 f"eff_target={eff_target}, eff_target_max={eff_target_max}, "
-                f"eff_mode={eff_mode}, last_lead={last_lead}",
+                f"eff_mode={eff_mode}, last_lead={last_lead}, "
+                f"board={board_size_for_phase}, sliders={target_overrides is not None}",
                 OUTPUT_DEBUG,
             )
 
