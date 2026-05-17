@@ -833,7 +833,7 @@ msgid "aihelp:antimirror"
 msgstr "Anti Mirror-go Mode of KataGo."
 
 msgid "aihelp:jigo"
-msgstr "Aims to win by a narrow margin of target_score..target_score_max points. Picks moves with per-move loss <= max_loss_per_move and humanPolicy >= min_human_policy, avoiding unnaturally bad moves. jigo_mode: natural=best move within range / maintain=always push toward target. human_profile: humanSL rank (rank_5d/7d/9d). jigo_dynamic_rank: ON to auto-downshift rank based on lead delta (handles weaker opponents). Sharp moves that widen the lead are excluded when overshooting. When current_lead exceeds target_score_max + jigo_large_lead_delta, max_loss is temporarily relaxed to jigo_large_lead_max_loss to improve convergence into the target range (capped at 5.0 on 9x9). jigo_equivalent_epsilon: tiebreak band (points) around target-closest candidates. Applied only in branches lead<target and in_range & maintain; moves within argmin+/-epsilon points are treated as equivalent and selected via humanPolicy weighting (unchanged in joseki positions with a single candidate). 0 disables."
+msgstr "Aims to win by a narrow margin of target_score..target_score_max points. Picks moves with per-move loss <= max_loss_per_move and humanPolicy >= min_human_policy, avoiding unnaturally bad moves. jigo_mode: natural=best move within range / maintain=always push toward target. human_profile: humanSL rank (rank_5d/7d/9d). jigo_dynamic_rank: ON to auto-downshift rank based on lead delta (handles weaker opponents). Sharp moves that widen the lead are excluded when overshooting. When current_lead exceeds target_score_max + jigo_large_lead_delta, max_loss is temporarily relaxed to jigo_large_lead_max_loss to improve convergence into the target range (capped at 5.0 on 9x9). jigo_equivalent_epsilon: tiebreak band (points) around target-closest candidates. Applied only in branches lead<target and in_range & maintain; moves within argmin+/-epsilon points are treated as equivalent and selected via humanPolicy weighting (unchanged in joseki positions with a single candidate). 0 disables. jigo_deception: when ON, deliberately plays slightly behind in early/middle game then catches up in endgame, mimicking human-like comeback play. On 13x13 boards, Phase 1/2/3 start moves and Phase 1/2 target score differences are adjustable via sliders (19x19 / 9x9 use hardcoded values). target_max = target + 1.0 within each phase, and a safety valve at +/-5 points jumps to Phase 3 on extreme lead/deficit. Recommended order is Phase1 start < Phase2 start < Phase3 start, but inverted values raise no error - the \"last matching boundary wins\"."
 
 msgid "jigo_large_lead_delta"
 msgstr "Large-lead trigger delta"
@@ -843,6 +843,24 @@ msgstr "Large-lead max loss (points)"
 
 msgid "jigo_equivalent_epsilon"
 msgstr "target-equivalent band (pt, 0=off)"
+
+msgid "jigo_deception"
+msgstr "Enable deception phase mechanism"
+
+msgid "jigo_deception_13_phase1_start"
+msgstr "[13x13] Phase 1 start move (begin holding back)"
+
+msgid "jigo_deception_13_phase2_start"
+msgstr "[13x13] Phase 2 start move (begin returning to target)"
+
+msgid "jigo_deception_13_phase3_start"
+msgstr "[13x13] Phase 3 start move (resume normal Jigo)"
+
+msgid "jigo_deception_13_phase1_target"
+msgstr "[13x13] Phase 1 target score diff (e.g. -2.0 = stay 2 pts behind)"
+
+msgid "jigo_deception_13_phase2_target"
+msgstr "[13x13] Phase 2 target score diff (intermediate before Phase 3)"
 
 msgid "ai:scoreloss"
 msgstr "Score Loss"
