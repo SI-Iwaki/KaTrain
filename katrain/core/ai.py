@@ -804,7 +804,8 @@ JIGO_DECEPTION_TARGETS = {
 JIGO_DECEPTION_SAFETY_OVERSHOOT = 5.0
 
 
-def _jigo_resolve_phase(board_size, move_num, current_lead, phase_table_override=None):
+def _jigo_resolve_phase(board_size, move_num, current_lead,
+                        phase_table_override=None, target_overrides=None):
     """手数 + 安全弁から有効 phase を返す。
 
     Args:
@@ -813,6 +814,9 @@ def _jigo_resolve_phase(board_size, move_num, current_lead, phase_table_override
         current_lead: 前ターンの current_lead（None なら安全弁スキップ）
         phase_table_override: 指定すると JIGO_DECEPTION_PHASE_TABLE の代わりに
             このリスト [(境界手数, phase 名), ...] を使う。13路スライダー用。
+        target_overrides: 指定すると JIGO_DECEPTION_TARGETS の代わりに
+            このdict {"phase1": (target, target_max), "phase2": (...)} で
+            安全弁の target_max を判定する。13路スライダー用。
 
     Returns:
         "phase0" | "phase1" | "phase2" | "phase3"
@@ -826,12 +830,16 @@ def _jigo_resolve_phase(board_size, move_num, current_lead, phase_table_override
 
     # 安全弁は phase1/phase2 のみ
     if base_phase in ("phase1", "phase2") and current_lead is not None:
-        # 安全弁判定用 target_max を自己ルックアップ（未登録 board_size は 19 路フォールバック）
-        targets = JIGO_DECEPTION_TARGETS.get((board_size, base_phase))
-        if targets is None:
-            targets = JIGO_DECEPTION_TARGETS.get((19, base_phase))
-        if targets is not None:
-            _, base_target_max = targets
+        base_target_max = None
+        if target_overrides is not None and base_phase in target_overrides:
+            _, base_target_max = target_overrides[base_phase]
+        else:
+            targets = JIGO_DECEPTION_TARGETS.get((board_size, base_phase))
+            if targets is None:
+                targets = JIGO_DECEPTION_TARGETS.get((19, base_phase))
+            if targets is not None:
+                _, base_target_max = targets
+        if base_target_max is not None:
             if current_lead > base_target_max + JIGO_DECEPTION_SAFETY_OVERSHOOT:
                 return "phase3"
             if current_lead < base_target_max - JIGO_DECEPTION_SAFETY_OVERSHOOT:

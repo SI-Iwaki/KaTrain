@@ -200,3 +200,33 @@ class TestJigoPhaseTableOverride:
         assert _jigo_resolve_phase(13, 31, None, phase_table_override=override) == "phase2"
         # 手数 36: phase1=True で base=phase1、続けて phase2=True で base=phase2
         assert _jigo_resolve_phase(13, 36, None, phase_table_override=override) == "phase2"
+
+
+class TestJigoTargetOverrides:
+    """target_overrides 引数で安全弁の target_max をカスタマイズ"""
+
+    def test_safety_uses_override_target_max_overshoot(self):
+        # Phase 1 で override target_max=-1.0、lead=+5.0 → +5.0 > -1.0 + 5.0 (=4.0)
+        # → 過剰優勢で phase3 にジャンプ
+        targets = {"phase1": (-2.0, -1.0), "phase2": (-1.0, 0.0)}
+        result = _jigo_resolve_phase(13, 20, +5.0, target_overrides=targets)
+        assert result == "phase3"
+
+    def test_safety_uses_override_target_max_undershoot(self):
+        # Phase 2 で override target_max=0.0、lead=-6.0 → -6.0 < 0.0 - 5.0 (=-5.0)
+        # → 過剰劣勢で phase3 にジャンプ
+        targets = {"phase1": (-2.0, -1.0), "phase2": (-1.0, 0.0)}
+        result = _jigo_resolve_phase(13, 50, -6.0, target_overrides=targets)
+        assert result == "phase3"
+
+    def test_safety_within_band_keeps_phase(self):
+        # Override target_max=-1.0、lead=+2.0 → 2.0 ≤ -1.0 + 5.0 (=4.0)、phase1 維持
+        targets = {"phase1": (-2.0, -1.0), "phase2": (-1.0, 0.0)}
+        result = _jigo_resolve_phase(13, 20, +2.0, target_overrides=targets)
+        assert result == "phase1"
+
+    def test_target_overrides_none_uses_default_targets(self):
+        # target_overrides=None なら既存 JIGO_DECEPTION_TARGETS で判定
+        # 13路 phase1 default target_max=-1.0、lead=+5.0 → +5.0 > -1.0+5.0=+4.0 → phase3
+        result = _jigo_resolve_phase(13, 17, +5.0, target_overrides=None)
+        assert result == "phase3"
