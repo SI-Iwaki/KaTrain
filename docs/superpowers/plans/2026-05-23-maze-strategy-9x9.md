@@ -1,5 +1,7 @@
 # 迷路戦略（MazeStrategy）実装計画
 
+**【中止】2026-05-23: この計画に基づく実装は完了したが、GUI 実機テストの結果、戦略自体を中止。** 中止理由は spec（`docs/superpowers/specs/2026-05-23-maze-strategy-9x9-design.md`）冒頭の注記を参照。実装一式は `feature/maze-strategy-9x9` ブランチに保留（master 未マージ）。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 9路盤専用の新 AI 戦略「迷路（MazeStrategy）」を追加し、相手が最善応手に最も深い読みを要する手（humanSL 期待損失 + 鋭さが最大の手）を選んで対局を難解化する。
