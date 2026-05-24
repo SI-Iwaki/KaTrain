@@ -1,5 +1,7 @@
 # コウ戦略（KoStrategy）実装計画
 
+**【棚上げ】2026-05-24: この計画に基づく実装は完了したが、GUI 13路実機テストの結果、戦略を棚上げ。** 棚上げ理由は spec（`docs/superpowers/specs/2026-05-24-ko-strategy-design.md`）冒頭の注記を参照（決定的なコウを作れず辺のヨセコウ止まり＝構造的限界）。実装一式は `feature/ko-strategy` ブランチに保留（master 未マージ）。以下は棚上げ時点の実装記録。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 地よりコウで競る独立AI戦略 `ai:ko`（GUI「コウ」）を追加する。緊張を高めてコウを誘発し、損失バジェット内でコウを仕掛ける。
