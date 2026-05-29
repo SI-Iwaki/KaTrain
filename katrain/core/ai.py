@@ -2793,6 +2793,23 @@ def _compute_star_opening_targets(board_size, stones, ai_player, n):
     return set()
 
 
+def _select_star_target(target_stars, human_policy, board_size):
+    """target_stars の中から humanPolicy 最大の座標を返す。同値は座標昇順で決定的に選ぶ。
+
+    humanPolicy が全て 0（modern_style で星点に 0 が返るケース）でも強制するため、
+    hp による足切りは行わず最小座標を返す。
+    """
+    bx, by = board_size
+
+    def hp(coord):
+        x, y = coord
+        idx = (by - y - 1) * bx + x
+        return human_policy[idx] if 0 <= idx < len(human_policy) else 0.0
+
+    # 座標昇順で走査し max を取る → 同値時は最小座標が選ばれる（決定的）
+    return max(sorted(target_stars), key=hp)
+
+
 @register_strategy(AI_HUMAN)
 @register_strategy(AI_PRO)
 class HumanStyleStrategy(AIStrategy):

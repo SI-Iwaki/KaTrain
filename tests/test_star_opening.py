@@ -2,7 +2,7 @@
 """星打ち布石ヘルパー（_get_star_lines / _compute_star_opening_targets / _select_star_target）の純関数テスト。"""
 import pytest
 
-from katrain.core.ai import _get_star_lines, _compute_star_opening_targets
+from katrain.core.ai import _get_star_lines, _compute_star_opening_targets, _select_star_target
 from katrain.core.game import Move
 
 
@@ -111,3 +111,26 @@ class TestComputeStarOpeningTargetsN3:
     def test_n3_returns_empty_on_13x13(self):
         targets = _compute_star_opening_targets((13, 13), _stones([]), "B", 3)
         assert targets == set()
+
+
+class TestSelectStarTarget:
+    def _hp_array(self, board_size, weights):
+        """weights: {coord: value} から humanPolicy フラット配列（pass 含む len = bx*by+1）を生成。"""
+        bx, by = board_size
+        arr = [0.0] * (bx * by + 1)
+        for (x, y), v in weights.items():
+            arr[(by - y - 1) * bx + x] = v
+        return arr
+
+    def test_picks_highest_human_policy(self):
+        bs = (19, 19)
+        hp = self._hp_array(bs, {(3, 3): 0.1, (15, 3): 0.5, (3, 15): 0.2})
+        chosen = _select_star_target({(3, 3), (15, 3), (3, 15)}, hp, bs)
+        assert chosen == (15, 3)
+
+    def test_ties_resolve_to_smallest_coord(self):
+        # 全 hp=0（modern_style で星点が 0 のケース）→ 座標昇順で最小
+        bs = (19, 19)
+        hp = self._hp_array(bs, {})
+        chosen = _select_star_target({(15, 3), (3, 3), (3, 15)}, hp, bs)
+        assert chosen == (3, 3)
