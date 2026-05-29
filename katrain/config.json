@@ -115,7 +115,8 @@
             "jigo_deception_13_phase2_start": 44,
             "jigo_deception_13_phase3_start": 83,
             "jigo_deception_13_phase1_target": -2.0,
-            "jigo_deception_13_phase2_target": -1.0
+            "jigo_deception_13_phase2_target": -1.0,
+            "jigo_force_sanrensei": false
         },
         "ai:scoreloss": {
             "strength": 0.2
