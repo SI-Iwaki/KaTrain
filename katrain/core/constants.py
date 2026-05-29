@@ -204,6 +204,7 @@ AI_OPTION_VALUES = {
     "jigo_deception_13_phase3_start": [70, 83, 95, 110],
     "jigo_deception_13_phase1_target": [-1.0, -2.0, -3.0, -4.0],
     "jigo_deception_13_phase2_target": [-0.5, -1.0, -1.5, -2.0],
+    "jigo_force_sanrensei": "bool",
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）
@@ -267,6 +268,7 @@ AI_OPTION_ORDER = {
     "jigo_deception_13_phase3_start": 13,
     "jigo_deception_13_phase1_target": 14,
     "jigo_deception_13_phase2_target": 15,
+    "jigo_force_sanrensei": 16,
 }
 
 AI_KEY_PROPERTIES = {
