@@ -103,10 +103,29 @@ class TestComputeStarOpeningTargetsN3:
         assert targets == set()
 
     def test_blocked_line_excluded(self):
-        # 黒 (3,3) を持つが、下辺の (15,3) に白 → 下辺は除外、左辺のみ
+        # 黒 (3,3) を持つが、下辺の (15,3) に白 → まだ1子なので左辺で続行
         stones = _stones([("B", (3, 3)), ("W", (15, 3))])
         targets = _compute_star_opening_targets((19, 19), stones, "B", 3)
         assert targets == {(3, 9), (3, 15)}
+
+    def test_committed_line_blocked_gives_up(self):
+        # 下辺に黒2子（コミット済み）、中央 (9,3) を白が妨害 → 三連星断念（空集合）
+        stones = _stones([("B", (3, 3)), ("B", (15, 3)), ("W", (9, 3))])
+        targets = _compute_star_opening_targets((19, 19), stones, "B", 3)
+        assert targets == set()
+
+    def test_no_pivot_after_committed_line_blocked(self):
+        # コミット済み下辺が妨害されても、左辺・右辺へ pivot しない（星を打ち続けない）
+        stones = _stones([("B", (3, 3)), ("B", (15, 3)), ("W", (9, 3))])
+        targets = _compute_star_opening_targets((19, 19), stones, "B", 3)
+        assert (3, 9) not in targets and (3, 15) not in targets
+        assert (15, 9) not in targets and (15, 15) not in targets
+
+    def test_committed_line_viable_completes_despite_other_white(self):
+        # 下辺に黒2子・中央空き、白は無関係な隅 (3,15) → 下辺中央 (9,3) で完成
+        stones = _stones([("B", (3, 3)), ("B", (15, 3)), ("W", (3, 15))])
+        targets = _compute_star_opening_targets((19, 19), stones, "B", 3)
+        assert targets == {(9, 3)}
 
     def test_n3_returns_empty_on_13x13(self):
         targets = _compute_star_opening_targets((13, 13), _stones([]), "B", 3)

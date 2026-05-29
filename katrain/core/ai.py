@@ -2780,32 +2780,38 @@ def _compute_star_opening_targets(board_size, stones, ai_player, n):
         lines = _get_star_lines(board_size)
         if not lines:
             return set()
-        # いずれかのラインが既に完成していれば強制終了
+        # 各ラインの AI石数・相手石数・空点を集計
+        line_stats = []  # (ai_count, opp_count, empty_points)
         for line in lines:
-            if sum(1 for p in line if stones_by_pos.get(p) == ai_player) >= 3:
-                return set()
-        # 有効ライン（相手石が乗っていない）を抽出
-        viable = []  # (ai_count, empty_points)
-        for line in lines:
-            if any(stones_by_pos.get(p) == opp for p in line):
-                continue
             ai_count = sum(1 for p in line if stones_by_pos.get(p) == ai_player)
+            opp_count = sum(1 for p in line if stones_by_pos.get(p) == opp)
             empty_pts = {p for p in line if p not in stones_by_pos}
-            viable.append((ai_count, empty_pts))
-        if not viable:
+            line_stats.append((ai_count, opp_count, empty_pts))
+        # いずれかのラインが既に完成していれば強制終了
+        if any(ai_count >= 3 for ai_count, _, _ in line_stats):
             return set()
-        max_ai = max(c for c, _ in viable)
+        max_ai = max(ai_count for ai_count, _, _ in line_stats)
         if max_ai == 0:
-            # AI 石ゼロ → 有効ライン上の空き隅星から開始（中辺星は最初に出さない）
+            # AI 石ゼロ（初手）→ 相手石が無いラインの空き隅星から開始（中辺星は最初に出さない）
             starts = set()
-            for _, empty_pts in viable:
-                starts |= {p for p in empty_pts if p in corner_stars}
+            for ai_count, opp_count, empty_pts in line_stats:
+                if opp_count == 0:
+                    starts |= {p for p in empty_pts if p in corner_stars}
             return starts
-        targets = set()
-        for ai_count, empty_pts in viable:
-            if ai_count == max_ai:
+        # AI が最も石を置いた「コミット済みライン」のみを対象にする。
+        # コミット済みラインが相手に妨害されていなければ、その空点で続行（完成を目指す）。
+        committed_viable = [
+            empty_pts for ai_count, opp_count, empty_pts in line_stats
+            if ai_count == max_ai and opp_count == 0
+        ]
+        if committed_viable:
+            targets = set()
+            for empty_pts in committed_viable:
                 targets |= empty_pts
-        return targets
+            return targets
+        # コミット済みラインがすべて相手に妨害された → 三連星は崩れたとみなし強制終了。
+        # （別ラインへ pivot せず通常 jigo に戻す）
+        return set()
 
     return set()
 
