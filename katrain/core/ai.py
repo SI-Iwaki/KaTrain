@@ -2715,6 +2715,24 @@ def _diagonal_star(corner, corner_stars):
     return None
 
 
+def _get_star_lines(board_size):
+    """19路盤の4辺それぞれの星点ライン（隅2 + 中辺星1 の3点コリニア集合）を返す。
+
+    中辺の星が存在しない盤面（13/9路等）では空リストを返す（= n=3 三連星は19路専用）。
+    """
+    bx, by = board_size
+    if not (bx == 19 and by == 19):
+        return []
+    near_x, far_x = 3, bx - 4   # 3, 15
+    near_y, far_y = 3, by - 4   # 3, 15
+    mid_x, mid_y = bx // 2, by // 2  # 9, 9
+    bottom = [(near_x, near_y), (mid_x, near_y), (far_x, near_y)]
+    top    = [(near_x, far_y),  (mid_x, far_y),  (far_x, far_y)]
+    left   = [(near_x, near_y), (near_x, mid_y), (near_x, far_y)]
+    right  = [(far_x, near_y),  (far_x, mid_y),  (far_x, far_y)]
+    return [bottom, top, left, right]
+
+
 @register_strategy(AI_HUMAN)
 @register_strategy(AI_PRO)
 class HumanStyleStrategy(AIStrategy):
