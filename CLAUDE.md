@@ -6,7 +6,7 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 
 - 上流リポジトリ: https://github.com/sanderland/katrain
 - ランタイム設定: `C:\Users\iwaki\.katrain\`
-- 主な改修: Human-like AI（9段）モードの拡張。悪手フィルタ（スコアベースのフィルタリング）に加え、力戦派（Fighting）・攻城（Siege）・狩猟（Hunt）・狩猟一致率低減（HuntDivergence）・AI一致率低減（Divergence）・地合い勝ち（Jigo）等の戦略モードを追加・改修
+- 主な改修: Human-like AI（9段）モードの拡張。悪手フィルタ（スコアベースのフィルタリング）に加え、力戦派（Fighting）・攻城（Siege）・狩猟（Hunt）・狩猟一致率低減（HuntDivergence）・AI一致率低減（Divergence）・地合い勝ち（Jigo）等の戦略モードを追加・改修。Jigo には序盤星打ち強制オプション `jigo_force_sanrensei`（19路のみ・黒=三連星/白=2連星）を追加。星打ち布石ロジックは `ai.py` の共有ヘルパー `_compute_star_opening_targets` に集約し HumanStyle の2連星と共用
 
 ## 技術スタック
 
