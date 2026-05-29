@@ -1114,6 +1114,23 @@ class JigoStrategy(AIStrategy):
             OUTPUT_DEBUG,
         )
 
+        # ---- 星打ち強制（19路盤・序盤のみ。黒=三連星 / 白=2連星） ----
+        if self.settings.get("jigo_force_sanrensei", False) and \
+                self.game.board_size[0] == 19 and self.game.board_size[1] == 19:
+            n_star = 3 if self.cn.next_player == "B" else 2
+            target_stars = _compute_star_opening_targets(
+                self.game.board_size, self.game.stones, self.cn.next_player, n_star
+            )
+            if target_stars:
+                coords = _select_star_target(target_stars, human_policy, self.game.board_size)
+                aimove = Move(coords, player=self.cn.next_player)
+                self.game.katrain.log(
+                    f"[JigoStrategy] force_sanrensei: n={n_star}, "
+                    f"targets={sorted(target_stars)}, chose={coords}",
+                    OUTPUT_DEBUG,
+                )
+                return aimove, f"Jigo force star opening (n={n_star}): {aimove.gtp()}"
+
         # ---- Stage 2: クリーンクエリ（scoreLead 用） ----
         stage2_override = {
             "ignorePreRootHistory": False,
