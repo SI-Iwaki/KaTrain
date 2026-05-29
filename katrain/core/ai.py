@@ -3069,31 +3069,9 @@ class HumanStyleStrategy(AIStrategy):
 
         # 2連星（序盤星打ち強制）フィルタ
         if self.settings.get("force_star_opening", False) and moves:
-            corner_stars = _get_corner_star_points(board_size)
-            stones_by_pos = {m.coords: m.player for m in self.game.stones}
-            ai_player = self.cn.next_player
-            opponent_player = "W" if ai_player == "B" else "B"
-
-            ai_stars_played = [c for c in corner_stars if stones_by_pos.get(c) == ai_player]
-            opp_stars_played = [c for c in corner_stars if stones_by_pos.get(c) == opponent_player]
-            empty_stars = {c for c in corner_stars if c not in stones_by_pos}
-
-            target_stars = set()
-
-            if len(ai_stars_played) == 0 and empty_stars:
-                if opp_stars_played:
-                    # 相手が星を打っていたら対角線上に打つ（白番の対角戦略）
-                    diag = _diagonal_star(opp_stars_played[0], corner_stars)
-                    target_stars = {diag} if diag and diag in empty_stars else empty_stars
-                else:
-                    # 相手がまだ星に打っていない（黒番の1手目等）→ 任意の隅
-                    target_stars = empty_stars
-            elif len(ai_stars_played) == 1 and empty_stars:
-                # 自分の1手目と同じ辺の星点に限定（2連星を完成させる）
-                first = ai_stars_played[0]
-                same_side = {c for c in corner_stars if c[0] == first[0] or c[1] == first[1]} - {first}
-                target_stars = same_side & empty_stars
-            # len(ai_stars_played) >= 2 → 強制しない（target_stars = {} のまま）
+            target_stars = _compute_star_opening_targets(
+                board_size, self.game.stones, self.cn.next_player, 2
+            )
 
             if target_stars:
                 # まず既存のmovesの中から星点候補を探す
@@ -3109,8 +3087,7 @@ class HumanStyleStrategy(AIStrategy):
                 if star_moves:
                     moves = star_moves
                     self.game.katrain.log(
-                        f"[HumanStyleStrategy] force_star_opening: ai_stars={len(ai_stars_played)}, "
-                        f"opp_stars={len(opp_stars_played)}, "
+                        f"[HumanStyleStrategy] force_star_opening: "
                         f"targets={[f'({c[0]},{c[1]})' for c in target_stars]}",
                         OUTPUT_DEBUG,
                     )
