@@ -2733,6 +2733,66 @@ def _get_star_lines(board_size):
     return [bottom, top, left, right]
 
 
+def _compute_star_opening_targets(board_size, stones, ai_player, n):
+    """星打ち布石で次に打つべき星点座標の集合を返す。
+
+    n=2: 隅4星のみを使う2連星ロジック（HumanStyle 既存挙動の移植）。
+    n=3: 側辺ライン（隅2+中辺星）を使う三連星ロジック（19路専用）。
+    強制不要・完成済み・盤面非対応なら空集合を返す。
+    """
+    opp = "W" if ai_player == "B" else "B"
+    stones_by_pos = {m.coords: m.player for m in stones if m.coords is not None}
+    corner_stars = _get_corner_star_points(board_size)
+
+    if n == 2:
+        ai_stars = [c for c in corner_stars if stones_by_pos.get(c) == ai_player]
+        opp_stars = [c for c in corner_stars if stones_by_pos.get(c) == opp]
+        empty = {c for c in corner_stars if c not in stones_by_pos}
+        if len(ai_stars) == 0 and empty:
+            if opp_stars:
+                diag = _diagonal_star(opp_stars[0], corner_stars)
+                return {diag} if diag and diag in empty else set(empty)
+            return set(empty)
+        if len(ai_stars) == 1 and empty:
+            first = ai_stars[0]
+            same_side = {c for c in corner_stars if c[0] == first[0] or c[1] == first[1]} - {first}
+            return same_side & empty
+        return set()
+
+    if n == 3:
+        lines = _get_star_lines(board_size)
+        if not lines:
+            return set()
+        # いずれかのラインが既に完成していれば強制終了
+        for line in lines:
+            if sum(1 for p in line if stones_by_pos.get(p) == ai_player) >= 3:
+                return set()
+        # 有効ライン（相手石が乗っていない）を抽出
+        viable = []  # (ai_count, empty_points)
+        for line in lines:
+            if any(stones_by_pos.get(p) == opp for p in line):
+                continue
+            ai_count = sum(1 for p in line if stones_by_pos.get(p) == ai_player)
+            empty_pts = {p for p in line if p not in stones_by_pos}
+            viable.append((ai_count, empty_pts))
+        if not viable:
+            return set()
+        max_ai = max(c for c, _ in viable)
+        if max_ai == 0:
+            # AI 石ゼロ → 有効ライン上の空き隅星から開始（中辺星は最初に出さない）
+            starts = set()
+            for _, empty_pts in viable:
+                starts |= {p for p in empty_pts if p in corner_stars}
+            return starts
+        targets = set()
+        for ai_count, empty_pts in viable:
+            if ai_count == max_ai:
+                targets |= empty_pts
+        return targets
+
+    return set()
+
+
 @register_strategy(AI_HUMAN)
 @register_strategy(AI_PRO)
 class HumanStyleStrategy(AIStrategy):
