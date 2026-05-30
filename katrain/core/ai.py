@@ -2210,6 +2210,15 @@ class FightingStrategy(PickBasedStrategy):
                 weights[(x, y)] = max(w, 1e-6)
         return weights
 
+    def _build_complexity_weight_dict(self):
+        """複雑化重み = 力戦重み（contact/invasion 込み）× 切りボーナス。"""
+        base_weights = self._build_fighting_weight_dict()
+        cut_boost = self.settings.get("complexity_cut_boost", 2.0)
+        opponent_player = "W" if self.cn.next_player == "B" else "B"
+        return _apply_cut_boost(
+            base_weights, self.game.board, self.game.chains, opponent_player, cut_boost
+        )
+
     def _generate_scoreloss(self) -> Tuple[Move, str]:
         """案A: ScoreLoss系フィルタ + 力戦重みで着手選択"""
         self.game.katrain.log(f"[FightingStrategy:scoreloss] Starting move generation", OUTPUT_DEBUG)
