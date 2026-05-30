@@ -2447,12 +2447,18 @@ class FightingStrategy(PickBasedStrategy):
                 return result
 
             # --- complex モード: リード適応＋鋭さ＋複雑さゲート ---
+            # complexity_weights: cut_boost 込み（最終選択の重み付け用）
+            # gate_weights: cut_boost 抜きの素の力戦重み（損失予算ゲートの複雑さ条件用）。
+            #   cut_boost で max が膨らみ高損失手が閾値(0.5×max)を超えられず門前払いになる
+            #   相互干渉を避けるため、ゲート判定は素の力戦重みで行う。
             complexity_weights = {}
+            gate_weights = {}
             current_lead = best_score
             if complex_mode:
                 _opp_stones = [s for s in self.game.stones if s.player != self.cn.next_player]
                 if len(_opp_stones) >= 2:
                     complexity_weights = self._build_complexity_weight_dict()
+                    gate_weights = self._build_fighting_weight_dict()
                 root_src = clean_analysis if (clean_analysis and not clean_error) else analysis
                 current_lead = player_sign * (root_src or {}).get("rootInfo", {}).get("scoreLead", best_score)
                 lead_threshold = self.settings.get("complexity_lead_threshold", 15.0)
@@ -2461,7 +2467,7 @@ class FightingStrategy(PickBasedStrategy):
                 complexity_base_max_loss = self.settings.get("complexity_base_max_loss", BAD_MOVE_THRESHOLD)
                 complexity_weight_by_gtp = {
                     Move((x, y), player=self.cn.next_player).gtp(): w
-                    for (x, y), w in complexity_weights.items()
+                    for (x, y), w in gate_weights.items()
                 }
                 good_moves = _complexity_loss_filter(
                     move_infos, best_score, player_sign, BAD_MOVE_THRESHOLD,
