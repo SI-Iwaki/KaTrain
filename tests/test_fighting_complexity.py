@@ -4,6 +4,7 @@ import pytest
 
 from katrain.core.ai import _count_cut_adjacency
 from katrain.core.ai import _apply_cut_boost
+from katrain.core.ai import _complexity_relaxed_cap
 from katrain.core.game import Move
 
 
@@ -63,3 +64,20 @@ class TestApplyCutBoost:
         weights = {(2, 2): 1.0}
         out = _apply_cut_boost(weights, board, chains, "W", 2.0)
         assert out[(2, 2)] == 1.0
+
+
+class TestComplexityRelaxedCap:
+    def test_below_threshold_no_relaxation(self):
+        assert _complexity_relaxed_cap(10.0, 5.6, 15.0, 10.0) == 5.6
+
+    def test_at_threshold_returns_base(self):
+        assert _complexity_relaxed_cap(15.0, 5.6, 15.0, 10.0) == 5.6
+
+    def test_ramps_linearly_to_max(self):
+        assert _complexity_relaxed_cap(20.0, 5.6, 15.0, 10.0, ramp=10.0) == pytest.approx(7.8)
+
+    def test_caps_at_max_loss(self):
+        assert _complexity_relaxed_cap(100.0, 5.6, 15.0, 10.0, ramp=10.0) == pytest.approx(10.0)
+
+    def test_max_loss_below_base_returns_base(self):
+        assert _complexity_relaxed_cap(50.0, 5.6, 15.0, 4.0) == 5.6

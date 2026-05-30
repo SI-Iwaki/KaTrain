@@ -2751,6 +2751,14 @@ def _apply_cut_boost(weights, board, chains, opponent_player, cut_boost):
     return boosted
 
 
+def _complexity_relaxed_cap(current_lead, base_threshold, lead_threshold, max_loss, ramp=_COMPLEXITY_RAMP):
+    """リードに応じた損失上限。current_lead < lead_threshold なら base のまま。"""
+    if current_lead < lead_threshold or max_loss <= base_threshold:
+        return base_threshold
+    frac = min(1.0, (current_lead - lead_threshold) / ramp) if ramp > 0 else 1.0
+    return base_threshold + frac * (max_loss - base_threshold)
+
+
 def _get_corner_star_points(board_size):
     """盤面サイズに応じた隅の星点（4-4点相当）の集合を返す"""
     bx, by = board_size
