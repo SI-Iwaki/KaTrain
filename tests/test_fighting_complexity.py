@@ -8,7 +8,30 @@ from katrain.core.ai import _apply_cut_boost
 from katrain.core.ai import _complexity_relaxed_cap
 from katrain.core.ai import _passes_complexity_gate
 from katrain.core.ai import _complexity_loss_filter
+from katrain.core.ai import _floor_budget_weights
 from katrain.core.game import Move
+
+
+class TestFloorBudgetWeights:
+    def test_floors_budget_move_to_fraction_of_max(self):
+        # weights [1.0, 0.01, 0.5], losses [0, 7, 0], base 5.6, floor 0.3 → floor_w=0.3
+        # idx1 は loss7>=5.6 → max(0.01,0.3)=0.3。他は不変
+        out = _floor_budget_weights([1.0, 0.01, 0.5], [0.0, 7.0, 0.0], 5.6, 0.3)
+        assert out == [1.0, 0.3, 0.5]
+
+    def test_floor_zero_is_noop(self):
+        assert _floor_budget_weights([1.0, 0.01], [0.0, 7.0], 5.6, 0.0) == [1.0, 0.01]
+
+    def test_non_budget_moves_unchanged(self):
+        assert _floor_budget_weights([1.0, 0.5], [0.0, 1.0], 5.6, 0.3) == [1.0, 0.5]
+
+    def test_does_not_lower_already_high_budget_move(self):
+        # 予算バンド手が既にフロア超なら下げない
+        out = _floor_budget_weights([1.0, 0.8], [0.0, 7.0], 5.6, 0.3)  # floor_w=0.3
+        assert out == [1.0, 0.8]
+
+    def test_empty_weights(self):
+        assert _floor_budget_weights([], [], 5.6, 0.3) == []
 
 
 def _board(width, height, stones):

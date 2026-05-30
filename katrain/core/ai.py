@@ -2712,6 +2712,34 @@ class FightingStrategy(PickBasedStrategy):
                 )
                 return top_move[0], f"Endgame: played top humanPolicy move {top_move[0].gtp()}."
 
+        # complex: 予算バンド（loss>=base_threshold、既にsharp+complexゲート通過済み）の勝負手を
+        # 選択でも実際に打てるよう重みを底上げする。humanPolicy≒0で抽選に勝てない問題への対処。
+        # ゲートが品質を担保しているので「ただの悪手」は混ざらない。
+        if complex_mode and moves and _COMPLEXITY_SACRIFICE_FLOOR > 0:
+            loss_by_gtp = {
+                mi.get("move", ""): player_sign * (best_score - mi.get("scoreLead", 0))
+                for mi in (move_infos or [])
+            }
+            # ゲート通過済みだが humanPolicy=0 で選択プールに入らなかった予算バンド手を追加
+            _present = {m.gtp() for m, _ in moves}
+            for _gtp in good_moves:
+                if _gtp != "pass" and _gtp not in _present and loss_by_gtp.get(_gtp, 0.0) >= BAD_MOVE_THRESHOLD:
+                    _bm = Move.from_gtp(_gtp, player=self.cn.next_player)
+                    if _bm.coords is not None:
+                        moves.append((_bm, 0.0))
+            _losses = [loss_by_gtp.get(m.gtp(), 0.0) for m, _ in moves]
+            _floored = _floor_budget_weights(
+                [w for _, w in moves], _losses, BAD_MOVE_THRESHOLD, _COMPLEXITY_SACRIFICE_FLOOR
+            )
+            _n_budget = sum(1 for lv in _losses if lv >= BAD_MOVE_THRESHOLD)
+            if _n_budget:
+                moves = [(m, _floored[i]) for i, (m, _) in enumerate(moves)]
+                self.game.katrain.log(
+                    f"[FightingStrategy:complex] Sacrifice floor: {_n_budget} budget moves "
+                    f"(loss>={BAD_MOVE_THRESHOLD}) floored to {_COMPLEXITY_SACRIFICE_FLOOR}x max weight",
+                    OUTPUT_DEBUG,
+                )
+
         # デバッグ: 上位5手表示
         top5 = sorted(moves, key=lambda x: -x[1])[:5]
         top_str = "\n".join([f"#{i+1}: {m.gtp()} weight={w:.4f}" for i, (m, w) in enumerate(top5)])
@@ -2786,6 +2814,17 @@ class FightingStrategy(PickBasedStrategy):
 
 _COMPLEXITY_WEIGHT_FRAC = 0.5
 _COMPLEXITY_RAMP = 10.0
+_COMPLEXITY_SACRIFICE_FLOOR = 0.3  # 予算バンド手の選択重みフロア（候補中最大重みに対する比、0で無効）
+
+
+def _floor_budget_weights(weights, losses, base_threshold, floor_frac):
+    """予算バンド（loss >= base_threshold）の手の選択重みを floor_frac × max(weights) まで
+    底上げした新リストを返す。humanPolicy≒0 の勝負手が抽選で選ばれない問題への対処。
+    floor_frac <= 0 で無効（現状維持）。"""
+    if floor_frac <= 0 or not weights:
+        return list(weights)
+    floor_w = floor_frac * max(weights)
+    return [max(w, floor_w) if losses[i] >= base_threshold else w for i, w in enumerate(weights)]
 
 
 def _count_cut_adjacency(board, chains, coord, opponent_player):
