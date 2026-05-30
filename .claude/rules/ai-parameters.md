@@ -48,6 +48,21 @@ Stage1とGUI/analysis_configの3箇所を同じ値に揃える。Stage2は独立
 
 humanモードの悪手フィルタ閾値はHumanStyleStrategyと同じBAD_MOVE_THRESHOLD（19路 NORMAL=5.6 / OPENING=2.8、9路 NORMAL=3.3 / OPENING=0.5）を使用。`fighting_max_loss`は無効。
 
+### complexモード（複雑化）
+
+接触戦の密度を最優先に盤面を複雑化する4つ目の `fighting_mode`。`human` モードのパイプライン（2段階クエリ・安全弁・タイブレーク）を再利用し、重み関数と悪手フィルタを差し替える。重み = 力戦重み（unsettled×proximity×contact_boost×invasion_bonus）× 切りボーナス。接触強調は既存 `fighting_contact_boost` を流用（complex時は 2.0〜3.0 推奨）。
+
+悪手フィルタはリード適応: `loss < base閾値`(19路 NORMAL=5.6) は常に通過。`base ≤ loss < relaxed_cap` は「大差リード（current_lead ≥ complexity_lead_threshold）かつ 鋭い（scoreStdev ≥ complexity_sharpness_min）かつ 複雑（複雑さ重みが候補中最大の _COMPLEXITY_WEIGHT_FRAC 倍以上）」の3条件を満たす手のみ通過。`relaxed_cap` はリード差 `_COMPLEXITY_RAMP`(=10目) かけて base から complexity_max_loss まで線形上昇。complex時は安全弁閾値も relaxed_cap まで引き上げ、意図的な予算内損失を温存する。
+
+| パラメータ | デフォルト | 選択肢 | 備考 |
+|---|---|---|---|
+| complexity_cut_boost | 2.0 | 1.0/1.5/2.0/3.0/5.0 | 切り点（相手chain2つ以上隣接）の重みブースト |
+| complexity_lead_threshold | 15.0 | 5/10/15/20/25/30 | この目数以上リードで損失緩和を解禁 |
+| complexity_max_loss | 10.0 | 6/7/8/9/10/12 | 緩和時の損失上限（リード比例で base→max を10目かけて上昇） |
+| complexity_sharpness_min | 3.0 | 1/2/3/4/5/7/10 | 緩和バンド通過に必要な scoreStdev（要GUI校正） |
+
+ハードコード定数: `_COMPLEXITY_WEIGHT_FRAC=0.5`（複雑さ重みフロア比）/ `_COMPLEXITY_RAMP=10.0`（relaxed_cap の上昇幅、目）。純関数（`_count_cut_adjacency` / `_apply_cut_boost` / `_complexity_relaxed_cap` / `_passes_complexity_gate` / `_complexity_loss_filter`）は `tests/test_fighting_complexity.py` でユニットテスト済み。検証は GUI 実戦（batch評価では複雑化は測れない）。Spec: docs/superpowers/specs/2026-05-30-fighting-complexity-design.md
+
 ## 狩猟戦略（HuntStrategy）
 
 独立した戦略（`ai:hunt`）。序盤から相手の勢力圏に積極的に侵入し、弱い石群を集中攻撃する攻撃型モード。ownershipベースの侵入対象と石グループターゲットを統合して常に攻め続ける。対応盤面: 19路・13路（9路は非対応）。
