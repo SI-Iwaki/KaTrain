@@ -502,6 +502,9 @@ msgstr "ScoreLoss系"
 msgid "fighting:human"
 msgstr "Human拡張"
 
+msgid "fighting:complex"
+msgstr "複雑化"
+
 msgid "ai:default"
 msgstr "手加減なし"
 
@@ -636,7 +639,20 @@ msgstr ""
 "'fighting_max_loss'はScoreLoss/Humanの許容損失目数(小さいほど強). "
 "'unsettled_power'で争い重視度, 'proximity_stddev'で接近戦度を調整(小さいほど接近戦). "
 "'pick_n'/'pick_frac'/'pick_override'は従来モード専用の候補手と強さ調整. "
-"'endgame'以降は力戦重みを無効化."
+"'endgame'以降は力戦重みを無効化. "
+"complexモード: 接触戦の密度を上げ盤面を複雑化する。大差リード時のみ、鋭く複雑な手に限り損失を緩和する（complexity_* 各設定）。"
+
+msgid "complexity_cut_boost"
+msgstr "切りボーナス"
+
+msgid "complexity_lead_threshold"
+msgstr "緩和解禁リード差"
+
+msgid "complexity_max_loss"
+msgstr "緩和時の損失上限"
+
+msgid "complexity_sharpness_min"
+msgstr "鋭さ閾値(scoreStdev)"
 
 msgid "ai:p:rank"
 msgstr "段級位相応"

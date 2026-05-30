@@ -153,12 +153,17 @@ AI_OPTION_VALUES = {
         ("classic", "[fighting:classic]"),
         ("scoreloss", "[fighting:scoreloss]"),
         ("human", "[fighting:human]"),
+        ("complex", "[fighting:complex]"),
     ],
     "fighting_max_loss": [x / 2 for x in range(1, 21)],  # 0.5〜10.0（0.5刻み）
     "force_tengen_opening": "bool",
     "fighting_invasion_bonus": [1.0, 1.5, 2.0, 3.0, 5.0],  # 1.0 to 5.0
     "fighting_contact_boost": [1.0, 1.5, 2.0, 3.0, 5.0],  # 1.0 to 5.0
     "fighting_chaos_relax": [x / 2 for x in range(0, 7)],  # 0.0 to 3.0 in 0.5 steps
+    "complexity_cut_boost": [1.0, 1.5, 2.0, 3.0, 5.0],          # 切り点の重みブースト
+    "complexity_lead_threshold": [5.0, 10.0, 15.0, 20.0, 25.0, 30.0],  # 緩和解禁リード差（目）
+    "complexity_max_loss": [6.0, 7.0, 8.0, 9.0, 10.0, 12.0],    # 緩和時の損失上限（目）
+    "complexity_sharpness_min": [1.0, 2.0, 3.0, 4.0, 5.0, 7.0, 10.0],  # 鋭さゲート（scoreStdev、要校正）
     "siege_transition_move": list(range(15, 61, 5)),  # 15〜60（5刻み）
     "siege_min_group_size": list(range(3, 11)),  # 3〜10
     "concede_max_loss": [x / 2 for x in range(2, 13)],  # 1.0〜6.0（0.5刻み）
@@ -224,6 +229,10 @@ AI_OPTION_ORDER = {
     "fighting_invasion_bonus": 3,
     "fighting_contact_boost": 4,
     "fighting_chaos_relax": 5,
+    "complexity_cut_boost": 6,
+    "complexity_lead_threshold": 7,
+    "complexity_max_loss": 8,
+    "complexity_sharpness_min": 9,
     "pick_override": 10,
     "pick_n": 11,
     "pick_frac": 12,
