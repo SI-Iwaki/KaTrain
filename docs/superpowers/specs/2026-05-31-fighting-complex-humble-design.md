@@ -72,8 +72,10 @@ if humble and humble_budget > 0.0 and not is_endgame and best_gtp_by_score:
         and loss_by_gtp.get(m.gtp(), 0.0) <= humble_budget
     ]
     if alternatives:
-        # 最善手をプールから除外（他に複雑な合格手があるとき限定）
-        moves = [(m, w) for (m, w) in moves if m.gtp() != best_gtp_by_score]
+        # 予算内の非・最善手だけを選択プールにする（reserve 厳守＝選ぶ手の loss <= budget）
+        # 通常パラメータでは budget >= relaxed_cap なので alternatives = 全非最善手と一致するが、
+        # 極端な keep_margin では budget 超の手を確実に除外できる。
+        moves = alternatives
         humble_active = True
         self.game.katrain.log(
             f"[FightingStrategy:humble] active: lead={current_lead:.1f} "
