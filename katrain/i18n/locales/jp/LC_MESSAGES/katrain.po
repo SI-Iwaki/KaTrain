@@ -648,6 +648,9 @@ msgstr "切りボーナス"
 msgid "complexity_lead_threshold"
 msgstr "緩和解禁リード差"
 
+msgid "complexity_base_max_loss"
+msgstr "常時の損失上限(互角時)"
+
 msgid "complexity_max_loss"
 msgstr "緩和時の損失上限"
 

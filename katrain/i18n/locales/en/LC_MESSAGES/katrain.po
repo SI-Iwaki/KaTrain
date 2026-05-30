@@ -961,6 +961,9 @@ msgstr "Cut boost"
 msgid "complexity_lead_threshold"
 msgstr "Lead to unlock loss budget"
 
+msgid "complexity_base_max_loss"
+msgstr "Always-on loss cap (even game)"
+
 msgid "complexity_max_loss"
 msgstr "Max loss when leading"
 

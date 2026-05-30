@@ -165,3 +165,17 @@ i18n: ラベル・説明文を `.po` に追加 → `python tools/compile_mo.py` 
 - 新戦場ボーナス（同時多発の乱戦促進）。
 - 案C（1手先の再評価で複雑さを直接測定: 相手応手の policy エントロピー・score stdev・互角応手数）。
   高精度だが K回の追加クエリで重い。精度向上オプションとして温存。
+
+## 追補（2026-05-30）: 常時の複雑化予算 complexity_base_max_loss
+
+当初設計では緩和バンドは「リード ≥ complexity_lead_threshold」時のみ開いた。実戦検証の結果、
+互角〜劣勢の局面でももう少し複雑度を上げたいという要望により、リードに関係なく開く
+ゲート付き帯の上限 `complexity_base_max_loss`（既定 5.6 = 現状維持）を追加した。
+
+- 効く上限 = `max(complexity_base_max_loss, リード適応 relaxed_cap)`
+- 無条件パス帯（`loss < base_threshold`）は不変。`base ≤ loss < cap` は従来どおり
+  鋭さ(scoreStdev) ＋ 複雑さ(重みフロア) ゲートを通った手のみ通過するため、
+  値を上げても「ただの悪手」は弾かれる（鋭く複雑な戦いの手だけ追加で許容）。
+- 安全弁閾値も `complexity_base_max_loss` を反映し、意図的な予算内損失を温存する。
+- `fighting_max_loss` は scoreloss モード専用で complex/human には無効（混同注意）。
+- 純関数 `_complexity_loss_filter` に引数 `base_max_loss` を追加（既定 None=base_threshold）。テスト追加済み。
