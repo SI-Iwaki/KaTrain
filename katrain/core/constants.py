@@ -65,9 +65,7 @@ AI_CONFIG_DEFAULT = AI_RANK
 AI_STRATEGIES_ENGINE = [AI_DEFAULT, AI_HANDICAP, AI_SCORELOSS, AI_SIMPLE_OWNERSHIP, AI_JIGO, AI_ANTIMIRROR]
 AI_STRATEGIES_PICK = [AI_PICK, AI_LOCAL, AI_TENUKI, AI_INFLUENCE, AI_TERRITORY, AI_FIGHTING, AI_RANK]
 AI_STRATEGIES_POLICY = [AI_WEIGHTED, AI_POLICY] + AI_STRATEGIES_PICK
-AI_STRATEGIES = (
-    AI_STRATEGIES_ENGINE + AI_STRATEGIES_POLICY + [AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE]
-)
+AI_STRATEGIES = AI_STRATEGIES_ENGINE + AI_STRATEGIES_POLICY + [AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE]
 AI_STRATEGIES_RECOMMENDED_ORDER = [
     AI_DEFAULT,
     AI_HUMAN,
@@ -140,10 +138,10 @@ AI_OPTION_VALUES = {
     "min_visits": range(1, 10),
     "attach_penalty": [x / 10 for x in range(-10, 51)],
     "tenuki_penalty": [x / 10 for x in range(-10, 51)],
-    "human_kyu_rank": [(k, f"{k}[strength:kyu]") for k in range(20, 0, -1)]
-    + [(k, f"{1-k}[strength:dan]") for k in range(0, -9, -1)],
+    "human_kyu_rank": [(k, f"{k}[strength:kyu]") for k in range(20, 0, -1)] +
+                  [(k, f"{1-k}[strength:dan]") for k in range(0, -9,-1)],
     "modern_style": "bool",
-    "pro_year": range(1800, 2024),
+    "pro_year": range(1800,2024),
     "force_star_opening": "bool",
     "first_impression_deviation": "bool",
     "first_impression_deviation_opening": "bool",
@@ -162,10 +160,10 @@ AI_OPTION_VALUES = {
     "fighting_invasion_bonus": [1.0, 1.5, 2.0, 3.0, 5.0],  # 1.0 to 5.0
     "fighting_contact_boost": [1.0, 1.5, 2.0, 3.0, 5.0],  # 1.0 to 5.0
     "fighting_chaos_relax": [x / 2 for x in range(0, 7)],  # 0.0 to 3.0 in 0.5 steps
-    "complexity_cut_boost": [1.0, 1.5, 2.0, 3.0, 5.0],  # 切り点の重みブースト
+    "complexity_cut_boost": [1.0, 1.5, 2.0, 3.0, 5.0],          # 切り点の重みブースト
     "complexity_lead_threshold": [5.0, 10.0, 15.0, 20.0, 25.0, 30.0],  # 緩和解禁リード差（目）
     "complexity_base_max_loss": [5.6, 6.0, 7.0, 8.0, 9.0, 10.0],  # 互角時も開放するゲート付き帯の上限（目）
-    "complexity_max_loss": [6.0, 7.0, 8.0, 9.0, 10.0, 12.0],  # 緩和時の損失上限（目）
+    "complexity_max_loss": [6.0, 7.0, 8.0, 9.0, 10.0, 12.0],    # 緩和時の損失上限（目）
     "complexity_sharpness_min": [1.0, 2.0, 3.0, 4.0, 5.0, 7.0, 10.0],  # 鋭さゲート（scoreStdev、要校正）
     "siege_transition_move": list(range(15, 61, 5)),  # 15〜60（5刻み）
     "siege_min_group_size": list(range(3, 11)),  # 3〜10
