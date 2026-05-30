@@ -6,6 +6,7 @@ from katrain.core.ai import _count_cut_adjacency
 from katrain.core.ai import _apply_cut_boost
 from katrain.core.ai import _complexity_relaxed_cap
 from katrain.core.ai import _passes_complexity_gate
+from katrain.core.ai import _complexity_loss_filter
 from katrain.core.game import Move
 
 
@@ -108,3 +109,44 @@ class TestPassesComplexityGate:
 
     def test_zero_max_weight_rejected(self):
         assert _passes_complexity_gate(7.0, self.BASE, self.CAP, 9.0, 3.0, 0.0, 0.0, 0.5) is False
+
+
+class TestComplexityLossFilter:
+    def _mi(self, move, score_lead, stdev):
+        return {"move": move, "scoreLead": score_lead, "scoreStdev": stdev}
+
+    def test_winning_admits_sharp_complex_move(self):
+        move_infos = [
+            self._mi("A", 20.0, 5.0),
+            self._mi("B", 13.0, 9.0),
+            self._mi("C", 13.0, 1.0),
+        ]
+        cw = {"A": 0.1, "B": 1.0, "C": 1.0}
+        out = _complexity_loss_filter(
+            move_infos, best_score=20.0, player_sign=1, base_threshold=5.6,
+            current_lead=20.0, lead_threshold=15.0, max_loss=10.0, sharpness_min=3.0,
+            weight_frac=0.5, complexity_weight_by_gtp=cw, ramp=10.0,
+        )
+        assert "A" in out
+        assert "B" in out
+        assert "C" not in out
+
+    def test_not_winning_only_low_loss(self):
+        move_infos = [self._mi("A", 20.0, 5.0), self._mi("B", 13.0, 9.0)]
+        cw = {"A": 0.1, "B": 1.0}
+        out = _complexity_loss_filter(
+            move_infos, best_score=20.0, player_sign=1, base_threshold=5.6,
+            current_lead=3.0, lead_threshold=15.0, max_loss=10.0, sharpness_min=3.0,
+            weight_frac=0.5, complexity_weight_by_gtp=cw, ramp=10.0,
+        )
+        assert out == {"A"}
+
+    def test_white_sign_loss_calc(self):
+        move_infos = [self._mi("A", -20.0, 5.0), self._mi("B", -13.0, 9.0)]
+        cw = {"A": 0.1, "B": 1.0}
+        out = _complexity_loss_filter(
+            move_infos, best_score=-20.0, player_sign=-1, base_threshold=5.6,
+            current_lead=20.0, lead_threshold=15.0, max_loss=10.0, sharpness_min=3.0,
+            weight_frac=0.5, complexity_weight_by_gtp=cw, ramp=10.0,
+        )
+        assert out == {"A", "B"}

@@ -2775,6 +2775,24 @@ def _passes_complexity_gate(loss, base_threshold, relaxed_cap, score_stdev, shar
     return True
 
 
+def _complexity_loss_filter(move_infos, best_score, player_sign, base_threshold,
+                            current_lead, lead_threshold, max_loss, sharpness_min,
+                            weight_frac, complexity_weight_by_gtp, ramp=_COMPLEXITY_RAMP):
+    """complex モードの悪手フィルタ。通過手の GTP set を返す。"""
+    relaxed_cap = _complexity_relaxed_cap(current_lead, base_threshold, lead_threshold, max_loss, ramp)
+    max_cw = max(complexity_weight_by_gtp.values(), default=0.0)
+    result = set()
+    for mi in move_infos:
+        gtp = mi.get("move", "")
+        score = mi.get("scoreLead", 0)
+        loss = player_sign * (best_score - score)
+        stdev = mi.get("scoreStdev")
+        cw = complexity_weight_by_gtp.get(gtp, 0.0)
+        if _passes_complexity_gate(loss, base_threshold, relaxed_cap, stdev, sharpness_min, cw, max_cw, weight_frac):
+            result.add(gtp)
+    return result
+
+
 def _get_corner_star_points(board_size):
     """盤面サイズに応じた隅の星点（4-4点相当）の集合を返す"""
     bx, by = board_size
