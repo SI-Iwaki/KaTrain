@@ -12,6 +12,7 @@ from katrain.core.constants import (
     STATUS_ANALYSIS,
     STATUS_ERROR,
     AI_DEFAULT,
+    AI_FIGHTING,
     PLAYER_AI,
 )
 from katrain.core.lang import rank_label
@@ -90,11 +91,15 @@ class ControlsPanel(BoxLayout):
             self.players[bw].player_type = player_info.player_type
             self.players[bw].player_subtype = player_info.player_subtype
             self.players[bw].name = player_info.name
-            self.players[bw].rank = (
-                player_info.sgf_rank
-                if player_info.player_type == PLAYER_HUMAN
-                else rank_label(player_info.calculated_rank)
-            )
+            if player_info.player_type == PLAYER_HUMAN:
+                self.players[bw].rank = player_info.sgf_rank
+            elif player_info.strategy == AI_FIGHTING:
+                # 力戦派は推定段位の代わりに現在有効なモードを括弧内に表示（例: 力戦派 (complex)）
+                self.players[bw].rank = self.katrain.config(
+                    f"ai/{player_info.strategy}/fighting_mode", "classic"
+                )
+            else:
+                self.players[bw].rank = rank_label(player_info.calculated_rank)
 
     def set_status(self, msg, status_type, at_node=None, check_level=True):
         at_node = at_node or self.katrain and self.katrain.game and self.katrain.game.current_node
