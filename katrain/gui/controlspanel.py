@@ -95,9 +95,8 @@ class ControlsPanel(BoxLayout):
                 self.players[bw].rank = player_info.sgf_rank
             elif player_info.strategy == AI_FIGHTING:
                 # 力戦派は推定段位の代わりに現在有効なモードを括弧内に表示（例: 力戦派 (complex)）
-                self.players[bw].rank = self.katrain.config(
-                    f"ai/{player_info.strategy}/fighting_mode", "classic"
-                )
+                fighting_settings = self.katrain.config(f"ai/{player_info.strategy}") or {}
+                self.players[bw].rank = fighting_settings.get("fighting_mode", "classic")
             else:
                 self.players[bw].rank = rank_label(player_info.calculated_rank)
 
