@@ -5,6 +5,7 @@ import pytest
 from katrain.core.ai import _count_cut_adjacency
 from katrain.core.ai import _apply_cut_boost
 from katrain.core.ai import _complexity_relaxed_cap
+from katrain.core.ai import _passes_complexity_gate
 from katrain.core.game import Move
 
 
@@ -81,3 +82,29 @@ class TestComplexityRelaxedCap:
 
     def test_max_loss_below_base_returns_base(self):
         assert _complexity_relaxed_cap(50.0, 5.6, 15.0, 4.0) == 5.6
+
+
+class TestPassesComplexityGate:
+    BASE = 5.6
+    CAP = 10.0
+
+    def test_low_loss_always_passes(self):
+        assert _passes_complexity_gate(2.0, self.BASE, self.CAP, None, 3.0, 0.0, 1.0, 0.5) is True
+
+    def test_above_cap_rejected(self):
+        assert _passes_complexity_gate(11.0, self.BASE, self.CAP, 9.0, 3.0, 1.0, 1.0, 0.5) is False
+
+    def test_relaxed_band_needs_sharpness(self):
+        assert _passes_complexity_gate(7.0, self.BASE, self.CAP, 1.0, 3.0, 1.0, 1.0, 0.5) is False
+
+    def test_relaxed_band_needs_complexity(self):
+        assert _passes_complexity_gate(7.0, self.BASE, self.CAP, 9.0, 3.0, 0.2, 1.0, 0.5) is False
+
+    def test_relaxed_band_passes_both(self):
+        assert _passes_complexity_gate(7.0, self.BASE, self.CAP, 9.0, 3.0, 0.8, 1.0, 0.5) is True
+
+    def test_missing_stdev_rejected(self):
+        assert _passes_complexity_gate(7.0, self.BASE, self.CAP, None, 3.0, 1.0, 1.0, 0.5) is False
+
+    def test_zero_max_weight_rejected(self):
+        assert _passes_complexity_gate(7.0, self.BASE, self.CAP, 9.0, 3.0, 0.0, 0.0, 0.5) is False

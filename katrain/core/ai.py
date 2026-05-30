@@ -2759,6 +2759,22 @@ def _complexity_relaxed_cap(current_lead, base_threshold, lead_threshold, max_lo
     return base_threshold + frac * (max_loss - base_threshold)
 
 
+def _passes_complexity_gate(loss, base_threshold, relaxed_cap, score_stdev, sharpness_min,
+                            complexity_weight, max_complexity_weight, weight_frac):
+    """1手がフィルタを通過するか判定する。"""
+    if loss < base_threshold:
+        return True
+    if loss >= relaxed_cap:
+        return False
+    if score_stdev is None or score_stdev < sharpness_min:
+        return False
+    if max_complexity_weight <= 0:
+        return False
+    if complexity_weight < weight_frac * max_complexity_weight:
+        return False
+    return True
+
+
 def _get_corner_star_points(board_size):
     """盤面サイズに応じた隅の星点（4-4点相当）の集合を返す"""
     bx, by = board_size
