@@ -2156,6 +2156,8 @@ class FightingStrategy(PickBasedStrategy):
             return self._generate_scoreloss()
         elif mode == "human":
             return self._generate_human()
+        elif mode == "complex":
+            return self._generate_human(complex_mode=True)
         else:
             return self._generate_classic()
 
@@ -2280,9 +2282,13 @@ class FightingStrategy(PickBasedStrategy):
         self.game.katrain.log(f"[FightingStrategy:scoreloss] Selected: {aimove.gtp()}", OUTPUT_DEBUG)
         return aimove, ai_thoughts
 
-    def _generate_human(self) -> Tuple[Move, str]:
+    def _generate_human(self, complex_mode: bool = False) -> Tuple[Move, str]:
         """案B: HumanStyleStrategy拡張 + 力戦重みで着���選択"""
         self.game.katrain.log(f"[FightingStrategy:human] Starting move generation", OUTPUT_DEBUG)
+
+        # complex モード用の変数を早期初期化（move_infos が空でも Step 4/5 で参照されるため）
+        complexity_weights = {}
+        current_lead = 0.0
 
         # 標準解析を待つ（ownership取得のため）
         self.wait_for_analysis()
@@ -2437,11 +2443,39 @@ class FightingStrategy(PickBasedStrategy):
                         result.add(gtp_move)
                 return result
 
-            good_moves = _filter_moves(move_infos, BAD_MOVE_THRESHOLD, chaos_relax, ownership_grid, opponent_coords, player_sign, best_score)
+            # --- complex モード: リード適応＋鋭さ＋複雑さゲート ---
+            complexity_weights = {}
+            current_lead = best_score
+            if complex_mode:
+                _opp_stones = [s for s in self.game.stones if s.player != self.cn.next_player]
+                if len(_opp_stones) >= 2:
+                    complexity_weights = self._build_complexity_weight_dict()
+                root_src = clean_analysis if (clean_analysis and not clean_error) else analysis
+                current_lead = player_sign * (root_src or {}).get("rootInfo", {}).get("scoreLead", best_score)
+                lead_threshold = self.settings.get("complexity_lead_threshold", 15.0)
+                complexity_max_loss = self.settings.get("complexity_max_loss", 10.0)
+                sharpness_min = self.settings.get("complexity_sharpness_min", 3.0)
+                complexity_weight_by_gtp = {
+                    Move((x, y), player=self.cn.next_player).gtp(): w
+                    for (x, y), w in complexity_weights.items()
+                }
+                good_moves = _complexity_loss_filter(
+                    move_infos, best_score, player_sign, BAD_MOVE_THRESHOLD,
+                    current_lead, lead_threshold, complexity_max_loss, sharpness_min,
+                    _COMPLEXITY_WEIGHT_FRAC, complexity_weight_by_gtp, _COMPLEXITY_RAMP,
+                )
+                self.game.katrain.log(
+                    f"[FightingStrategy:complex] lead={current_lead:.1f} "
+                    f"relaxed_cap={_complexity_relaxed_cap(current_lead, BAD_MOVE_THRESHOLD, lead_threshold, complexity_max_loss):.1f} "
+                    f"{len(good_moves)} moves pass complexity filter",
+                    OUTPUT_DEBUG,
+                )
+            else:
+                good_moves = _filter_moves(move_infos, BAD_MOVE_THRESHOLD, chaos_relax, ownership_grid, opponent_coords, player_sign, best_score)
             # --- 段階的閾値緩和フェイルセーフ ---
             _FILTER_RELAXATION_STEPS = [1.5, 2.0]
             _FILTER_ABSOLUTE_CAP = 9.0
-            if not good_moves:
+            if not complex_mode and not good_moves:
                 original_threshold = BAD_MOVE_THRESHOLD
                 for multiplier in _FILTER_RELAXATION_STEPS:
                     relaxed_threshold = original_threshold * multiplier
@@ -2503,6 +2537,15 @@ class FightingStrategy(PickBasedStrategy):
 
             # 安全弁: 最多探索手のlossが閾値以上なら最善スコア手を確定選択（力戦特性を無視）
             _SAFETY_LOSS_THRESHOLD = 4.0
+            if complex_mode:
+                _SAFETY_LOSS_THRESHOLD = max(
+                    4.0,
+                    _complexity_relaxed_cap(
+                        current_lead, BAD_MOVE_THRESHOLD,
+                        self.settings.get("complexity_lead_threshold", 15.0),
+                        self.settings.get("complexity_max_loss", 10.0),
+                    ),
+                )
             max_visit_mi = max(move_infos, key=lambda mi: mi.get("visits", 0))
             max_visit_gtp = max_visit_mi.get("move", "")
             max_visit_score = max_visit_mi.get("scoreLead", 0)
@@ -2524,7 +2567,9 @@ class FightingStrategy(PickBasedStrategy):
 
         # --- humanPolicy × fighting_weight で候補構築 ---
         opponent_stones = [s for s in self.game.stones if s.player != self.cn.next_player]
-        if len(opponent_stones) >= 2:
+        if complex_mode:
+            fighting_weights = complexity_weights
+        elif len(opponent_stones) >= 2:
             fighting_weights = self._build_fighting_weight_dict()
         else:
             fighting_weights = {}
@@ -2698,8 +2743,9 @@ class FightingStrategy(PickBasedStrategy):
         move = selected[0]
         self.game.katrain.log(f"[FightingStrategy:human] Selected: {move.gtp()}", OUTPUT_DEBUG)
 
+        label = "Complex+Fighting" if complex_mode else "Human+Fighting"
         ai_thoughts = (
-            f"\n{top_str}\n\nHuman+Fighting: played {move.gtp()} "
+            f"\n{top_str}\n\n{label}: played {move.gtp()} "
             f"({filtered_count} bad moves filtered)"
         )
         return move, ai_thoughts
