@@ -788,6 +788,9 @@ msgstr "ScoreLoss"
 msgid "fighting:human"
 msgstr "Human"
 
+msgid "fighting:complex"
+msgstr "Complex"
+
 msgid "ai:default"
 msgstr "KataGo"
 
@@ -949,7 +952,20 @@ msgstr ""
 "'fighting_max_loss': max point loss for ScoreLoss/Human (lower=stronger). "
 "'unsettled_power' for aggression, 'proximity_stddev' for closeness to opponent (lower=closer). "
 "'pick_n'/'pick_frac'/'pick_override': Classic mode candidate and strength settings. "
-"'endgame': disables fighting weights after this board fraction."
+"'endgame': disables fighting weights after this board fraction. "
+"complex mode: maximizes contact-fight density; only when winning by a large margin does it allow extra loss, and only for sharp/complex moves (see complexity_* settings)."
+
+msgid "complexity_cut_boost"
+msgstr "Cut boost"
+
+msgid "complexity_lead_threshold"
+msgstr "Lead to unlock loss budget"
+
+msgid "complexity_max_loss"
+msgstr "Max loss when leading"
+
+msgid "complexity_sharpness_min"
+msgstr "Sharpness gate (scoreStdev)"
 
 msgid "ai:p:rank"
 msgstr "Calibrated Rank"
