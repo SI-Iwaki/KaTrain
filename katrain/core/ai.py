@@ -2714,6 +2714,30 @@ class FightingStrategy(PickBasedStrategy):
                 )
         return weighted_coords, ai_thoughts
 
+_COMPLEXITY_WEIGHT_FRAC = 0.5
+_COMPLEXITY_RAMP = 10.0
+
+
+def _count_cut_adjacency(board, chains, coord, opponent_player):
+    """coord (x,y) の4近傍に接する『異なる相手 chain』の数を返す。
+
+    board: List[List[int]]  # board[y][x] = chain id（-1=空）
+    chains: List[List[Move]]
+    opponent_player: "B" or "W"
+    戻り値が 2 以上なら『切り/楔』とみなせる。
+    """
+    x, y = coord
+    height = len(board)
+    width = len(board[0]) if height else 0
+    opp_chain_ids = set()
+    for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+        if 0 <= nx < width and 0 <= ny < height:
+            c = board[ny][nx]
+            if c >= 0 and chains[c] and chains[c][0].player == opponent_player:
+                opp_chain_ids.add(c)
+    return len(opp_chain_ids)
+
+
 def _get_corner_star_points(board_size):
     """盤面サイズに応じた隅の星点（4-4点相当）の集合を返す"""
     bx, by = board_size
