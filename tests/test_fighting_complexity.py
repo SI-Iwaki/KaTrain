@@ -3,6 +3,7 @@
 import pytest
 
 from katrain.core.ai import _count_cut_adjacency
+from katrain.core.ai import _apply_cut_boost
 from katrain.core.game import Move
 
 
@@ -34,3 +35,31 @@ class TestCountCutAdjacency:
         board = _board(5, 5, {(1, 0): 0})
         chains = [[Move(coords=(1, 0), player="W")]]
         assert _count_cut_adjacency(board, chains, (0, 0), "W") == 1
+
+
+class TestApplyCutBoost:
+    def test_cut_point_is_boosted(self):
+        board = _board(5, 5, {(2, 1): 0, (2, 3): 1})
+        chains = [[Move(coords=(2, 1), player="W")], [Move(coords=(2, 3), player="W")]]
+        weights = {(2, 2): 1.0, (0, 0): 1.0}
+        out = _apply_cut_boost(weights, board, chains, "W", 2.0)
+        assert out[(2, 2)] == 2.0
+        assert out[(0, 0)] == 1.0
+
+    def test_boost_one_is_noop(self):
+        board = _board(5, 5, {(2, 1): 0, (2, 3): 1})
+        chains = [[Move(coords=(2, 1), player="W")], [Move(coords=(2, 3), player="W")]]
+        weights = {(2, 2): 1.0}
+        out = _apply_cut_boost(weights, board, chains, "W", 1.0)
+        assert out == weights
+
+    def test_occupied_point_not_boosted(self):
+        board = _board(5, 5, {(2, 1): 0, (2, 3): 1, (2, 2): 2})
+        chains = [
+            [Move(coords=(2, 1), player="W")],
+            [Move(coords=(2, 3), player="W")],
+            [Move(coords=(2, 2), player="B")],
+        ]
+        weights = {(2, 2): 1.0}
+        out = _apply_cut_boost(weights, board, chains, "W", 2.0)
+        assert out[(2, 2)] == 1.0

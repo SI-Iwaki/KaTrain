@@ -2738,6 +2738,19 @@ def _count_cut_adjacency(board, chains, coord, opponent_player):
     return len(opp_chain_ids)
 
 
+def _apply_cut_boost(weights, board, chains, opponent_player, cut_boost):
+    """weights {(x,y): w} の空点かつ切り点に cut_boost を乗算した新 dict を返す。"""
+    if cut_boost == 1.0:
+        return dict(weights)
+    boosted = {}
+    for (x, y), w in weights.items():
+        if board[y][x] == -1 and _count_cut_adjacency(board, chains, (x, y), opponent_player) >= 2:
+            boosted[(x, y)] = w * cut_boost
+        else:
+            boosted[(x, y)] = w
+    return boosted
+
+
 def _get_corner_star_points(board_size):
     """盤面サイズに応じた隅の星点（4-4点相当）の集合を返す"""
     bx, by = board_size
