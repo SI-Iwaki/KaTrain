@@ -150,3 +150,13 @@ class TestComplexityLossFilter:
             weight_frac=0.5, complexity_weight_by_gtp=cw, ramp=10.0,
         )
         assert out == {"A", "B"}
+
+    def test_empty_weights_only_low_loss_passes(self):
+        # complexity_weight_by_gtp が空（max_cw=0）→ 緩和バンドの手は全て不通過、loss<base のみ通過
+        move_infos = [self._mi("A", 20.0, 5.0), self._mi("B", 13.0, 9.0)]
+        out = _complexity_loss_filter(
+            move_infos, best_score=20.0, player_sign=1, base_threshold=5.6,
+            current_lead=20.0, lead_threshold=15.0, max_loss=10.0, sharpness_min=3.0,
+            weight_frac=0.5, complexity_weight_by_gtp={}, ramp=10.0,
+        )
+        assert out == {"A"}

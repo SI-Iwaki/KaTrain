@@ -2284,7 +2284,10 @@ class FightingStrategy(PickBasedStrategy):
 
     def _generate_human(self, complex_mode: bool = False) -> Tuple[Move, str]:
         """案B: HumanStyleStrategy拡張 + 力戦重みで着���選択"""
-        self.game.katrain.log(f"[FightingStrategy:human] Starting move generation", OUTPUT_DEBUG)
+        self.game.katrain.log(
+            f"[FightingStrategy:{'complex' if complex_mode else 'human'}] Starting move generation",
+            OUTPUT_DEBUG,
+        )
 
         # complex モード用の変数を早期初期化（move_infos が空でも Step 4/5 で参照されるため）
         complexity_weights = {}
