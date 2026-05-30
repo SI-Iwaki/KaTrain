@@ -181,6 +181,7 @@
             "fighting_chaos_relax": 0.0,
             "complexity_cut_boost": 2.0,
             "complexity_lead_threshold": 15.0,
+            "complexity_base_max_loss": 5.6,
             "complexity_max_loss": 10.0,
             "complexity_sharpness_min": 3.0,
             "pick_override": 0.95,

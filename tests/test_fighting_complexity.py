@@ -1,5 +1,6 @@
 # tests/test_fighting_complexity.py
 """力戦派 複雑化モードの純関数テスト（モデル不要）。"""
+
 import pytest
 
 from katrain.core.ai import _count_cut_adjacency
@@ -123,9 +124,17 @@ class TestComplexityLossFilter:
         ]
         cw = {"A": 0.1, "B": 1.0, "C": 1.0}
         out = _complexity_loss_filter(
-            move_infos, best_score=20.0, player_sign=1, base_threshold=5.6,
-            current_lead=20.0, lead_threshold=15.0, max_loss=10.0, sharpness_min=3.0,
-            weight_frac=0.5, complexity_weight_by_gtp=cw, ramp=10.0,
+            move_infos,
+            best_score=20.0,
+            player_sign=1,
+            base_threshold=5.6,
+            current_lead=20.0,
+            lead_threshold=15.0,
+            max_loss=10.0,
+            sharpness_min=3.0,
+            weight_frac=0.5,
+            complexity_weight_by_gtp=cw,
+            ramp=10.0,
         )
         assert "A" in out
         assert "B" in out
@@ -135,9 +144,17 @@ class TestComplexityLossFilter:
         move_infos = [self._mi("A", 20.0, 5.0), self._mi("B", 13.0, 9.0)]
         cw = {"A": 0.1, "B": 1.0}
         out = _complexity_loss_filter(
-            move_infos, best_score=20.0, player_sign=1, base_threshold=5.6,
-            current_lead=3.0, lead_threshold=15.0, max_loss=10.0, sharpness_min=3.0,
-            weight_frac=0.5, complexity_weight_by_gtp=cw, ramp=10.0,
+            move_infos,
+            best_score=20.0,
+            player_sign=1,
+            base_threshold=5.6,
+            current_lead=3.0,
+            lead_threshold=15.0,
+            max_loss=10.0,
+            sharpness_min=3.0,
+            weight_frac=0.5,
+            complexity_weight_by_gtp=cw,
+            ramp=10.0,
         )
         assert out == {"A"}
 
@@ -145,9 +162,17 @@ class TestComplexityLossFilter:
         move_infos = [self._mi("A", -20.0, 5.0), self._mi("B", -13.0, 9.0)]
         cw = {"A": 0.1, "B": 1.0}
         out = _complexity_loss_filter(
-            move_infos, best_score=-20.0, player_sign=-1, base_threshold=5.6,
-            current_lead=20.0, lead_threshold=15.0, max_loss=10.0, sharpness_min=3.0,
-            weight_frac=0.5, complexity_weight_by_gtp=cw, ramp=10.0,
+            move_infos,
+            best_score=-20.0,
+            player_sign=-1,
+            base_threshold=5.6,
+            current_lead=20.0,
+            lead_threshold=15.0,
+            max_loss=10.0,
+            sharpness_min=3.0,
+            weight_frac=0.5,
+            complexity_weight_by_gtp=cw,
+            ramp=10.0,
         )
         assert out == {"A", "B"}
 
@@ -155,8 +180,84 @@ class TestComplexityLossFilter:
         # complexity_weight_by_gtp が空（max_cw=0）→ 緩和バンドの手は全て不通過、loss<base のみ通過
         move_infos = [self._mi("A", 20.0, 5.0), self._mi("B", 13.0, 9.0)]
         out = _complexity_loss_filter(
-            move_infos, best_score=20.0, player_sign=1, base_threshold=5.6,
-            current_lead=20.0, lead_threshold=15.0, max_loss=10.0, sharpness_min=3.0,
-            weight_frac=0.5, complexity_weight_by_gtp={}, ramp=10.0,
+            move_infos,
+            best_score=20.0,
+            player_sign=1,
+            base_threshold=5.6,
+            current_lead=20.0,
+            lead_threshold=15.0,
+            max_loss=10.0,
+            sharpness_min=3.0,
+            weight_frac=0.5,
+            complexity_weight_by_gtp={},
+            ramp=10.0,
+        )
+        assert out == {"A"}
+
+    def test_base_max_loss_opens_gated_band_when_even(self):
+        # 互角(current_lead=0 < threshold)でも base_max_loss=7 でゲート付き帯[5.6,7.0)が開く。
+        # A: loss0（常時通過）, B: loss6（band内・鋭い・複雑→通過）, C: loss6（鈍い→不通過）
+        move_infos = [
+            self._mi("A", 20.0, 5.0),
+            self._mi("B", 14.0, 9.0),
+            self._mi("C", 14.0, 1.0),
+        ]
+        cw = {"A": 0.1, "B": 1.0, "C": 1.0}
+        out = _complexity_loss_filter(
+            move_infos,
+            best_score=20.0,
+            player_sign=1,
+            base_threshold=5.6,
+            current_lead=0.0,
+            lead_threshold=15.0,
+            max_loss=10.0,
+            sharpness_min=3.0,
+            weight_frac=0.5,
+            complexity_weight_by_gtp=cw,
+            ramp=10.0,
+            base_max_loss=7.0,
+        )
+        assert "A" in out  # 常に通過
+        assert "B" in out  # 鋭く複雑 → 互角でも通過
+        assert "C" not in out  # 鈍い → ゲートで不通過（ただの悪手は弾く）
+
+    def test_base_max_loss_none_keeps_lead_gated_behavior(self):
+        # base_max_loss=None（既定）なら従来どおり: 互角では band の手は全て落ちる
+        move_infos = [self._mi("A", 20.0, 5.0), self._mi("B", 13.0, 9.0)]
+        cw = {"A": 0.1, "B": 1.0}
+        out = _complexity_loss_filter(
+            move_infos,
+            best_score=20.0,
+            player_sign=1,
+            base_threshold=5.6,
+            current_lead=0.0,
+            lead_threshold=15.0,
+            max_loss=10.0,
+            sharpness_min=3.0,
+            weight_frac=0.5,
+            complexity_weight_by_gtp=cw,
+            ramp=10.0,
+            base_max_loss=None,
+        )
+        assert out == {"A"}
+
+    def test_base_max_loss_does_not_open_unconditional_band(self):
+        # base_max_loss=7 でも loss<base(5.6) 以外はゲート必須。
+        # 鋭くも複雑でもない loss=6 の手は通らない（無条件帯は広がらない）
+        move_infos = [self._mi("A", 20.0, 5.0), self._mi("D", 14.0, 1.0)]  # D: loss6, 鈍い
+        cw = {"A": 0.1, "D": 0.1}
+        out = _complexity_loss_filter(
+            move_infos,
+            best_score=20.0,
+            player_sign=1,
+            base_threshold=5.6,
+            current_lead=0.0,
+            lead_threshold=15.0,
+            max_loss=10.0,
+            sharpness_min=3.0,
+            weight_frac=0.5,
+            complexity_weight_by_gtp=cw,
+            ramp=10.0,
+            base_max_loss=7.0,
         )
         assert out == {"A"}
