@@ -2503,10 +2503,11 @@ class FightingStrategy(PickBasedStrategy):
                     return Move.from_gtp(best_gtp_by_score, player=self.cn.next_player), (
                         f"Filter failsafe: no moves within {_FILTER_ABSOLUTE_CAP}pt, forced {best_gtp_by_score}."
                     )
-            self.game.katrain.log(
-                f"[FightingStrategy:human] {len(good_moves)} moves pass score filter",
-                OUTPUT_DEBUG,
-            )
+            if not complex_mode:
+                self.game.katrain.log(
+                    f"[FightingStrategy:human] {len(good_moves)} moves pass score filter",
+                    OUTPUT_DEBUG,
+                )
 
             # --- 安全弁クロスバリデーション用ヘルパー ---
             def _safety_valve_cross_check(forced_gtp, candidate_gtp, p_sign, label="v1"):
@@ -2541,9 +2542,7 @@ class FightingStrategy(PickBasedStrategy):
                 _SAFETY_LOSS_THRESHOLD = max(
                     4.0,
                     _complexity_relaxed_cap(
-                        current_lead, BAD_MOVE_THRESHOLD,
-                        self.settings.get("complexity_lead_threshold", 15.0),
-                        self.settings.get("complexity_max_loss", 10.0),
+                        current_lead, BAD_MOVE_THRESHOLD, lead_threshold, complexity_max_loss,
                     ),
                 )
             max_visit_mi = max(move_infos, key=lambda mi: mi.get("visits", 0))
