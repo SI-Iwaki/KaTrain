@@ -420,14 +420,6 @@ class TestJigoComputeEffectiveMaxLoss:
         )
         assert result == 8.0
 
-    def test_caps_at_5_for_9x9_board(self):
-        # 9路盤では effective を 5.0 にキャップ
-        result = _jigo_compute_effective_max_loss(
-            current_lead=20.0, target_score_max=10.0, base_max_loss=3.3,
-            large_lead_delta=5.0, large_lead_max_loss=8.0, board_size=9,
-        )
-        assert result == 5.0
-
     def test_does_not_cap_at_5_for_13x13_board(self):
         # 13路は 9路扱いしない
         result = _jigo_compute_effective_max_loss(

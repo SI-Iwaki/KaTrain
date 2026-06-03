@@ -836,7 +836,28 @@ msgid "aihelp:antimirror"
 msgstr "Anti Mirror-go Mode of KataGo."
 
 msgid "aihelp:jigo"
-msgstr "Aims to win by a narrow margin of target_score..target_score_max points. Picks moves with per-move loss <= max_loss_per_move and humanPolicy >= min_human_policy, avoiding unnaturally bad moves. jigo_mode: natural=best move within range / maintain=always push toward target. human_profile: humanSL rank (rank_5d/7d/9d). jigo_dynamic_rank: ON to auto-downshift rank based on lead delta (handles weaker opponents). Sharp moves that widen the lead are excluded when overshooting. When current_lead exceeds target_score_max + jigo_large_lead_delta, max_loss is temporarily relaxed to jigo_large_lead_max_loss to improve convergence into the target range (capped at 5.0 on 9x9). jigo_equivalent_epsilon: tiebreak band (points) around target-closest candidates. Applied only in branches lead<target and in_range & maintain; moves within argmin+/-epsilon points are treated as equivalent and selected via humanPolicy weighting (unchanged in joseki positions with a single candidate). 0 disables. jigo_deception: when ON, deliberately plays slightly behind in early/middle game then catches up in endgame, mimicking human-like comeback play. On 13x13 boards, Phase 1/2/3 start moves and Phase 1/2 target score differences are adjustable via sliders (19x19 / 9x9 use hardcoded values). target_max = target + 1.0 within each phase, and a safety valve at +/-5 points jumps to Phase 3 on extreme lead/deficit. Recommended order is Phase1 start < Phase2 start < Phase3 start, but inverted values raise no error - the \"last matching boundary wins\". jigo_force_sanrensei: when ON, forces star-point opening on 19x19 (Black = sanrensei along one side; White = two corner stars on the same side, diagonal if opponent occupies a star). Disabled on 13x13 / 9x9."
+msgstr "Aims to win by a narrow margin of target_score..target_score_max points. Picks moves with per-move loss <= max_loss_per_move and humanPolicy >= min_human_policy, avoiding unnaturally bad moves. jigo_mode: natural=best move within range / maintain=always push toward target. human_profile: humanSL rank (rank_5d/7d/9d). jigo_dynamic_rank: ON to auto-downshift rank based on lead delta (handles weaker opponents). Sharp moves that widen the lead are excluded when overshooting. When current_lead exceeds target_score_max + jigo_large_lead_delta, max_loss is temporarily relaxed to jigo_large_lead_max_loss to improve convergence into the target range (capped at 5.0 on 9x9). jigo_equivalent_epsilon: tiebreak band (points) around target-closest candidates. Applied only in branches lead<target and in_range & maintain; moves within argmin+/-epsilon points are treated as equivalent and selected via humanPolicy weighting (unchanged in joseki positions with a single candidate). 0 disables. jigo_deception: when ON, deliberately plays slightly behind in early/middle game then catches up in endgame, mimicking human-like comeback play. On 13x13 boards, Phase 1/2/3 start moves and Phase 1/2 target score differences are adjustable via sliders (19x19 uses hardcoded values; for 9x9 use the dedicated Kata Jigo (9x9) mode). target_max = target + 1.0 within each phase, and a safety valve at +/-5 points jumps to Phase 3 on extreme lead/deficit. Recommended order is Phase1 start < Phase2 start < Phase3 start, but inverted values raise no error - the \"last matching boundary wins\". jigo_force_sanrensei: when ON, forces star-point opening on 19x19 (Black = sanrensei along one side; White = two corner stars on the same side, diagonal if opponent occupies a star). Disabled on 13x13 / 9x9."
+
+msgid "ai:jigo9"
+msgstr "Kata Jigo (9x9)"
+
+msgid "aihelp:jigo9"
+msgstr "Jigo mode dedicated to the 9x9 board. Aims to win by a small margin of target_score to target_score_max points. Only plays moves with loss <= max_loss_per_move and humanPolicy >= min_human_policy, avoiding inhuman blunders. jigo_mode: natural = best move within range / maintain = always steer toward target. jigo_deception: ON makes the AI deliberately fall behind in the early/middle game and recover late for a human-like style. Phase1/2/3 start moves and Phase1/2 target score gaps are adjustable via sliders. During each phase target_max = target+1.0 is set automatically; a safety valve (+/-5 points) jumps to Phase3 on over/under-performance. Since 9x9 games end quickly, set Phase3 (recovery start) early. Rank is fixed at rank_9d. For 19x19/13x13 use the regular Kata Jigo."
+
+msgid "jigo9_phase1_start"
+msgstr "[9x9] Phase1 start move (begin playing modestly)"
+
+msgid "jigo9_phase2_start"
+msgstr "[9x9] Phase2 start move (gradually return toward target)"
+
+msgid "jigo9_phase3_start"
+msgstr "[9x9] Phase3 start move (return to normal Jigo, play to win)"
+
+msgid "jigo9_phase1_target"
+msgstr "[9x9] Phase1 target score gap (e.g. -1.5 = stay 1.5 pts behind)"
+
+msgid "jigo9_phase2_target"
+msgstr "[9x9] Phase2 target score gap (midpoint before Phase3 return)"
 
 msgid "jigo_large_lead_delta"
 msgstr "Large-lead trigger delta"

@@ -6,7 +6,7 @@ import time
 from typing import Dict, List, Optional, Tuple
 
 from katrain.core.constants import (
-    AI_DEFAULT, AI_HANDICAP, AI_INFLUENCE, AI_INFLUENCE_ELO_GRID, AI_JIGO,
+    AI_DEFAULT, AI_HANDICAP, AI_INFLUENCE, AI_INFLUENCE_ELO_GRID, AI_JIGO, AI_JIGO_9,
     AI_ANTIMIRROR, AI_LOCAL, AI_LOCAL_ELO_GRID, AI_PICK, AI_PICK_ELO_GRID,
     AI_POLICY, AI_RANK, AI_SCORELOSS, AI_SCORELOSS_ELO, AI_SETTLE_STONES,
     AI_SIMPLE_OWNERSHIP, AI_STRENGTH,
@@ -293,7 +293,7 @@ def interp2d(gridspec, x, y):
     )
 
 def ai_rank_estimation(strategy, settings) -> int:
-    if strategy in [AI_DEFAULT, AI_HANDICAP, AI_JIGO, AI_PRO]:
+    if strategy in [AI_DEFAULT, AI_HANDICAP, AI_JIGO, AI_JIGO_9, AI_PRO]:
         return 9
     if strategy == AI_RANK:
         return 1 - settings["kyu_rank"]
@@ -769,10 +769,6 @@ def _select_rank_by_lead(current_lead, target_score_max, base_profile,
     return _JIGO_RANK_CHAIN[new_idx]
 
 
-# 9路盤での圧勝時 max_loss 上限（9路は HumanStyle NORMAL_THRESHOLD=3.3 のため緩和を控えめにする）
-JIGO_LARGE_LEAD_9X9_CAP = 5.0
-
-
 # ----------------------------------------------------------------
 # Jigo deception Phase 機構
 # ----------------------------------------------------------------
@@ -780,7 +776,6 @@ JIGO_LARGE_LEAD_9X9_CAP = 5.0
 JIGO_DECEPTION_PHASE_TABLE = {
     19: [(30, "phase1"), (80, "phase2"), (150, "phase3")],
     13: [(17, "phase1"), (44, "phase2"), (83, "phase3")],
-    9:  [(8,  "phase1"), (20, "phase2"), (38, "phase3")],
 }
 
 # (board_size, phase) → (target_score, target_score_max) または None
@@ -794,10 +789,6 @@ JIGO_DECEPTION_TARGETS = {
     (13, "phase1"): (-2.0, -1.0),
     (13, "phase2"): (-1.0,  0.0),
     (13, "phase3"): None,
-    (9,  "phase0"): None,
-    (9,  "phase1"): (-1.5, -0.5),
-    (9,  "phase2"): (-0.5,  0.0),
-    (9,  "phase3"): None,
 }
 
 # 過剰優勢/過剰劣勢の安全弁閾値（目数）
@@ -848,27 +839,42 @@ def _jigo_resolve_phase(board_size, move_num, current_lead,
     return base_phase
 
 
-def _jigo_resolve_13path_overrides(phase, default_target, default_target_max, settings):
-    """13路盤の deception 有効時、Phase 1/2 で eff_target/eff_target_max を
-    settings (スライダー値) に置換して返す。
+# key_prefix ごとの「設定キー欠落時」フォールバック target（target_max は +1.0 で自動）
+_JIGO_PATH_TARGET_DEFAULTS = {
+    "jigo_deception_13": {"phase1": -2.0, "phase2": -1.0},
+    "jigo9":             {"phase1": -1.5, "phase2": -0.5},
+}
+
+
+def _jigo_resolve_path_overrides(phase, default_target, default_target_max, settings,
+                                 key_prefix="jigo_deception_13"):
+    """deception 有効時、Phase 1/2 で eff_target/eff_target_max を
+    settings (スライダー値) に置換して返す。盤面別に key_prefix で切替。
 
     Phase 0/3 は default をそのまま返す（既存挙動）。
-    target_max は target + 1.0 で自動算出（既存 1.0 目幅維持）。
+    target_max は target + 1.0 で自動算出（1.0 目幅維持）。
 
     Args:
         phase: "phase0" | "phase1" | "phase2" | "phase3"
         default_target: phase0/phase3 用フォールバック値
         default_target_max: phase0/phase3 用フォールバック値
-        settings: JigoStrategy.settings 相当の dict-like
+        settings: Strategy.settings 相当の dict-like
+        key_prefix: "jigo_deception_13"（13路）/ "jigo9"（9路）
 
     Returns:
         (eff_target, eff_target_max)
     """
+    fallbacks = _JIGO_PATH_TARGET_DEFAULTS.get(key_prefix)
+    if fallbacks is None:
+        raise KeyError(
+            f"_jigo_resolve_path_overrides: unknown key_prefix {key_prefix!r}. "
+            f"Valid: {list(_JIGO_PATH_TARGET_DEFAULTS)}"
+        )
     if phase == "phase1":
-        t = settings.get("jigo_deception_13_phase1_target", -2.0)
+        t = settings.get(f"{key_prefix}_phase1_target", fallbacks["phase1"])
         return t, t + 1.0
     if phase == "phase2":
-        t = settings.get("jigo_deception_13_phase2_target", -1.0)
+        t = settings.get(f"{key_prefix}_phase2_target", fallbacks["phase2"])
         return t, t + 1.0
     return default_target, default_target_max
 
@@ -879,16 +885,13 @@ def _jigo_compute_effective_max_loss(
 ):
     """current_lead が target_score_max + large_lead_delta を超えた場合のみ max_loss を緩和する。
 
-    9路盤 (board_size <= 9) では effective 値を JIGO_LARGE_LEAD_9X9_CAP (5.0) にキャップする。
     緩和発動しない場合・large_lead_max_loss が base より小さい場合は base_max_loss を返す。
+    board_size は呼び出し側互換のため残す（盤面別の特別扱いは廃止）。
     """
     threshold = target_score_max + large_lead_delta
     if current_lead < threshold:
         return base_max_loss
-    effective = large_lead_max_loss
-    if board_size <= 9:
-        effective = min(effective, JIGO_LARGE_LEAD_9X9_CAP)
-    return max(base_max_loss, effective)
+    return max(base_max_loss, large_lead_max_loss)
 
 
 def _pick_target_closest_with_epsilon(candidates, target, epsilon):
@@ -954,6 +957,15 @@ class JigoStrategy(AIStrategy):
         5. 候補ゼロ時は段階緩和 → 最終的に KataGo 最善手へフォールバック
     """
 
+    # サブクラスで特定設定を強制無効化するための上書きマップ（基底は空）
+    FORCED_SETTINGS = {}
+
+    def _jigo_get(self, key, default):
+        """FORCED_SETTINGS にあればその値、なければ self.settings.get(key, default)。"""
+        if key in self.FORCED_SETTINGS:
+            return self.FORCED_SETTINGS[key]
+        return self.settings.get(key, default)
+
     def generate_move(self) -> Tuple[Move, str]:
         import time
         self.last_decision_info = {
@@ -973,11 +985,11 @@ class JigoStrategy(AIStrategy):
         max_loss         = self.settings.get("max_loss_per_move", 5.6)
         min_hp           = self.settings.get("min_human_policy", 0.02)
         mode             = self.settings.get("jigo_mode", "natural")
-        base_profile     = self.settings.get("human_profile", "rank_9d")
-        dynamic_rank     = self.settings.get("jigo_dynamic_rank", False)
-        large_lead_delta    = self.settings.get("jigo_large_lead_delta", 5.0)
+        base_profile     = self._jigo_get("human_profile", "rank_9d")
+        dynamic_rank     = self._jigo_get("jigo_dynamic_rank", False)
+        large_lead_delta    = self._jigo_get("jigo_large_lead_delta", 5.0)
         large_lead_max_loss = self.settings.get("jigo_large_lead_max_loss", 8.0)
-        equivalent_epsilon  = self.settings.get("jigo_equivalent_epsilon", 0.5)
+        equivalent_epsilon  = self._jigo_get("jigo_equivalent_epsilon", 0.5)
         deception_enabled = self.settings.get("jigo_deception", False)
         self.game.katrain.log(
             f"[JigoStrategy] Settings: target={target_score}, max={target_score_max}, "
@@ -1009,8 +1021,22 @@ class JigoStrategy(AIStrategy):
                     (self.settings.get("jigo_deception_13_phase2_start", 44), "phase2"),
                     (self.settings.get("jigo_deception_13_phase3_start", 83), "phase3"),
                 ]
-                p1_target = self.settings.get("jigo_deception_13_phase1_target", -2.0)
-                p2_target = self.settings.get("jigo_deception_13_phase2_target", -1.0)
+                _defaults_13 = _JIGO_PATH_TARGET_DEFAULTS["jigo_deception_13"]
+                p1_target = self.settings.get("jigo_deception_13_phase1_target", _defaults_13["phase1"])
+                p2_target = self.settings.get("jigo_deception_13_phase2_target", _defaults_13["phase2"])
+                target_overrides = {
+                    "phase1": (p1_target, p1_target + 1.0),
+                    "phase2": (p2_target, p2_target + 1.0),
+                }
+            elif board_size_for_phase == 9:
+                phase_table_override = [
+                    (self.settings.get("jigo9_phase1_start", 6),  "phase1"),
+                    (self.settings.get("jigo9_phase2_start", 16), "phase2"),
+                    (self.settings.get("jigo9_phase3_start", 30), "phase3"),
+                ]
+                _defaults_9 = _JIGO_PATH_TARGET_DEFAULTS["jigo9"]
+                p1_target = self.settings.get("jigo9_phase1_target", _defaults_9["phase1"])
+                p2_target = self.settings.get("jigo9_phase2_target", _defaults_9["phase2"])
                 target_overrides = {
                     "phase1": (p1_target, p1_target + 1.0),
                     "phase2": (p2_target, p2_target + 1.0),
@@ -1024,8 +1050,14 @@ class JigoStrategy(AIStrategy):
 
             # Phase 1/2 の eff_target/eff_target_max を決定
             if board_size_for_phase == 13:
-                eff_target, eff_target_max = _jigo_resolve_13path_overrides(
-                    phase, target_score, target_score_max, self.settings
+                eff_target, eff_target_max = _jigo_resolve_path_overrides(
+                    phase, target_score, target_score_max, self.settings,
+                    key_prefix="jigo_deception_13",
+                )
+            elif board_size_for_phase == 9:
+                eff_target, eff_target_max = _jigo_resolve_path_overrides(
+                    phase, target_score, target_score_max, self.settings,
+                    key_prefix="jigo9",
                 )
             else:
                 overrides = JIGO_DECEPTION_TARGETS.get((board_size_for_phase, phase))
@@ -1293,6 +1325,24 @@ class JigoStrategy(AIStrategy):
         self.game._jigo_last_current_lead = current_lead
 
         return aimove, ai_thoughts
+
+
+@register_strategy(AI_JIGO_9)
+class Jigo9Strategy(JigoStrategy):
+    """持碁（9路）専用モード。JigoStrategy を継承し generate_move を流用。
+
+    9路に無関係な上級設定（human_profile / jigo_dynamic_rank /
+    jigo_large_lead_delta / jigo_equivalent_epsilon）は FORCED_SETTINGS で
+    無効化値に固定し、GUI 非表示・config 非格納のままコードで確実に無効化する。
+    deception は generate_move の board_size==9 分岐で jigo9_* スライダーを読む。
+    """
+
+    FORCED_SETTINGS = {
+        "jigo_equivalent_epsilon": 0.0,
+        "jigo_large_lead_delta": float("inf"),  # large-lead 緩和を無効化
+        "jigo_dynamic_rank": False,
+        "human_profile": "rank_9d",
+    }
 
 
 @register_strategy(AI_SCORELOSS)

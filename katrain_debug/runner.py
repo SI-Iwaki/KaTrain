@@ -8,7 +8,7 @@ from katrain.core.constants import (
     AI_FIGHTING, AI_DEFAULT, AI_HANDICAP, AI_SCORELOSS, AI_POLICY,
     AI_WEIGHTED, AI_PICK, AI_RANK, AI_INFLUENCE, AI_TERRITORY,
     AI_LOCAL, AI_TENUKI, AI_SIMPLE_OWNERSHIP, AI_SETTLE_STONES,
-    AI_JIGO, AI_ANTIMIRROR,
+    AI_JIGO, AI_JIGO_9, AI_ANTIMIRROR,
 )
 from katrain.core.ai import STRATEGY_REGISTRY
 from katrain.core.engine import KataGoEngine
@@ -33,6 +33,7 @@ STRATEGY_NAME_MAP = {
     "simple_ownership": AI_SIMPLE_OWNERSHIP,
     "settle_stones": AI_SETTLE_STONES,
     "jigo": AI_JIGO,
+    "jigo9": AI_JIGO_9,
     "antimirror": AI_ANTIMIRROR,
     "human": AI_HUMAN,
     "pro": AI_PRO,

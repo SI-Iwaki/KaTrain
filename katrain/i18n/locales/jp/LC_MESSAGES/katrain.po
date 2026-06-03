@@ -527,7 +527,28 @@ msgid "ai:jigo"
 msgstr "Kata持碁"
 
 msgid "aihelp:jigo"
-msgstr "target_score〜target_score_max 目の僅差で勝つことをめざします。1手あたり max_loss_per_move 目以下 & humanPolicy >= min_human_policy の手のみ選び、人間らしくない悪手を避けます。jigo_mode: natural=範囲内は最善手 / maintain=常に target に寄せる。human_profile: humanSL の段位（rank_5d/7d/9d）。jigo_dynamic_rank: ON でリード差に応じて rank を自動降格（弱い相手にも対応）。圧勝時は「リードを広げる鋭手」を自動除外。current_lead が target_score_max + jigo_large_lead_delta を超えた場合のみ max_loss を jigo_large_lead_max_loss に緩和し、target 範囲への収束率を改善（9路は 5.0 上限）。jigo_equivalent_epsilon: target 近傍候補の同点扱い幅（目）。lead<target と in_range かつ maintain の分岐でのみ適用し、argmin±ε 目以内の手を同点として humanPolicy 重みで選択（候補が唯一の定石局面では挙動不変）。0 で無効。 jigo_deception: ON で序中盤に意図的に劣勢を演出 → 終盤で逆転する人間らしい棋風。13路盤では Phase1/2/3 の開始手数と Phase1/2 の目標スコア差をスライダーで調整可能（19/9路はコード固定）。各 Phase 中は target_max = target+1.0 で自動設定、過剰優勢/劣勢(±5目)で安全弁が Phase3 に強制ジャンプ。Phase1 開始 < Phase2 開始 < Phase3 開始 となるように設定するのが推奨だが、逆転値でもエラーにはならず「最後に手数条件を満たす Phase」が採用される。 jigo_force_sanrensei: ON で 19路盤の序盤に星打ちを強制（黒番=一辺に沿った三連星、白番=同辺の隅星2つ＝二連星。相手が星にいれば対角隅）。13路・9路盤では無効。"
+msgstr "target_score〜target_score_max 目の僅差で勝つことをめざします。1手あたり max_loss_per_move 目以下 & humanPolicy >= min_human_policy の手のみ選び、人間らしくない悪手を避けます。jigo_mode: natural=範囲内は最善手 / maintain=常に target に寄せる。human_profile: humanSL の段位（rank_5d/7d/9d）。jigo_dynamic_rank: ON でリード差に応じて rank を自動降格（弱い相手にも対応）。圧勝時は「リードを広げる鋭手」を自動除外。current_lead が target_score_max + jigo_large_lead_delta を超えた場合のみ max_loss を jigo_large_lead_max_loss に緩和し、target 範囲への収束率を改善（9路は 5.0 上限）。jigo_equivalent_epsilon: target 近傍候補の同点扱い幅（目）。lead<target と in_range かつ maintain の分岐でのみ適用し、argmin±ε 目以内の手を同点として humanPolicy 重みで選択（候補が唯一の定石局面では挙動不変）。0 で無効。 jigo_deception: ON で序中盤に意図的に劣勢を演出 → 終盤で逆転する人間らしい棋風。13路盤では Phase1/2/3 の開始手数と Phase1/2 の目標スコア差をスライダーで調整可能（19路はコード固定、9路は専用の「Kata持碁（9路）」モードを使用）。各 Phase 中は target_max = target+1.0 で自動設定、過剰優勢/劣勢(±5目)で安全弁が Phase3 に強制ジャンプ。Phase1 開始 < Phase2 開始 < Phase3 開始 となるように設定するのが推奨だが、逆転値でもエラーにはならず「最後に手数条件を満たす Phase」が採用される。 jigo_force_sanrensei: ON で 19路盤の序盤に星打ちを強制（黒番=一辺に沿った三連星、白番=同辺の隅星2つ＝二連星。相手が星にいれば対角隅）。13路・9路盤では無効。"
+
+msgid "ai:jigo9"
+msgstr "Kata持碁（9路）"
+
+msgid "aihelp:jigo9"
+msgstr "9路盤専用の持碁モード。target_score〜target_score_max 目の僅差で勝つことをめざします。1手あたり max_loss_per_move 目以下 & humanPolicy >= min_human_policy の手のみ選び、人間らしくない悪手を避けます。jigo_mode: natural=範囲内は最善手 / maintain=常に target に寄せる。jigo_deception: ON で序中盤に意図的に劣勢を演出 → 終盤で逆転する人間らしい棋風。Phase1/2/3 の開始手数と Phase1/2 の目標スコア差をスライダーで調整可能。各 Phase 中は target_max = target+1.0 で自動設定、過剰優勢/劣勢(±5目)で安全弁が Phase3 に強制ジャンプ。9路は終局が早いため Phase3（挽回開始）を早めに設定するのが推奨。段位は rank_9d 固定。19/13路盤では従来の Kata持碁 を使ってください。"
+
+msgid "jigo9_phase1_start"
+msgstr "[9路] Phase1開始手数 (控えめに打ち始める)"
+
+msgid "jigo9_phase2_start"
+msgstr "[9路] Phase2開始手数 (徐々に target に戻し始める)"
+
+msgid "jigo9_phase3_start"
+msgstr "[9路] Phase3開始手数 (通常 Jigo に復帰、勝ちに行く)"
+
+msgid "jigo9_phase1_target"
+msgstr "[9路] Phase1 目標スコア差 (例: -1.5=1.5目劣勢を維持)"
+
+msgid "jigo9_phase2_target"
+msgstr "[9路] Phase2 目標スコア差 (Phase3 復帰前の中間値)"
 
 msgid "jigo_large_lead_delta"
 msgstr "圧勝発動目数差 (target_max + Δ で発動)"

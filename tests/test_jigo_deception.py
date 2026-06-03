@@ -7,7 +7,7 @@ from katrain.core.ai import (
     JIGO_DECEPTION_TARGETS,
     JIGO_DECEPTION_SAFETY_OVERSHOOT,
     _jigo_resolve_phase,
-    _jigo_resolve_13path_overrides,  # 新規
+    _jigo_resolve_path_overrides,  # 汎用化（旧 _jigo_resolve_13path_overrides）
 )
 
 
@@ -53,22 +53,6 @@ class TestJigoPhaseBoundaries13:
 
     def test_move_83_is_phase3(self):
         assert _jigo_resolve_phase(13, 83, None) == "phase3"
-
-
-class TestJigoPhaseBoundaries9:
-    """9 路盤の手数ベース phase 境界"""
-
-    def test_move_7_is_phase0(self):
-        assert _jigo_resolve_phase(9, 7, None) == "phase0"
-
-    def test_move_8_is_phase1(self):
-        assert _jigo_resolve_phase(9, 8, None) == "phase1"
-
-    def test_move_20_is_phase2(self):
-        assert _jigo_resolve_phase(9, 20, None) == "phase2"
-
-    def test_move_38_is_phase3(self):
-        assert _jigo_resolve_phase(9, 38, None) == "phase3"
 
 
 class TestJigoSafetyValve:
@@ -143,12 +127,6 @@ class TestJigoDeceptionTargetsLookup:
     def test_13_phase2_targets(self):
         assert JIGO_DECEPTION_TARGETS[(13, "phase2")] == (-1.0, 0.0)
 
-    def test_9_phase1_targets(self):
-        assert JIGO_DECEPTION_TARGETS[(9, "phase1")] == (-1.5, -0.5)
-
-    def test_9_phase2_targets(self):
-        assert JIGO_DECEPTION_TARGETS[(9, "phase2")] == (-0.5, 0.0)
-
     def test_safety_overshoot_value(self):
         assert JIGO_DECEPTION_SAFETY_OVERSHOOT == 5.0
 
@@ -167,11 +145,6 @@ class TestJigoPhaseTableStructure:
     def test_13_boundaries(self):
         assert JIGO_DECEPTION_PHASE_TABLE[13] == [
             (17, "phase1"), (44, "phase2"), (83, "phase3"),
-        ]
-
-    def test_9_boundaries(self):
-        assert JIGO_DECEPTION_PHASE_TABLE[9] == [
-            (8, "phase1"), (20, "phase2"), (38, "phase3"),
         ]
 
 
@@ -234,36 +207,68 @@ class TestJigoTargetOverrides:
 
 
 class TestJigo13PathOverrides:
-    """_jigo_resolve_13path_overrides の挙動"""
+    """_jigo_resolve_path_overrides の key_prefix='jigo_deception_13' 挙動"""
 
     def test_phase0_passthrough(self):
         # phase0 は default をそのまま返す
-        result = _jigo_resolve_13path_overrides("phase0", -3.0, -2.0, {})
+        result = _jigo_resolve_path_overrides("phase0", -3.0, -2.0, {})
         assert result == (-3.0, -2.0)
 
     def test_phase3_passthrough(self):
         # phase3 も default をそのまま返す
-        result = _jigo_resolve_13path_overrides("phase3", 0.5, 10.0, {})
+        result = _jigo_resolve_path_overrides("phase3", 0.5, 10.0, {})
         assert result == (0.5, 10.0)
 
     def test_phase1_uses_setting(self):
         # phase1 で settings から target を読む、target_max は target+1.0
         settings = {"jigo_deception_13_phase1_target": -3.0}
-        result = _jigo_resolve_13path_overrides("phase1", 0.0, 0.0, settings)
+        result = _jigo_resolve_path_overrides("phase1", 0.0, 0.0, settings)
         assert result == (-3.0, -2.0)
 
     def test_phase2_uses_setting(self):
         # phase2 で settings から target を読む
         settings = {"jigo_deception_13_phase2_target": -0.5}
-        result = _jigo_resolve_13path_overrides("phase2", 0.0, 0.0, settings)
+        result = _jigo_resolve_path_overrides("phase2", 0.0, 0.0, settings)
         assert result == (-0.5, 0.5)
 
     def test_phase1_setting_missing_uses_default(self):
         # settings に該当キーがなければ default 値 -2.0 を使う
-        result = _jigo_resolve_13path_overrides("phase1", 0.0, 0.0, {})
+        result = _jigo_resolve_path_overrides("phase1", 0.0, 0.0, {})
         assert result == (-2.0, -1.0)
 
     def test_phase2_setting_missing_uses_default(self):
         # settings に該当キーがなければ default 値 -1.0 を使う
-        result = _jigo_resolve_13path_overrides("phase2", 0.0, 0.0, {})
+        result = _jigo_resolve_path_overrides("phase2", 0.0, 0.0, {})
         assert result == (-1.0, 0.0)
+
+
+class TestJigo9PathOverrides:
+    """_jigo_resolve_path_overrides の key_prefix='jigo9' 挙動"""
+
+    def test_phase0_passthrough(self):
+        result = _jigo_resolve_path_overrides("phase0", 0.5, 5.0, {}, key_prefix="jigo9")
+        assert result == (0.5, 5.0)
+
+    def test_phase3_passthrough(self):
+        result = _jigo_resolve_path_overrides("phase3", 0.5, 5.0, {}, key_prefix="jigo9")
+        assert result == (0.5, 5.0)
+
+    def test_phase1_uses_setting(self):
+        settings = {"jigo9_phase1_target": -2.0}
+        result = _jigo_resolve_path_overrides("phase1", 0.0, 0.0, settings, key_prefix="jigo9")
+        assert result == (-2.0, -1.0)
+
+    def test_phase2_uses_setting(self):
+        settings = {"jigo9_phase2_target": -1.0}
+        result = _jigo_resolve_path_overrides("phase2", 0.0, 0.0, settings, key_prefix="jigo9")
+        assert result == (-1.0, 0.0)
+
+    def test_phase1_missing_uses_9x9_default(self):
+        # 9路 phase1 のフォールバック既定は -1.5
+        result = _jigo_resolve_path_overrides("phase1", 0.0, 0.0, {}, key_prefix="jigo9")
+        assert result == (-1.5, -0.5)
+
+    def test_phase2_missing_uses_9x9_default(self):
+        # 9路 phase2 のフォールバック既定は -0.5
+        result = _jigo_resolve_path_overrides("phase2", 0.0, 0.0, {}, key_prefix="jigo9")
+        assert result == (-0.5, 0.5)
