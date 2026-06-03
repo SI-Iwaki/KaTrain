@@ -1028,6 +1028,19 @@ class JigoStrategy(AIStrategy):
                     "phase1": (p1_target, p1_target + 1.0),
                     "phase2": (p2_target, p2_target + 1.0),
                 }
+            elif board_size_for_phase == 9:
+                phase_table_override = [
+                    (self.settings.get("jigo9_phase1_start", 6),  "phase1"),
+                    (self.settings.get("jigo9_phase2_start", 16), "phase2"),
+                    (self.settings.get("jigo9_phase3_start", 30), "phase3"),
+                ]
+                _defaults_9 = _JIGO_PATH_TARGET_DEFAULTS["jigo9"]
+                p1_target = self.settings.get("jigo9_phase1_target", _defaults_9["phase1"])
+                p2_target = self.settings.get("jigo9_phase2_target", _defaults_9["phase2"])
+                target_overrides = {
+                    "phase1": (p1_target, p1_target + 1.0),
+                    "phase2": (p2_target, p2_target + 1.0),
+                }
 
             phase = _jigo_resolve_phase(
                 board_size_for_phase, move_num, last_lead,
@@ -1040,6 +1053,11 @@ class JigoStrategy(AIStrategy):
                 eff_target, eff_target_max = _jigo_resolve_path_overrides(
                     phase, target_score, target_score_max, self.settings,
                     key_prefix="jigo_deception_13",
+                )
+            elif board_size_for_phase == 9:
+                eff_target, eff_target_max = _jigo_resolve_path_overrides(
+                    phase, target_score, target_score_max, self.settings,
+                    key_prefix="jigo9",
                 )
             else:
                 overrides = JIGO_DECEPTION_TARGETS.get((board_size_for_phase, phase))
