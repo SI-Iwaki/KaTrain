@@ -969,6 +969,15 @@ class JigoStrategy(AIStrategy):
         5. 候補ゼロ時は段階緩和 → 最終的に KataGo 最善手へフォールバック
     """
 
+    # サブクラスで特定設定を強制無効化するための上書きマップ（基底は空）
+    FORCED_SETTINGS = {}
+
+    def _jigo_get(self, key, default):
+        """FORCED_SETTINGS にあればその値、なければ self.settings.get(key, default)。"""
+        if key in self.FORCED_SETTINGS:
+            return self.FORCED_SETTINGS[key]
+        return self.settings.get(key, default)
+
     def generate_move(self) -> Tuple[Move, str]:
         import time
         self.last_decision_info = {
@@ -988,11 +997,11 @@ class JigoStrategy(AIStrategy):
         max_loss         = self.settings.get("max_loss_per_move", 5.6)
         min_hp           = self.settings.get("min_human_policy", 0.02)
         mode             = self.settings.get("jigo_mode", "natural")
-        base_profile     = self.settings.get("human_profile", "rank_9d")
-        dynamic_rank     = self.settings.get("jigo_dynamic_rank", False)
-        large_lead_delta    = self.settings.get("jigo_large_lead_delta", 5.0)
+        base_profile     = self._jigo_get("human_profile", "rank_9d")
+        dynamic_rank     = self._jigo_get("jigo_dynamic_rank", False)
+        large_lead_delta    = self._jigo_get("jigo_large_lead_delta", 5.0)
         large_lead_max_loss = self.settings.get("jigo_large_lead_max_loss", 8.0)
-        equivalent_epsilon  = self.settings.get("jigo_equivalent_epsilon", 0.5)
+        equivalent_epsilon  = self._jigo_get("jigo_equivalent_epsilon", 0.5)
         deception_enabled = self.settings.get("jigo_deception", False)
         self.game.katrain.log(
             f"[JigoStrategy] Settings: target={target_score}, max={target_score_max}, "
