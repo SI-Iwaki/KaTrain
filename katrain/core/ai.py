@@ -848,27 +848,37 @@ def _jigo_resolve_phase(board_size, move_num, current_lead,
     return base_phase
 
 
-def _jigo_resolve_13path_overrides(phase, default_target, default_target_max, settings):
-    """13路盤の deception 有効時、Phase 1/2 で eff_target/eff_target_max を
-    settings (スライダー値) に置換して返す。
+# key_prefix ごとの「設定キー欠落時」フォールバック target（target_max は +1.0 で自動）
+_JIGO_PATH_TARGET_DEFAULTS = {
+    "jigo_deception_13": {"phase1": -2.0, "phase2": -1.0},
+    "jigo9":             {"phase1": -1.5, "phase2": -0.5},
+}
+
+
+def _jigo_resolve_path_overrides(phase, default_target, default_target_max, settings,
+                                 key_prefix="jigo_deception_13"):
+    """deception 有効時、Phase 1/2 で eff_target/eff_target_max を
+    settings (スライダー値) に置換して返す。盤面別に key_prefix で切替。
 
     Phase 0/3 は default をそのまま返す（既存挙動）。
-    target_max は target + 1.0 で自動算出（既存 1.0 目幅維持）。
+    target_max は target + 1.0 で自動算出（1.0 目幅維持）。
 
     Args:
         phase: "phase0" | "phase1" | "phase2" | "phase3"
         default_target: phase0/phase3 用フォールバック値
         default_target_max: phase0/phase3 用フォールバック値
-        settings: JigoStrategy.settings 相当の dict-like
+        settings: Strategy.settings 相当の dict-like
+        key_prefix: "jigo_deception_13"（13路）/ "jigo9"（9路）
 
     Returns:
         (eff_target, eff_target_max)
     """
+    fallbacks = _JIGO_PATH_TARGET_DEFAULTS[key_prefix]
     if phase == "phase1":
-        t = settings.get("jigo_deception_13_phase1_target", -2.0)
+        t = settings.get(f"{key_prefix}_phase1_target", fallbacks["phase1"])
         return t, t + 1.0
     if phase == "phase2":
-        t = settings.get("jigo_deception_13_phase2_target", -1.0)
+        t = settings.get(f"{key_prefix}_phase2_target", fallbacks["phase2"])
         return t, t + 1.0
     return default_target, default_target_max
 
@@ -1024,8 +1034,9 @@ class JigoStrategy(AIStrategy):
 
             # Phase 1/2 の eff_target/eff_target_max を決定
             if board_size_for_phase == 13:
-                eff_target, eff_target_max = _jigo_resolve_13path_overrides(
-                    phase, target_score, target_score_max, self.settings
+                eff_target, eff_target_max = _jigo_resolve_path_overrides(
+                    phase, target_score, target_score_max, self.settings,
+                    key_prefix="jigo_deception_13",
                 )
             else:
                 overrides = JIGO_DECEPTION_TARGETS.get((board_size_for_phase, phase))
