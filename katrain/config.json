@@ -118,6 +118,19 @@
             "jigo_deception_13_phase2_target": -1.0,
             "jigo_force_sanrensei": false
         },
+        "ai:jigo9": {
+            "target_score": 0.5,
+            "target_score_max": 5.0,
+            "max_loss_per_move": 3.3,
+            "min_human_policy": 0.02,
+            "jigo_mode": "natural",
+            "jigo_deception": false,
+            "jigo9_phase1_start": 6,
+            "jigo9_phase2_start": 16,
+            "jigo9_phase3_start": 30,
+            "jigo9_phase1_target": -1.5,
+            "jigo9_phase2_target": -0.5
+        },
         "ai:scoreloss": {
             "strength": 0.2
         },
