@@ -190,7 +190,7 @@ def batch_evaluate(sgf_path, strategy_name, config_path=None,
 
         # 集計
         stats = _aggregate_stats(move_results)
-        if strategy_name == "jigo":
+        if strategy_name in ("jigo", "jigo9"):
             stats["jigo_metrics"] = _aggregate_jigo_metrics(
                 move_results,
                 target_score=ai_settings.get("target_score", 0.5),
