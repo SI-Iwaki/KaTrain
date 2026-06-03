@@ -873,7 +873,12 @@ def _jigo_resolve_path_overrides(phase, default_target, default_target_max, sett
     Returns:
         (eff_target, eff_target_max)
     """
-    fallbacks = _JIGO_PATH_TARGET_DEFAULTS[key_prefix]
+    fallbacks = _JIGO_PATH_TARGET_DEFAULTS.get(key_prefix)
+    if fallbacks is None:
+        raise KeyError(
+            f"_jigo_resolve_path_overrides: unknown key_prefix {key_prefix!r}. "
+            f"Valid: {list(_JIGO_PATH_TARGET_DEFAULTS)}"
+        )
     if phase == "phase1":
         t = settings.get(f"{key_prefix}_phase1_target", fallbacks["phase1"])
         return t, t + 1.0
@@ -1019,8 +1024,9 @@ class JigoStrategy(AIStrategy):
                     (self.settings.get("jigo_deception_13_phase2_start", 44), "phase2"),
                     (self.settings.get("jigo_deception_13_phase3_start", 83), "phase3"),
                 ]
-                p1_target = self.settings.get("jigo_deception_13_phase1_target", -2.0)
-                p2_target = self.settings.get("jigo_deception_13_phase2_target", -1.0)
+                _defaults_13 = _JIGO_PATH_TARGET_DEFAULTS["jigo_deception_13"]
+                p1_target = self.settings.get("jigo_deception_13_phase1_target", _defaults_13["phase1"])
+                p2_target = self.settings.get("jigo_deception_13_phase2_target", _defaults_13["phase2"])
                 target_overrides = {
                     "phase1": (p1_target, p1_target + 1.0),
                     "phase2": (p2_target, p2_target + 1.0),
