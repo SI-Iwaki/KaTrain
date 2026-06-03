@@ -55,22 +55,6 @@ class TestJigoPhaseBoundaries13:
         assert _jigo_resolve_phase(13, 83, None) == "phase3"
 
 
-class TestJigoPhaseBoundaries9:
-    """9 路盤の手数ベース phase 境界"""
-
-    def test_move_7_is_phase0(self):
-        assert _jigo_resolve_phase(9, 7, None) == "phase0"
-
-    def test_move_8_is_phase1(self):
-        assert _jigo_resolve_phase(9, 8, None) == "phase1"
-
-    def test_move_20_is_phase2(self):
-        assert _jigo_resolve_phase(9, 20, None) == "phase2"
-
-    def test_move_38_is_phase3(self):
-        assert _jigo_resolve_phase(9, 38, None) == "phase3"
-
-
 class TestJigoSafetyValve:
     """安全弁: ±5 目で phase3 ジャンプ"""
 
@@ -143,12 +127,6 @@ class TestJigoDeceptionTargetsLookup:
     def test_13_phase2_targets(self):
         assert JIGO_DECEPTION_TARGETS[(13, "phase2")] == (-1.0, 0.0)
 
-    def test_9_phase1_targets(self):
-        assert JIGO_DECEPTION_TARGETS[(9, "phase1")] == (-1.5, -0.5)
-
-    def test_9_phase2_targets(self):
-        assert JIGO_DECEPTION_TARGETS[(9, "phase2")] == (-0.5, 0.0)
-
     def test_safety_overshoot_value(self):
         assert JIGO_DECEPTION_SAFETY_OVERSHOOT == 5.0
 
@@ -167,11 +145,6 @@ class TestJigoPhaseTableStructure:
     def test_13_boundaries(self):
         assert JIGO_DECEPTION_PHASE_TABLE[13] == [
             (17, "phase1"), (44, "phase2"), (83, "phase3"),
-        ]
-
-    def test_9_boundaries(self):
-        assert JIGO_DECEPTION_PHASE_TABLE[9] == [
-            (8, "phase1"), (20, "phase2"), (38, "phase3"),
         ]
 
 

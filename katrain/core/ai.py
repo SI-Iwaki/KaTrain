@@ -769,10 +769,6 @@ def _select_rank_by_lead(current_lead, target_score_max, base_profile,
     return _JIGO_RANK_CHAIN[new_idx]
 
 
-# 9路盤での圧勝時 max_loss 上限（9路は HumanStyle NORMAL_THRESHOLD=3.3 のため緩和を控えめにする）
-JIGO_LARGE_LEAD_9X9_CAP = 5.0
-
-
 # ----------------------------------------------------------------
 # Jigo deception Phase 機構
 # ----------------------------------------------------------------
@@ -780,7 +776,6 @@ JIGO_LARGE_LEAD_9X9_CAP = 5.0
 JIGO_DECEPTION_PHASE_TABLE = {
     19: [(30, "phase1"), (80, "phase2"), (150, "phase3")],
     13: [(17, "phase1"), (44, "phase2"), (83, "phase3")],
-    9:  [(8,  "phase1"), (20, "phase2"), (38, "phase3")],
 }
 
 # (board_size, phase) → (target_score, target_score_max) または None
@@ -794,10 +789,6 @@ JIGO_DECEPTION_TARGETS = {
     (13, "phase1"): (-2.0, -1.0),
     (13, "phase2"): (-1.0,  0.0),
     (13, "phase3"): None,
-    (9,  "phase0"): None,
-    (9,  "phase1"): (-1.5, -0.5),
-    (9,  "phase2"): (-0.5,  0.0),
-    (9,  "phase3"): None,
 }
 
 # 過剰優勢/過剰劣勢の安全弁閾値（目数）
@@ -894,16 +885,13 @@ def _jigo_compute_effective_max_loss(
 ):
     """current_lead が target_score_max + large_lead_delta を超えた場合のみ max_loss を緩和する。
 
-    9路盤 (board_size <= 9) では effective 値を JIGO_LARGE_LEAD_9X9_CAP (5.0) にキャップする。
     緩和発動しない場合・large_lead_max_loss が base より小さい場合は base_max_loss を返す。
+    board_size は呼び出し側互換のため残す（盤面別の特別扱いは廃止）。
     """
     threshold = target_score_max + large_lead_delta
     if current_lead < threshold:
         return base_max_loss
-    effective = large_lead_max_loss
-    if board_size <= 9:
-        effective = min(effective, JIGO_LARGE_LEAD_9X9_CAP)
-    return max(base_max_loss, effective)
+    return max(base_max_loss, large_lead_max_loss)
 
 
 def _pick_target_closest_with_epsilon(candidates, target, epsilon):
