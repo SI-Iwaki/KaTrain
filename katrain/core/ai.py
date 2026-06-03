@@ -6,7 +6,7 @@ import time
 from typing import Dict, List, Optional, Tuple
 
 from katrain.core.constants import (
-    AI_DEFAULT, AI_HANDICAP, AI_INFLUENCE, AI_INFLUENCE_ELO_GRID, AI_JIGO,
+    AI_DEFAULT, AI_HANDICAP, AI_INFLUENCE, AI_INFLUENCE_ELO_GRID, AI_JIGO, AI_JIGO_9,
     AI_ANTIMIRROR, AI_LOCAL, AI_LOCAL_ELO_GRID, AI_PICK, AI_PICK_ELO_GRID,
     AI_POLICY, AI_RANK, AI_SCORELOSS, AI_SCORELOSS_ELO, AI_SETTLE_STONES,
     AI_SIMPLE_OWNERSHIP, AI_STRENGTH,
@@ -293,7 +293,7 @@ def interp2d(gridspec, x, y):
     )
 
 def ai_rank_estimation(strategy, settings) -> int:
-    if strategy in [AI_DEFAULT, AI_HANDICAP, AI_JIGO, AI_PRO]:
+    if strategy in [AI_DEFAULT, AI_HANDICAP, AI_JIGO, AI_JIGO_9, AI_PRO]:
         return 9
     if strategy == AI_RANK:
         return 1 - settings["kyu_rank"]
@@ -1325,6 +1325,24 @@ class JigoStrategy(AIStrategy):
         self.game._jigo_last_current_lead = current_lead
 
         return aimove, ai_thoughts
+
+
+@register_strategy(AI_JIGO_9)
+class Jigo9Strategy(JigoStrategy):
+    """持碁（9路）専用モード。JigoStrategy を継承し generate_move を流用。
+
+    9路に無関係な上級設定（human_profile / jigo_dynamic_rank /
+    jigo_large_lead_delta / jigo_equivalent_epsilon）は FORCED_SETTINGS で
+    無効化値に固定し、GUI 非表示・config 非格納のままコードで確実に無効化する。
+    deception は generate_move の board_size==9 分岐で jigo9_* スライダーを読む。
+    """
+
+    FORCED_SETTINGS = {
+        "jigo_equivalent_epsilon": 0.0,
+        "jigo_large_lead_delta": float("inf"),  # large-lead 緩和を無効化
+        "jigo_dynamic_rank": False,
+        "human_profile": "rank_9d",
+    }
 
 
 @register_strategy(AI_SCORELOSS)

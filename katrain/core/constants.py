@@ -42,6 +42,7 @@ AI_HANDICAP = "ai:handicap"
 AI_SCORELOSS = "ai:scoreloss"
 AI_WEIGHTED = "ai:p:weighted"
 AI_JIGO = "ai:jigo"
+AI_JIGO_9 = "ai:jigo9"
 AI_ANTIMIRROR = "ai:antimirror"
 AI_POLICY = "ai:policy"
 AI_PICK = "ai:p:pick"
@@ -62,7 +63,7 @@ AI_HUNT_DIVERGE = "ai:hunt_diverge"
 
 AI_CONFIG_DEFAULT = AI_RANK
 
-AI_STRATEGIES_ENGINE = [AI_DEFAULT, AI_HANDICAP, AI_SCORELOSS, AI_SIMPLE_OWNERSHIP, AI_JIGO, AI_ANTIMIRROR]
+AI_STRATEGIES_ENGINE = [AI_DEFAULT, AI_HANDICAP, AI_SCORELOSS, AI_SIMPLE_OWNERSHIP, AI_JIGO, AI_JIGO_9, AI_ANTIMIRROR]
 AI_STRATEGIES_PICK = [AI_PICK, AI_LOCAL, AI_TENUKI, AI_INFLUENCE, AI_TERRITORY, AI_FIGHTING, AI_RANK]
 AI_STRATEGIES_POLICY = [AI_WEIGHTED, AI_POLICY] + AI_STRATEGIES_PICK
 AI_STRATEGIES = AI_STRATEGIES_ENGINE + AI_STRATEGIES_POLICY + [AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE]
@@ -78,6 +79,7 @@ AI_STRATEGIES_RECOMMENDED_ORDER = [
     AI_POLICY,
     AI_WEIGHTED,
     AI_JIGO,
+    AI_JIGO_9,
     AI_ANTIMIRROR,
     AI_PICK,
     AI_LOCAL,
@@ -95,6 +97,7 @@ AI_STRENGTH = {  # dan ranks, backup if model is missing. TODO: remove some?
     AI_ANTIMIRROR: 9,
     AI_POLICY: 5,
     AI_JIGO: float("nan"),
+    AI_JIGO_9: float("nan"),
     AI_SCORELOSS: -4,
     AI_WEIGHTED: -4,
     AI_PICK: -7,
@@ -189,7 +192,7 @@ AI_OPTION_VALUES = {
     "hunt_dodge_top_n": list(range(2, 6)),  # 2〜5
     # ===== JigoStrategy =====
     "target_score_max": [5.0, 10.0, 15.0],
-    "max_loss_per_move": [3.0, 4.0, 5.6, 7.0],
+    "max_loss_per_move": [3.0, 3.3, 4.0, 5.6, 7.0],
     "min_human_policy": [(0.005, "0.5%"), (0.01, "1%"), (0.02, "2%"), (0.05, "5%")],
     "jigo_mode": [
         ("natural", "natural"),
@@ -211,6 +214,12 @@ AI_OPTION_VALUES = {
     "jigo_deception_13_phase1_target": [-1.0, -2.0, -3.0, -4.0],
     "jigo_deception_13_phase2_target": [-0.5, -1.0, -1.5, -2.0],
     "jigo_force_sanrensei": "bool",
+    # ===== Jigo9Strategy（9路専用） =====
+    "jigo9_phase1_start": [4, 6, 8, 10],
+    "jigo9_phase2_start": [12, 16, 20, 24],
+    "jigo9_phase3_start": [26, 30, 34, 38],
+    "jigo9_phase1_target": [-1.0, -1.5, -2.0, -2.5],
+    "jigo9_phase2_target": [-0.5, -1.0, -1.5],
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）
@@ -280,6 +289,11 @@ AI_OPTION_ORDER = {
     "jigo_deception_13_phase1_target": 14,
     "jigo_deception_13_phase2_target": 15,
     "jigo_force_sanrensei": 16,
+    "jigo9_phase1_start": 11,
+    "jigo9_phase2_start": 12,
+    "jigo9_phase3_start": 13,
+    "jigo9_phase1_target": 14,
+    "jigo9_phase2_target": 15,
 }
 
 AI_KEY_PROPERTIES = {
