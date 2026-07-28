@@ -627,10 +627,24 @@ class KaTrainGui(Screen, KaTrainBase):
         self._do_tsumego_frame(ko=ko, margin=margin)
         settings = self._config.get("tsumego_capture") or {}
         maximize = settings.get("maximize_on_capture", True)
-        self.controls.set_status("詰碁盤面を取り込みました", STATUS_INFO)
+        auto_ai = settings.get("auto_ai_black", True)
+        if auto_ai:
+            # 黒=AI（最善手=正解手）・白=人間。AI自動着手はプレイモードでのみ発火する。
+            # モード切替は switch_ui_mode のトグルではなくプレイタブを直接トリガーする
+            # （_do_new_game/_do_tsumego_frame が解析モード切替クリックをスケジュール済みで、
+            #  トグルだと mode の読み値がクリック発火前になり競合する。Kivy Clock は同一timeoutの
+            #  イベントをスケジュール順に発火するため、後からの直接指定で必ずプレイモードに収束）
+            self.update_player("B", player_type=PLAYER_AI, player_subtype=AI_DEFAULT)
+            self.update_player("W", player_type=PLAYER_HUMAN, player_subtype=PLAYING_NORMAL)
+            Clock.schedule_once(lambda _dt: self.play_mode.play.trigger_action(duration=0))
+            self.controls.set_status("詰碁盤面を取り込みました（黒:AIが正解手を打ちます）", STATUS_INFO)
+        else:
+            self.controls.set_status("詰碁盤面を取り込みました", STATUS_INFO)
 
         def finish_gui(_dt):
             # kvバインディングがグラフィックス命令に触るため、プロパティ変更はメインスレッドで行う
+            if auto_ai:
+                self.controls.timer.paused = True  # プレイモードで白番考慮中の秒読みビープを防ぐ
             if maximize:
                 self.tsumego_view = True  # 盤面拡大（下部ナビは残る。F12/`で通常表示に復帰）
             try:

@@ -55,7 +55,8 @@
         "board_sizes": [9, 13, 19],
         "frame_margin": 4,
         "frame_ko": false,
-        "maximize_on_capture": true
+        "maximize_on_capture": true,
+        "auto_ai_black": true
     },
     "trainer": {
         "theme": "theme:normal",
