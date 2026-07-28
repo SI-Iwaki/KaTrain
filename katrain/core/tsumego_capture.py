@@ -7,6 +7,7 @@ from PIL import Image, ImageGrab, ImageStat
 
 DEFAULT_WINDOW_TITLE = "BlueStacks"
 DEFAULT_BOARD_SIZE = 13
+DEFAULT_BOARD_SIZES = (9, 13, 19)  # 自動判定の試行順（詰碁アプリは問題により盤サイズが変わる）
 DETECT_SCALE = 4  # 盤検出時の縮小率
 
 
@@ -140,12 +141,28 @@ def capture_screen_rect(rect):
     return img.crop((left - vx, top - vy, right - vx, bottom - vy))
 
 
+def detect_size_and_classify(img, board_rect, sizes=DEFAULT_BOARD_SIZES):
+    """候補サイズを順に試し、曖昧交点なしで分類できたサイズとグリッドを返す。
+
+    誤ったサイズでのサンプリングは交点が線・石の境界に落ちて曖昧エラーになるため、
+    分類が通ること自体がサイズ判定になる（9/13/19 の相互誤読拒否はテストで固定）
+    """
+    for size in sizes:
+        try:
+            return size, classify_intersections(img, board_rect, size)
+        except CaptureError:
+            continue
+    tried = "/".join(str(s) for s in sizes)
+    raise CaptureError(f"盤サイズを判定できません（{tried}路のいずれでも曖昧な交点がありました）")
+
+
 def capture_tsumego_sgf(settings, komi=6.5):
     """ウィンドウ検出→キャプチャ→認識→SGF生成の全体処理。失敗は CaptureError"""
     rect = find_window_rect(settings.get("window_title", DEFAULT_WINDOW_TITLE))
     img = capture_screen_rect(rect)
     board_rect = detect_board(img)
-    grid = classify_intersections(img, board_rect, int(settings.get("board_size", DEFAULT_BOARD_SIZE)))
+    sizes = [int(s) for s in (settings.get("board_sizes") or DEFAULT_BOARD_SIZES)]
+    _size, grid = detect_size_and_classify(img, board_rect, sizes)
     return grid_to_sgf(grid, komi=komi)
 
 
@@ -160,7 +177,7 @@ def main():
     parser.add_argument("--image", help="保存済みスクリーンショットを解析（ライブキャプチャの代わり）")
     parser.add_argument("--window", action="store_true", help="ウィンドウからライブキャプチャして解析")
     parser.add_argument("--title", default=DEFAULT_WINDOW_TITLE, help="ウィンドウタイトルの部分一致文字列")
-    parser.add_argument("--size", type=int, default=DEFAULT_BOARD_SIZE, help="盤サイズ")
+    parser.add_argument("--size", type=int, default=None, help="盤サイズ（省略時は 9/13/19 を自動判定）")
     args = parser.parse_args()
     try:
         if args.image:
@@ -171,7 +188,9 @@ def main():
             parser.error("--image か --window を指定してください")
         board_rect = detect_board(img)
         print(f"board rect: {board_rect}")
-        grid = classify_intersections(img, board_rect, args.size)
+        sizes = [args.size] if args.size else DEFAULT_BOARD_SIZES
+        size, grid = detect_size_and_classify(img, board_rect, sizes)
+        print(f"board size: {size}")
     except CaptureError as e:
         print(f"ERROR: {e}")
         raise SystemExit(1)

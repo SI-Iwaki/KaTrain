@@ -5,12 +5,22 @@ import sys
 import pytest
 from PIL import Image
 
-from katrain.core.tsumego_capture import CaptureError, classify_intersections, detect_board, grid_to_sgf
+from katrain.core.tsumego_capture import (
+    CaptureError,
+    classify_intersections,
+    detect_board,
+    detect_size_and_classify,
+    grid_to_sgf,
+)
 
 SAMPLE = os.path.join(os.path.dirname(__file__), "data", "tsumego_app_sample.png")
+SAMPLE_9X9 = os.path.join(os.path.dirname(__file__), "data", "tsumego_app_sample_9x9.png")
 
 EXPECTED_WHITE = {(0, 0), (0, 2), (0, 3), (1, 0), (1, 3), (2, 3), (3, 0), (3, 1), (3, 2), (3, 3)}
 EXPECTED_BLACK = {(1, 2), (1, 4), (2, 0), (2, 1), (2, 4), (3, 4), (4, 0), (4, 1), (4, 2), (4, 3), (4, 4)}
+
+EXPECTED_BLACK_9X9 = {(5, j) for j in range(9)} | {(6, 2), (6, 6), (7, 2), (7, 6), (8, 4)}
+EXPECTED_WHITE_9X9 = {(6, 0), (6, 1), (6, 4), (6, 7), (6, 8), (7, 1), (7, 7), (8, 0), (8, 2), (8, 3), (8, 5), (8, 6), (8, 8)}
 
 
 def test_detect_board_returns_square_bbox():
@@ -38,6 +48,38 @@ def test_classify_sample_image():
     white = {(i, j) for i in range(13) for j in range(13) if grid[i][j] == "W"}
     assert black == EXPECTED_BLACK
     assert white == EXPECTED_WHITE
+
+
+def test_auto_size_13_sample():
+    img = Image.open(SAMPLE)
+    size, grid = detect_size_and_classify(img, detect_board(img))
+    assert size == 13
+    black = {(i, j) for i in range(13) for j in range(13) if grid[i][j] == "B"}
+    assert black == EXPECTED_BLACK
+
+
+def test_auto_size_9x9_sample():
+    img = Image.open(SAMPLE_9X9)
+    size, grid = detect_size_and_classify(img, detect_board(img))
+    assert size == 9
+    black = {(i, j) for i in range(9) for j in range(9) if grid[i][j] == "B"}
+    white = {(i, j) for i in range(9) for j in range(9) if grid[i][j] == "W"}
+    assert black == EXPECTED_BLACK_9X9
+    assert white == EXPECTED_WHITE_9X9
+
+
+def test_cross_size_rejection():
+    # 誤ったサイズでのサンプリングは曖昧エラーで拒否される（自動サイズ判定の前提）
+    img13 = Image.open(SAMPLE)
+    rect13 = detect_board(img13)
+    img9 = Image.open(SAMPLE_9X9)
+    rect9 = detect_board(img9)
+    for wrong_size in (9, 19):
+        with pytest.raises(CaptureError):
+            classify_intersections(img13, rect13, wrong_size)
+    for wrong_size in (13, 19):
+        with pytest.raises(CaptureError):
+            classify_intersections(img9, rect9, wrong_size)
 
 
 def _empty_grid(size=13):

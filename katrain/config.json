@@ -52,7 +52,7 @@
         "enabled": true,
         "hotkey": "f4",
         "window_title": "BlueStacks",
-        "board_size": 13,
+        "board_sizes": [9, 13, 19],
         "frame_margin": 4,
         "frame_ko": false,
         "maximize_on_capture": true
