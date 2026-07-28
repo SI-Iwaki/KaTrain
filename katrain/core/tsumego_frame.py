@@ -90,6 +90,7 @@ def tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin):
     frame_range = [i0, i1, j0, j1]
     black_to_attack_p = guess_black_to_attack([top, bottom, left, right], sizes)
     put_border(stones, sizes, frame_range, black_to_attack_p)
+    mark_region_corners(stones, sizes, frame_range)
     put_outside(stones, sizes, frame_range, black_to_attack_p, black_to_play_p, komi)
     put_ko_threat(stones, sizes, frame_range, black_to_attack_p, black_to_play_p, ko_p)
     return stones
@@ -137,6 +138,17 @@ def height(k, size):
 
 ######################################
 # sub
+
+
+def mark_region_corners(stones, sizes, frame_range):
+    # 枠矩形+marginが盤外にはみ出すと put_stone が境界石ごとマークを捨て、マークが1線に退化して
+    # get_analysis_region がリージョンなし（全盤解析）を返す。盤内クランプ済みの4隅を直接マークして
+    # リージョン範囲を常に保存する（マークは石でない空セルにも付けられ、flip/転置にもそのまま乗る）
+    isize, jsize = sizes
+    i0, i1, j0, j1 = frame_range
+    for i in (max(0, i0), min(isize - 1, i1)):
+        for j in (max(0, j0), min(jsize - 1, j1)):
+            stones[i][j]["tsumego_frame_region_mark"] = True
 
 
 def put_border(stones, sizes, frame_range, is_black):
