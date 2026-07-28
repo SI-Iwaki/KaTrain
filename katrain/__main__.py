@@ -206,6 +206,7 @@ class KaTrainGui(Screen, KaTrainBase):
             self.last_focus_event = time.time()
 
         MDApp.get_running_app().root_window.bind(focus=set_focus_event)
+        self._setup_tsumego_capture()
 
     def update_gui(self, cn, redraw_board=False):
         # Handle prisoners and next player display
@@ -550,6 +551,71 @@ class KaTrainGui(Screen, KaTrainBase):
             self.game.set_region_of_interest(flattened_region)
         node.analyze(self.game.engines[node.next_player])
         self.update_state(redraw_board=True)
+
+    def _setup_tsumego_capture(self):
+        settings = self._config.get("tsumego_capture") or {}
+        if not settings.get("enabled", False):
+            return
+        try:
+            import keyboard
+        except ImportError:
+            self.log("tsumego_capture: keyboard パッケージ未導入のためホットキー無効 (pip install keyboard)", OUTPUT_INFO)
+            return
+        hotkey = settings.get("hotkey", "ctrl+shift+g")
+        try:
+            keyboard.add_hotkey(hotkey, self._tsumego_capture_trigger)
+            self._tsumego_capture_busy = False
+            self.log(f"tsumego_capture: ホットキー {hotkey} を登録しました", OUTPUT_INFO)
+        except Exception as e:
+            self.log(f"tsumego_capture: ホットキー登録失敗: {e}", OUTPUT_ERROR)
+
+    def _tsumego_capture_trigger(self):
+        # keyboard リスナースレッドで実行される。認識までここで行い、反映はメッセージループに投げる
+        from katrain.core.tsumego_capture import CaptureError, capture_tsumego_sgf
+
+        if getattr(self, "_tsumego_capture_busy", False):
+            return
+        self._tsumego_capture_busy = True
+        try:
+            settings = self._config.get("tsumego_capture") or {}
+            try:
+                sgf = capture_tsumego_sgf(settings, komi=self.config("game/komi", 6.5))
+            except CaptureError as e:
+                self.log(f"詰碁キャプチャ失敗: {e}", OUTPUT_ERROR)
+                return
+            except Exception as e:
+                self.log(f"詰碁キャプチャで予期しないエラー: {e}", OUTPUT_ERROR)
+                return
+            self.log(f"詰碁キャプチャ成功: {sgf}", OUTPUT_DEBUG)
+            self(
+                "tsumego-capture-apply",
+                sgf,
+                settings.get("frame_ko", False),
+                int(settings.get("frame_margin", 4)),
+            )
+        finally:
+            self._tsumego_capture_busy = False
+
+    def _do_tsumego_capture_apply(self, sgf, ko, margin):
+        # メッセージループスレッドで実行。new-game と tsumego-frame を同一メッセージ内で行う
+        # （分割すると new-game で game_id が変わり後続メッセージが破棄されるため）
+        try:
+            move_tree = KaTrainSGF.parse_sgf(sgf)
+        except ParseError as e:
+            self.log(f"詰碁キャプチャSGF解析失敗: {e}", OUTPUT_ERROR)
+            return
+        self._do_new_game(move_tree=move_tree)
+        self._do_tsumego_frame(ko=ko, margin=margin)
+        self.controls.set_status("詰碁盤面を取り込みました", STATUS_INFO)
+
+        def raise_window(_dt):
+            try:
+                Window.restore()
+                Window.raise_window()
+            except Exception as e:
+                self.log(f"tsumego_capture: ウィンドウ前面化失敗: {e}", OUTPUT_DEBUG)
+
+        Clock.schedule_once(raise_window, 0.1)
 
     def play_mistake_sound(self, node):
         if self.config("timer/sound") and node.played_mistake_sound is None and Theme.MISTAKE_SOUNDS:
