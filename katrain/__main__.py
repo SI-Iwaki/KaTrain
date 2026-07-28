@@ -562,8 +562,15 @@ class KaTrainGui(Screen, KaTrainBase):
         if self.game.region_of_interest:
             # Game.play() と同じ2段構え: 全盤の高速解析で root 勝率を得てから、リージョン限定で本解析
             # （これがないと初期解析が全盤対象になり、枠外の詰め物エリアの手が最善手として表示される）
+            deep_visits = self.game.region_analysis_visits
             node.analyze(engine, analyze_fast=True)
-            node.analyze(engine, region_of_interest=self.game.region_of_interest)
+            node.analyze(
+                engine,
+                region_of_interest=self.game.region_of_interest,
+                visits=deep_visits,
+                time_limit=deep_visits is None,
+                extra_settings={"wideRootNoise": 0.0} if deep_visits else None,
+            )
         else:
             node.analyze(engine)
         self.update_state(redraw_board=True)
@@ -624,8 +631,15 @@ class KaTrainGui(Screen, KaTrainBase):
             self.log(f"詰碁キャプチャSGF解析失敗: {e}", OUTPUT_ERROR)
             return
         self._do_new_game(move_tree=move_tree)
-        self._do_tsumego_frame(ko=ko, margin=margin)
         settings = self._config.get("tsumego_capture") or {}
+        try:
+            # 詰碁の正解手判定用に、初期解析＋以降の毎手のリージョン解析を深掘り専用クエリ
+            # （visits指定・時間無制限・wideRootNoise=0）にする。0以下で既定解析にフォールバック
+            deep_visits = int(settings.get("analysis_visits", 4000))
+            self.game.region_analysis_visits = deep_visits if deep_visits > 0 else None
+        except (TypeError, ValueError):
+            self.game.region_analysis_visits = None
+        self._do_tsumego_frame(ko=ko, margin=margin)
         maximize = settings.get("maximize_on_capture", True)
         auto_ai = settings.get("auto_ai_black", True)
         if auto_ai:

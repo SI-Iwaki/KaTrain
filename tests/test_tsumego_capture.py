@@ -181,6 +181,29 @@ def test_region_flags_cleared_on_clear():
     assert "B4" in node.analysis["moves"]
 
 
+def test_analyze_passes_deep_region_settings():
+    # 詰碁のリージョン解析はvisits指定・時間無制限・wideRootNoise=0の専用クエリを使えること
+    # （既定の1500visits・8秒上限・ノイズ0.04では難しい詰碁で正解手を外すため）
+    from katrain.core.game_node import GameNode
+
+    class FakeEngine:
+        def request_analysis(self, node, **kwargs):
+            self.requested = kwargs
+
+    node = GameNode(properties={"SZ": "13"})
+    engine = FakeEngine()
+    node.analyze(
+        engine,
+        region_of_interest=[0, 10, 4, 12],
+        visits=4000,
+        time_limit=False,
+        extra_settings={"wideRootNoise": 0.0},
+    )
+    assert engine.requested["visits"] == 4000
+    assert engine.requested["time_limit"] is False
+    assert engine.requested["extra_settings"] == {"wideRootNoise": 0.0}
+
+
 def test_cli_image_mode():
     result = subprocess.run(
         [sys.executable, "-m", "katrain.core.tsumego_capture", "--image", SAMPLE],

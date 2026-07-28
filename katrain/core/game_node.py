@@ -208,6 +208,7 @@ class GameNode(SGFNode):
         find_alternatives=False,
         region_of_interest=None,
         report_every=REPORT_DT,
+        extra_settings=None,
     ):
         if region_of_interest:
             self.analysis["region_requested"] = True
@@ -225,6 +226,7 @@ class GameNode(SGFNode):
             find_alternatives=find_alternatives,
             region_of_interest=region_of_interest,
             report_every=report_every,
+            extra_settings=extra_settings,
         )
 
     def update_move_analysis(self, move_analysis, move_gtp):

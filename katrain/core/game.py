@@ -452,6 +452,7 @@ class Game(BaseGame):
         self.insert_mode = False
         self.insert_after = None
         self.region_of_interest = None
+        self.region_analysis_visits = None  # 詰碁キャプチャ用: リージョン解析の専用visits（深掘り・ノイズなし・時間無制限）
 
         threading.Thread(
             target=lambda: self.analyze_all_nodes(analyze_fast=analyze_fast, even_if_present=False),
@@ -547,7 +548,13 @@ class Game(BaseGame):
         if analyze:
             if self.region_of_interest:
                 played_node.analyze(self.engines[played_node.next_player], analyze_fast=True)
-                played_node.analyze(self.engines[played_node.next_player], region_of_interest=self.region_of_interest)
+                played_node.analyze(
+                    self.engines[played_node.next_player],
+                    region_of_interest=self.region_of_interest,
+                    visits=self.region_analysis_visits,
+                    time_limit=self.region_analysis_visits is None,
+                    extra_settings={"wideRootNoise": 0.0} if self.region_analysis_visits else None,
+                )
             else:
                 played_node.analyze(self.engines[played_node.next_player])
         return played_node
