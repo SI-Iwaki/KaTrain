@@ -30,6 +30,10 @@ def katrain_sgf_from_ijs(ijs, isize, jsize, player):
 
 
 def tsumego_frame(bw_board, komi, black_to_play_p, ko_p, margin):
+    # 9路以下では margin=4（13/19路向け）だと枠矩形が盤外にはみ出して壁・充填が置けず、
+    # 解析リージョンも全盤（→None正規化→全盤解析）に退化するため、収まる値にクランプする
+    if min(ij_sizes(bw_board)) <= 9:
+        margin = min(margin, 2)
     stones = stones_from_bw_board(bw_board)
     filled_stones = tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin)
     region_pos = pick_all(filled_stones, "tsumego_frame_region_mark")

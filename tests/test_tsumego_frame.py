@@ -31,6 +31,24 @@ def test_full_height_tsumego_region_not_degenerate():
     assert region == ((0, 12), (4, 12))
 
 
+def test_9x9_margin_clamped_so_frame_fits():
+    # 回帰テスト: 9路でmargin=4は枠矩形が全方向で盤外にはみ出し、壁・充填が一切置けず
+    # リージョンも全盤（→None正規化→全盤解析）になっていた。9路以下はmarginを2に
+    # クランプして壁+リージョンが成立するようにする（左半分を占める詰碁の実例形）
+    board = _board(
+        size=9,
+        stones=[
+            (2, 2, "W"), (3, 1, "W"), (4, 0, "B"), (4, 1, "B"), (4, 2, "W"),
+            (5, 1, "B"), (5, 3, "W"), (6, 2, "B"), (7, 1, "W"), (7, 5, "W"), (8, 1, "B"),
+        ],
+    )
+    blacks, whites, region = tsumego_frame(board, komi=7.0, black_to_play_p=True, ko_p=False, margin=4)
+    # 縦は端スナップで全域、横は bbox(0..5)+クランプ後margin(2) = 0..7 → 全盤にならずリージョン成立
+    assert region == ((0, 8), (0, 7))
+    # 壁が盤内（j=7列）に置かれ、枠として機能する
+    assert any(j == 7 for _i, j in blacks + whites)
+
+
 def test_full_board_tsumego_region_covers_board():
     # 詰碁+marginが盤全体を覆う極端ケース: 全盤リージョンを返す
     # （set_region_of_interest 側が全盤リージョンを None に正規化するので実害なし）
