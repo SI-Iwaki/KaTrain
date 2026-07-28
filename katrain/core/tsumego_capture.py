@@ -81,3 +81,18 @@ def classify_intersections(img, board_rect, board_size=DEFAULT_BOARD_SIZE):
     if ambiguous:
         raise CaptureError(f"判定できない交点があります（先頭5件: {ambiguous[:5]}）")
     return grid
+
+
+def grid_to_sgf(grid, komi=6.5):
+    """認識グリッドを黒番の SGF 文字列にする（AB/AW 配置・PL[B]）"""
+    size = len(grid)
+    ab = [chr(97 + j) + chr(97 + i) for i, row in enumerate(grid) for j, v in enumerate(row) if v == "B"]
+    aw = [chr(97 + j) + chr(97 + i) for i, row in enumerate(grid) for j, v in enumerate(row) if v == "W"]
+    if not ab and not aw:
+        raise CaptureError("石が1つも見つかりません（詰碁が表示されているか確認してください）")
+    sgf = f"(;GM[1]FF[4]CA[UTF-8]SZ[{size}]KM[{komi}]PL[B]"
+    if ab:
+        sgf += "AB" + "".join(f"[{p}]" for p in ab)
+    if aw:
+        sgf += "AW" + "".join(f"[{p}]" for p in aw)
+    return sgf + ")"

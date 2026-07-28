@@ -3,7 +3,7 @@ import os
 import pytest
 from PIL import Image
 
-from katrain.core.tsumego_capture import CaptureError, classify_intersections, detect_board
+from katrain.core.tsumego_capture import CaptureError, classify_intersections, detect_board, grid_to_sgf
 
 SAMPLE = os.path.join(os.path.dirname(__file__), "data", "tsumego_app_sample.png")
 
@@ -36,3 +36,34 @@ def test_classify_sample_image():
     white = {(i, j) for i in range(13) for j in range(13) if grid[i][j] == "W"}
     assert black == EXPECTED_BLACK
     assert white == EXPECTED_WHITE
+
+
+def _empty_grid(size=13):
+    return [["." for _ in range(size)] for _ in range(size)]
+
+
+def test_grid_to_sgf():
+    grid = _empty_grid()
+    grid[0][1] = "B"  # i=0(上端行), j=1(左から2列目) → SGF座標 "ba"（列j→1文字目, 行i→2文字目）
+    grid[12][12] = "W"  # 右下隅 → "mm"
+    sgf = grid_to_sgf(grid, komi=6.5)
+    assert sgf == "(;GM[1]FF[4]CA[UTF-8]SZ[13]KM[6.5]PL[B]AB[ba]AW[mm])"
+
+
+def test_grid_to_sgf_empty_board_raises():
+    with pytest.raises(CaptureError):
+        grid_to_sgf(_empty_grid())
+
+
+def test_grid_to_sgf_parses_in_katrain():
+    # KaTrain 本体のパーサで読めて黒番になることを保証する結合テスト
+    from katrain.core.sgf_parser import SGF
+
+    grid = _empty_grid()
+    grid[2][3] = "B"
+    grid[5][6] = "W"
+    root = SGF.parse_sgf(grid_to_sgf(grid))
+    assert root.get_property("SZ") == "13"
+    assert root.initial_player == "B"
+    assert root.get_list_property("AB") == ["dc"]
+    assert root.get_list_property("AW") == ["gf"]
