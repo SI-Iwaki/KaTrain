@@ -38,6 +38,25 @@ KaTrain既存の対局ループ（`update_state` が「プレイモード ∧ �
    `_do_new_game(move_tree=...)` と `_do_tsumego_frame` が解析モードへ切替えるため、
    最後にプレイモードへ戻す必要がある。
 
+## 追加発見: 全盤fast解析とのレース（要ゲート）
+
+`analysis_complete` は**全盤fast解析（25 visits・リージョンなし）の完了時点で True になる**
+（`game_node.py:276` — `is_normal_query` はリージョン有無を見ない）。このため対策なしでは、
+リージョン限定解析（500 visits）が返る前に AI 自動着手が発火し、**刈り取り前の枠外候補・浅読み候補**を
+打ってしまう（枠外B4バグの「実際に着手される」版）。
+
+対策（リージョン解析完了ゲート）:
+
+1. `GameNode.clear_analysis`: analysis 辞書に `"region_requested": False` / `"region_completed": False` を追加
+2. `GameNode.analyze`: `region_of_interest` 指定時に `analysis["region_requested"] = True`
+3. `GameNode.set_analysis`: リージョン刈り取りブロック内で最終結果（`not partial_result`）時に
+   `analysis["region_completed"] = True`
+4. `update_state` の AI 発火ブロック: リージョン設定時は `region_completed` が立つまで発火を待つ。
+   未発行（`region_requested` が偽 = 手動リージョン選択直後等）なら一度だけリージョン解析を発行して待つ
+   （自己回復。`Game.play` / `_do_tsumego_frame` 経由のノードは発行済みフラグが立つため二重発行しない）
+
+このゲートは正解手の品質にも必須（ゲートなしだと25visitsの浅い解析で着手が決まる）。
+
 ## 変更内容
 
 ### 1. `katrain/__main__.py` — `_do_tsumego_capture_apply`
