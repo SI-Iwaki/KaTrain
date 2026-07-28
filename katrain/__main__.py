@@ -635,7 +635,7 @@ class KaTrainGui(Screen, KaTrainBase):
         try:
             # 詰碁の正解手判定用に、初期解析＋以降の毎手のリージョン解析を深掘り専用クエリ
             # （visits指定・時間無制限・wideRootNoise=0）にする。0以下で既定解析にフォールバック
-            deep_visits = int(settings.get("analysis_visits", 4000))
+            deep_visits = int(settings.get("analysis_visits", 1800))
             self.game.region_analysis_visits = deep_visits if deep_visits > 0 else None
         except (TypeError, ValueError):
             self.game.region_analysis_visits = None
