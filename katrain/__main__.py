@@ -615,7 +615,7 @@ class KaTrainGui(Screen, KaTrainBase):
         def raise_window(_dt):
             try:
                 user32 = ctypes.windll.user32
-                hwnd = user32.FindWindowW(None, self.title)
+                hwnd = user32.FindWindowW(None, Window.title)
                 if hwnd and user32.IsIconic(hwnd):
                     Window.restore()
                 Window.raise_window()
