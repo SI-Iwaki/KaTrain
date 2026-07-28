@@ -26,8 +26,8 @@ Ctrl+Shift+G（グローバルホットキー、keyboard ライブラリ）
   → BlueStacks ウィンドウ検出（ctypes/Win32 API、タイトル部分一致）
   → ウィンドウ矩形をスクリーンキャプチャ（PIL ImageGrab）
   → 盤面認識 → SGF 文字列生成（SZ[13] AB[...] AW[...] PL[B] KM[新規対局既定値]）
-  → Kivy メインスレッドへ（Clock.schedule_once）
-  → _do_new_game(move_tree=parse(sgf)) → _do_tsumego_frame(ko=False, margin=4)
+  → KaTrain メッセージキューへ（tsumego-capture-apply 単一メッセージ）
+  → _do_new_game(move_tree=parse(sgf)) → _do_tsumego_frame(ko=False, margin=4)（同一ハンドラ内で同期実行）
   → KaTrain ウィンドウを前面化
 ```
 
@@ -88,7 +88,7 @@ Ctrl+Shift+G（グローバルホットキー、keyboard ライブラリ）
 | 曖昧な交点が 1 つでもある | 読み取り中止しエラー表示（誤配置で解くより安全） |
 | keyboard ライブラリ初期化失敗 | ログ警告のみ、KaTrain 本体は通常起動 |
 
-認識はホットキーのリスナースレッドで実行し（〜数百 ms）、Kivy への反映のみ `Clock.schedule_once` でメインスレッドに渡す。
+認識はホットキーのリスナースレッドで実行し（〜数百 ms）、反映は message queue（`tsumego-capture-apply`）経由でメッセージループスレッドで実行し、ウィンドウ前面化のみ `Clock.schedule_once` で行う。
 
 ## テスト
 

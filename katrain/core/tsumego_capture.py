@@ -14,6 +14,14 @@ class CaptureError(Exception):
     """盤面キャプチャ・認識の失敗（ユーザー向けメッセージ付き）"""
 
 
+def ensure_dpi_awareness():
+    """プロセスのDPI仮想化を無効化する（1回だけ・ベストエフォート）。既に設定済みならHRESULTが失敗を返すが実害なし"""
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except OSError:
+        pass
+
+
 def _is_yellow(r, g, b):
     # サンプル画像の盤色 約RGB(247,193,62)。木目・照明ムラを許容する広めの閾値
     return r > 170 and g > 120 and b < 150 and (r - b) > 60
@@ -101,10 +109,6 @@ def grid_to_sgf(grid, komi=6.5):
 def find_window_rect(title_substring):
     """タイトル部分一致（大小無視）で可視ウィンドウを探し、画面座標 (left, top, right, bottom) を返す"""
     user32 = ctypes.windll.user32
-    try:
-        ctypes.windll.shcore.SetProcessDpiAwareness(2)  # 座標のDPI仮想化を防ぐ。設定済みなら失敗するが無視
-    except OSError:
-        pass
     matches = []
 
     @ctypes.WINFUNCTYPE(ctypes.wintypes.BOOL, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM)
@@ -151,6 +155,7 @@ def main():
     os.environ["KIVY_NO_ARGS"] = "1"  # 慣例(本モジュールはKivy非import): Kivyの引数横取り防止
     import argparse
 
+    ensure_dpi_awareness()
     parser = argparse.ArgumentParser(description="Tsumego capture debug CLI")
     parser.add_argument("--image", help="保存済みスクリーンショットを解析（ライブキャプチャの代わり）")
     parser.add_argument("--window", action="store_true", help="ウィンドウからライブキャプチャして解析")

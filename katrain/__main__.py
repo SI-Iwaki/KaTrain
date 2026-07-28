@@ -37,6 +37,7 @@ if getattr(sys, "frozen", False):
         os.environ["SSL_CERT_FILE"] = os.path.join(sys._MEIPASS, "certifi", "cacert.pem")
 
 
+import ctypes
 import re
 import signal
 import json
@@ -558,9 +559,11 @@ class KaTrainGui(Screen, KaTrainBase):
             return
         try:
             import keyboard
+            from katrain.core.tsumego_capture import ensure_dpi_awareness
         except ImportError:
             self.log("tsumego_capture: keyboard パッケージ未導入のためホットキー無効 (pip install keyboard)", OUTPUT_INFO)
             return
+        ensure_dpi_awareness()
         hotkey = settings.get("hotkey", "ctrl+shift+g")
         try:
             keyboard.add_hotkey(hotkey, self._tsumego_capture_trigger)
@@ -573,6 +576,10 @@ class KaTrainGui(Screen, KaTrainBase):
         # keyboard リスナースレッドで実行される。認識までここで行い、反映はメッセージループに投げる
         from katrain.core.tsumego_capture import CaptureError, capture_tsumego_sgf
 
+        now = time.time()
+        if now - getattr(self, "_tsumego_capture_last_trigger", 0.0) < 2.0:
+            return
+        self._tsumego_capture_last_trigger = now
         if getattr(self, "_tsumego_capture_busy", False):
             return
         self._tsumego_capture_busy = True
@@ -580,6 +587,8 @@ class KaTrainGui(Screen, KaTrainBase):
             settings = self._config.get("tsumego_capture") or {}
             try:
                 sgf = capture_tsumego_sgf(settings, komi=self.config("game/komi", 6.5))
+                ko = settings.get("frame_ko", False)
+                margin = int(settings.get("frame_margin", 4))
             except CaptureError as e:
                 self.log(f"詰碁キャプチャ失敗: {e}", OUTPUT_ERROR)
                 return
@@ -587,12 +596,7 @@ class KaTrainGui(Screen, KaTrainBase):
                 self.log(f"詰碁キャプチャで予期しないエラー: {e}", OUTPUT_ERROR)
                 return
             self.log(f"詰碁キャプチャ成功: {sgf}", OUTPUT_DEBUG)
-            self(
-                "tsumego-capture-apply",
-                sgf,
-                settings.get("frame_ko", False),
-                int(settings.get("frame_margin", 4)),
-            )
+            self("tsumego-capture-apply", sgf, ko, margin)
         finally:
             self._tsumego_capture_busy = False
 
@@ -610,7 +614,10 @@ class KaTrainGui(Screen, KaTrainBase):
 
         def raise_window(_dt):
             try:
-                Window.restore()
+                user32 = ctypes.windll.user32
+                hwnd = user32.FindWindowW(None, self.title)
+                if hwnd and user32.IsIconic(hwnd):
+                    Window.restore()
                 Window.raise_window()
             except Exception as e:
                 self.log(f"tsumego_capture: ウィンドウ前面化失敗: {e}", OUTPUT_DEBUG)
