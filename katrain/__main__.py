@@ -283,8 +283,15 @@ class KaTrainGui(Screen, KaTrainBase):
                     and not self.game.end_result
                     and not (teaching_undo and cn.auto_undo is None)
                 ):  # cn mismatch stops this if undo fired. avoid message loop here or fires repeatedly.
-                    self._do_ai_move(cn)
-                    Clock.schedule_once(self._play_stone_sound, 0.25)
+                    region = self.game.region_of_interest
+                    if not region or cn.analysis.get("region_completed"):
+                        self._do_ai_move(cn)
+                        Clock.schedule_once(self._play_stone_sound, 0.25)
+                    elif not cn.analysis.get("region_requested"):
+                        # リージョン設定時、全盤fast解析だけでAIを発火させると刈り取り前の枠外・浅読み
+                        # 候補を打ってしまう。リージョン解析が未発行の局面（手動リージョン選択直後等）
+                        # では一度だけ発行して完了を待つ（Game.play/_do_tsumego_frame 経由は発行済み）
+                        cn.analyze(self.game.engines[cn.next_player], region_of_interest=region)
             if self.engine:
                 if self.pondering:
                     self.game.analyze_extra("ponder")

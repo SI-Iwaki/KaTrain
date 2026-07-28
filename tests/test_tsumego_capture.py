@@ -163,3 +163,36 @@ def test_cli_image_mode():
     # ASCII盤面が13行出力される
     board_lines = [ln for ln in result.stdout.splitlines() if ln and all(c in "BW. " for c in ln)]
     assert len(board_lines) == 13
+
+
+def test_region_completed_flag_gates_fast_analysis():
+    # AI自動着手ゲートの回帰テスト: 全盤fast解析の完了時点では region_completed は立たず、
+    # リージョン限定解析の最終結果で立つ（これがないとAIが刈り取り前の枠外・浅読み候補を打つ）
+    from katrain.core.game_node import GameNode
+
+    node = GameNode(properties={"SZ": "13"})
+    node.set_analysis(_fake_analysis([("B4", 38)]))  # 全盤fast: region指定なし
+    assert node.analysis_complete
+    assert not node.analysis.get("region_completed")
+    # 部分結果（ストリーミング途中）でも立たない
+    node.set_analysis(_fake_analysis([("A12", 100)]), region_of_interest=[0, 10, 4, 12], partial_result=True)
+    assert not node.analysis.get("region_completed")
+    # リージョン限定解析の最終結果で立つ
+    node.set_analysis(_fake_analysis([("A12", 335)]), region_of_interest=[0, 10, 4, 12])
+    assert node.analysis.get("region_completed")
+
+
+def test_analyze_marks_region_requested():
+    # update_state 側の自己回復（未発行なら一度だけ発行）が二重発行しないためのフラグ
+    from katrain.core.game_node import GameNode
+
+    class FakeEngine:
+        def request_analysis(self, node, **kwargs):
+            self.requested = kwargs
+
+    node = GameNode(properties={"SZ": "13"})
+    engine = FakeEngine()
+    assert not node.analysis.get("region_requested")
+    node.analyze(engine, region_of_interest=[0, 10, 4, 12])
+    assert node.analysis.get("region_requested")
+    assert engine.requested["region_of_interest"] == [0, 10, 4, 12]

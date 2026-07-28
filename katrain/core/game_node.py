@@ -106,7 +106,15 @@ class GameNode(SGFNode):
 
     def clear_analysis(self):
         self.analysis_visits_requested = 0
-        self.analysis = {"moves": {}, "root": None, "ownership": None, "policy": None, "completed": False}
+        self.analysis = {
+            "moves": {},
+            "root": None,
+            "ownership": None,
+            "policy": None,
+            "completed": False,
+            "region_requested": False,
+            "region_completed": False,
+        }
 
     def sgf_properties(
         self,
@@ -195,6 +203,8 @@ class GameNode(SGFNode):
         region_of_interest=None,
         report_every=REPORT_DT,
     ):
+        if region_of_interest:
+            self.analysis["region_requested"] = True
         engine.request_analysis(
             self,
             callback=lambda result, partial_result: self.set_analysis(
@@ -261,6 +271,8 @@ class GameNode(SGFNode):
                         Move.from_gtp(gtp).coords
                     )
                 }
+                if not partial_result:
+                    self.analysis["region_completed"] = True
             self.analysis["ownership"] = analysis_json.get("ownership")
             self.analysis["policy"] = analysis_json.get("policy")
             if not additional_moves and not region_of_interest:
