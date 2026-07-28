@@ -150,6 +150,37 @@ def test_region_analysis_prunes_outside_moves():
     assert set(node.analysis["moves"]) == {"A12", "B11"}
 
 
+def test_late_fullboard_result_does_not_pollute_region_analysis():
+    # 回帰テスト: 2段解析の全盤fastクエリの最終結果がリージョン限定クエリの最終結果より
+    # 後に届くと（並列探索でまれに逆転）、既存候補を全降格して浅い全盤順位を上書きし、
+    # 「値はリージョン解析・順位は全盤fast」の汚染状態でAIが次善手を打っていた。
+    # リージョン確定後の全盤解析は moves を汚染させず、root（勝率）更新のみ許可する
+    from katrain.core.game_node import GameNode
+
+    node = GameNode(properties={"SZ": "13"})
+    node.set_analysis(_fake_analysis([("B4", 38), ("A12", 20)]))  # 全盤fast（先着）
+    node.set_analysis(_fake_analysis([("A12", 813), ("B11", 673)]), region_of_interest=[0, 10, 4, 12])
+    # 全盤fastの最終結果が遅れて再着（もしくは順序逆転で後着）
+    node.set_analysis(_fake_analysis([("B4", 38), ("A12", 20)]))
+    assert "B4" not in node.analysis["moves"]  # 枠外候補が再注入されない
+    assert node.candidate_moves[0]["move"] == "A12"  # リージョン解析の順位が維持される
+    assert node.analysis["root"]["visits"] == 58  # root（勝率表示用）は全盤解析で更新されてよい
+
+
+def test_region_flags_cleared_on_clear():
+    # リージョン解除後は全盤解析を再び受け付ける（clear_region_flags でフラグを戻す）
+    from katrain.core.game_node import GameNode
+
+    node = GameNode(properties={"SZ": "13"})
+    node.set_analysis(_fake_analysis([("A12", 335), ("B11", 342)]), region_of_interest=[0, 10, 4, 12])
+    assert node.analysis.get("region_completed")
+    node.clear_region_flags()
+    assert not node.analysis.get("region_completed")
+    assert not node.analysis.get("region_requested")
+    node.set_analysis(_fake_analysis([("B4", 38), ("A12", 20)]))  # 全盤解析が通常どおり反映される
+    assert "B4" in node.analysis["moves"]
+
+
 def test_cli_image_mode():
     result = subprocess.run(
         [sys.executable, "-m", "katrain.core.tsumego_capture", "--image", SAMPLE],

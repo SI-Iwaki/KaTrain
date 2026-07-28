@@ -557,6 +557,8 @@ class Game(BaseGame):
         xmin, xmax = min(x1, x2), max(x1, x2)
         ymin, ymax = min(y1, y2), max(y1, y2)
         szx, szy = self.board_size
+        for node in self.root.nodes_in_tree:  # 旧リージョン基準のフラグを戻す（解除後の全盤解析拒否・stale発火防止）
+            node.clear_region_flags()
         if not (xmin == xmax and ymin == ymax) and not (xmax - xmin + 1 >= szx and ymax - ymin + 1 >= szy):
             self.region_of_interest = [xmin, xmax, ymin, ymax]
         else:
