@@ -1,4 +1,6 @@
 import os
+import subprocess
+import sys
 
 import pytest
 from PIL import Image
@@ -67,3 +69,18 @@ def test_grid_to_sgf_parses_in_katrain():
     assert root.initial_player == "B"
     assert root.get_list_property("AB") == ["dc"]
     assert root.get_list_property("AW") == ["gf"]
+
+
+def test_cli_image_mode():
+    result = subprocess.run(
+        [sys.executable, "-m", "katrain.core.tsumego_capture", "--image", SAMPLE],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "SZ[13]" in result.stdout
+    assert "PL[B]" in result.stdout
+    # ASCII盤面が13行出力される
+    board_lines = [ln for ln in result.stdout.splitlines() if ln and all(c in "BW. " for c in ln)]
+    assert len(board_lines) == 13

@@ -96,3 +96,84 @@ def grid_to_sgf(grid, komi=6.5):
     if aw:
         sgf += "AW" + "".join(f"[{p}]" for p in aw)
     return sgf + ")"
+
+
+def find_window_rect(title_substring):
+    """タイトル部分一致（大小無視）で可視ウィンドウを探し、画面座標 (left, top, right, bottom) を返す"""
+    user32 = ctypes.windll.user32
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)  # 座標のDPI仮想化を防ぐ。設定済みなら失敗するが無視
+    except OSError:
+        pass
+    matches = []
+
+    @ctypes.WINFUNCTYPE(ctypes.wintypes.BOOL, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM)
+    def enum_cb(hwnd, _lparam):
+        if user32.IsWindowVisible(hwnd) and not user32.IsIconic(hwnd):
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length > 0:
+                buf = ctypes.create_unicode_buffer(length + 1)
+                user32.GetWindowTextW(hwnd, buf, length + 1)
+                if title_substring.lower() in buf.value.lower():
+                    rect = ctypes.wintypes.RECT()
+                    user32.GetWindowRect(hwnd, ctypes.byref(rect))
+                    if rect.right - rect.left > 200 and rect.bottom - rect.top > 200:
+                        matches.append((rect.left, rect.top, rect.right, rect.bottom))
+        return True
+
+    user32.EnumWindows(enum_cb, 0)
+    if not matches:
+        raise CaptureError(f"ウィンドウが見つかりません: {title_substring}（起動・最小化解除を確認してください）")
+    return matches[0]
+
+
+def capture_screen_rect(rect):
+    """画面座標 rect の領域をキャプチャして PIL Image を返す（マルチモニタの仮想座標に対応）"""
+    left, top, right, bottom = rect
+    img = ImageGrab.grab(all_screens=True)
+    vx = ctypes.windll.user32.GetSystemMetrics(76)  # SM_XVIRTUALSCREEN
+    vy = ctypes.windll.user32.GetSystemMetrics(77)  # SM_YVIRTUALSCREEN
+    return img.crop((left - vx, top - vy, right - vx, bottom - vy))
+
+
+def capture_tsumego_sgf(settings, komi=6.5):
+    """ウィンドウ検出→キャプチャ→認識→SGF生成の全体処理。失敗は CaptureError"""
+    rect = find_window_rect(settings.get("window_title", DEFAULT_WINDOW_TITLE))
+    img = capture_screen_rect(rect)
+    board_rect = detect_board(img)
+    grid = classify_intersections(img, board_rect, int(settings.get("board_size", DEFAULT_BOARD_SIZE)))
+    return grid_to_sgf(grid, komi=komi)
+
+
+def main():
+    import os
+
+    os.environ["KIVY_NO_ARGS"] = "1"  # 慣例(本モジュールはKivy非import): Kivyの引数横取り防止
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Tsumego capture debug CLI")
+    parser.add_argument("--image", help="保存済みスクリーンショットを解析（ライブキャプチャの代わり）")
+    parser.add_argument("--window", action="store_true", help="ウィンドウからライブキャプチャして解析")
+    parser.add_argument("--title", default=DEFAULT_WINDOW_TITLE, help="ウィンドウタイトルの部分一致文字列")
+    parser.add_argument("--size", type=int, default=DEFAULT_BOARD_SIZE, help="盤サイズ")
+    args = parser.parse_args()
+    try:
+        if args.image:
+            img = Image.open(args.image)
+        elif args.window:
+            img = capture_screen_rect(find_window_rect(args.title))
+        else:
+            parser.error("--image か --window を指定してください")
+        board_rect = detect_board(img)
+        print(f"board rect: {board_rect}")
+        grid = classify_intersections(img, board_rect, args.size)
+    except CaptureError as e:
+        print(f"ERROR: {e}")
+        raise SystemExit(1)
+    for row in grid:
+        print(" ".join(row))
+    print(grid_to_sgf(grid))
+
+
+if __name__ == "__main__":
+    main()
