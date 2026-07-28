@@ -37,6 +37,7 @@ if getattr(sys, "frozen", False):
         os.environ["SSL_CERT_FILE"] = os.path.join(sys._MEIPASS, "certifi", "cacert.pem")
 
 
+import ctypes
 import re
 import signal
 import json
@@ -59,7 +60,7 @@ from kivy.uix.screenmanager import Screen
 from kivy.core.window import Window
 from kivy.uix.widget import Widget
 from kivy.resources import resource_find
-from kivy.properties import NumericProperty, ObjectProperty, StringProperty
+from kivy.properties import BooleanProperty, NumericProperty, ObjectProperty, StringProperty
 from kivy.clock import Clock
 from kivy.metrics import dp
 from katrain.core.ai import generate_ai_move
@@ -112,6 +113,7 @@ class KaTrainGui(Screen, KaTrainBase):
     """Top level class responsible for tying everything together"""
 
     zen = NumericProperty(0)
+    tsumego_view = BooleanProperty(False)  # 詰碁専用表示: 右パネル+上部トグル非表示、下部ナビは残す
     controls = ObjectProperty(None)
 
     def __init__(self, **kwargs):
@@ -206,6 +208,7 @@ class KaTrainGui(Screen, KaTrainBase):
             self.last_focus_event = time.time()
 
         MDApp.get_running_app().root_window.bind(focus=set_focus_event)
+        self._setup_tsumego_capture()
 
     def update_gui(self, cn, redraw_board=False):
         # Handle prisoners and next player display
@@ -548,8 +551,91 @@ class KaTrainGui(Screen, KaTrainBase):
                 analysis_region[1][0],
             ]
             self.game.set_region_of_interest(flattened_region)
-        node.analyze(self.game.engines[node.next_player])
+        engine = self.game.engines[node.next_player]
+        if self.game.region_of_interest:
+            # Game.play() と同じ2段構え: 全盤の高速解析で root 勝率を得てから、リージョン限定で本解析
+            # （これがないと初期解析が全盤対象になり、枠外の詰め物エリアの手が最善手として表示される）
+            node.analyze(engine, analyze_fast=True)
+            node.analyze(engine, region_of_interest=self.game.region_of_interest)
+        else:
+            node.analyze(engine)
         self.update_state(redraw_board=True)
+
+    def _setup_tsumego_capture(self):
+        settings = self._config.get("tsumego_capture") or {}
+        if not settings.get("enabled", False):
+            return
+        try:
+            import keyboard
+            from katrain.core.tsumego_capture import ensure_dpi_awareness
+        except ImportError:
+            self.log("tsumego_capture: keyboard パッケージ未導入のためホットキー無効 (pip install keyboard)", OUTPUT_INFO)
+            return
+        ensure_dpi_awareness()
+        hotkey = settings.get("hotkey", "ctrl+shift+g")
+        try:
+            keyboard.add_hotkey(hotkey, self._tsumego_capture_trigger)
+            self._tsumego_capture_busy = False
+            self.log(f"tsumego_capture: ホットキー {hotkey} を登録しました", OUTPUT_INFO)
+        except Exception as e:
+            self.log(f"tsumego_capture: ホットキー登録失敗: {e}", OUTPUT_ERROR)
+
+    def _tsumego_capture_trigger(self):
+        # keyboard リスナースレッドで実行される。認識までここで行い、反映はメッセージループに投げる
+        from katrain.core.tsumego_capture import CaptureError, capture_tsumego_sgf
+
+        now = time.time()
+        if now - getattr(self, "_tsumego_capture_last_trigger", 0.0) < 2.0:
+            return
+        self._tsumego_capture_last_trigger = now
+        if getattr(self, "_tsumego_capture_busy", False):
+            return
+        self._tsumego_capture_busy = True
+        try:
+            settings = self._config.get("tsumego_capture") or {}
+            try:
+                sgf = capture_tsumego_sgf(settings, komi=self.config("game/komi", 6.5))
+                ko = settings.get("frame_ko", False)
+                margin = int(settings.get("frame_margin", 4))
+            except CaptureError as e:
+                self.log(f"詰碁キャプチャ失敗: {e}", OUTPUT_ERROR)
+                return
+            except Exception as e:
+                self.log(f"詰碁キャプチャで予期しないエラー: {e}", OUTPUT_ERROR)
+                return
+            self.log(f"詰碁キャプチャ成功: {sgf}", OUTPUT_DEBUG)
+            self("tsumego-capture-apply", sgf, ko, margin)
+        finally:
+            self._tsumego_capture_busy = False
+
+    def _do_tsumego_capture_apply(self, sgf, ko, margin):
+        # メッセージループスレッドで実行。new-game と tsumego-frame を同一メッセージ内で行う
+        # （分割すると new-game で game_id が変わり後続メッセージが破棄されるため）
+        try:
+            move_tree = KaTrainSGF.parse_sgf(sgf)
+        except ParseError as e:
+            self.log(f"詰碁キャプチャSGF解析失敗: {e}", OUTPUT_ERROR)
+            return
+        self._do_new_game(move_tree=move_tree)
+        self._do_tsumego_frame(ko=ko, margin=margin)
+        settings = self._config.get("tsumego_capture") or {}
+        maximize = settings.get("maximize_on_capture", True)
+        self.controls.set_status("詰碁盤面を取り込みました", STATUS_INFO)
+
+        def finish_gui(_dt):
+            # kvバインディングがグラフィックス命令に触るため、プロパティ変更はメインスレッドで行う
+            if maximize:
+                self.tsumego_view = True  # 盤面拡大（下部ナビは残る。F12/`で通常表示に復帰）
+            try:
+                user32 = ctypes.windll.user32
+                hwnd = user32.FindWindowW(None, Window.title)
+                if hwnd and user32.IsIconic(hwnd):
+                    Window.restore()
+                Window.raise_window()
+            except Exception as e:
+                self.log(f"tsumego_capture: ウィンドウ前面化失敗: {e}", OUTPUT_DEBUG)
+
+        Clock.schedule_once(finish_gui, 0.1)
 
     def play_mistake_sound(self, node):
         if self.config("timer/sound") and node.played_mistake_sound is None and Theme.MISTAKE_SOUNDS:
@@ -759,7 +845,10 @@ class KaTrainGui(Screen, KaTrainBase):
         elif keycode[1] in Theme.KEY_PAUSE_TIMER and not ctrl_pressed:
             self.controls.timer.paused = not self.controls.timer.paused
         elif keycode[1] in Theme.KEY_ZEN:
-            self.zen = (self.zen + 1) % 3
+            if self.tsumego_view:
+                self.tsumego_view = False  # 詰碁ビュー中はまず通常表示に戻す
+            else:
+                self.zen = (self.zen + 1) % 3
         elif keycode[1] in Theme.KEY_NAV_PREV:
             self("undo", 1 + shift_pressed * 9 + ctrl_pressed * 9999)
         elif keycode[1] in Theme.KEY_NAV_NEXT:

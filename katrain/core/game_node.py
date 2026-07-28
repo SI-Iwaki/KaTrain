@@ -250,6 +250,17 @@ class GameNode(SGFNode):
                     move_dict["order"] = ADDITIONAL_MOVE_ORDER  # old moves to end
             for move_analysis in analysis_json["moveInfos"]:
                 self.update_move_analysis(move_analysis, move_analysis["move"])
+            if region_of_interest and not additional_moves:
+                # リージョン限定解析の反映時は、先行する全盤解析由来の枠外候補手を除去する
+                # （avoidMoves で枠外は再探索されないため、残すと古い評価が最善手として表示され続ける）
+                xmin, xmax, ymin, ymax = region_of_interest
+                self.analysis["moves"] = {
+                    gtp: d
+                    for gtp, d in self.analysis["moves"].items()
+                    if (lambda c: c is None or (xmin <= c[0] <= xmax and ymin <= c[1] <= ymax))(
+                        Move.from_gtp(gtp).coords
+                    )
+                }
             self.analysis["ownership"] = analysis_json.get("ownership")
             self.analysis["policy"] = analysis_json.get("policy")
             if not additional_moves and not region_of_interest:

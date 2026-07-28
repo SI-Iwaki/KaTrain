@@ -48,6 +48,15 @@
         "setup_move": 100,
         "setup_advantage": 20
     },
+    "tsumego_capture": {
+        "enabled": true,
+        "hotkey": "f4",
+        "window_title": "BlueStacks",
+        "board_sizes": [9, 13, 19],
+        "frame_margin": 4,
+        "frame_ko": false,
+        "maximize_on_capture": true
+    },
     "trainer": {
         "theme": "theme:normal",
         "num_undo_prompts": [
