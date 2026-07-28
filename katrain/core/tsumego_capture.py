@@ -141,19 +141,55 @@ def capture_screen_rect(rect):
     return img.crop((left - vx, top - vy, right - vx, bottom - vy))
 
 
-def detect_size_and_classify(img, board_rect, sizes=DEFAULT_BOARD_SIZES):
-    """候補サイズを順に試し、曖昧交点なしで分類できたサイズとグリッドを返す。
+GRID_SCORE_MIN = 0.5  # 正解サイズは概ね0.8超、誤サイズは0.2未満になる（実サンプルで確認）
+GRID_SCORE_MARGIN = 0.15
 
-    誤ったサイズでのサンプリングは交点が線・石の境界に落ちて曖昧エラーになるため、
-    分類が通ること自体がサイズ判定になる（9/13/19 の相互誤読拒否はテストで固定）
+
+def _grid_line_score(rgb, board_rect, size):
+    """候補サイズの想定縦線位置（交点間の中点）に実際に暗い線ピクセルがある割合を返す。
+
+    石に隠れた点（7x7パッチが黒石の暗さ or 白石の明るさ）は分母から除外する。
+    正しいサイズなら線上の点ばかりでスコア≈1、誤ったサイズなら線間の黄色に落ちてスコア≈0.1
     """
-    for size in sizes:
-        try:
-            return size, classify_intersections(img, board_rect, size)
-        except CaptureError:
-            continue
-    tried = "/".join(str(s) for s in sizes)
-    raise CaptureError(f"盤サイズを判定できません（{tried}路のいずれでも曖昧な交点がありました）")
+    x0, y0, x1, y1 = board_rect
+    cell_w = (x1 - x0 + 1) / size
+    cell_h = (y1 - y0 + 1) / size
+    px = rgb.load()
+    w, h = rgb.size
+    hits = total = 0
+    for j in range(size):
+        lx = int(x0 + cell_w * (j + 0.5))
+        for k in range(size - 1):
+            ly = int(y0 + cell_h * (k + 1.0))  # 縦線上かつ横線と重ならない中点
+            if not (4 <= lx < w - 4 and 4 <= ly < h - 4):
+                continue
+            patch = rgb.crop((lx - 3, ly - 3, lx + 4, ly + 4))
+            mr, mg, mb = ImageStat.Stat(patch).mean
+            brightness = (mr + mg + mb) / 3
+            spread = max(mr, mg, mb) - min(mr, mg, mb)
+            if brightness < 95 or (brightness > 185 and spread < 60):
+                continue  # 石の内部に隠れている
+            total += 1
+            if any((sum(px[lx + dx, ly][:3]) / 3) < 150 for dx in range(-3, 4)):
+                hits += 1
+    return hits / total if total else 0.0
+
+
+def detect_size_and_classify(img, board_rect, sizes=DEFAULT_BOARD_SIZES):
+    """格子線の位置から盤サイズを判定し、そのサイズで分類したグリッドを返す。
+
+    「曖昧エラーが出なければ採用」方式は、石が少ない盤でサンプル点が偶然
+    境界を踏まないと誤サイズが成立してしまうため、格子線検出で判定する
+    """
+    rgb = img.convert("RGB")
+    scores = {size: _grid_line_score(rgb, board_rect, size) for size in sizes}
+    ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
+    best_size, best_score = ranked[0]
+    second_score = ranked[1][1] if len(ranked) > 1 else 0.0
+    if best_score < GRID_SCORE_MIN or best_score - second_score < GRID_SCORE_MARGIN:
+        detail = ", ".join(f"{s}:{v:.2f}" for s, v in scores.items())
+        raise CaptureError(f"盤サイズを判定できません（格子線スコア {detail}）")
+    return best_size, classify_intersections(img, board_rect, best_size)
 
 
 def capture_tsumego_sgf(settings, komi=6.5):

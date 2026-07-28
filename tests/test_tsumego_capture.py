@@ -15,6 +15,7 @@ from katrain.core.tsumego_capture import (
 
 SAMPLE = os.path.join(os.path.dirname(__file__), "data", "tsumego_app_sample.png")
 SAMPLE_9X9 = os.path.join(os.path.dirname(__file__), "data", "tsumego_app_sample_9x9.png")
+SAMPLE_SPARSE13 = os.path.join(os.path.dirname(__file__), "data", "tsumego_app_sample_sparse13.png")
 
 EXPECTED_WHITE = {(0, 0), (0, 2), (0, 3), (1, 0), (1, 3), (2, 3), (3, 0), (3, 1), (3, 2), (3, 3)}
 EXPECTED_BLACK = {(1, 2), (1, 4), (2, 0), (2, 1), (2, 4), (3, 4), (4, 0), (4, 1), (4, 2), (4, 3), (4, 4)}
@@ -66,6 +67,18 @@ def test_auto_size_9x9_sample():
     white = {(i, j) for i in range(9) for j in range(9) if grid[i][j] == "W"}
     assert black == EXPECTED_BLACK_9X9
     assert white == EXPECTED_WHITE_9X9
+
+
+def test_auto_size_sparse13_sample():
+    # 石が少ない13路盤の9路誤認識の回帰テスト: サンプル点が偶然境界を踏まないと
+    # 曖昧エラーが出ず9路として誤成立するため、格子線検出でサイズを判定すること
+    img = Image.open(SAMPLE_SPARSE13)
+    size, grid = detect_size_and_classify(img, detect_board(img))
+    assert size == 13
+    black = {(i, j) for i in range(13) for j in range(13) if grid[i][j] == "B"}
+    white = {(i, j) for i in range(13) for j in range(13) if grid[i][j] == "W"}
+    assert black == {(1, 11), (2, 10), (3, 10), (3, 11)}
+    assert white == {(1, 9), (2, 7), (2, 9), (3, 9), (4, 10), (4, 11), (5, 10)}
 
 
 def test_cross_size_rejection():
