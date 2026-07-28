@@ -619,11 +619,13 @@ class KaTrainGui(Screen, KaTrainBase):
         self._do_new_game(move_tree=move_tree)
         self._do_tsumego_frame(ko=ko, margin=margin)
         settings = self._config.get("tsumego_capture") or {}
-        if settings.get("maximize_on_capture", True):
-            self.tsumego_view = True  # 盤面拡大（下部ナビは残る。F12/`で通常表示に復帰）
+        maximize = settings.get("maximize_on_capture", True)
         self.controls.set_status("詰碁盤面を取り込みました", STATUS_INFO)
 
-        def raise_window(_dt):
+        def finish_gui(_dt):
+            # kvバインディングがグラフィックス命令に触るため、プロパティ変更はメインスレッドで行う
+            if maximize:
+                self.tsumego_view = True  # 盤面拡大（下部ナビは残る。F12/`で通常表示に復帰）
             try:
                 user32 = ctypes.windll.user32
                 hwnd = user32.FindWindowW(None, Window.title)
@@ -633,7 +635,7 @@ class KaTrainGui(Screen, KaTrainBase):
             except Exception as e:
                 self.log(f"tsumego_capture: ウィンドウ前面化失敗: {e}", OUTPUT_DEBUG)
 
-        Clock.schedule_once(raise_window, 0.1)
+        Clock.schedule_once(finish_gui, 0.1)
 
     def play_mistake_sound(self, node):
         if self.config("timer/sound") and node.played_mistake_sound is None and Theme.MISTAKE_SOUNDS:
