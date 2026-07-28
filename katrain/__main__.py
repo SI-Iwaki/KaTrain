@@ -60,7 +60,7 @@ from kivy.uix.screenmanager import Screen
 from kivy.core.window import Window
 from kivy.uix.widget import Widget
 from kivy.resources import resource_find
-from kivy.properties import NumericProperty, ObjectProperty, StringProperty
+from kivy.properties import BooleanProperty, NumericProperty, ObjectProperty, StringProperty
 from kivy.clock import Clock
 from kivy.metrics import dp
 from katrain.core.ai import generate_ai_move
@@ -113,6 +113,7 @@ class KaTrainGui(Screen, KaTrainBase):
     """Top level class responsible for tying everything together"""
 
     zen = NumericProperty(0)
+    tsumego_view = BooleanProperty(False)  # 詰碁専用表示: 右パネル+上部トグル非表示、下部ナビは残す
     controls = ObjectProperty(None)
 
     def __init__(self, **kwargs):
@@ -550,7 +551,14 @@ class KaTrainGui(Screen, KaTrainBase):
                 analysis_region[1][0],
             ]
             self.game.set_region_of_interest(flattened_region)
-        node.analyze(self.game.engines[node.next_player])
+        engine = self.game.engines[node.next_player]
+        if self.game.region_of_interest:
+            # Game.play() と同じ2段構え: 全盤の高速解析で root 勝率を得てから、リージョン限定で本解析
+            # （これがないと初期解析が全盤対象になり、枠外の詰め物エリアの手が最善手として表示される）
+            node.analyze(engine, analyze_fast=True)
+            node.analyze(engine, region_of_interest=self.game.region_of_interest)
+        else:
+            node.analyze(engine)
         self.update_state(redraw_board=True)
 
     def _setup_tsumego_capture(self):
@@ -611,8 +619,8 @@ class KaTrainGui(Screen, KaTrainBase):
         self._do_new_game(move_tree=move_tree)
         self._do_tsumego_frame(ko=ko, margin=margin)
         settings = self._config.get("tsumego_capture") or {}
-        if settings.get("zen_on_capture", True):
-            self.zen = 2  # 右パネル+上下バーを隠して盤面最大化（F12/`で復帰）
+        if settings.get("maximize_on_capture", True):
+            self.tsumego_view = True  # 盤面拡大（下部ナビは残る。F12/`で通常表示に復帰）
         self.controls.set_status("詰碁盤面を取り込みました", STATUS_INFO)
 
         def raise_window(_dt):
@@ -835,7 +843,10 @@ class KaTrainGui(Screen, KaTrainBase):
         elif keycode[1] in Theme.KEY_PAUSE_TIMER and not ctrl_pressed:
             self.controls.timer.paused = not self.controls.timer.paused
         elif keycode[1] in Theme.KEY_ZEN:
-            self.zen = (self.zen + 1) % 3
+            if self.tsumego_view:
+                self.tsumego_view = False  # 詰碁ビュー中はまず通常表示に戻す
+            else:
+                self.zen = (self.zen + 1) % 3
         elif keycode[1] in Theme.KEY_NAV_PREV:
             self("undo", 1 + shift_pressed * 9 + ctrl_pressed * 9999)
         elif keycode[1] in Theme.KEY_NAV_NEXT:

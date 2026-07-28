@@ -55,7 +55,7 @@
         "board_size": 13,
         "frame_margin": 4,
         "frame_ko": false,
-        "zen_on_capture": true
+        "maximize_on_capture": true
     },
     "trainer": {
         "theme": "theme:normal",
