@@ -106,7 +106,21 @@ class GameNode(SGFNode):
 
     def clear_analysis(self):
         self.analysis_visits_requested = 0
-        self.analysis = {"moves": {}, "root": None, "ownership": None, "policy": None, "completed": False}
+        self.analysis = {
+            "moves": {},
+            "root": None,
+            "ownership": None,
+            "policy": None,
+            "completed": False,
+            "region_requested": False,
+            "region_completed": False,
+        }
+
+    def clear_region_flags(self):
+        # リージョン解除・変更時に呼ぶ。解除後の全盤解析が stale 扱いで無視されるのを防ぎ、
+        # 変更後は新リージョンの解析確定まで AI 自動着手ゲートを再度閉じる
+        self.analysis["region_requested"] = False
+        self.analysis["region_completed"] = False
 
     def sgf_properties(
         self,
@@ -194,7 +208,10 @@ class GameNode(SGFNode):
         find_alternatives=False,
         region_of_interest=None,
         report_every=REPORT_DT,
+        extra_settings=None,
     ):
+        if region_of_interest:
+            self.analysis["region_requested"] = True
         engine.request_analysis(
             self,
             callback=lambda result, partial_result: self.set_analysis(
@@ -209,6 +226,7 @@ class GameNode(SGFNode):
             find_alternatives=find_alternatives,
             region_of_interest=region_of_interest,
             report_every=report_every,
+            extra_settings=extra_settings,
         )
 
     def update_move_analysis(self, move_analysis, move_gtp):
@@ -242,27 +260,36 @@ class GameNode(SGFNode):
                 {"pv": [refine_move.gtp()] + pvtail, **analysis_json["rootInfo"]}, refine_move.gtp()
             )
         else:
-            if additional_moves:  # additional moves: old order matters, ignore new order
-                for m in analysis_json["moveInfos"]:
-                    del m["order"]
-            elif refine_move is None:  # normal update: old moves to end, new order matters. also for region?
-                for move_dict in self.analysis["moves"].values():
-                    move_dict["order"] = ADDITIONAL_MOVE_ORDER  # old moves to end
-            for move_analysis in analysis_json["moveInfos"]:
-                self.update_move_analysis(move_analysis, move_analysis["move"])
-            if region_of_interest and not additional_moves:
-                # リージョン限定解析の反映時は、先行する全盤解析由来の枠外候補手を除去する
-                # （avoidMoves で枠外は再探索されないため、残すと古い評価が最善手として表示され続ける）
-                xmin, xmax, ymin, ymax = region_of_interest
-                self.analysis["moves"] = {
-                    gtp: d
-                    for gtp, d in self.analysis["moves"].items()
-                    if (lambda c: c is None or (xmin <= c[0] <= xmax and ymin <= c[1] <= ymax))(
-                        Move.from_gtp(gtp).coords
-                    )
-                }
-            self.analysis["ownership"] = analysis_json.get("ownership")
-            self.analysis["policy"] = analysis_json.get("policy")
+            # リージョン解析確定後に遅れて届いた全盤解析（並列探索で2段クエリの完了順が逆転した
+            # 先行fastクエリ等）は、既存候補の全降格＋浅い全盤順位の上書きで moves を汚染し、
+            # AIが次善手を打つ原因になるため moves へは反映しない（root=勝率の更新のみ許可）
+            stale_fullboard = (
+                self.analysis.get("region_completed") and not region_of_interest and not additional_moves
+            )
+            if not stale_fullboard:
+                if additional_moves:  # additional moves: old order matters, ignore new order
+                    for m in analysis_json["moveInfos"]:
+                        del m["order"]
+                elif refine_move is None:  # normal update: old moves to end, new order matters. also for region?
+                    for move_dict in self.analysis["moves"].values():
+                        move_dict["order"] = ADDITIONAL_MOVE_ORDER  # old moves to end
+                for move_analysis in analysis_json["moveInfos"]:
+                    self.update_move_analysis(move_analysis, move_analysis["move"])
+                if region_of_interest and not additional_moves:
+                    # リージョン限定解析の反映時は、先行する全盤解析由来の枠外候補手を除去する
+                    # （avoidMoves で枠外は再探索されないため、残すと古い評価が最善手として表示され続ける）
+                    xmin, xmax, ymin, ymax = region_of_interest
+                    self.analysis["moves"] = {
+                        gtp: d
+                        for gtp, d in self.analysis["moves"].items()
+                        if (lambda c: c is None or (xmin <= c[0] <= xmax and ymin <= c[1] <= ymax))(
+                            Move.from_gtp(gtp).coords
+                        )
+                    }
+                    if not partial_result:
+                        self.analysis["region_completed"] = True
+                self.analysis["ownership"] = analysis_json.get("ownership")
+                self.analysis["policy"] = analysis_json.get("policy")
             if not additional_moves and not region_of_interest:
                 self.analysis["root"] = analysis_json["rootInfo"]
                 if self.parent and self.move:

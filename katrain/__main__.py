@@ -283,8 +283,15 @@ class KaTrainGui(Screen, KaTrainBase):
                     and not self.game.end_result
                     and not (teaching_undo and cn.auto_undo is None)
                 ):  # cn mismatch stops this if undo fired. avoid message loop here or fires repeatedly.
-                    self._do_ai_move(cn)
-                    Clock.schedule_once(self._play_stone_sound, 0.25)
+                    region = self.game.region_of_interest
+                    if not region or cn.analysis.get("region_completed"):
+                        self._do_ai_move(cn)
+                        Clock.schedule_once(self._play_stone_sound, 0.25)
+                    elif not cn.analysis.get("region_requested"):
+                        # リージョン設定時、全盤fast解析だけでAIを発火させると刈り取り前の枠外・浅読み
+                        # 候補を打ってしまう。リージョン解析が未発行の局面（手動リージョン選択直後等）
+                        # では一度だけ発行して完了を待つ（Game.play/_do_tsumego_frame 経由は発行済み）
+                        cn.analyze(self.game.engines[cn.next_player], region_of_interest=region)
             if self.engine:
                 if self.pondering:
                     self.game.analyze_extra("ponder")
@@ -555,8 +562,15 @@ class KaTrainGui(Screen, KaTrainBase):
         if self.game.region_of_interest:
             # Game.play() と同じ2段構え: 全盤の高速解析で root 勝率を得てから、リージョン限定で本解析
             # （これがないと初期解析が全盤対象になり、枠外の詰め物エリアの手が最善手として表示される）
+            deep_visits = self.game.region_analysis_visits
             node.analyze(engine, analyze_fast=True)
-            node.analyze(engine, region_of_interest=self.game.region_of_interest)
+            node.analyze(
+                engine,
+                region_of_interest=self.game.region_of_interest,
+                visits=deep_visits,
+                time_limit=deep_visits is None,
+                extra_settings={"wideRootNoise": 0.0} if deep_visits else None,
+            )
         else:
             node.analyze(engine)
         self.update_state(redraw_board=True)
@@ -617,13 +631,34 @@ class KaTrainGui(Screen, KaTrainBase):
             self.log(f"詰碁キャプチャSGF解析失敗: {e}", OUTPUT_ERROR)
             return
         self._do_new_game(move_tree=move_tree)
-        self._do_tsumego_frame(ko=ko, margin=margin)
         settings = self._config.get("tsumego_capture") or {}
+        try:
+            # 詰碁の正解手判定用に、初期解析＋以降の毎手のリージョン解析を深掘り専用クエリ
+            # （visits指定・時間無制限・wideRootNoise=0）にする。0以下で既定解析にフォールバック
+            deep_visits = int(settings.get("analysis_visits", 1800))
+            self.game.region_analysis_visits = deep_visits if deep_visits > 0 else None
+        except (TypeError, ValueError):
+            self.game.region_analysis_visits = None
+        self._do_tsumego_frame(ko=ko, margin=margin)
         maximize = settings.get("maximize_on_capture", True)
-        self.controls.set_status("詰碁盤面を取り込みました", STATUS_INFO)
+        auto_ai = settings.get("auto_ai_black", True)
+        if auto_ai:
+            # 黒=AI（最善手=正解手）・白=人間。AI自動着手はプレイモードでのみ発火する。
+            # モード切替は switch_ui_mode のトグルではなくプレイタブを直接トリガーする
+            # （_do_new_game/_do_tsumego_frame が解析モード切替クリックをスケジュール済みで、
+            #  トグルだと mode の読み値がクリック発火前になり競合する。Kivy Clock は同一timeoutの
+            #  イベントをスケジュール順に発火するため、後からの直接指定で必ずプレイモードに収束）
+            self.update_player("B", player_type=PLAYER_AI, player_subtype=AI_DEFAULT)
+            self.update_player("W", player_type=PLAYER_HUMAN, player_subtype=PLAYING_NORMAL)
+            Clock.schedule_once(lambda _dt: self.play_mode.play.trigger_action(duration=0))
+            self.controls.set_status("詰碁盤面を取り込みました（黒:AIが正解手を打ちます）", STATUS_INFO)
+        else:
+            self.controls.set_status("詰碁盤面を取り込みました", STATUS_INFO)
 
         def finish_gui(_dt):
             # kvバインディングがグラフィックス命令に触るため、プロパティ変更はメインスレッドで行う
+            if auto_ai:
+                self.controls.timer.paused = True  # プレイモードで白番考慮中の秒読みビープを防ぐ
             if maximize:
                 self.tsumego_view = True  # 盤面拡大（下部ナビは残る。F12/`で通常表示に復帰）
             try:

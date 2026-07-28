@@ -150,6 +150,60 @@ def test_region_analysis_prunes_outside_moves():
     assert set(node.analysis["moves"]) == {"A12", "B11"}
 
 
+def test_late_fullboard_result_does_not_pollute_region_analysis():
+    # 回帰テスト: 2段解析の全盤fastクエリの最終結果がリージョン限定クエリの最終結果より
+    # 後に届くと（並列探索でまれに逆転）、既存候補を全降格して浅い全盤順位を上書きし、
+    # 「値はリージョン解析・順位は全盤fast」の汚染状態でAIが次善手を打っていた。
+    # リージョン確定後の全盤解析は moves を汚染させず、root（勝率）更新のみ許可する
+    from katrain.core.game_node import GameNode
+
+    node = GameNode(properties={"SZ": "13"})
+    node.set_analysis(_fake_analysis([("B4", 38), ("A12", 20)]))  # 全盤fast（先着）
+    node.set_analysis(_fake_analysis([("A12", 813), ("B11", 673)]), region_of_interest=[0, 10, 4, 12])
+    # 全盤fastの最終結果が遅れて再着（もしくは順序逆転で後着）
+    node.set_analysis(_fake_analysis([("B4", 38), ("A12", 20)]))
+    assert "B4" not in node.analysis["moves"]  # 枠外候補が再注入されない
+    assert node.candidate_moves[0]["move"] == "A12"  # リージョン解析の順位が維持される
+    assert node.analysis["root"]["visits"] == 58  # root（勝率表示用）は全盤解析で更新されてよい
+
+
+def test_region_flags_cleared_on_clear():
+    # リージョン解除後は全盤解析を再び受け付ける（clear_region_flags でフラグを戻す）
+    from katrain.core.game_node import GameNode
+
+    node = GameNode(properties={"SZ": "13"})
+    node.set_analysis(_fake_analysis([("A12", 335), ("B11", 342)]), region_of_interest=[0, 10, 4, 12])
+    assert node.analysis.get("region_completed")
+    node.clear_region_flags()
+    assert not node.analysis.get("region_completed")
+    assert not node.analysis.get("region_requested")
+    node.set_analysis(_fake_analysis([("B4", 38), ("A12", 20)]))  # 全盤解析が通常どおり反映される
+    assert "B4" in node.analysis["moves"]
+
+
+def test_analyze_passes_deep_region_settings():
+    # 詰碁のリージョン解析はvisits指定・時間無制限・wideRootNoise=0の専用クエリを使えること
+    # （既定の1500visits・8秒上限・ノイズ0.04では難しい詰碁で正解手を外すため）
+    from katrain.core.game_node import GameNode
+
+    class FakeEngine:
+        def request_analysis(self, node, **kwargs):
+            self.requested = kwargs
+
+    node = GameNode(properties={"SZ": "13"})
+    engine = FakeEngine()
+    node.analyze(
+        engine,
+        region_of_interest=[0, 10, 4, 12],
+        visits=4000,
+        time_limit=False,
+        extra_settings={"wideRootNoise": 0.0},
+    )
+    assert engine.requested["visits"] == 4000
+    assert engine.requested["time_limit"] is False
+    assert engine.requested["extra_settings"] == {"wideRootNoise": 0.0}
+
+
 def test_cli_image_mode():
     result = subprocess.run(
         [sys.executable, "-m", "katrain.core.tsumego_capture", "--image", SAMPLE],
@@ -163,3 +217,36 @@ def test_cli_image_mode():
     # ASCII盤面が13行出力される
     board_lines = [ln for ln in result.stdout.splitlines() if ln and all(c in "BW. " for c in ln)]
     assert len(board_lines) == 13
+
+
+def test_region_completed_flag_gates_fast_analysis():
+    # AI自動着手ゲートの回帰テスト: 全盤fast解析の完了時点では region_completed は立たず、
+    # リージョン限定解析の最終結果で立つ（これがないとAIが刈り取り前の枠外・浅読み候補を打つ）
+    from katrain.core.game_node import GameNode
+
+    node = GameNode(properties={"SZ": "13"})
+    node.set_analysis(_fake_analysis([("B4", 38)]))  # 全盤fast: region指定なし
+    assert node.analysis_complete
+    assert not node.analysis.get("region_completed")
+    # 部分結果（ストリーミング途中）でも立たない
+    node.set_analysis(_fake_analysis([("A12", 100)]), region_of_interest=[0, 10, 4, 12], partial_result=True)
+    assert not node.analysis.get("region_completed")
+    # リージョン限定解析の最終結果で立つ
+    node.set_analysis(_fake_analysis([("A12", 335)]), region_of_interest=[0, 10, 4, 12])
+    assert node.analysis.get("region_completed")
+
+
+def test_analyze_marks_region_requested():
+    # update_state 側の自己回復（未発行なら一度だけ発行）が二重発行しないためのフラグ
+    from katrain.core.game_node import GameNode
+
+    class FakeEngine:
+        def request_analysis(self, node, **kwargs):
+            self.requested = kwargs
+
+    node = GameNode(properties={"SZ": "13"})
+    engine = FakeEngine()
+    assert not node.analysis.get("region_requested")
+    node.analyze(engine, region_of_interest=[0, 10, 4, 12])
+    assert node.analysis.get("region_requested")
+    assert engine.requested["region_of_interest"] == [0, 10, 4, 12]
