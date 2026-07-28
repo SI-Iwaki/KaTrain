@@ -50,7 +50,7 @@
     },
     "tsumego_capture": {
         "enabled": true,
-        "hotkey": "ctrl+shift+g",
+        "hotkey": "f4",
         "window_title": "BlueStacks",
         "board_size": 13,
         "frame_margin": 4,

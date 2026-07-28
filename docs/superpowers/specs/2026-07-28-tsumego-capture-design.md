@@ -22,7 +22,7 @@ PC上で動作する詰碁アプリ（BlueStacks App Player 上の Android 詰�
 新規モジュール + 既存 GUI への少量のグルーコード。
 
 ```
-Ctrl+Shift+G（グローバルホットキー、keyboard ライブラリ）
+F4（グローバルホットキー、keyboard ライブラリ、設定 `hotkey` で変更可）
   → BlueStacks ウィンドウ検出（ctypes/Win32 API、タイトル部分一致）
   → ウィンドウ矩形をスクリーンキャプチャ（PIL ImageGrab）
   → 盤面認識 → SGF 文字列生成（SZ[13] AB[...] AW[...] PL[B] KM[新規対局既定値]）
@@ -65,7 +65,7 @@ Ctrl+Shift+G（グローバルホットキー、keyboard ライブラリ）
 ```json
 "tsumego_capture": {
   "enabled": true,
-  "hotkey": "ctrl+shift+g",
+  "hotkey": "f4",
   "window_title": "BlueStacks",
   "board_size": 13,
   "frame_margin": 4,
@@ -117,4 +117,5 @@ Ctrl+Shift+G（グローバルホットキー、keyboard ライブラリ）
 ### E2E 検証状況
 - **成功パス**: **成功（ユーザー実施、2026-07-29）**。BlueStacks に詰碁（大橋拓文 misc_(648)、中央系の問題）を表示 → `Ctrl+Shift+G` → KaTrain に石配置・詰碁外枠生成・KataGo 解析開始まで反映されることをスクリーンショットで確認。詰碁アプリの最終手マーカー（石上の赤い四角）があっても分類は正しく動作した。所要時間のストップウォッチ実測は未取得だが、ユーザーから遅延の指摘なし
 - **GUI スモークテスト**: `python -m katrain` 起動時にホットキー `ctrl+shift+g` 登録ログ確認済み
+- **ホットキー変更（2026-07-29）**: E2E 後のユーザー要望により既定を `ctrl+shift+g` → `f4` に変更（1キーで押しやすく、KaTrain 本体の F2/F3/F5〜F10/F12/F15・BlueStacks・Windows 標準のいずれとも衝突しない）。キーリピートは既存の 2 秒デバウンスで抑止
 - **要件達成**: 5〜10 秒以内の応答時間要件は設計・実装の仕様で満たし、E2E でも実用上問題ないことを確認
