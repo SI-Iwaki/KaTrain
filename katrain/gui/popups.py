@@ -394,6 +394,15 @@ class DescriptionLabel(Label):
     pass
 
 
+def ai_options_grid_rows(num_settings, min_rows):
+    """AI設定グリッドに必要な行数。
+
+    GridLayout は rows*cols を超える子ウィジェットで GridLayoutException を投げるため、
+    設定項目数が基準行数(min_rows)を超える戦略でも不足しないよう行数を拡張する。
+    """
+    return max(min_rows, num_settings)
+
+
 class ConfigAIPopup(QuickConfigGui):
     max_options = NumericProperty(17)
 
@@ -422,6 +431,8 @@ class ConfigAIPopup(QuickConfigGui):
         strategy = self.ai_select.selected[1]
         mode_settings = self.katrain.config(f"ai/{strategy}")
         self.options_grid.clear_widgets()
+        num_rows = ai_options_grid_rows(len(mode_settings), self.max_options)
+        self.options_grid.rows = num_rows
         self.help_label.text = i18n._(strategy.replace("ai:", "aihelp:"))
         for k, v in sorted(mode_settings.items(), key=lambda kv: (kv[0] not in AI_KEY_PROPERTIES, AI_OPTION_ORDER.get(kv[0], 99), kv[0])):
             self.options_grid.add_widget(DescriptionLabel(text=k, size_hint_x=1.0))
@@ -446,7 +457,7 @@ class ConfigAIPopup(QuickConfigGui):
                 self.options_grid.add_widget(
                     wrap_anchor(LabelledFloatInput(text=str(v), input_property=f"ai/{strategy}/{k}"))
                 )
-        for _ in range((self.max_options - len(mode_settings)) * 2):
+        for _ in range((num_rows - len(mode_settings)) * 2):
             self.options_grid.add_widget(Label(size_hint_x=None))
         Clock.schedule_once(self.estimate_rank_from_options)
 

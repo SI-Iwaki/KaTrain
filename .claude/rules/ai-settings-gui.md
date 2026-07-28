@@ -60,7 +60,7 @@ if not star_moves:
 
 ## GUI設定画面の制約
 
-- **GridLayout行数上限**: `katrain/gui/popups.py` の `ConfigAIPopup.max_options = 15` が1戦略あたりの最大設定項目数。超過すると `GridLayoutException: Too many children in GridLayout` が発生する。項目数が多い場合は独立した戦略（`ai:新名前`）に分離すること
+- **GridLayout行数**: `katrain/gui/popups.py` の `ConfigAIPopup.max_options = 17` は「基準行数」で、上限ではない。`build_ai_options` が `ai_options_grid_rows(len(mode_settings), max_options)` で実際の項目数まで行数を自動拡張するため、17を超えても `GridLayoutException: Too many children in GridLayout` は発生しない（回帰テスト: `tests/test_ai_options_grid.py`）。ただし項目が増えるほど1行が縦に潰れるため、20項目を大きく超える場合は独立した戦略（`ai:新名前`）への分離を検討すること
 - **i18nコンパイル必須**: `.po` ファイル編集後は `python tools/compile_mo.py` で `.mo` を再コンパイルしないと翻訳が反映されない（戦略名が `ai:xxx` のまま表示される）
 
 ## チェックリスト（新機能追加時）
