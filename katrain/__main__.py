@@ -610,6 +610,9 @@ class KaTrainGui(Screen, KaTrainBase):
             return
         self._do_new_game(move_tree=move_tree)
         self._do_tsumego_frame(ko=ko, margin=margin)
+        settings = self._config.get("tsumego_capture") or {}
+        if settings.get("zen_on_capture", True):
+            self.zen = 2  # 右パネル+上下バーを隠して盤面最大化（F12/`で復帰）
         self.controls.set_status("詰碁盤面を取り込みました", STATUS_INFO)
 
         def raise_window(_dt):

@@ -54,7 +54,8 @@
         "window_title": "BlueStacks",
         "board_size": 13,
         "frame_margin": 4,
-        "frame_ko": false
+        "frame_ko": false,
+        "zen_on_capture": true
     },
     "trainer": {
         "theme": "theme:normal",
