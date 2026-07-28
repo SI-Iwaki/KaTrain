@@ -113,6 +113,30 @@ def test_grid_to_sgf_parses_in_katrain():
     assert root.get_list_property("AW") == ["gf"]
 
 
+def _fake_analysis(moves_visits):
+    return {
+        "moveInfos": [
+            {"move": gtp, "visits": v, "order": i, "scoreLead": 0.0, "winrate": 0.5, "pv": [gtp]}
+            for i, (gtp, v) in enumerate(moves_visits)
+        ],
+        "rootInfo": {"visits": sum(v for _, v in moves_visits), "winrate": 0.5, "scoreLead": 0.0},
+    }
+
+
+def test_region_analysis_prunes_outside_moves():
+    # 全盤fast解析→リージョン限定解析の2段構えで、枠外の候補手が残らないこと
+    # （詰碁キャプチャで枠外の手が最善手として表示される不具合の回帰テスト）
+    from katrain.core.game_node import GameNode
+
+    node = GameNode(properties={"SZ": "13"})
+    node.set_analysis(_fake_analysis([("B4", 38), ("A12", 20)]))  # 全盤fast: 枠外B4が最善
+    assert "B4" in node.analysis["moves"]
+    # リージョン x=0..10, y=4..12（B4 は y=3 で枠外、A12/B11 は枠内）
+    node.set_analysis(_fake_analysis([("A12", 335), ("B11", 342)]), region_of_interest=[0, 10, 4, 12])
+    assert "B4" not in node.analysis["moves"]
+    assert set(node.analysis["moves"]) == {"A12", "B11"}
+
+
 def test_cli_image_mode():
     result = subprocess.run(
         [sys.executable, "-m", "katrain.core.tsumego_capture", "--image", SAMPLE],
