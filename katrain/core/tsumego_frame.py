@@ -230,6 +230,69 @@ def fallback_region(core_bbox, sizes):
     return None
 
 
+def dense_core_bbox(bw_board):
+    """枠なしモード用: 詰碁本体（密なクラスタ）の snap 済み bbox を返す。石が無ければ None。
+
+    mark_core_stones は「枠が張れないときだけ絞る」判定なので、枠を張らない経路では
+    基準として機能しない（実例: 全石 bbox のままだとリージョンが空き地まで広がり、
+    空き地の手が正解手と競合して勝ってしまう）。ここでは枠の成否ではなく密度を基準にし、
+    CORE_MIN_FRACTION 以上の石を保持できる最小の gap の最大クラスタを採る。
+    石が2路飛びに並ぶ緩い形は gap=1 で分断されて割合を割るため gap が上がり1塊にまとまる。
+    """
+    sizes = ij_sizes(bw_board)
+    entries = [(i, j) for i, row in enumerate(bw_board) for j, v in enumerate(row) if v in (BLACK, WHITE)]
+    if not entries:
+        return None
+    n = len(entries)
+    edges = [[] for _ in range(cluster_gap + 1)]
+    for a in range(n):
+        ia, ja = entries[a]
+        for b in range(a + 1, n):
+            d = max(abs(ia - entries[b][0]), abs(ja - entries[b][1]))
+            if d <= cluster_gap:
+                edges[d].append((a, b))
+    parent = list(range(n))
+
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    for gap in range(1, cluster_gap + 1):
+        for a, b in edges[gap]:
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[rb] = ra
+        groups = {}
+        for a in range(n):
+            groups.setdefault(find(a), []).append(entries[a])
+        # 同数クラスタのタイは bbox が小さい方 → 上 → 左 の順で決定的に選ぶ
+        cand = max(groups.values(), key=lambda g: (len(g), -bbox_area(g), -g[0][0], -g[0][1]))
+        if len(cand) >= n * CORE_MIN_FRACTION:
+            return snapped_bbox(cand, sizes)
+    return snapped_bbox(entries, sizes)
+
+
+def frameless_region(bw_board, pad):
+    """枠なしモードの解析リージョン ((imin, imax), (jmin, jmax)) を返す。盤全体になるなら None。
+
+    盤面には一切触れない（枠なしモードの要はアプリと完全に同一の盤面を使うこと）。
+    """
+    core = dense_core_bbox(bw_board)
+    if core is None:
+        return None
+    isize, jsize = ij_sizes(bw_board)
+    imin, jmin, imax, jmax = core
+    i0, i1 = max(0, imin - pad), min(isize - 1, imax + pad)
+    j0, j1 = max(0, jmin - pad), min(jsize - 1, jmax + pad)
+    if i0 >= i1 or j0 >= j1:
+        return None  # 1線に退化した範囲は get_analysis_region と同じく使わない
+    if covers_board_p(((i0, i1), (j0, j1)), (isize, jsize)):
+        return None
+    return ((i0, i1), (j0, j1))
+
+
 def tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin, drop_non_core=False, black_to_attack_p=None):
     sizes = ij_sizes(stones)
     isize, jsize = sizes
