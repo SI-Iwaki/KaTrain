@@ -230,7 +230,7 @@ def fallback_region(core_bbox, sizes):
     return None
 
 
-def tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin, drop_non_core=False):
+def tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin, drop_non_core=False, black_to_attack_p=None):
     sizes = ij_sizes(stones)
     isize, jsize = sizes
     all_ijs = [
@@ -264,6 +264,15 @@ def tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin, drop_non_c
     # find range of problem
     extrema, imin, jmin, imax, jmax = problem_range(ijs)
     top, bottom, left, right = extrema
+    # 攻め方判定はこの局面固有の性質であり、盤の向き（反転・転置）に依存してはならない。
+    # しかし min_by は同座標のタイをこの時点のリスト順（＝現在の向きでの row-major 順）で
+    # 崩すため、反転・転置後は同じ石でも extrema の代表点が変わり得て判定が反転しうる
+    # （height2 自体は反転・転置不変だが、タイ崩れで extrema の中身が変わるため結果が変わる）。
+    # そのためコア石マークと同じパターンで、再帰の最初の呼び出し（black_to_attack_p が
+    # 未指定＝元の向き）でのみ一度だけ判定し、以降の反転・転置後の再帰にはその値を
+    # そのまま持ち回す（recompute しない）
+    if black_to_attack_p is None:
+        black_to_attack_p = guess_black_to_attack([top, bottom, left, right], sizes)
     # 適応margin: bbox+margin で外側（守り側の代償地帯）が必要面積を下回る大型詰碁では、
     # 枠ゲームが一方的（±100点級）になり勝率が飽和し、死活より空き地・小さい得が優先される。
     # 外側が確保できるまで margin を縮める。どの margin でも確保できない盤（9路など）は
@@ -278,7 +287,7 @@ def tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin, drop_non_c
     )
     if True in flip_spec:
         flipped = flip_stones(stones, flip_spec)
-        filled = tsumego_frame_stones(flipped, komi, black_to_play_p, ko_p, margin, drop_non_core)
+        filled = tsumego_frame_stones(flipped, komi, black_to_play_p, ko_p, margin, drop_non_core, black_to_attack_p)
         return flip_stones(filled, flip_spec)
     # put outside stones
     i0 = imin - margin
@@ -286,7 +295,6 @@ def tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin, drop_non_c
     j0 = jmin - margin
     j1 = jmax + margin
     frame_range = [i0, i1, j0, j1]
-    black_to_attack_p = guess_black_to_attack([top, bottom, left, right], sizes)
     if drop_non_core:
         drop_non_core_stones(stones, sizes, frame_range)
     put_border(stones, sizes, frame_range, black_to_attack_p)

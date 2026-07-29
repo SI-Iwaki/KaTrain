@@ -285,3 +285,48 @@ def test_fit_margin_prefers_boundary_without_stones():
     # margin 2 の壁(j=5, i=10)上に石があるなら、面積条件を満たす他の margin を選ぶ
     occupied = {(2, 5), (4, 5)}
     assert fit_margin(sizes, 7.0, 4, *bbox, occupied=occupied) == 1
+
+
+def test_correct_attacker_for_real_capture_fixture():
+    # 回帰テスト: 実キャプチャの詰碁（黒が右上のコア塊で白の隅の石を攻めている）で
+    # guess_black_to_attack の判定が反転すると、put_border が守り側(白)の色で壁を張り、
+    # put_outside が攻め側(黒)に代償地帯を渡してしまう。結果、死活が枠ゲームとして
+    # 決定的にならず（黒はどうせ得なので）、正解の攻め合いより空き地の手が最善に
+    # 化けてしまう。正しくは壁=黒(攻め側)、枠外の代償地帯は白(守り側)が多くなる。
+    board = _scattered_outlier_board()
+    out, region = tsumego_frame_board(board, komi=7.0, black_to_play_p=True, ko_p=False, margin=4)
+    (i0, i1), (j0, j1) = region
+
+    wall = {out[i][j0] for i in range(i0, i1 + 1)}
+    assert wall == {"B"}, f"壁は攻め側の黒であるべき: {wall}"
+
+    isize, jsize = len(out), len(out[0])
+    black_out = sum(
+        1 for i in range(isize) for j in range(jsize) if not (i0 <= i <= i1 and j0 <= j <= j1) and out[i][j] == "B"
+    )
+    white_out = sum(
+        1 for i in range(isize) for j in range(jsize) if not (i0 <= i <= i1 and j0 <= j <= j1) and out[i][j] == "W"
+    )
+    assert white_out > black_out, f"枠外の代償地帯は守り側の白が多いはず: black={black_out} white={white_out}"
+
+
+def test_wall_colour_invariant_under_transpose():
+    # 不変条件テスト: guess_black_to_attack が height2（転置・反転不変）で重み付けされる以上、
+    # 「どちらが攻め側か」は盤の向き（転置）に依存してはいけない。バグ修正前は
+    # tsumego_frame_stones が反転・転置後の向きで extrema を再計算しており、min_by の
+    # タイ崩れ（同座標の石が複数あるとき、その時点の配列順＝現在の向きの row-major順で
+    # 勝者が決まる）が向きごとに異なる石を選んでしまい、判定が反転しうるバグだった。
+    # 盤を転置(i/j入替)しても壁の色が変わらないことを確認する。
+    board = _scattered_outlier_board()
+    size = len(board)
+    transposed = [[board[j][i] for j in range(size)] for i in range(size)]
+
+    out1, region1 = tsumego_frame_board(board, komi=7.0, black_to_play_p=True, ko_p=False, margin=4)
+    out2, region2 = tsumego_frame_board(transposed, komi=7.0, black_to_play_p=True, ko_p=False, margin=4)
+
+    (i0, i1), (j0, j1) = region1
+    (ti0, ti1), (tj0, tj1) = region2
+    wall1 = {out1[i][j0] for i in range(i0, i1 + 1)}
+    # 転置盤では壁の向きも転置され、元の列方向の壁が行方向の壁になる
+    wall2 = {out2[ti0][j] for j in range(tj0, tj1 + 1)}
+    assert wall1 == wall2, f"転置で壁の色が変わった: {wall1} vs {wall2}"
