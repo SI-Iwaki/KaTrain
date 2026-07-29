@@ -464,8 +464,8 @@ def strictly_inside_p(i, j, region):
 def drop_non_core_stones(stones, sizes, frame_range):
     """枠矩形の境界線上および外側にある非コア石を盤から除く。
 
-    put_border より先に呼ぶことで壁が既存石を踏まなくなり（占有点クラッシュの構造的解消）、
-    put_outside の「既存石を残す」ガードにも引っかからないので充填が穴なしになる。
+    put_border より先に呼ぶことで、put_outside の「既存石を残す」ガードに引っかからなくなり
+    充填が穴なしになる（呼ばないと非コア石があった位置だけ埋まらず穴が残る）。
     壁はコア bbox から margin>=1 離れているので、コア石が消えることはない。
     """
     isize, jsize = sizes

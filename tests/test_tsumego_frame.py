@@ -224,6 +224,12 @@ def test_frame_board_drops_non_core_stones_outside_frame():
     assert board[2][5] == "B" and board[4][5] == "W"
     wall = {out[i][5] for i in range(0, 11)}
     assert wall in ({"B"}, {"W"}), f"壁が単色で揃っていない: {wall}"
+    # D10(3,3) は壁より外側の非コア石。put_border は壁マスを無条件上書きするため wall の
+    # チェックだけでは drop_non_core_stones が no-op でも見分けがつかない（それでも単色になる）。
+    # ここが drop 有効/無効を区別できる唯一のセル: 無効時は "B" のまま残るのに対し
+    # （test_frame_board_keeps_stones_when_drop_disabled 参照）、有効時はここで消去された上で
+    # put_outside の市松模様の非充填マスに該当し空点 "-" になる
+    assert out[3][3] == "-", "D10が消えていない（drop_non_core_stonesがno-opだと検出できない）"
     # G6(7,6) は枠内なのでそのまま残る
     assert out[7][6] == "W"
     # コア石は一切変わらない
