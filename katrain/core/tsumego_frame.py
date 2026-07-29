@@ -238,15 +238,19 @@ def dense_core_bbox(bw_board):
     空き地の手が正解手と競合して勝ってしまう）。ここでは枠の成否ではなく密度を基準にし、
     CORE_MIN_FRACTION 以上の石を保持できる最小の gap の最大クラスタを採る。
     石が2路飛びに並ぶ緩い形は gap=1 で分断されて割合を割るため gap が上がり1塊にまとまる。
+
+    gap を段階的に広げながら union-find でクラスタを併合していく処理は mark_core_stones の
+    ループとほぼ同形だが、採用条件・探索方向・石 dict へのマーク付けが異なるため意図的に
+    分離している（枠なし経路は A/B 検証後に削除予定で、生き残った場合はこの重複の解消を検討する）。
     """
     sizes = ij_sizes(bw_board)
-    entries = [(i, j) for i, row in enumerate(bw_board) for j, v in enumerate(row) if v in (BLACK, WHITE)]
+    entries = [(i, j, v) for i, row in enumerate(bw_board) for j, v in enumerate(row) if v in (BLACK, WHITE)]
     if not entries:
         return None
     n = len(entries)
     edges = [[] for _ in range(cluster_gap + 1)]
     for a in range(n):
-        ia, ja = entries[a]
+        ia, ja, _ca = entries[a]
         for b in range(a + 1, n):
             d = max(abs(ia - entries[b][0]), abs(ja - entries[b][1]))
             if d <= cluster_gap:
@@ -269,7 +273,13 @@ def dense_core_bbox(bw_board):
             groups.setdefault(find(a), []).append(entries[a])
         # 同数クラスタのタイは bbox が小さい方 → 上 → 左 の順で決定的に選ぶ
         cand = max(groups.values(), key=lambda g: (len(g), -bbox_area(g), -g[0][0], -g[0][1]))
-        if len(cand) >= n * CORE_MIN_FRACTION:
+        # 詰碁は必ず「囲う側」と「攻められる側」の両色を含む。片色だけの密なクラスタを
+        # 採用すると、閾値を満たしていても詰碁の対象そのもの（もう一方の色の群）が
+        # リージョンから丸ごと落ちてしまう。両色を含まないクラスタは却下し、gapを
+        # 上げて広い併合を試す（単色しかない盤は詰碁になり得ないので、最後まで両色の
+        # クラスタが見つからなければ下の全石 bbox フォールバックに委ねる）
+        bicolour = {colour for _i, _j, colour in cand} == {BLACK, WHITE}
+        if len(cand) >= n * CORE_MIN_FRACTION and bicolour:
             return snapped_bbox(cand, sizes)
     return snapped_bbox(entries, sizes)
 

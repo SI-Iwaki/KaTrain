@@ -354,6 +354,24 @@ def test_dense_core_bbox_drops_distant_stones():
     assert dense_core_bbox(_m10_board()) == (0, 7, 8, 12)
 
 
+def test_dense_core_bbox_rejects_monochrome_cluster():
+    # 回帰テスト: 黒12子の密な塊(75%)がgap=1で単独クラスタ化して閾値を満たすが、
+    # 単色なので却下されるべき。却下せずに採用すると、攻められている側である
+    # 白の目標石4子（黒塊からChebyshev距離3）が丸ごとリージョン外に落ち、
+    # 詰碁の対象そのものが解析候補から消える（この場合はgap=3で両色が併合されて
+    # 復帰する）。frameless_region経由で白石が範囲内に収まることを確認する
+    board = _board(
+        stones=[(i, j, "B") for i in range(4, 7) for j in range(2, 6)]
+        + [(i, j, "W") for i in range(5, 7) for j in range(8, 10)]
+    )
+    region = frameless_region(board, 1)
+    assert region is not None, "リージョンが盤全体に退化している"
+    (i0, i1), (j0, j1) = region
+    white_target = [(i, j) for i in range(5, 7) for j in range(8, 10)]
+    for i, j in white_target:
+        assert i0 <= i <= i1 and j0 <= j <= j1, f"白の目標石 ({i},{j}) がリージョン外: region={region}"
+
+
 def test_dense_core_bbox_keeps_loose_shape_together():
     # 2路飛びに並ぶ緩い形は gap=1 だと4つに分断され最大クラスタが25%まで落ちるので
     # CORE_MIN_FRACTION に届かず gap=2 へ上がり、1塊としてまとまる
