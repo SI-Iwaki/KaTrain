@@ -486,6 +486,27 @@ class GameNode(SGFNode):
             key=lambda d: (d["order"], d["pointsLost"]),
         )
 
+    def tsumego_retry_candidate(self) -> Optional[str]:
+        """詰碁キャプチャの「アンドゥで次候補」用: 試行済みの手を除いた最上位候補のGTP座標を返す。
+
+        アプリに不正解と判定された手をアンドゥで戻った局面を想定し、全ての子が
+        「応手が付いていない自分側の着手」（=試して却下された手）のときだけ発火する。
+        子がない・応手済みの分岐がある・パスの子がある・候補が尽きた場合は None
+        （通常の自動着手フローや棋譜ブラウズでは発火しない）。
+        """
+        if not self.children:
+            return None
+        player = self.next_player
+        for child in self.children:
+            if child.move is None or child.move.player != player or child.move.is_pass or child.children:
+                return None
+        tried = {child.move.gtp() for child in self.children}
+        for d in self.candidate_moves:
+            move = d.get("move")
+            if move and move != "pass" and move not in tried:
+                return move
+        return None
+
     @property
     def policy_ranking(self) -> Optional[List[Tuple[float, Move]]]:  # return moves from highest policy value to lowest
         if self.policy:

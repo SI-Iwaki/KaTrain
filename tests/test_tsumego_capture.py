@@ -204,6 +204,37 @@ def test_analyze_passes_deep_region_settings():
     assert engine.requested["extra_settings"] == {"wideRootNoise": 0.0}
 
 
+def test_tsumego_retry_candidate():
+    # 「アンドゥで次候補」: 全ての子が応手なしの自分側の着手（=試して却下された手）のとき、
+    # それらを除いた次順位候補を返す。別解ミスからの復帰手段（詰碁キャプチャ中のみ発火）
+    from katrain.core.game import Move
+    from katrain.core.game_node import GameNode
+
+    node = GameNode(properties={"SZ": "13"})
+    node.set_analysis(_fake_analysis([("A12", 5)]))  # 全盤fast（rootを設定。実運用の2段構えと同順）
+    node.set_analysis(_fake_analysis([("A12", 500), ("B11", 300), ("C10", 100)]), region_of_interest=[0, 10, 4, 12])
+    assert node.tsumego_retry_candidate() is None  # 子がない=通常の自動着手フロー
+    GameNode(parent=node, move=Move.from_gtp("A12", player="B"))
+    assert node.tsumego_retry_candidate() == "B11"  # 1位は却下済み → 2位
+    child2 = GameNode(parent=node, move=Move.from_gtp("B11", player="B"))
+    assert node.tsumego_retry_candidate() == "C10"  # 2位も却下 → 3位
+    GameNode(parent=child2, move=Move.from_gtp("A1", player="W"))
+    assert node.tsumego_retry_candidate() is None  # 応手が付いた分岐=採用済み → 発火しない
+
+
+def test_tsumego_retry_candidate_exhausted():
+    # 候補が尽きたら None（沈黙。junk手の無限提案はしない）
+    from katrain.core.game import Move
+    from katrain.core.game_node import GameNode
+
+    node = GameNode(properties={"SZ": "13"})
+    node.set_analysis(_fake_analysis([("A12", 5)]))  # 全盤fast（rootを設定）
+    node.set_analysis(_fake_analysis([("A12", 500), ("B11", 300)]), region_of_interest=[0, 10, 4, 12])
+    GameNode(parent=node, move=Move.from_gtp("A12", player="B"))
+    GameNode(parent=node, move=Move.from_gtp("B11", player="B"))
+    assert node.tsumego_retry_candidate() is None
+
+
 def test_cli_image_mode():
     result = subprocess.run(
         [sys.executable, "-m", "katrain.core.tsumego_capture", "--image", SAMPLE],

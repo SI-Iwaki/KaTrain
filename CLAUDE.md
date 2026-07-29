@@ -6,7 +6,7 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 
 - 上流リポジトリ: https://github.com/sanderland/katrain
 - ランタイム設定: `C:\Users\iwaki\.katrain\`
-- 主な改修: Human-like AI（9段）モードの拡張。悪手フィルタ（スコアベースのフィルタリング）に加え、力戦派（Fighting）・攻城（Siege）・狩猟（Hunt）・狩猟一致率低減（HuntDivergence）・AI一致率低減（Divergence）・地合い勝ち（Jigo）等の戦略モードを追加・改修。力戦派には複雑化モード `complex`（切りボーナス＋リード適応の損失予算ゲートで盤面を紛れさせる）を追加。Jigo には序盤星打ち強制オプション `jigo_force_sanrensei`（19路のみ・黒=三連星/白=2連星）を追加。さらに Jigo には9路専用の独立戦略 `ai:jigo9`（持碁（9路））を追加（既存 `ai:jigo` は19/13路専用に整理）し、9路 deception の phase 境界・target を5スライダーで調整可能にした（phase3前倒しで挽回を間に合わせる）。星打ち布石ロジックは `ai.py` の共有ヘルパー `_compute_star_opening_targets` に集約し HumanStyle の2連星と共用。詰碁画面キャプチャ（tsumego_capture: グローバルホットキーでBlueStacks上の詰碁アプリ盤面を認識しKaTrainに反映+外枠自動適用+黒番AIが正解手を自動着手し白番はユーザーが応手、auto_ai_black:falseで従来動作）を追加
+- 主な改修: Human-like AI（9段）モードの拡張。悪手フィルタ（スコアベースのフィルタリング）に加え、力戦派（Fighting）・攻城（Siege）・狩猟（Hunt）・狩猟一致率低減（HuntDivergence）・AI一致率低減（Divergence）・地合い勝ち（Jigo）等の戦略モードを追加・改修。力戦派には複雑化モード `complex`（切りボーナス＋リード適応の損失予算ゲートで盤面を紛れさせる）を追加。Jigo には序盤星打ち強制オプション `jigo_force_sanrensei`（19路のみ・黒=三連星/白=2連星）を追加。さらに Jigo には9路専用の独立戦略 `ai:jigo9`（持碁（9路））を追加（既存 `ai:jigo` は19/13路専用に整理）し、9路 deception の phase 境界・target を5スライダーで調整可能にした（phase3前倒しで挽回を間に合わせる）。星打ち布石ロジックは `ai.py` の共有ヘルパー `_compute_star_opening_targets` に集約し HumanStyle の2連星と共用。詰碁画面キャプチャ（tsumego_capture: グローバルホットキーでBlueStacks上の詰碁アプリ盤面を認識しKaTrainに反映+外枠自動適用（大型詰碁は適応marginで補償面積を確保）+黒番AIが正解手を自動着手し白番はユーザーが応手、アプリに不正解と判定されたら1手アンドゥでAIが試行済みの手を除く次候補を自動着手、auto_ai_black:falseで従来動作）を追加
 
 ## 技術スタック
 

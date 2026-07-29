@@ -292,6 +292,27 @@ class KaTrainGui(Screen, KaTrainBase):
                         # 候補を打ってしまう。リージョン解析が未発行の局面（手動リージョン選択直後等）
                         # では一度だけ発行して完了を待つ（Game.play/_do_tsumego_frame 経由は発行済み）
                         cn.analyze(self.game.engines[cn.next_player], region_of_interest=region)
+                elif (
+                    cn.analysis_complete
+                    and next_player.ai
+                    and cn.children
+                    and not self.game.end_result
+                    and self.game.region_analysis_visits
+                    and self.game.region_of_interest
+                    and cn.analysis.get("region_completed")
+                ):
+                    # 詰碁キャプチャ中の「アンドゥで次候補」: アプリに不正解と判定された手を
+                    # アンドゥで戻ると、試行済みの手（応手なしの子）を除いた次順位候補を自動着手。
+                    # 別解ミス（囲碁的には成立するがアプリの唯一解と異なる手）からの復帰手段
+                    retry = cn.tsumego_retry_candidate()
+                    if retry:
+                        try:
+                            self.game.play(Move.from_gtp(retry, player=cn.next_player))
+                        except IllegalMoveException as e:
+                            self.log(f"tsumego retry: illegal move {retry} ({e})", OUTPUT_INFO)
+                        else:
+                            self.controls.set_status(f"試行済みの手を除いて次候補 {retry} を着手", STATUS_INFO)
+                            Clock.schedule_once(self._play_stone_sound, 0.25)
             if self.engine:
                 if self.pondering:
                     self.game.analyze_extra("ponder")
