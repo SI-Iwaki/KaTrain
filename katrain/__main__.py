@@ -788,6 +788,16 @@ class KaTrainGui(Screen, KaTrainBase):
             except (TypeError, ValueError):
                 pad = 1
             analysis_region = frameless_region(grid, pad)
+            if analysis_region is None:
+                # Noneのまま進めると解析リージョンが無い＝全盤解析になり、この機能が防ごうと
+                # している状態そのものに陥る。A/Bテスト中はエンジンの誤判定と見分けがつかず
+                # 気づけないため、ここで明示的に警告する（region_padが盤外まで広すぎる、
+                # または石クラスタが検出できず全石bboxに退化した等が原因）
+                self.log(
+                    f"tsumego_capture: 解析リージョンを絞り込めなかったため全盤を解析します。"
+                    f"AIの着手が詰碁の正解手と一致しないことがあります（region_pad={pad} を確認してください）",
+                    OUTPUT_ERROR,
+                )
         try:
             move_tree = KaTrainSGF.parse_sgf(grid_to_sgf(board, komi=komi))
         except ParseError as e:
