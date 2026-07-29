@@ -7,6 +7,7 @@ from katrain.core.sgf_parser import Move
 near_to_edge = 2
 offence_to_win = 5
 cluster_gap = 4  # 主クラスタ判定: この距離(Chebyshev)以内の石を同一クラスタとみなす
+CORE_MIN_FRACTION = 0.6  # コア絞り込みで残す最小割合。本体を削りすぎる縮小を却下する
 
 BLACK = "B"
 WHITE = "W"
@@ -36,6 +37,7 @@ def tsumego_frame(bw_board, komi, black_to_play_p, ko_p, margin):
     if min(ij_sizes(bw_board)) <= 9:
         margin = min(margin, 2)
     stones = stones_from_bw_board(bw_board)
+    mark_core_stones(stones, komi, margin)
     filled_stones = tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin)
     region_pos = pick_all(filled_stones, "tsumego_frame_region_mark")
     bw = pick_all(filled_stones, "tsumego_frame")
@@ -49,7 +51,7 @@ def fit_margin(sizes, komi, margin, imin, jmin, imax, jmax):
 
     put_outside は外側セルを守り側に defense_area（約 (盤面積-コミ-5)/2 ）だけ配分する設計
     だが、外側がそれ未満だと配分しきれず枠ゲームが一方的になる。確保できる margin がない
-    場合は元の margin をそのまま返す。
+    場合は None を返す（呼び出し側が元の margin にフォールバックする）。
     """
     isize, jsize = sizes
     needed = (isize * jsize - abs(komi) - offence_to_win) / 2
@@ -59,17 +61,49 @@ def fit_margin(sizes, komi, margin, imin, jmin, imax, jmax):
         outside = isize * jsize - (i1 - i0 + 1) * (j1 - j0 + 1)
         if outside >= needed:
             return m
-    return margin
+    return None
 
 
-def main_cluster(ijs):
-    """石を近接クラスタ（Chebyshev距離 cluster_gap 以内で連結）に分け、最大のものを返す。
+def snapped_bbox(entries, sizes):
+    """(i, j, ...) の列から、端スナップ済みの bbox (imin, jmin, imax, jmax) を返す"""
+    isize, jsize = sizes
+    return (
+        snap0(min(e[0] for e in entries)),
+        snap0(min(e[1] for e in entries)),
+        snapS(max(e[0] for e in entries), isize),
+        snapS(max(e[1] for e in entries), jsize),
+    )
 
-    全石のbboxが盤全体を覆って枠が退化するときのフォールバック専用。O(n^2)だが石数は少ない。
-    最大クラスタが同サイズで複数ある場合は None を返す（位置ベースのタイブレークは flip 再帰で
-    別クラスタを選び直して無限再帰になるため、一意に決まるときだけ採用する）。
+
+def mark_core_stones(stones, komi, margin):
+    """詰碁本体（コア）の石に tsumego_core を立て、採用範囲の snap 済み bbox を返す。
+
+    全石の bbox で枠が成立する（fit_margin が margin を返す）なら絞らない＝従来動作。
+    成立しないときだけ、近接クラスタの gap を段階的に縮めて本体を切り出す。
+
+    gap を小さくすると最大クラスタは縮み bbox も縮むので外側面積は増える＝面積テストは
+    gap に対して単調。よって「降順で最初に通る gap」＝「通る中で最大の gap」であり、
+    石対の距離を1回だけ走査して gap 昇順に増分 union すれば O(n^2) 1パスで求まる。
+
+    マークは石の dict に付ける。flip_stones は同じ dict オブジェクトを新しい配列へ移すだけ
+    なので、マークは転置・反転を越えて tsumego_frame_stones の再帰の全段で保持される。
     """
-    n = len(ijs)
+    sizes = ij_sizes(stones)
+    entries = [(i, j, h) for i, row in enumerate(stones) for j, h in enumerate(row) if h.get("stone")]
+    if not entries:
+        return (0, 0, 0, 0)
+    all_bbox = snapped_bbox(entries, sizes)
+    if fit_margin(sizes, komi, margin, *all_bbox) is not None:
+        return all_bbox
+
+    n = len(entries)
+    edges = [[] for _ in range(cluster_gap + 1)]
+    for a in range(n):
+        ia, ja, _h = entries[a]
+        for b in range(a + 1, n):
+            d = max(abs(ia - entries[b][0]), abs(ja - entries[b][1]))
+            if d <= cluster_gap:
+                edges[d].append((a, b))
     parent = list(range(n))
 
     def find(a):
@@ -78,19 +112,33 @@ def main_cluster(ijs):
             a = parent[a]
         return a
 
-    for a in range(n):
-        for b in range(a + 1, n):
-            if max(abs(ijs[a]["i"] - ijs[b]["i"]), abs(ijs[a]["j"] - ijs[b]["j"])) <= cluster_gap:
-                ra, rb = find(a), find(b)
-                if ra != rb:
-                    parent[rb] = ra
-    clusters = {}
-    for a in range(n):
-        clusters.setdefault(find(a), []).append(ijs[a])
-    sizes = sorted((len(c) for c in clusters.values()), reverse=True)
-    if len(sizes) > 1 and sizes[0] == sizes[1]:
-        return None
-    return max(clusters.values(), key=len)
+    best = None
+    for gap in range(1, cluster_gap + 1):
+        for a, b in edges[gap]:
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[rb] = ra
+        groups = {}
+        for a in range(n):
+            groups.setdefault(find(a), []).append(entries[a])
+        # 同数クラスタのタイは bbox が小さい方 → 上 → 左 の順で決定的に選ぶ
+        cand = max(groups.values(), key=lambda g: (len(g), -bbox_area(g), -g[0][0], -g[0][1]))
+        if len(cand) < n * CORE_MIN_FRACTION:
+            continue  # 本体を切り捨てすぎ。全盤に広がる詰碁を1子まで削る事故を防ぐ
+        if fit_margin(sizes, komi, margin, *snapped_bbox(cand, sizes)) is not None:
+            best = cand  # gap 昇順ループなので、最後に通ったものが「通る中で最大の gap」
+
+    if best is None or len(best) == n:
+        return all_bbox
+    for _i, _j, h in best:
+        h["tsumego_core"] = True
+    return snapped_bbox(best, sizes)
+
+
+def bbox_area(entries):
+    i = [e[0] for e in entries]
+    j = [e[1] for e in entries]
+    return (max(i) - min(i) + 1) * (max(j) - min(j) + 1)
 
 
 def pick_all(stones, key):
@@ -109,15 +157,20 @@ def get_analysis_region(region_pos):
 def tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin):
     sizes = ij_sizes(stones)
     isize, jsize = sizes
-    ijs = [
-        {"i": i, "j": j, "black": h.get("black")}
+    all_ijs = [
+        {"i": i, "j": j, "black": h.get("black"), "core": h.get("tsumego_core")}
         for i, row in enumerate(stones)
         for j, h in enumerate(row)
         if h.get("stone")
     ]
 
-    if len(ijs) == 0:
+    if len(all_ijs) == 0:
         return []
+
+    # コア石がマークされていればそれだけで範囲を取る。マークは石の dict に付いており
+    # flip_stones は同じ dict を移すだけなので、転置・反転を越えて再帰の全段で保持される
+    # （これが無いと絞り込みが1段目で失われ、枠が全石の bbox に戻って退化する）
+    ijs = [z for z in all_ijs if z["core"]] or all_ijs
 
     def problem_range(zs):
         top = min_by(zs, "i", +1)
@@ -134,19 +187,12 @@ def tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin):
 
     # find range of problem
     extrema, imin, jmin, imax, jmax = problem_range(ijs)
-    if imin - margin <= 0 and imax + margin >= isize - 1 and jmin - margin <= 0 and jmax + margin >= jsize - 1:
-        # 全石のbbox+marginが盤全体を覆うと、壁・充填・リージョンが一切生成されず全盤解析に
-        # 退化する（詰碁本体から遠い無関係の石が1つ混ざるだけで発生）。最大クラスタ＝詰碁本体
-        # だけで範囲を取り直す。クラスタ外の石は盤上に残し、充填側が上書きしない
-        cluster = main_cluster(ijs)
-        if cluster is not None and len(cluster) < len(ijs):
-            extrema, imin, jmin, imax, jmax = problem_range(cluster)
     top, bottom, left, right = extrema
     # 適応margin: bbox+margin で外側（守り側の代償地帯）が必要面積を下回る大型詰碁では、
     # 枠ゲームが一方的（±100点級）になり勝率が飽和し、死活より空き地・小さい得が優先される。
     # 外側が確保できるまで margin を縮める。どの margin でも確保できない盤（9路など）は
     # 従来値を維持する（縮めても焼け石に水で、既存挙動を変えないため）
-    margin = fit_margin(sizes, komi, margin, imin, jmin, imax, jmax)
+    margin = fit_margin(sizes, komi, margin, imin, jmin, imax, jmax) or margin
     # flip/rotate for standard position
     # don't mix flip and swap (FF = SS = identity, but SFSF != identity)
     flip_spec = (

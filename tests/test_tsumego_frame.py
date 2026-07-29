@@ -44,10 +44,11 @@ def test_9x9_margin_clamped_so_frame_fits():
         ],
     )
     blacks, whites, region = tsumego_frame(board, komi=7.0, black_to_play_p=True, ko_p=False, margin=4)
-    # 縦は端スナップで全域、横は bbox(0..5)+クランプ後margin(2) = 0..7 → 全盤にならずリージョン成立
-    assert region == ((0, 8), (0, 7))
-    # 壁が盤内（j=7列）に置かれ、枠として機能する
-    assert any(j == 7 for _i, j in blacks + whites)
+    # 全石bbox(j 0..5)ではクランプ後margin 2でも外側9目のみ（必要34.5目）で勝率が飽和する。
+    # 孤立した (7,5) を落として 10/11 に絞ると bbox(j 0..3)+margin1 で外側36目を確保できる
+    assert region == ((0, 8), (0, 4))
+    # 壁が盤内（j=4列）に置かれ、枠として機能する
+    assert any(j == 4 for _i, j in blacks + whites)
 
 
 def test_outlier_stone_falls_back_to_main_cluster():
@@ -114,3 +115,26 @@ def test_full_board_tsumego_region_covers_board():
     )
     _blacks, _whites, region = tsumego_frame(board, komi=7.0, black_to_play_p=True, ko_p=False, margin=4)
     assert region == ((0, 12), (0, 12))
+
+
+def test_scattered_outliers_narrow_to_core_cluster():
+    # 回帰テスト: 詰碁本体（右上26子）から離れた D10/F11/F9/G6 が cluster_gap=4 で
+    # 芋づるに連結し主クラスタ=全30石になるため、枠が最下段13子だけに退化していた実例。
+    # 結果リージョンが盤全体→None正規化→全盤解析となり、空き地の D8 が最善手になった。
+    # gap を段階的に縮めて 26/30 に絞り、枠とリージョンが成立することを確認する
+    ab = "la jb kb fc hc ic jc dd id je jf kf jg jh ki li".split()
+    aw = "lb mb kc hd jd kd fe he ie ke lf kg lg gh".split()
+    board = _board(
+        stones=[(ord(p[1]) - 97, ord(p[0]) - 97, "B") for p in ab]
+        + [(ord(p[1]) - 97, ord(p[0]) - 97, "W") for p in aw]
+    )
+    blacks, whites, region = tsumego_frame(board, komi=7.0, black_to_play_p=True, ko_p=False, margin=4)
+    # コア bbox(i 0..8, j 7..12) + 適応margin(4→2) → 壁は F列(j=5) と 3行目(i=10)
+    assert region == ((0, 10), (5, 12))
+    assert any(j == 5 for _i, j in blacks + whites)
+    # 不正解手 D8 = (i=5, j=3) はリージョン外、正解手 M10 = (i=3, j=11) はリージョン内
+    (i0, i1), (j0, j1) = region
+    assert not (i0 <= 5 <= i1 and j0 <= 3 <= j1)
+    assert i0 <= 3 <= i1 and j0 <= 11 <= j1
+    # 枠が退化していない（修正前は最下段13子のみだった）
+    assert len(blacks) + len(whites) > 40
