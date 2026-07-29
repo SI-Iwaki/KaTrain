@@ -138,3 +138,21 @@ def test_scattered_outliers_narrow_to_core_cluster():
     assert i0 <= 3 <= i1 and j0 <= 11 <= j1
     # 枠が退化していない（修正前は最下段13子のみだった）
     assert len(blacks) + len(whites) > 40
+
+
+def test_region_falls_back_to_core_bbox_when_frame_covers_board():
+    # 横方向に全幅、縦は中央付近に収まる詰碁では、どのmarginでも外側面積が足りず
+    # fit_margin が縮められないため枠矩形が盤全体に膨らみ、リージョンが全盤になる
+    # （→ set_region_of_interest が None 正規化 → 全盤解析）。コアbbox+padで下限を保証する
+    board = _board(stones=[(3, 0, "B"), (3, 12, "W"), (9, 0, "W"), (9, 12, "B"), (6, 6, "B")])
+    _blacks, _whites, region = tsumego_frame(board, komi=7.0, black_to_play_p=True, ko_p=False, margin=4)
+    # コアbbox(i 3..9, j 0..12) + pad2 → i 1..11 に縮み、縦が盤より小さいので全盤にならない
+    assert region == ((1, 11), (0, 12))
+
+
+def test_region_fallback_declines_when_problem_reaches_edges():
+    # 端に届く詰碁では snap により bbox が全盤になるため、フォールバックは働かず
+    # 全盤リージョンのまま返す（端の手を候補から外すのは危険なため）
+    board = _board(stones=[(1, 1, "B"), (1, 11, "W"), (11, 1, "W"), (11, 11, "B")])
+    _blacks, _whites, region = tsumego_frame(board, komi=7.0, black_to_play_p=True, ko_p=False, margin=4)
+    assert region == ((0, 12), (0, 12))

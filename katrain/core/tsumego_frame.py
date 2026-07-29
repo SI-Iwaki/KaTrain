@@ -37,13 +37,17 @@ def tsumego_frame(bw_board, komi, black_to_play_p, ko_p, margin):
     if min(ij_sizes(bw_board)) <= 9:
         margin = min(margin, 2)
     stones = stones_from_bw_board(bw_board)
-    mark_core_stones(stones, komi, margin)
+    core_bbox = mark_core_stones(stones, komi, margin)
     filled_stones = tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin)
     region_pos = pick_all(filled_stones, "tsumego_frame_region_mark")
     bw = pick_all(filled_stones, "tsumego_frame")
     blacks = [(i, j) for i, j, black in bw if black]
     whites = [(i, j) for i, j, black in bw if not black]
-    return (blacks, whites, get_analysis_region(region_pos))
+    sizes = ij_sizes(bw_board)
+    region = get_analysis_region(region_pos)
+    if not region or covers_board_p(region, sizes):
+        region = fallback_region(core_bbox, sizes) or region
+    return (blacks, whites, region)
 
 
 def fit_margin(sizes, komi, margin, imin, jmin, imax, jmax):
@@ -152,6 +156,31 @@ def get_analysis_region(region_pos):
     ri = (min(ai), max(ai))
     rj = (min(aj), max(aj))
     return ri[0] < ri[1] and rj[0] < rj[1] and (ri, rj)
+
+
+def covers_board_p(region, sizes):
+    (i0, i1), (j0, j1) = region
+    isize, jsize = sizes
+    # game.set_region_of_interest が None 正規化する条件と同じ（縦横とも盤以上）
+    return i1 - i0 + 1 >= isize and j1 - j0 + 1 >= jsize
+
+
+def fallback_region(core_bbox, sizes):
+    """枠由来のリージョンが盤全体に退化したときの下限。コア bbox + pad を縮めながら試す。
+
+    bbox は snap 済みなので、端に届く詰碁では全 pad が盤全体になり None を返す
+    （端の手を候補から外すと正解手を落としかねないため、その場合は全盤解析に委ねる）。
+    """
+    isize, jsize = sizes
+    imin, jmin, imax, jmax = core_bbox
+    for pad in (2, 1, 0):
+        i0, i1 = max(0, imin - pad), min(isize - 1, imax + pad)
+        j0, j1 = max(0, jmin - pad), min(jsize - 1, jmax + pad)
+        if i0 >= i1 or j0 >= j1:
+            continue  # get_analysis_region と同じく1線に退化した範囲は使わない
+        if not covers_board_p(((i0, i1), (j0, j1)), sizes):
+            return ((i0, i1), (j0, j1))
+    return None
 
 
 def tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin):
