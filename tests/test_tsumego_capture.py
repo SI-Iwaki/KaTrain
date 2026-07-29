@@ -281,3 +281,48 @@ def test_analyze_marks_region_requested():
     node.analyze(engine, region_of_interest=[0, 10, 4, 12])
     assert node.analysis.get("region_requested")
     assert engine.requested["region_of_interest"] == [0, 10, 4, 12]
+
+
+def test_capture_tsumego_grid_returns_recognized_grid(monkeypatch):
+    # キャプチャ経路は枠適用にグリッドが必要なので、認識までを返す関数に置き換える
+    # （SGF文字列を経由すると枠適用前に局面が確定してしまい、非コア石を除去できない）
+    from katrain.core import tsumego_capture as tc
+
+    grid = [["." for _ in range(9)] for _ in range(9)]
+    grid[4][4] = "B"
+    monkeypatch.setattr(tc, "find_window_rect", lambda _t: (0, 0, 100, 100))
+    monkeypatch.setattr(tc, "capture_screen_rect", lambda _r: None)
+    monkeypatch.setattr(tc, "detect_board", lambda _i: (0, 0, 99, 99))
+    monkeypatch.setattr(tc, "detect_size_and_classify", lambda _i, _r, _s: (9, grid))
+
+    assert tc.capture_tsumego_grid({"window_title": "X"}) == grid
+
+
+def test_framed_grid_round_trips_through_sgf():
+    # キャプチャ経路: 認識グリッド → 枠適用 → 完成グリッド → 単一AB/AWのSGF → KaTrainで読める
+    # （占有点への重複配置がないことを、実際にゲームを構築して確認する）
+    from katrain.core.game import BaseGame, KaTrainSGF
+    from katrain.core.tsumego_frame import tsumego_frame_board
+
+    ab = "la jb kb fc hc ic jc dd id je jf kf jg jh ki li".split()
+    aw = "lb mb kc hd jd kd fe he ie ke lf kg lg gh".split()
+    grid = [["." for _ in range(13)] for _ in range(13)]
+    for p in ab:
+        grid[ord(p[1]) - 97][ord(p[0]) - 97] = "B"
+    for p in aw:
+        grid[ord(p[1]) - 97][ord(p[0]) - 97] = "W"
+
+    framed, region = tsumego_frame_board(grid, 7.0, True, False, 4)
+    assert region == ((0, 10), (5, 12))
+
+    class _Stub:
+        def log(self, *_a, **_k):
+            pass
+
+        def config(self, *_a, **_k):
+            return None
+
+    root = KaTrainSGF.parse_sgf(grid_to_sgf(framed, komi=7.0))
+    game = BaseGame(_Stub(), move_tree=root)  # 重複配置があればここで例外
+    expected = sum(1 for row in framed for v in row if v in ("B", "W"))
+    assert len(game.stones) == expected
