@@ -759,7 +759,7 @@ class KaTrainGui(Screen, KaTrainBase):
         # AB/AW として新規局にする（枠ノードを足す方式と違い、枠外の無関係な石を除去でき、
         # 占有点への重複配置も起きない）。new-game と解析発行は同一メッセージ内で行う
         # （分割すると new-game で game_id が変わり後続メッセージが破棄されるため）
-        from katrain.core.tsumego_capture import grid_to_sgf
+        from katrain.core.tsumego_capture import CaptureError, grid_to_sgf
         from katrain.core.tsumego_frame import tsumego_frame_board
 
         komi = self.config("game/komi", 6.5)
@@ -768,6 +768,12 @@ class KaTrainGui(Screen, KaTrainBase):
             move_tree = KaTrainSGF.parse_sgf(grid_to_sgf(framed, komi=komi))
         except ParseError as e:
             self.log(f"詰碁キャプチャSGF解析失敗: {e}", OUTPUT_ERROR)
+            return
+        except CaptureError as e:
+            # 石が1つも無い等、grid_to_sgf自体が弾くケース。self.log(OUTPUT_ERROR)は
+            # 本クラスのlog()内でステータスバーにも転送されるため、_tsumego_capture_failed同様
+            # ユーザーに認識できる（メッセージループスレッドなのでClock経由のGUI操作は不要）
+            self.log(f"詰碁キャプチャ失敗: {e}", OUTPUT_ERROR)
             return
         self._do_new_game(move_tree=move_tree)
         settings = self._config.get("tsumego_capture") or {}
