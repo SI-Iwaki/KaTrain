@@ -596,27 +596,108 @@ class KaTrainGui(Screen, KaTrainBase):
             node.analyze(engine)
         self.update_state(redraw_board=True)
 
+    # Win32 グローバルホットキー用の定数
+    _HOTKEY_MODS = {"alt": 0x0001, "ctrl": 0x0002, "control": 0x0002, "shift": 0x0004, "win": 0x0008, "super": 0x0008}
+    _HOTKEY_NAMED_KEYS = {
+        "space": 0x20,
+        "esc": 0x1B,
+        "escape": 0x1B,
+        "tab": 0x09,
+        "enter": 0x0D,
+        "return": 0x0D,
+        "backspace": 0x08,
+        "insert": 0x2D,
+        "delete": 0x2E,
+        "home": 0x24,
+        "end": 0x23,
+        "pageup": 0x21,
+        "pagedown": 0x22,
+        "up": 0x26,
+        "down": 0x28,
+        "left": 0x25,
+        "right": 0x27,
+    }
+    _MOD_NOREPEAT = 0x4000  # 押しっぱなしの自動リピートで多重発火させない
+    _WM_HOTKEY = 0x0312
+    _TSUMEGO_HOTKEY_ID = 0xA71
+
+    @classmethod
+    def _parse_hotkey(cls, spec):
+        """ホットキー文字列（f4 / ctrl+shift+g 等）を RegisterHotKey 用の (modifiers, 仮想キーコード) に変換する"""
+        mods, key = 0, None
+        for part in spec.lower().replace(" ", "").split("+"):
+            if part in cls._HOTKEY_MODS:
+                mods |= cls._HOTKEY_MODS[part]
+            elif part:
+                key = part
+        if not key:
+            raise ValueError(f"キー本体が指定されていません: {spec!r}")
+        if re.fullmatch(r"f([1-9]|1[0-9]|2[0-4])", key):
+            return mods, 0x6F + int(key[1:])  # VK_F1 = 0x70
+        if key in cls._HOTKEY_NAMED_KEYS:
+            return mods, cls._HOTKEY_NAMED_KEYS[key]
+        if len(key) == 1:
+            # 引数は WCHAR 値。argtypes を指定しないと ctypes が str をポインタに変換して必ず -1 になる
+            user32 = ctypes.windll.user32
+            user32.VkKeyScanW.argtypes = [ctypes.c_wchar]
+            user32.VkKeyScanW.restype = ctypes.c_short
+            scan = user32.VkKeyScanW(key)
+            if scan != -1:
+                return mods, scan & 0xFF  # 上位バイトのシフト状態は使わない（修飾キーは spec 側で指定する）
+        raise ValueError(f"未対応のキー指定です: {spec!r}")
+
     def _setup_tsumego_capture(self):
         settings = self._config.get("tsumego_capture") or {}
         if not settings.get("enabled", False):
             return
-        try:
-            import keyboard
-            from katrain.core.tsumego_capture import ensure_dpi_awareness
-        except ImportError:
-            self.log("tsumego_capture: keyboard パッケージ未導入のためホットキー無効 (pip install keyboard)", OUTPUT_INFO)
+        if sys.platform != "win32":
+            self.log("tsumego_capture: Windows 専用機能のためホットキーは登録しません", OUTPUT_INFO)
             return
+        from katrain.core.tsumego_capture import ensure_dpi_awareness
+
         ensure_dpi_awareness()
-        hotkey = settings.get("hotkey", "ctrl+shift+g")
+        spec = settings.get("hotkey", "f4")
         try:
-            keyboard.add_hotkey(hotkey, self._tsumego_capture_trigger)
-            self._tsumego_capture_busy = False
-            self.log(f"tsumego_capture: ホットキー {hotkey} を登録しました", OUTPUT_INFO)
-        except Exception as e:
-            self.log(f"tsumego_capture: ホットキー登録失敗: {e}", OUTPUT_ERROR)
+            mods, vk = self._parse_hotkey(spec)
+        except ValueError as e:
+            self.log(f"tsumego_capture: ホットキー設定が不正です: {e}", OUTPUT_ERROR)
+            return
+        self._tsumego_capture_busy = False
+        threading.Thread(target=self._tsumego_hotkey_loop, args=(spec, mods, vk), daemon=True).start()
+
+    def _tsumego_hotkey_loop(self, spec, mods, vk):
+        """RegisterHotKey で登録し、専用スレッドのメッセージループで WM_HOTKEY を待つ。
+
+        以前は keyboard パッケージの WH_KEYBOARD_LL フックを使っていたが、フックのコールバックが
+        LowLevelHooksTimeout（レジストリ未設定なら既定 300ms）を超えると Windows がフックを黙って
+        チェーンから外す。KaTrain では Kivy 描画や KataGo 解析結果の処理で GIL が長く握られることが
+        あり、それに巻き込まれてホットキーが突然無反応になっていた（listen スレッドは GetMessage
+        ループのまま生き続けるので、プロセスを外から見ても異常に見えないのが厄介だった）。
+        RegisterHotKey なら WM_HOTKEY がこのスレッドのメッセージキューに積まれるため取りこぼさない。
+        """
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        if not user32.RegisterHotKey(None, self._TSUMEGO_HOTKEY_ID, mods | self._MOD_NOREPEAT, vk):
+            self.log(
+                f"tsumego_capture: ホットキー {spec} の登録に失敗しました"
+                f"（他のアプリが同じキーを使用している可能性があります）",
+                OUTPUT_ERROR,
+            )
+            return
+        self.log(f"tsumego_capture: ホットキー {spec} を登録しました", OUTPUT_INFO)
+        msg = wintypes.MSG()
+        try:
+            while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+                if msg.message == self._WM_HOTKEY:
+                    # キャプチャ中もメッセージループを止めないよう、実処理は作業スレッドに投げる
+                    threading.Thread(target=self._tsumego_capture_trigger, daemon=True).start()
+        finally:
+            user32.UnregisterHotKey(None, self._TSUMEGO_HOTKEY_ID)
 
     def _tsumego_capture_trigger(self):
-        # keyboard リスナースレッドで実行される。認識までここで行い、反映はメッセージループに投げる
+        # ホットキースレッドが起こした作業スレッドで実行される。
+        # 認識までここで行い、盤面への反映はメッセージループに投げる
         from katrain.core.tsumego_capture import CaptureError, capture_tsumego_sgf
 
         now = time.time()
@@ -633,15 +714,20 @@ class KaTrainGui(Screen, KaTrainBase):
                 ko = settings.get("frame_ko", False)
                 margin = int(settings.get("frame_margin", 4))
             except CaptureError as e:
-                self.log(f"詰碁キャプチャ失敗: {e}", OUTPUT_ERROR)
+                self._tsumego_capture_failed(f"詰碁キャプチャ失敗: {e}")
                 return
             except Exception as e:
-                self.log(f"詰碁キャプチャで予期しないエラー: {e}", OUTPUT_ERROR)
+                self._tsumego_capture_failed(f"詰碁キャプチャで予期しないエラー: {e}")
                 return
             self.log(f"詰碁キャプチャ成功: {sgf}", OUTPUT_DEBUG)
             self("tsumego-capture-apply", sgf, ko, margin)
         finally:
             self._tsumego_capture_busy = False
+
+    def _tsumego_capture_failed(self, message):
+        """失敗をターミナルと GUI の両方に出す（作業スレッドから呼ばれるため GUI 更新は Clock 経由）"""
+        self.log(message, OUTPUT_ERROR)
+        Clock.schedule_once(lambda _dt: self.controls.set_status(message, STATUS_ERROR, check_level=False), 0)
 
     def _do_tsumego_capture_apply(self, sgf, ko, margin):
         # メッセージループスレッドで実行。new-game と tsumego-frame を同一メッセージ内で行う
