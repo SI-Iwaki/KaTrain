@@ -554,6 +554,9 @@ class Game(BaseGame):
                     visits=self.region_analysis_visits,
                     time_limit=self.region_analysis_visits is None,
                     extra_settings={"wideRootNoise": 0.0} if self.region_analysis_visits else None,
+                    # ai:tsumego が候補手ごとの ownership を使う。詰碁キャプチャ経由
+                    # （region_analysis_visits あり）のときだけ要求する
+                    ownership=True if self.region_analysis_visits else None,
                 )
             else:
                 played_node.analyze(self.engines[played_node.next_player])

@@ -209,7 +209,11 @@ class GameNode(SGFNode):
         region_of_interest=None,
         report_every=REPORT_DT,
         extra_settings=None,
+        ownership=None,
     ):
+        # ownership=None なら engine 側の既定（_enable_ownership）に委ねる。詰碁のように
+        # クエリ単位で要る場合だけ True を渡す（全体で有効にすると通常の対局・検討の全クエリに
+        # includeMovesOwnership＝候補手ごとに盤面全点の ownership が乗る）
         if region_of_interest:
             self.analysis["region_requested"] = True
         engine.request_analysis(
@@ -227,6 +231,7 @@ class GameNode(SGFNode):
             region_of_interest=region_of_interest,
             report_every=report_every,
             extra_settings=extra_settings,
+            ownership=ownership,
         )
 
     def update_move_analysis(self, move_analysis, move_gtp):

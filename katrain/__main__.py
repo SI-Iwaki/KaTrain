@@ -592,6 +592,9 @@ class KaTrainGui(Screen, KaTrainBase):
                 visits=deep_visits,
                 time_limit=deep_visits is None,
                 extra_settings={"wideRootNoise": 0.0} if deep_visits else None,
+                # ai:tsumego が候補手ごとの ownership を使う。詰碁キャプチャ経由
+                # （deep_visits あり）のときだけ要求する
+                ownership=True if deep_visits else None,
             )
         else:
             node.analyze(engine)
@@ -629,6 +632,9 @@ class KaTrainGui(Screen, KaTrainBase):
                 visits=deep_visits,
                 time_limit=deep_visits is None,
                 extra_settings={"wideRootNoise": 0.0} if deep_visits else None,
+                # ai:tsumego が候補手ごとの ownership を使う。詰碁キャプチャ経由
+                # （deep_visits あり）のときだけ要求する
+                ownership=True if deep_visits else None,
             )
         else:
             node.analyze(engine)
