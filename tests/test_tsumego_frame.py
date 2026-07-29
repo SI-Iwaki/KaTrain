@@ -1,6 +1,7 @@
 import pytest
 
-from katrain.core.tsumego_frame import tsumego_frame
+from katrain.core.game import BaseGame, KaTrainSGF
+from katrain.core.tsumego_frame import tsumego_frame, tsumego_frame_from_katrain_game
 
 
 def _board(size=13, stones=()):
@@ -156,3 +157,31 @@ def test_region_fallback_declines_when_problem_reaches_edges():
     board = _board(stones=[(1, 1, "B"), (1, 11, "W"), (11, 1, "W"), (11, 11, "B")])
     _blacks, _whites, region = tsumego_frame(board, komi=7.0, black_to_play_p=True, ko_p=False, margin=4)
     assert region == ((0, 12), (0, 12))
+
+
+class _StubKatrain:
+    def log(self, *_args, **_kwargs):
+        pass
+
+    def config(self, *_args, **_kwargs):
+        return None
+
+
+@pytest.mark.parametrize("target", [20, 60, 100])
+def test_manual_frame_never_places_on_occupied_point(target):
+    # 回帰テスト: put_border は既存石をチェックせず上書きするため、壁が石を踏むと
+    # 占有点への AB/AW になり _init_chains が "Space occupied" で落ちる（同色でも落ちる）。
+    # 従来は枠が退化して石をほとんど置かないため顕在化していなかったが、
+    # コア検出の修正で枠が張れるようになると実戦の密な局面で踏む
+    root = KaTrainSGF.parse_file("tests/data/ogs.sgf")
+    game = BaseGame(_StubKatrain(), move_tree=root)
+    for _ in range(target):
+        if not game.current_node.children:
+            break
+        game.set_current_node(game.current_node.children[0])
+    occupied = {s.coords for s in game.stones}
+    node, _region = tsumego_frame_from_katrain_game(game, 6.5, True, ko_p=False, margin=4)
+    placed = [m.coords for m in node.placements]
+    assert not (set(placed) & occupied), "枠石が既存石と重なっている"
+    assert len(placed) == len(set(placed)), "枠石に重複座標がある"
+    game.set_current_node(node)  # ここで例外が出なければ配置が正当

@@ -18,6 +18,14 @@ def tsumego_frame_from_katrain_game(game, komi, black_to_play_p, ko_p, margin):
     bw_board = [[game.chains[c][0].player if c >= 0 else "-" for c in line] for line in game.board]
     isize, jsize = ij_sizes(bw_board)
     blacks, whites, analysis_region = tsumego_frame(bw_board, komi, black_to_play_p, ko_p, margin)
+
+    # 既存石と重なる枠石は配置しない。占有点への AB/AW は同色でも
+    # _validate_move_and_update_chains が "Space occupied" で弾き、
+    # _init_chains が Exception に昇格させてゲームが壊れる
+    occupied = {(i, j) for i, row in enumerate(bw_board) for j, v in enumerate(row) if v != "-"}
+    blacks = [ij for ij in blacks if ij not in occupied]
+    whites = [ij for ij in whites if ij not in occupied]
+
     sgf_blacks = katrain_sgf_from_ijs(blacks, isize, jsize, "B")
     sgf_whites = katrain_sgf_from_ijs(whites, isize, jsize, "W")
 
