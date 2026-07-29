@@ -27,8 +27,9 @@ def test_full_height_tsumego_region_not_degenerate():
         stones=[(1, 10, "B"), (3, 8, "W"), (5, 12, "B"), (10, 9, "W")]
     )
     _blacks, _whites, region = tsumego_frame(board, komi=7.0, black_to_play_p=True, ko_p=False, margin=4)
-    # i(行)は端スナップで 0..12 全域、j(列)は 8-4=4 から右端まで
-    assert region == ((0, 12), (4, 12))
+    # i(行)は端スナップで 0..12 全域。j(列)は適応marginにより 4 → 1 に縮み（margin 4 では
+    # 外側52目 < 必要78.5目で枠ゲームが一方的になる）、8-1=7 から右端まで
+    assert region == ((0, 12), (7, 12))
 
 
 def test_9x9_margin_clamped_so_frame_fits():
@@ -65,12 +66,44 @@ def test_outlier_stone_falls_back_to_main_cluster():
         ]
     )
     blacks, whites, region = tsumego_frame(board, komi=7.0, black_to_play_p=True, ko_p=False, margin=4)
-    # クラスタbbox(i 9..12, j 0..12) + margin → 壁はi=5の1本、リージョンは上側のみ（全盤にならない）
-    assert region == ((5, 12), (0, 12))
+    # クラスタbbox(i 9..12, j 0..12) + 適応margin(4→2) → 壁はi=7の1本、リージョンは上側のみ
+    # （全盤にならない。適応margin導入前は壁i=5だった）
+    assert region == ((7, 12), (0, 12))
     # 壁・充填が生成される（修正前は枠石0個だった）
-    assert any(i == 5 for i, _j in blacks + whites)
+    assert any(i == 7 for i, _j in blacks + whites)
     # クラスタ外の石は枠石で上書きされない（AB/AWが既存石と衝突するとIllegalMoveException）
     assert (3, 3) not in blacks and (3, 3) not in whites
+
+
+def test_adaptive_margin_large_top_problem():
+    # 適応marginの回帰テスト: 上辺4行×全幅の大型詰碁は margin=4 だと外側が65目しか残らず
+    # （必要78.5目）、枠ゲームが黒+36の一方的な勝負になり正解手と別解がスコアノイズで並ぶ。
+    # margin を 2 に縮めて外側91目を確保する（K12/H13誤答の実例形）
+    board = _board(
+        stones=[(12, 0, "B"), (12, 11, "W"), (9, 1, "B"), (9, 11, "B")]
+    )
+    blacks, whites, region = tsumego_frame(board, komi=7.0, black_to_play_p=True, ko_p=False, margin=4)
+    # bbox(i 9..12, j 0..12) + margin2 → 壁は i=7 の1本、外側は i 0..6 の91目
+    assert region == ((7, 12), (0, 12))
+    assert any(i == 7 for i, _j in blacks + whites)
+
+
+def test_adaptive_margin_bottom_right_problem():
+    # 適応marginの回帰テスト: 右下寄りだが左(j=4)と上(i=7)に伸びた詰碁は margin=4 だと
+    # 外側13目のみで黒+130に飽和し、死活（正解N2）より空き地の手(D2)が選ばれていた実例形。
+    # margin を 1 に縮めて外側79目を確保する
+    board = _board(
+        stones=[
+            (7, 11, "B"), (5, 9, "B"), (5, 10, "B"), (5, 11, "B"), (4, 8, "B"),
+            (3, 9, "B"), (2, 8, "B"), (2, 9, "B"), (1, 9, "B"), (0, 9, "B"),
+            (4, 10, "W"), (4, 11, "W"), (2, 4, "W"), (2, 7, "W"), (2, 10, "W"),
+            (1, 7, "W"), (1, 8, "W"), (1, 10, "W"), (0, 11, "W"),
+        ]
+    )
+    blacks, whites, region = tsumego_frame(board, komi=7.0, black_to_play_p=True, ko_p=False, margin=4)
+    # bbox(i 0..7, j 4..12) + margin1 → 壁は j=3 と i=8、リージョンは右下に密着
+    assert region == ((0, 8), (3, 12))
+    assert any(j == 3 for _i, j in blacks + whites)
 
 
 def test_full_board_tsumego_region_covers_board():

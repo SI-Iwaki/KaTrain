@@ -44,6 +44,24 @@ def tsumego_frame(bw_board, komi, black_to_play_p, ko_p, margin):
     return (blacks, whites, get_analysis_region(region_pos))
 
 
+def fit_margin(sizes, komi, margin, imin, jmin, imax, jmax):
+    """外側（枠矩形の外）に守り側の代償地帯 defense_area 相当が確保できる最大の margin を返す。
+
+    put_outside は外側セルを守り側に defense_area（約 (盤面積-コミ-5)/2 ）だけ配分する設計
+    だが、外側がそれ未満だと配分しきれず枠ゲームが一方的になる。確保できる margin がない
+    場合は元の margin をそのまま返す。
+    """
+    isize, jsize = sizes
+    needed = (isize * jsize - abs(komi) - offence_to_win) / 2
+    for m in range(margin, 0, -1):
+        i0, i1 = max(0, imin - m), min(isize - 1, imax + m)
+        j0, j1 = max(0, jmin - m), min(jsize - 1, jmax + m)
+        outside = isize * jsize - (i1 - i0 + 1) * (j1 - j0 + 1)
+        if outside >= needed:
+            return m
+    return margin
+
+
 def main_cluster(ijs):
     """石を近接クラスタ（Chebyshev距離 cluster_gap 以内で連結）に分け、最大のものを返す。
 
@@ -124,6 +142,11 @@ def tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin):
         if cluster is not None and len(cluster) < len(ijs):
             extrema, imin, jmin, imax, jmax = problem_range(cluster)
     top, bottom, left, right = extrema
+    # 適応margin: bbox+margin で外側（守り側の代償地帯）が必要面積を下回る大型詰碁では、
+    # 枠ゲームが一方的（±100点級）になり勝率が飽和し、死活より空き地・小さい得が優先される。
+    # 外側が確保できるまで margin を縮める。どの margin でも確保できない盤（9路など）は
+    # 従来値を維持する（縮めても焼け石に水で、既存挙動を変えないため）
+    margin = fit_margin(sizes, komi, margin, imin, jmin, imax, jmax)
     # flip/rotate for standard position
     # don't mix flip and swap (FF = SS = identity, but SFSF != identity)
     flip_spec = (
