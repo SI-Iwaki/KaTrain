@@ -6,6 +6,7 @@ from katrain.core.sgf_parser import Move
 
 near_to_edge = 2
 offence_to_win = 5
+cluster_gap = 4  # 主クラスタ判定: この距離(Chebyshev)以内の石を同一クラスタとみなす
 
 BLACK = "B"
 WHITE = "W"
@@ -43,6 +44,37 @@ def tsumego_frame(bw_board, komi, black_to_play_p, ko_p, margin):
     return (blacks, whites, get_analysis_region(region_pos))
 
 
+def main_cluster(ijs):
+    """石を近接クラスタ（Chebyshev距離 cluster_gap 以内で連結）に分け、最大のものを返す。
+
+    全石のbboxが盤全体を覆って枠が退化するときのフォールバック専用。O(n^2)だが石数は少ない。
+    最大クラスタが同サイズで複数ある場合は None を返す（位置ベースのタイブレークは flip 再帰で
+    別クラスタを選び直して無限再帰になるため、一意に決まるときだけ採用する）。
+    """
+    n = len(ijs)
+    parent = list(range(n))
+
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    for a in range(n):
+        for b in range(a + 1, n):
+            if max(abs(ijs[a]["i"] - ijs[b]["i"]), abs(ijs[a]["j"] - ijs[b]["j"])) <= cluster_gap:
+                ra, rb = find(a), find(b)
+                if ra != rb:
+                    parent[rb] = ra
+    clusters = {}
+    for a in range(n):
+        clusters.setdefault(find(a), []).append(ijs[a])
+    sizes = sorted((len(c) for c in clusters.values()), reverse=True)
+    if len(sizes) > 1 and sizes[0] == sizes[1]:
+        return None
+    return max(clusters.values(), key=len)
+
+
 def pick_all(stones, key):
     return [[i, j, s.get("black")] for i, row in enumerate(stones) for j, s in enumerate(row) if s.get(key)]
 
@@ -68,15 +100,30 @@ def tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin):
 
     if len(ijs) == 0:
         return []
+
+    def problem_range(zs):
+        top = min_by(zs, "i", +1)
+        left = min_by(zs, "j", +1)
+        bottom = min_by(zs, "i", -1)
+        right = min_by(zs, "j", -1)
+        return (
+            [top, bottom, left, right],
+            snap0(top["i"]),
+            snap0(left["j"]),
+            snapS(bottom["i"], isize),
+            snapS(right["j"], jsize),
+        )
+
     # find range of problem
-    top = min_by(ijs, "i", +1)
-    left = min_by(ijs, "j", +1)
-    bottom = min_by(ijs, "i", -1)
-    right = min_by(ijs, "j", -1)
-    imin = snap0(top["i"])
-    jmin = snap0(left["j"])
-    imax = snapS(bottom["i"], isize)
-    jmax = snapS(right["j"], jsize)
+    extrema, imin, jmin, imax, jmax = problem_range(ijs)
+    if imin - margin <= 0 and imax + margin >= isize - 1 and jmin - margin <= 0 and jmax + margin >= jsize - 1:
+        # 全石のbbox+marginが盤全体を覆うと、壁・充填・リージョンが一切生成されず全盤解析に
+        # 退化する（詰碁本体から遠い無関係の石が1つ混ざるだけで発生）。最大クラスタ＝詰碁本体
+        # だけで範囲を取り直す。クラスタ外の石は盤上に残し、充填側が上書きしない
+        cluster = main_cluster(ijs)
+        if cluster is not None and len(cluster) < len(ijs):
+            extrema, imin, jmin, imax, jmax = problem_range(cluster)
+    top, bottom, left, right = extrema
     # flip/rotate for standard position
     # don't mix flip and swap (FF = SS = identity, but SFSF != identity)
     flip_spec = (
@@ -177,6 +224,8 @@ def put_outside(stones, sizes, frame_range, black_to_attack_p, black_to_play_p, 
         for j in range(jsize):
             if inside_p(i, j, frame_range):
                 continue
+            if stones[i][j].get("stone") and not stones[i][j].get("tsumego_frame"):
+                continue  # クラスタ外の既存石は残す（上書きするとAB/AWが既存石と衝突する）
             count += 1
             black_p = xor(black_to_attack_p, (count <= defense_area))
             empty_p = (i + j) % 2 == 0 and abs(count - defense_area) > isize
@@ -231,6 +280,8 @@ def put_ko_threat(stones, sizes, frame_range, black_to_attack_p, black_to_play_p
             aj = j + (0 if left_p else jsize - width)
             if inside_p(ai, aj, frame_range):
                 return
+            if stones[ai][aj].get("stone") and not stones[ai][aj].get("tsumego_frame"):
+                return  # クラスタ外の既存石と重なる場合はコウダテ形を置かない
             black = xor(black_to_attack_p, ch == "O")
             empty = ch == "."
             put_stone(stones, sizes, ai, aj, black, empty)

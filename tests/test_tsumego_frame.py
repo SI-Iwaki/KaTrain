@@ -49,6 +49,30 @@ def test_9x9_margin_clamped_so_frame_fits():
     assert any(j == 7 for _i, j in blacks + whites)
 
 
+def test_outlier_stone_falls_back_to_main_cluster():
+    # 回帰テスト: 詰碁本体（上辺側）から遠く離れた無関係の石が1つ混ざると、全石のbbox+margin
+    # が盤全体を覆い、壁・充填・リージョンが一切生成されず全盤解析に退化していた
+    # （13路詰碁でD4相当の石によりK4が最善手として評価された実例）。
+    # 最大クラスタ＝詰碁本体だけで枠範囲を取り直し、クラスタ外の石は上書きせず盤上に残す
+    board = _board(
+        stones=[
+            # 詰碁本体（i=9..11 の上辺側クラスタ、実例の左上詰碁を転記）
+            (11, 0, "W"), (11, 1, "W"), (11, 2, "W"), (11, 3, "W"), (11, 5, "W"),
+            (11, 6, "B"), (11, 7, "B"),
+            (10, 1, "B"), (10, 2, "W"), (10, 3, "B"), (10, 10, "W"),
+            (9, 1, "B"), (9, 2, "B"), (9, 3, "B"), (9, 5, "B"), (9, 6, "B"), (9, 8, "B"),
+            (3, 3, "B"),  # 離れた無関係の石（D4相当）
+        ]
+    )
+    blacks, whites, region = tsumego_frame(board, komi=7.0, black_to_play_p=True, ko_p=False, margin=4)
+    # クラスタbbox(i 9..12, j 0..12) + margin → 壁はi=5の1本、リージョンは上側のみ（全盤にならない）
+    assert region == ((5, 12), (0, 12))
+    # 壁・充填が生成される（修正前は枠石0個だった）
+    assert any(i == 5 for i, _j in blacks + whites)
+    # クラスタ外の石は枠石で上書きされない（AB/AWが既存石と衝突するとIllegalMoveException）
+    assert (3, 3) not in blacks and (3, 3) not in whites
+
+
 def test_full_board_tsumego_region_covers_board():
     # 詰碁+marginが盤全体を覆う極端ケース: 全盤リージョンを返す
     # （set_region_of_interest 側が全盤リージョンを None に正規化するので実害なし）
