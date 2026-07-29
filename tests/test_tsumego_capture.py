@@ -326,3 +326,63 @@ def test_framed_grid_round_trips_through_sgf():
     game = BaseGame(_Stub(), move_tree=root)  # 重複配置があればここで例外
     expected = sum(1 for row in framed for v in row if v in ("B", "W"))
     assert len(game.stones) == expected
+
+
+def test_capture_region_brackets_stones_in_move_coords():
+    # 回帰テスト: tsumego_frame_board が返す region は認識グリッド
+    # （tsumego_capture.classify_intersections）準拠の上origin i（画面上でcyが下に
+    # 増える向きに合わせて上から数えた行）。一方 KaTrain の Move.coords / BaseGame.stones
+    # の y は下origin（sgf_parser.Move.from_sgf: y = board_size - sgf_row_index - 1 と同じ）。
+    # この変換を怠ると縦方向が反転したリージョンになり、詰碁本体の一部がリージョン外に
+    # 落ちる（katrain/__main__.py の _apply_tsumego_region で実際に発生していたバグ）。
+    # __main__.py は Kivy 依存でここから import できないため、本番と同じ変換式
+    # （y = board_size - 1 - i）だけをここに複製する。本番側を変更したらここも同期すること。
+    from katrain.core.game import BaseGame, KaTrainSGF
+    from katrain.core.tsumego_frame import tsumego_frame_board
+
+    # test_framed_grid_round_trips_through_sgf と同じ13路の再現フィクスチャ
+    ab = "la jb kb fc hc ic jc dd id je jf kf jg jh ki li".split()
+    aw = "lb mb kc hd jd kd fe he ie ke lf kg lg gh".split()
+    size = 13
+    grid = [["." for _ in range(size)] for _ in range(size)]
+    original = {}  # (i, j) [認識グリッド=上origin] -> 元の色
+    for p in ab:
+        i, j = ord(p[1]) - 97, ord(p[0]) - 97
+        grid[i][j] = "B"
+        original[(i, j)] = "B"
+    for p in aw:
+        i, j = ord(p[1]) - 97, ord(p[0]) - 97
+        grid[i][j] = "W"
+        original[(i, j)] = "W"
+
+    komi = 7.0
+    framed, region = tsumego_frame_board(grid, komi, True, False, 4)
+    assert region == ((0, 10), (5, 12))  # test_framed_grid_round_trips_through_sgf と同じ既知値
+
+    class _Stub:
+        def log(self, *_a, **_k):
+            pass
+
+        def config(self, *_a, **_k):
+            return None
+
+    root = KaTrainSGF.parse_sgf(grid_to_sgf(framed, komi=komi))
+    game = BaseGame(_Stub(), move_tree=root)
+    stone_coords = {s.coords for s in game.stones}
+
+    # 本番の変換（katrain/__main__.py: _apply_tsumego_region 参照）
+    (imin, imax), (jmin, jmax) = region
+    xmin, xmax = jmin, jmax
+    ymin, ymax = size - 1 - imax, size - 1 - imin  # 上origin i → 下origin y
+
+    # drop_non_core で消去/壁色に上書きされた石は「元の詰碁石」として盤上に残っていない
+    # ので対象から除く。それ以外（大半）は元の色のまま盤上に残っているはず
+    survived = [(i, j) for (i, j), color in original.items() if framed[i][j] == color]
+    assert len(survived) >= 20, "生存石が少なすぎる（枠適用が退化していないかの前提チェック）"
+
+    for i, j in survived:
+        x, y = j, size - 1 - i  # Move.coords への変換（sgf_parser.Move.from_sgf と同じ式）
+        assert (x, y) in stone_coords, f"石 (i={i},j={j}) が game.stones に見つからない"
+        assert xmin <= x <= xmax and ymin <= y <= ymax, (
+            f"石 (i={i},j={j}) → Move({x},{y}) がリージョン外: x[{xmin},{xmax}] y[{ymin},{ymax}]"
+        )
