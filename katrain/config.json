@@ -57,7 +57,9 @@
         "frame_ko": false,
         "maximize_on_capture": true,
         "auto_ai_black": true,
-        "analysis_visits": 1800
+        "analysis_visits": 1800,
+        "use_frame": true,
+        "region_pad": 1
     },
     "trainer": {
         "theme": "theme:normal",

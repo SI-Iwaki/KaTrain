@@ -1,7 +1,13 @@
 import pytest
 
 from katrain.core.game import BaseGame, KaTrainSGF
-from katrain.core.tsumego_frame import tsumego_frame, tsumego_frame_board, tsumego_frame_from_katrain_game
+from katrain.core.tsumego_frame import (
+    dense_core_bbox,
+    frameless_region,
+    tsumego_frame,
+    tsumego_frame_board,
+    tsumego_frame_from_katrain_game,
+)
 
 
 def _board(size=13, stones=()):
@@ -330,3 +336,72 @@ def test_wall_colour_invariant_under_transpose():
     # 転置盤では壁の向きも転置され、元の列方向の壁が行方向の壁になる
     wall2 = {out2[ti0][j] for j in range(tj0, tj1 + 1)}
     assert wall1 == wall2, f"転置で壁の色が変わった: {wall1} vs {wall2}"
+
+
+def _m10_board():
+    # 実機キャプチャの13路詰碁。右上26子が詰碁本体、D10/F11/F9/G6 が離れた石
+    ab = "la jb kb fc hc ic jc dd id je jf kf jg jh ki li".split()
+    aw = "lb mb kc hd jd kd fe he ie ke lf kg lg gh".split()
+    return _board(
+        stones=[(ord(p[1]) - 97, ord(p[0]) - 97, "B") for p in ab]
+        + [(ord(p[1]) - 97, ord(p[0]) - 97, "W") for p in aw]
+    )
+
+
+def test_dense_core_bbox_drops_distant_stones():
+    # 枠なしモードのコア検出: gap=1 で本体26子(87%)を保持できるので離れた石が落ちる。
+    # mark_core_stones は「枠が張れないときだけ絞る」ため枠なし経路では使えない
+    assert dense_core_bbox(_m10_board()) == (0, 7, 8, 12)
+
+
+def test_dense_core_bbox_rejects_monochrome_cluster():
+    # 回帰テスト: 黒12子の密な塊(75%)がgap=1で単独クラスタ化して閾値を満たすが、
+    # 単色なので却下されるべき。却下せずに採用すると、攻められている側である
+    # 白の目標石4子（黒塊からChebyshev距離3）が丸ごとリージョン外に落ち、
+    # 詰碁の対象そのものが解析候補から消える（この場合はgap=3で両色が併合されて
+    # 復帰する）。frameless_region経由で白石が範囲内に収まることを確認する
+    board = _board(
+        stones=[(i, j, "B") for i in range(4, 7) for j in range(2, 6)]
+        + [(i, j, "W") for i in range(5, 7) for j in range(8, 10)]
+    )
+    region = frameless_region(board, 1)
+    assert region is not None, "リージョンが盤全体に退化している"
+    (i0, i1), (j0, j1) = region
+    white_target = [(i, j) for i in range(5, 7) for j in range(8, 10)]
+    for i, j in white_target:
+        assert i0 <= i <= i1 and j0 <= j <= j1, f"白の目標石 ({i},{j}) がリージョン外: region={region}"
+
+
+def test_dense_core_bbox_keeps_loose_shape_together():
+    # 2路飛びに並ぶ緩い形は gap=1 だと4つに分断され最大クラスタが25%まで落ちるので
+    # CORE_MIN_FRACTION に届かず gap=2 へ上がり、1塊としてまとまる
+    board = _board(stones=[(5, 5, "B"), (5, 7, "W"), (7, 5, "W"), (7, 7, "B")])
+    assert dense_core_bbox(board) == (5, 5, 7, 7)
+
+
+def test_dense_core_bbox_empty_board():
+    assert dense_core_bbox(_board()) is None
+
+
+def test_frameless_region_pad1_contains_answer_and_excludes_open_area():
+    # コアbbox(0,7,8,12) + pad1 → 行0..9・列6..12。実測でこの範囲なら正解手 M10 が
+    # 1位（1113 visits）になり、pad2 だと空き地の J3 が競合して負ける
+    region = frameless_region(_m10_board(), 1)
+    assert region == ((0, 9), (6, 12))
+    (i0, i1), (j0, j1) = region
+    assert i0 <= 3 <= i1 and j0 <= 11 <= j1, "正解手 M10 (i3,j11) がリージョン外"
+    assert not (i0 <= 10 <= i1 and j0 <= 8 <= j1), "空き地の J3 (i10,j8) がリージョン内"
+
+
+def test_frameless_region_does_not_mutate_board():
+    # 枠なしモードの要は「盤面がアプリと完全に同一」であること
+    board = _m10_board()
+    before = [row[:] for row in board]
+    frameless_region(board, 1)
+    assert board == before
+
+
+def test_frameless_region_none_when_covering_whole_board():
+    # 盤全体に広がる詰碁では set_region_of_interest が None 正規化するのと同じ扱いにする
+    board = _board(stones=[(0, 0, "B"), (0, 12, "W"), (12, 0, "W"), (12, 12, "B")])
+    assert frameless_region(board, 1) is None

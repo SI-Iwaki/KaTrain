@@ -766,17 +766,40 @@ class KaTrainGui(Screen, KaTrainBase):
         Clock.schedule_once(lambda _dt: self.controls.set_status(message, STATUS_ERROR, check_level=False), 0)
 
     def _do_tsumego_capture_apply(self, grid, ko, margin):
-        # メッセージループスレッドで実行。認識グリッドに枠を適用した「完成局面」を単一の
-        # AB/AW として新規局にする（枠ノードを足す方式と違い、枠外の無関係な石を除去でき、
-        # 占有点への重複配置も起きない）。new-game と解析発行は同一メッセージ内で行う
+        # メッセージループスレッドで実行。既定は枠あり（use_frame: false で枠なし運用も選択可能）。
+        # 枠なしを既定にしなかった理由: 実機検証で二律背反が判明したため。空いた盤面を放置すると
+        # 地合いが支配し詰碁を読む動機が消える（実測: ある局面で-53目/勝率0%、別の局面で+37目/勝率100%）。
+        # コミで均衡させると今度はリージョン内の空点自体が最善手候補になり、正解手が埋もれる
+        # （実測: 正解手が1800visits中わずか2visits）。枠は盤面を約80子書き換えるため死活自体を
+        # 変えてしまう疑いも残り、これが枠なしモードをコードに残してある理由。
+        # new-game と解析発行は同一メッセージ内で行う
         # （分割すると new-game で game_id が変わり後続メッセージが破棄されるため）
         from katrain.core.tsumego_capture import CaptureError, grid_to_sgf
-        from katrain.core.tsumego_frame import tsumego_frame_board
+        from katrain.core.tsumego_frame import frameless_region, tsumego_frame_board
 
+        settings = self._config.get("tsumego_capture") or {}
         komi = self.config("game/komi", 6.5)
-        framed, analysis_region = tsumego_frame_board(grid, komi, True, ko_p=ko, margin=margin)
+        if settings.get("use_frame", False):
+            board, analysis_region = tsumego_frame_board(grid, komi, True, ko_p=ko, margin=margin)
+        else:
+            board = grid  # 認識結果そのまま。1子も書き換えない
+            try:
+                pad = max(0, int(settings.get("region_pad", 1)))
+            except (TypeError, ValueError):
+                pad = 1
+            analysis_region = frameless_region(grid, pad)
+            if analysis_region is None:
+                # Noneのまま進めると解析リージョンが無い＝全盤解析になり、この機能が防ごうと
+                # している状態そのものに陥る。A/Bテスト中はエンジンの誤判定と見分けがつかず
+                # 気づけないため、ここで明示的に警告する（region_padが盤外まで広すぎる、
+                # または石クラスタが検出できず全石bboxに退化した等が原因）
+                self.log(
+                    f"tsumego_capture: 解析リージョンを絞り込めなかったため全盤を解析します。"
+                    f"AIの着手が詰碁の正解手と一致しないことがあります（region_pad={pad} を確認してください）",
+                    OUTPUT_ERROR,
+                )
         try:
-            move_tree = KaTrainSGF.parse_sgf(grid_to_sgf(framed, komi=komi))
+            move_tree = KaTrainSGF.parse_sgf(grid_to_sgf(board, komi=komi))
         except ParseError as e:
             self.log(f"詰碁キャプチャSGF解析失敗: {e}", OUTPUT_ERROR)
             return
@@ -787,7 +810,6 @@ class KaTrainGui(Screen, KaTrainBase):
             self.log(f"詰碁キャプチャ失敗: {e}", OUTPUT_ERROR)
             return
         self._do_new_game(move_tree=move_tree)
-        settings = self._config.get("tsumego_capture") or {}
         try:
             # 詰碁の正解手判定用に、初期解析＋以降の毎手のリージョン解析を深掘り専用クエリ
             # （visits指定・時間無制限・wideRootNoise=0）にする。0以下で既定解析にフォールバック
