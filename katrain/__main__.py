@@ -596,6 +596,43 @@ class KaTrainGui(Screen, KaTrainBase):
             node.analyze(engine)
         self.update_state(redraw_board=True)
 
+    def _apply_tsumego_region(self, analysis_region, board_size):
+        """リージョンを設定し、全盤fast → リージョン限定の2段解析を発行する。
+
+        analysis_region は tsumego_frame_board が返す ((imin, imax), (jmin, jmax))。
+        この i は認識グリッド（tsumego_capture.classify_intersections）準拠の上origin
+        （画面上でcyが下に増えるのに合わせて上から数えた行）。一方 KaTrain の
+        Move.coords / set_region_of_interest が使う y は下origin
+        （sgf_parser.Move.from_sgf の y = board_size - sgf_row_index - 1 と同じ変換）。
+        ここで y = board_size - 1 - i に変換しないと縦方向が反転したリージョンになり、
+        詰碁本体の一部がリージョン外に落ちて誤答の原因になる（実測で確認済みのバグ）。
+        手動枠付け経路（_do_tsumego_frame）は game.board から作るため既に下origin i=y
+        になっており、この変換は不要（対象が異なるので流用しない）。
+        """
+        node = self.game.current_node
+        if self.play_mode.mode == MODE_PLAY:
+            self.play_mode.switch_ui_mode()  # go to analysis mode
+        if analysis_region:
+            (imin, imax), (jmin, jmax) = analysis_region
+            ymin, ymax = board_size - 1 - imax, board_size - 1 - imin  # 上origin i → 下origin y
+            self.game.set_region_of_interest([jmin, jmax, ymin, ymax])
+        engine = self.game.engines[node.next_player]
+        if self.game.region_of_interest:
+            # Game.play() と同じ2段構え: 全盤の高速解析で root 勝率を得てから、リージョン限定で本解析
+            # （これがないと初期解析が全盤対象になり、枠外の詰め物エリアの手が最善手として表示される）
+            deep_visits = self.game.region_analysis_visits
+            node.analyze(engine, analyze_fast=True)
+            node.analyze(
+                engine,
+                region_of_interest=self.game.region_of_interest,
+                visits=deep_visits,
+                time_limit=deep_visits is None,
+                extra_settings={"wideRootNoise": 0.0} if deep_visits else None,
+            )
+        else:
+            node.analyze(engine)
+        self.update_state(redraw_board=True)
+
     # Win32 グローバルホットキー用の定数
     _HOTKEY_MODS = {"alt": 0x0001, "ctrl": 0x0002, "control": 0x0002, "shift": 0x0004, "win": 0x0008, "super": 0x0008}
     _HOTKEY_NAMED_KEYS = {
@@ -698,7 +735,7 @@ class KaTrainGui(Screen, KaTrainBase):
     def _tsumego_capture_trigger(self):
         # ホットキースレッドが起こした作業スレッドで実行される。
         # 認識までここで行い、盤面への反映はメッセージループに投げる
-        from katrain.core.tsumego_capture import CaptureError, capture_tsumego_sgf
+        from katrain.core.tsumego_capture import CaptureError, capture_tsumego_grid
 
         now = time.time()
         if now - getattr(self, "_tsumego_capture_last_trigger", 0.0) < 2.0:
@@ -710,7 +747,7 @@ class KaTrainGui(Screen, KaTrainBase):
         try:
             settings = self._config.get("tsumego_capture") or {}
             try:
-                sgf = capture_tsumego_sgf(settings, komi=self.config("game/komi", 6.5))
+                grid = capture_tsumego_grid(settings)
                 ko = settings.get("frame_ko", False)
                 margin = int(settings.get("frame_margin", 4))
             except CaptureError as e:
@@ -719,8 +756,7 @@ class KaTrainGui(Screen, KaTrainBase):
             except Exception as e:
                 self._tsumego_capture_failed(f"詰碁キャプチャで予期しないエラー: {e}")
                 return
-            self.log(f"詰碁キャプチャ成功: {sgf}", OUTPUT_DEBUG)
-            self("tsumego-capture-apply", sgf, ko, margin)
+            self("tsumego-capture-apply", grid, ko, margin)
         finally:
             self._tsumego_capture_busy = False
 
@@ -729,13 +765,26 @@ class KaTrainGui(Screen, KaTrainBase):
         self.log(message, OUTPUT_ERROR)
         Clock.schedule_once(lambda _dt: self.controls.set_status(message, STATUS_ERROR, check_level=False), 0)
 
-    def _do_tsumego_capture_apply(self, sgf, ko, margin):
-        # メッセージループスレッドで実行。new-game と tsumego-frame を同一メッセージ内で行う
+    def _do_tsumego_capture_apply(self, grid, ko, margin):
+        # メッセージループスレッドで実行。認識グリッドに枠を適用した「完成局面」を単一の
+        # AB/AW として新規局にする（枠ノードを足す方式と違い、枠外の無関係な石を除去でき、
+        # 占有点への重複配置も起きない）。new-game と解析発行は同一メッセージ内で行う
         # （分割すると new-game で game_id が変わり後続メッセージが破棄されるため）
+        from katrain.core.tsumego_capture import CaptureError, grid_to_sgf
+        from katrain.core.tsumego_frame import tsumego_frame_board
+
+        komi = self.config("game/komi", 6.5)
+        framed, analysis_region = tsumego_frame_board(grid, komi, True, ko_p=ko, margin=margin)
         try:
-            move_tree = KaTrainSGF.parse_sgf(sgf)
+            move_tree = KaTrainSGF.parse_sgf(grid_to_sgf(framed, komi=komi))
         except ParseError as e:
             self.log(f"詰碁キャプチャSGF解析失敗: {e}", OUTPUT_ERROR)
+            return
+        except CaptureError as e:
+            # 石が1つも無い等、grid_to_sgf自体が弾くケース。self.log(OUTPUT_ERROR)は
+            # 本クラスのlog()内でステータスバーにも転送されるため、_tsumego_capture_failed同様
+            # ユーザーに認識できる（メッセージループスレッドなのでClock経由のGUI操作は不要）
+            self.log(f"詰碁キャプチャ失敗: {e}", OUTPUT_ERROR)
             return
         self._do_new_game(move_tree=move_tree)
         settings = self._config.get("tsumego_capture") or {}
@@ -746,7 +795,7 @@ class KaTrainGui(Screen, KaTrainBase):
             self.game.region_analysis_visits = deep_visits if deep_visits > 0 else None
         except (TypeError, ValueError):
             self.game.region_analysis_visits = None
-        self._do_tsumego_frame(ko=ko, margin=margin)
+        self._apply_tsumego_region(analysis_region, board_size=len(grid))
         maximize = settings.get("maximize_on_capture", True)
         auto_ai = settings.get("auto_ai_black", True)
         if auto_ai:

@@ -192,14 +192,18 @@ def detect_size_and_classify(img, board_rect, sizes=DEFAULT_BOARD_SIZES):
     return best_size, classify_intersections(img, board_rect, best_size)
 
 
-def capture_tsumego_sgf(settings, komi=6.5):
-    """ウィンドウ検出→キャプチャ→認識→SGF生成の全体処理。失敗は CaptureError"""
+def capture_tsumego_grid(settings):
+    """ウィンドウ検出→キャプチャ→認識を行い、認識グリッドを返す。失敗は CaptureError。
+
+    SGF ではなくグリッドを返すのは、呼び出し側が枠適用（非コア石の除去を含む）を
+    してから局面を確定する必要があるため。
+    """
     rect = find_window_rect(settings.get("window_title", DEFAULT_WINDOW_TITLE))
     img = capture_screen_rect(rect)
     board_rect = detect_board(img)
     sizes = [int(s) for s in (settings.get("board_sizes") or DEFAULT_BOARD_SIZES)]
     _size, grid = detect_size_and_classify(img, board_rect, sizes)
-    return grid_to_sgf(grid, komi=komi)
+    return grid
 
 
 def main():
