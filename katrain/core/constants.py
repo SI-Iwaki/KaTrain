@@ -54,6 +54,7 @@ AI_FIGHTING = "ai:p:fighting"
 AI_RANK = "ai:p:rank"
 AI_SIMPLE_OWNERSHIP = "ai:simple"
 AI_SETTLE_STONES = "ai:settle"
+AI_TSUMEGO = "ai:tsumego"  # 詰碁キャプチャ用。プログラムからのみ設定する（GUIの一覧には出さない）
 AI_HUMAN = "ai:human"
 AI_PRO = "ai:pro"
 AI_DIVERGE = "ai:diverge_move"
@@ -109,6 +110,7 @@ AI_STRENGTH = {  # dan ranks, backup if model is missing. TODO: remove some?
     AI_RANK: float("nan"),
     AI_SIMPLE_OWNERSHIP: 2,
     AI_SETTLE_STONES: 2,
+    AI_TSUMEGO: float("nan"),
     AI_HUMAN: float("nan"),
     AI_PRO: float("nan"),
     AI_DIVERGE: float("nan"),
