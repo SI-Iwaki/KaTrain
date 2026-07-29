@@ -39,23 +39,42 @@ def katrain_sgf_from_ijs(ijs, isize, jsize, player):
     return [Move((j, i)).sgf((jsize, isize)) for i, j in ijs]
 
 
-def tsumego_frame(bw_board, komi, black_to_play_p, ko_p, margin):
+def build_frame(bw_board, komi, black_to_play_p, ko_p, margin, drop_non_core):
+    """枠を張って (完成した石配列, region) を返す。tsumego_frame / tsumego_frame_board の共通部"""
+    sizes = ij_sizes(bw_board)
     # 9路以下では margin=4（13/19路向け）だと枠矩形が盤外にはみ出して壁・充填が置けず、
     # 解析リージョンも全盤（→None正規化→全盤解析）に退化するため、収まる値にクランプする
-    if min(ij_sizes(bw_board)) <= 9:
+    if min(sizes) <= 9:
         margin = min(margin, 2)
     stones = stones_from_bw_board(bw_board)
     core_bbox = mark_core_stones(stones, komi, margin)
-    filled_stones = tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin)
-    region_pos = pick_all(filled_stones, "tsumego_frame_region_mark")
+    filled_stones = tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin, drop_non_core)
+    region = get_analysis_region(pick_all(filled_stones, "tsumego_frame_region_mark"))
+    if not region or covers_board_p(region, sizes):
+        region = fallback_region(core_bbox, sizes) or region
+    return (filled_stones, region)
+
+
+def tsumego_frame(bw_board, komi, black_to_play_p, ko_p, margin):
+    filled_stones, region = build_frame(bw_board, komi, black_to_play_p, ko_p, margin, False)
     bw = pick_all(filled_stones, "tsumego_frame")
     blacks = [(i, j) for i, j, black in bw if black]
     whites = [(i, j) for i, j, black in bw if not black]
-    sizes = ij_sizes(bw_board)
-    region = get_analysis_region(region_pos)
-    if not region or covers_board_p(region, sizes):
-        region = fallback_region(core_bbox, sizes) or region
     return (blacks, whites, region)
+
+
+def tsumego_frame_board(bw_board, komi, black_to_play_p, ko_p, margin, drop_non_core=True):
+    """枠適用後の完成した盤グリッド ("B"/"W"/"-") と region を返す。
+
+    キャプチャ経路はこれを単一の AB/AW として SGF 化し新規局にする。既存局面に枠ノードを
+    足す方式と違い、非コア石の除去ができ（SGF の AE は engine.py が解析を拒否するため使えない）、
+    占有点への重複配置も構造的に起きない。
+    """
+    filled_stones, region = build_frame(bw_board, komi, black_to_play_p, ko_p, margin, drop_non_core)
+    board = [
+        [(BLACK if h.get("black") else WHITE) if h.get("stone") else "-" for h in row] for row in filled_stones
+    ]
+    return (board, region)
 
 
 def fit_margin(sizes, komi, margin, imin, jmin, imax, jmax):
@@ -191,7 +210,7 @@ def fallback_region(core_bbox, sizes):
     return None
 
 
-def tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin):
+def tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin, drop_non_core=False):
     sizes = ij_sizes(stones)
     isize, jsize = sizes
     all_ijs = [
@@ -237,7 +256,7 @@ def tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin):
     )
     if True in flip_spec:
         flipped = flip_stones(stones, flip_spec)
-        filled = tsumego_frame_stones(flipped, komi, black_to_play_p, ko_p, margin)
+        filled = tsumego_frame_stones(flipped, komi, black_to_play_p, ko_p, margin, drop_non_core)
         return flip_stones(filled, flip_spec)
     # put outside stones
     i0 = imin - margin
@@ -246,6 +265,8 @@ def tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin):
     j1 = jmax + margin
     frame_range = [i0, i1, j0, j1]
     black_to_attack_p = guess_black_to_attack([top, bottom, left, right], sizes)
+    if drop_non_core:
+        drop_non_core_stones(stones, sizes, frame_range)
     put_border(stones, sizes, frame_range, black_to_attack_p)
     mark_region_corners(stones, sizes, frame_range)
     put_outside(stones, sizes, frame_range, black_to_attack_p, black_to_play_p, komi)
@@ -433,6 +454,26 @@ def put_stone(stones, sizes, i, j, black, empty, tsumego_frame_region_mark=False
 def inside_p(i, j, region):
     i0, i1, j0, j1 = region
     return i0 <= i and i <= i1 and j0 <= j and j <= j1
+
+
+def strictly_inside_p(i, j, region):
+    i0, i1, j0, j1 = region
+    return i0 < i and i < i1 and j0 < j and j < j1
+
+
+def drop_non_core_stones(stones, sizes, frame_range):
+    """枠矩形の境界線上および外側にある非コア石を盤から除く。
+
+    put_border より先に呼ぶことで壁が既存石を踏まなくなり（占有点クラッシュの構造的解消）、
+    put_outside の「既存石を残す」ガードにも引っかからないので充填が穴なしになる。
+    壁はコア bbox から margin>=1 離れているので、コア石が消えることはない。
+    """
+    isize, jsize = sizes
+    for i in range(isize):
+        for j in range(jsize):
+            h = stones[i][j]
+            if h.get("stone") and not h.get("tsumego_core") and not strictly_inside_p(i, j, frame_range):
+                stones[i][j] = {}
 
 
 def stones_from_bw_board(bw_board):

@@ -1,7 +1,7 @@
 import pytest
 
 from katrain.core.game import BaseGame, KaTrainSGF
-from katrain.core.tsumego_frame import tsumego_frame, tsumego_frame_from_katrain_game
+from katrain.core.tsumego_frame import tsumego_frame, tsumego_frame_board, tsumego_frame_from_katrain_game
 
 
 def _board(size=13, stones=()):
@@ -185,3 +185,56 @@ def test_manual_frame_never_places_on_occupied_point(target):
     assert not (set(placed) & occupied), "枠石が既存石と重なっている"
     assert len(placed) == len(set(placed)), "枠石に重複座標がある"
     game.set_current_node(node)  # ここで例外が出なければ配置が正当
+
+
+def _scattered_outlier_board():
+    ab = "la jb kb fc hc ic jc dd id je jf kf jg jh ki li".split()
+    aw = "lb mb kc hd jd kd fe he ie ke lf kg lg gh".split()
+    return _board(
+        stones=[(ord(p[1]) - 97, ord(p[0]) - 97, "B") for p in ab]
+        + [(ord(p[1]) - 97, ord(p[0]) - 97, "W") for p in aw]
+    )
+
+
+def test_drop_non_core_stones_clears_boundary_and_outside():
+    # drop_non_core_stones の単体確認: 枠矩形の境界線上と外側の非コア石だけを消す
+    from katrain.core.tsumego_frame import drop_non_core_stones
+
+    stones = [[{} for _ in range(13)] for _ in range(13)]
+    core = {"stone": True, "black": True, "tsumego_core": True}
+    stones[6][8] = dict(core)  # コア石（枠内）
+    stones[6][5] = {"stone": True, "black": True}  # 境界線上(j=5)の非コア石
+    stones[6][2] = {"stone": True, "black": False}  # 枠外の非コア石
+    stones[6][7] = {"stone": True, "black": False}  # 枠内の非コア石
+    drop_non_core_stones(stones, (13, 13), [0, 10, 5, 12])
+    assert stones[6][5] == {}, "境界線上の非コア石が残っている"
+    assert stones[6][2] == {}, "枠外の非コア石が残っている"
+    assert stones[6][7].get("stone"), "枠内の非コア石まで消している"
+    assert stones[6][8].get("stone"), "コア石を消している"
+
+
+def test_frame_board_drops_non_core_stones_outside_frame():
+    # 枠線上・枠外の非コア石を除去する。壁が石を踏まなくなり充填も穴なしになる。
+    # 枠内に残る非コア石（G6）はそのまま。除去にAEは使えない（engine.pyがAEを含む
+    # 経路の解析を拒否する）ため、完成局面を単一のAB/AWとして作り直す前提
+    board = _scattered_outlier_board()
+    out, region = tsumego_frame_board(board, komi=7.0, black_to_play_p=True, ko_p=False, margin=4)
+    assert region == ((0, 10), (5, 12))
+    # F11(2,5) と F9(4,5) は壁(F列)の上 → 除去され、攻め側の色で揃った壁になる
+    assert board[2][5] == "B" and board[4][5] == "W"
+    wall = {out[i][5] for i in range(0, 11)}
+    assert wall in ({"B"}, {"W"}), f"壁が単色で揃っていない: {wall}"
+    # G6(7,6) は枠内なのでそのまま残る
+    assert out[7][6] == "W"
+    # コア石は一切変わらない
+    for i, j in [(0, 11), (1, 9), (3, 8), (4, 9), (8, 10), (8, 11)]:
+        assert out[i][j] == board[i][j]
+
+
+def test_frame_board_keeps_stones_when_drop_disabled():
+    board = _scattered_outlier_board()
+    out, _region = tsumego_frame_board(
+        board, komi=7.0, black_to_play_p=True, ko_p=False, margin=4, drop_non_core=False
+    )
+    # 除去しない場合、枠外の D10 は put_outside のガードで残る
+    assert out[3][3] == "B"
