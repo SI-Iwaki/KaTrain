@@ -46,6 +46,13 @@ def build_frame(bw_board, komi, black_to_play_p, ko_p, margin, drop_non_core):
     # 解析リージョンも全盤（→None正規化→全盤解析）に退化するため、収まる値にクランプする
     if min(sizes) <= 9:
         margin = min(margin, 2)
+        # 9路以下では非コア石削除を無効化する。コア絞り込み（gap縮小、mark_core_stones）
+        # 自体は枠の幾何成立に必要なので残すが、盤が小さいと詰碁本体でも石同士の
+        # Chebyshev距離が容易にgapを超え、「連結ギャップが大きい＝問題と無関係」という
+        # 前提が成り立たない（実例: 9路で本体からChebyshev距離2のW石が非コア判定され、
+        # drop_non_core_stonesで消去後、put_outsideに別解でBとして再充填される＝盤面が
+        # 別問題にすり替わる）。ここで drop_non_core を False に落として呼び出し自体を止める
+        drop_non_core = False
     stones = stones_from_bw_board(bw_board)
     core_bbox = mark_core_stones(stones, komi, margin)
     filled_stones = tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin, drop_non_core)
