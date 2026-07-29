@@ -83,6 +83,7 @@ from katrain.core.constants import (
     MODE_PLAY,
     DATA_FOLDER,
     AI_DEFAULT,
+    AI_TSUMEGO,
 )
 from katrain.gui.popups import (
     ConfigTeacherPopup,
@@ -591,6 +592,9 @@ class KaTrainGui(Screen, KaTrainBase):
                 visits=deep_visits,
                 time_limit=deep_visits is None,
                 extra_settings={"wideRootNoise": 0.0} if deep_visits else None,
+                # ai:tsumego が候補手ごとの ownership を使う。詰碁キャプチャ経由
+                # （deep_visits あり）のときだけ要求する
+                ownership=True if deep_visits else None,
             )
         else:
             node.analyze(engine)
@@ -628,6 +632,9 @@ class KaTrainGui(Screen, KaTrainBase):
                 visits=deep_visits,
                 time_limit=deep_visits is None,
                 extra_settings={"wideRootNoise": 0.0} if deep_visits else None,
+                # ai:tsumego が候補手ごとの ownership を使う。詰碁キャプチャ経由
+                # （deep_visits あり）のときだけ要求する
+                ownership=True if deep_visits else None,
             )
         else:
             node.analyze(engine)
@@ -826,7 +833,9 @@ class KaTrainGui(Screen, KaTrainBase):
             # （_do_new_game/_do_tsumego_frame が解析モード切替クリックをスケジュール済みで、
             #  トグルだと mode の読み値がクリック発火前になり競合する。Kivy Clock は同一timeoutの
             #  イベントをスケジュール順に発火するため、後からの直接指定で必ずプレイモードに収束）
-            self.update_player("B", player_type=PLAYER_AI, player_subtype=AI_DEFAULT)
+            # 詰碁の正解判定は対象石群の死活で決まるため、盤全体の目数で選ぶ ai:default ではなく
+            # ownership の変化量で選ぶ ai:tsumego を使う
+            self.update_player("B", player_type=PLAYER_AI, player_subtype=AI_TSUMEGO)
             self.update_player("W", player_type=PLAYER_HUMAN, player_subtype=PLAYING_NORMAL)
             Clock.schedule_once(lambda _dt: self.play_mode.play.trigger_action(duration=0))
             self.controls.set_status("詰碁盤面を取り込みました（黒:AIが正解手を打ちます）", STATUS_INFO)

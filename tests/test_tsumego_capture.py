@@ -204,6 +204,36 @@ def test_analyze_passes_deep_region_settings():
     assert engine.requested["extra_settings"] == {"wideRootNoise": 0.0}
 
 
+def test_analyze_passes_ownership_flag():
+    # ownership は詰碁のリージョン解析でだけ要る。エンジン設定 _enable_ownership を全体で有効に
+    # すると通常の対局・検討の全クエリに includeMovesOwnership（候補手ごとに盤面全点）が
+    # 乗ってしまうため、クエリ単位で指定できるようにする
+    from katrain.core.game_node import GameNode
+
+    class FakeEngine:
+        def request_analysis(self, node, **kwargs):
+            self.requested = kwargs
+
+    node = GameNode(properties={"SZ": "13"})
+    engine = FakeEngine()
+    node.analyze(engine, region_of_interest=[0, 10, 4, 12], ownership=True)
+    assert engine.requested["ownership"] is True
+
+
+def test_analyze_defaults_ownership_to_none():
+    # 指定しなければ None を渡し、engine 側の既定（_enable_ownership）に委ねる
+    from katrain.core.game_node import GameNode
+
+    class FakeEngine:
+        def request_analysis(self, node, **kwargs):
+            self.requested = kwargs
+
+    node = GameNode(properties={"SZ": "13"})
+    engine = FakeEngine()
+    node.analyze(engine)
+    assert engine.requested["ownership"] is None
+
+
 def test_tsumego_retry_candidate():
     # 「アンドゥで次候補」: 全ての子が応手なしの自分側の着手（=試して却下された手）のとき、
     # それらを除いた次順位候補を返す。別解ミスからの復帰手段（詰碁キャプチャ中のみ発火）

@@ -9,7 +9,7 @@ from katrain.core.constants import (
     AI_DEFAULT, AI_HANDICAP, AI_INFLUENCE, AI_INFLUENCE_ELO_GRID, AI_JIGO, AI_JIGO_9,
     AI_ANTIMIRROR, AI_LOCAL, AI_LOCAL_ELO_GRID, AI_PICK, AI_PICK_ELO_GRID,
     AI_POLICY, AI_RANK, AI_SCORELOSS, AI_SCORELOSS_ELO, AI_SETTLE_STONES,
-    AI_SIMPLE_OWNERSHIP, AI_STRENGTH,
+    AI_SIMPLE_OWNERSHIP, AI_STRENGTH, AI_TSUMEGO,
     AI_TENUKI, AI_TENUKI_ELO_GRID, AI_TERRITORY, AI_TERRITORY_ELO_GRID,
     AI_FIGHTING, AI_FIGHTING_SCORELOSS_ELO,
     AI_WEIGHTED, AI_WEIGHTED_ELO, CALIBRATED_RANK_ELO, OUTPUT_DEBUG,
@@ -1661,6 +1661,85 @@ class SettleStonesStrategy(OwnershipBaseStrategy):
         
         self.game.katrain.log(f"[SettleStonesStrategy] Final decision: {aimove.gtp()}", OUTPUT_DEBUG)
         return aimove, ai_thoughts
+
+
+def tsumego_ownership_gain(root_ownership, move_ownership, stones, board_size, player_sign):
+    """盤上の全石について、手番側から見て有利な向きの ownership 変化量を合計する。
+
+    石ごとに合計するので大きい連の死活ほど重く効く。石の無い点は数えないので、
+    空き地の手は gain がほぼ 0 になり自動的に沈む。
+    """
+    root_grid = var_to_grid(root_ownership, board_size)
+    move_grid = var_to_grid(move_ownership, board_size)
+    return sum(player_sign * (move_grid[y][x] - root_grid[y][x]) for x, y in stones)
+
+
+def select_tsumego_move(candidates, root_ownership, stones, board_size, player_sign, max_points_behind):
+    """目数ガードを通した候補から ownership gain 最大の手を返す。選べなければ None。
+
+    詰碁の正解判定は対象石群の死活で決まるが KataGo の目的関数は盤全体の目数であり、
+    この不一致が誤答の主因になる（実測: 目数では誤答手が上位、ownership では正解手が上位）。
+    目数ガードは「gain は大きいが大損する手」を弾くためのもので、最善手からの相対で見る
+    （詰碁では最善手自体が目数を損することがあるため、絶対値では判定できない）。
+    """
+    if not candidates or not root_ownership or not stones:
+        return None
+    best_loss = min(c["pointsLost"] for c in candidates)
+    scored = [
+        (tsumego_ownership_gain(root_ownership, c["ownership"], stones, board_size, player_sign), -c["pointsLost"], c)
+        for c in candidates
+        if c.get("ownership") and c["pointsLost"] <= best_loss + max_points_behind
+    ]
+    if not scored:
+        return None
+    return max(scored, key=lambda scored_move: (scored_move[0], scored_move[1]))[2]
+
+
+@register_strategy(AI_TSUMEGO)
+class TsumegoOwnershipStrategy(AIStrategy):
+    """詰碁用: 盤全体の目数ではなく対象石群の死活（ownership の変化量）で手を選ぶ"""
+
+    def generate_move(self) -> Tuple[Move, str]:
+        self.wait_for_analysis()
+        candidate_moves = self.cn.candidate_moves
+        if not candidate_moves:
+            self.game.katrain.log(f"[{self.strategy_name}] 候補手が無いためパスします", OUTPUT_INFO)
+            return Move(coords=None, player=self.cn.next_player), "候補手が無いためパス"
+
+        max_points_behind = (self.settings or {}).get("max_points_behind", 2.0)
+        stones = [s.coords for s in self.game.stones]
+        player_sign = self.cn.player_sign(self.cn.next_player)
+        chosen = select_tsumego_move(
+            candidate_moves,
+            self.cn.ownership,
+            stones,
+            self.game.board_size,
+            player_sign,
+            max_points_behind,
+        )
+        if chosen is None:
+            # ownership が無い（_enable_ownership が false 等）。無言で劣化させず既定動作に戻す
+            self.game.katrain.log(
+                f"[{self.strategy_name}] ownership が取得できないため最善手にフォールバックします"
+                f"（engine/_enable_ownership を確認してください）",
+                OUTPUT_INFO,
+            )
+            chosen = candidate_moves[0]
+            gain_text = "ownership なし"
+        else:
+            gain = tsumego_ownership_gain(
+                self.cn.ownership, chosen["ownership"], stones, self.game.board_size, player_sign
+            )
+            gain_text = f"gain={gain:+.2f}"
+        move = Move.from_gtp(chosen["move"], player=self.cn.next_player)
+        self.game.katrain.log(
+            f"[{self.strategy_name}] Final decision: {move.gtp()} "
+            f"({gain_text}, pointsLost={chosen['pointsLost']:+.2f}, "
+            f"候補{len(candidate_moves)}手, max_points_behind={max_points_behind})",
+            OUTPUT_DEBUG,
+        )
+        return move, f"詰碁戦略: {len(candidate_moves)}手から {move.gtp()} を選択（{gain_text}）"
+
 
 @register_strategy(AI_POLICY)
 class PolicyStrategy(AIStrategy):

@@ -158,6 +158,9 @@
             "attach_penalty": 1,
             "tenuki_penalty": 0.5
         },
+        "ai:tsumego": {
+            "max_points_behind": 2.0
+        },
         "ai:p:weighted": {
             "weaken_fac": 1.25,
             "pick_override": 1.0,
