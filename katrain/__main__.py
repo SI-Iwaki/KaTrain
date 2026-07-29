@@ -97,7 +97,14 @@ from katrain.gui.sound import play_sound
 from katrain.core.base_katrain import KaTrainBase
 from katrain.core.engine import KataGoEngine
 from katrain.core.contribute_engine import KataGoContributeEngine
-from katrain.core.game import Game, IllegalMoveException, KaTrainSGF, BaseGame
+from katrain.core.game import (
+    Game,
+    IllegalMoveException,
+    KaTrainSGF,
+    BaseGame,
+    REGION_ANALYSIS_WIDE_ROOT_NOISE,
+    region_analysis_extra_settings,
+)
 from katrain.core.sgf_parser import Move, ParseError
 from katrain.gui.popups import ConfigPopup, LoadSGFPopup, NewGamePopup, ConfigAIPopup
 from katrain.gui.theme import Theme
@@ -293,27 +300,6 @@ class KaTrainGui(Screen, KaTrainBase):
                         # 候補を打ってしまう。リージョン解析が未発行の局面（手動リージョン選択直後等）
                         # では一度だけ発行して完了を待つ（Game.play/_do_tsumego_frame 経由は発行済み）
                         cn.analyze(self.game.engines[cn.next_player], region_of_interest=region)
-                elif (
-                    cn.analysis_complete
-                    and next_player.ai
-                    and cn.children
-                    and not self.game.end_result
-                    and self.game.region_analysis_visits
-                    and self.game.region_of_interest
-                    and cn.analysis.get("region_completed")
-                ):
-                    # 詰碁キャプチャ中の「アンドゥで次候補」: アプリに不正解と判定された手を
-                    # アンドゥで戻ると、試行済みの手（応手なしの子）を除いた次順位候補を自動着手。
-                    # 別解ミス（囲碁的には成立するがアプリの唯一解と異なる手）からの復帰手段
-                    retry = cn.tsumego_retry_candidate()
-                    if retry:
-                        try:
-                            self.game.play(Move.from_gtp(retry, player=cn.next_player))
-                        except IllegalMoveException as e:
-                            self.log(f"tsumego retry: illegal move {retry} ({e})", OUTPUT_INFO)
-                        else:
-                            self.controls.set_status(f"試行済みの手を除いて次候補 {retry} を着手", STATUS_INFO)
-                            Clock.schedule_once(self._play_stone_sound, 0.25)
             if self.engine:
                 if self.pondering:
                     self.game.analyze_extra("ponder")
@@ -591,7 +577,9 @@ class KaTrainGui(Screen, KaTrainBase):
                 region_of_interest=self.game.region_of_interest,
                 visits=deep_visits,
                 time_limit=deep_visits is None,
-                extra_settings={"wideRootNoise": 0.0} if deep_visits else None,
+                extra_settings=region_analysis_extra_settings(
+                    deep_visits, self.game.region_analysis_wide_root_noise
+                ),
                 # ai:tsumego が候補手ごとの ownership を使う。詰碁キャプチャ経由
                 # （deep_visits あり）のときだけ要求する
                 ownership=True if deep_visits else None,
@@ -631,7 +619,9 @@ class KaTrainGui(Screen, KaTrainBase):
                 region_of_interest=self.game.region_of_interest,
                 visits=deep_visits,
                 time_limit=deep_visits is None,
-                extra_settings={"wideRootNoise": 0.0} if deep_visits else None,
+                extra_settings=region_analysis_extra_settings(
+                    deep_visits, self.game.region_analysis_wide_root_noise
+                ),
                 # ai:tsumego が候補手ごとの ownership を使う。詰碁キャプチャ経由
                 # （deep_visits あり）のときだけ要求する
                 ownership=True if deep_visits else None,
@@ -767,6 +757,99 @@ class KaTrainGui(Screen, KaTrainBase):
         finally:
             self._tsumego_capture_busy = False
 
+    def _tsumego_region_wide_root_noise(self, settings):
+        try:
+            return float(settings.get("region_wide_root_noise", REGION_ANALYSIS_WIDE_ROOT_NOISE))
+        except (TypeError, ValueError):
+            return REGION_ANALYSIS_WIDE_ROOT_NOISE
+
+    def _choose_tsumego_frame(self, grid, komi, ko, margin, settings):
+        """設定の frame_ko とその反転で枠を張り、root スコアがバランスの取れた方を採用する。
+
+        ko_p は「攻め方と守り方のどちらにコウダテ形を与えるか」の切り替えで、正解がコウ止まりの
+        問題では攻め方に渡さないと守り側の無条件生きになる（＝正解手が価値を失う）。どちらが
+        正しいかは問題ごとに違うため、両方を短い解析にかけて枠の設計目標（攻め方成功=5目勝ち）に
+        近い方を選ぶ。解析できない場合は設定値の枠をそのまま使う。
+        """
+        from katrain.core.tsumego_frame import pick_balanced_frame, tsumego_frame_board
+
+        candidates = []
+        for ko_p in (bool(ko), not ko):
+            try:
+                board, region = tsumego_frame_board(grid, komi, True, ko_p=ko_p, margin=margin)
+            except Exception as e:  # 枠が張れない盤（コアが大きすぎる等）は候補から外すだけ
+                self.log(f"tsumego_capture: 枠(ko={ko_p})を作れませんでした: {e}", OUTPUT_INFO)
+                continue
+            if any(board == prev_board for _, prev_board, _ in candidates):
+                continue  # コウダテ形が置けない盤では両者が同一になる
+            candidates.append((ko_p, board, region))
+        if not candidates:
+            return tsumego_frame_board(grid, komi, True, ko_p=ko, margin=margin)  # 例外は呼び出し側へ
+        if len(candidates) == 1 or not settings.get("frame_ko_auto", True):
+            return candidates[0][1], candidates[0][2]
+        try:
+            trial_visits = int(settings.get("frame_ko_trial_visits", 400))
+        except (TypeError, ValueError):
+            trial_visits = 400
+        scored = []
+        for ko_p, board, region in candidates:
+            lead = self._tsumego_frame_root_lead(board, komi, region, trial_visits, settings)
+            scored.append((ko_p, board, region, lead))
+            self.log(
+                f"tsumego_capture: 枠バランス試算 ko={ko_p}: "
+                f"root={'解析失敗' if lead is None else f'{lead:+.2f}目'}",
+                OUTPUT_INFO,
+            )
+        best = pick_balanced_frame(scored)
+        if best is None:
+            return candidates[0][1], candidates[0][2]
+        if best[0] != candidates[0][0]:
+            self.log(f"tsumego_capture: 枠バランスが良い ko={best[0]} の枠を採用します", OUTPUT_INFO)
+        return best[1], best[2]
+
+    def _tsumego_frame_root_lead(self, board, komi, analysis_region, visits, settings, timeout=30.0):
+        """枠バランス判定用に root の scoreLead だけ取る。取れなければ None"""
+        from katrain.core.tsumego_capture import grid_to_sgf
+
+        engine = self.engine
+        if engine is None:
+            return None
+        try:
+            node = KaTrainSGF.parse_sgf(grid_to_sgf(board, komi=komi))
+        except Exception as e:
+            self.log(f"tsumego_capture: 枠バランス試算のSGF化に失敗しました: {e}", OUTPUT_INFO)
+            return None
+        # grid_to_sgf は RU を出さない。BaseGame は未指定なら設定のルールを入れるが、ここは
+        # Game を作る前なので自分で入れる（未指定だと engine 既定の japanese になり、
+        # 面積計算前提の枠のスコアが 25 目規模でずれる）
+        node.set_property("RU", self.config("game/rules"))
+        region = None
+        if analysis_region:
+            (imin, imax), (jmin, jmax) = analysis_region
+            region = [jmin, jmax, len(board) - 1 - imax, len(board) - 1 - imin]
+        result = {}
+        engine.request_analysis(
+            node,
+            callback=lambda analysis, partial_result: (
+                None if partial_result else result.setdefault("lead", analysis["rootInfo"]["scoreLead"])
+            ),
+            error_callback=lambda error: result.setdefault("error", error),
+            visits=visits,
+            time_limit=False,
+            ownership=False,
+            region_of_interest=region,
+            extra_settings=region_analysis_extra_settings(visits, self._tsumego_region_wide_root_noise(settings)),
+        )
+        deadline = time.time() + timeout
+        while "lead" not in result and "error" not in result and time.time() < deadline:
+            time.sleep(0.05)
+            try:
+                engine.check_alive(exception_if_dead=True)
+            except Exception as e:
+                self.log(f"tsumego_capture: 枠バランス試算中にエンジンが停止しました: {e}", OUTPUT_INFO)
+                return None
+        return result.get("lead")
+
     def _tsumego_capture_failed(self, message):
         """失敗をターミナルと GUI の両方に出す（作業スレッドから呼ばれるため GUI 更新は Clock 経由）"""
         self.log(message, OUTPUT_ERROR)
@@ -787,7 +870,7 @@ class KaTrainGui(Screen, KaTrainBase):
         settings = self._config.get("tsumego_capture") or {}
         komi = self.config("game/komi", 6.5)
         if settings.get("use_frame", False):
-            board, analysis_region = tsumego_frame_board(grid, komi, True, ko_p=ko, margin=margin)
+            board, analysis_region = self._choose_tsumego_frame(grid, komi, ko, margin, settings)
         else:
             board = grid  # 認識結果そのまま。1子も書き換えない
             try:
@@ -819,11 +902,18 @@ class KaTrainGui(Screen, KaTrainBase):
         self._do_new_game(move_tree=move_tree)
         try:
             # 詰碁の正解手判定用に、初期解析＋以降の毎手のリージョン解析を深掘り専用クエリ
-            # （visits指定・時間無制限・wideRootNoise=0）にする。0以下で既定解析にフォールバック
+            # （visits指定・時間無制限）にする。0以下で既定解析にフォールバック
             deep_visits = int(settings.get("analysis_visits", 1800))
             self.game.region_analysis_visits = deep_visits if deep_visits > 0 else None
         except (TypeError, ValueError):
             self.game.region_analysis_visits = None
+        try:
+            # root の探索の広げ方。0 だと1手に集中して正解手が読まれないまま切り捨てられる
+            self.game.region_analysis_wide_root_noise = float(
+                settings.get("region_wide_root_noise", REGION_ANALYSIS_WIDE_ROOT_NOISE)
+            )
+        except (TypeError, ValueError):
+            self.game.region_analysis_wide_root_noise = REGION_ANALYSIS_WIDE_ROOT_NOISE
         self._apply_tsumego_region(analysis_region, board_size=len(grid))
         maximize = settings.get("maximize_on_capture", True)
         auto_ai = settings.get("auto_ai_black", True)
@@ -846,6 +936,17 @@ class KaTrainGui(Screen, KaTrainBase):
             # kvバインディングがグラフィックス命令に触るため、プロパティ変更はメインスレッドで行う
             if auto_ai:
                 self.controls.timer.paused = True  # プレイモードで白番考慮中の秒読みビープを防ぐ
+                # 対局者ウィジェットの更新は Clock 経由で後から走り、選択肢に無い player_subtype は
+                # ドロップダウンの現在値で上書きされることがある（実測 2026-07-30: 起動後1回目の
+                # キャプチャだけ ai:default に戻り、詰碁戦略が丸ごと無効化されていた）。
+                # ここは round-trip の後なので、実効値を検証して必要なら入れ直す
+                if self.players_info["B"].player_subtype != AI_TSUMEGO:
+                    self.log(
+                        f"tsumego_capture: 黒番が {self.players_info['B'].player_subtype} に戻されたため "
+                        f"{AI_TSUMEGO} を再設定します",
+                        OUTPUT_INFO,
+                    )
+                    self.update_player("B", player_type=PLAYER_AI, player_subtype=AI_TSUMEGO)
             if maximize:
                 self.tsumego_view = True  # 盤面拡大（下部ナビは残る。F12/`で通常表示に復帰）
             try:

@@ -34,6 +34,17 @@ from katrain.core.sgf_parser import SGF, Move
 from katrain.core.utils import var_to_grid, weighted_selection_without_replacement
 
 
+# 詰碁キャプチャのリージョン解析の既定 wideRootNoise。0 にすると root の探索が1手に集中し、
+# 正解手が visits を貰えないまま切り捨てられる（実測 2026-07-29: 8 trial 中 5 回で正解手が
+# 12〜29 visits に沈み「+14〜+21目損」と誤評価。0.04 では 7/8 で正解手を発見）
+REGION_ANALYSIS_WIDE_ROOT_NOISE = 0.04
+
+
+def region_analysis_extra_settings(visits, wide_root_noise):
+    """詰碁キャプチャのリージョン解析クエリ用 extra_settings。深掘り指定が無ければ既定解析に委ねる"""
+    return {"wideRootNoise": wide_root_noise} if visits else None
+
+
 class IllegalMoveException(Exception):
     pass
 
@@ -452,7 +463,8 @@ class Game(BaseGame):
         self.insert_mode = False
         self.insert_after = None
         self.region_of_interest = None
-        self.region_analysis_visits = None  # 詰碁キャプチャ用: リージョン解析の専用visits（深掘り・ノイズなし・時間無制限）
+        self.region_analysis_visits = None  # 詰碁キャプチャ用: リージョン解析の専用visits（深掘り・時間無制限）
+        self.region_analysis_wide_root_noise = REGION_ANALYSIS_WIDE_ROOT_NOISE  # 同上: root の探索の広げ方
 
         threading.Thread(
             target=lambda: self.analyze_all_nodes(analyze_fast=analyze_fast, even_if_present=False),
@@ -553,7 +565,9 @@ class Game(BaseGame):
                     region_of_interest=self.region_of_interest,
                     visits=self.region_analysis_visits,
                     time_limit=self.region_analysis_visits is None,
-                    extra_settings={"wideRootNoise": 0.0} if self.region_analysis_visits else None,
+                    extra_settings=region_analysis_extra_settings(
+                        self.region_analysis_visits, self.region_analysis_wide_root_noise
+                    ),
                     # ai:tsumego が候補手ごとの ownership を使う。詰碁キャプチャ経由
                     # （region_analysis_visits あり）のときだけ要求する
                     ownership=True if self.region_analysis_visits else None,

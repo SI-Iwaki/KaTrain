@@ -405,3 +405,50 @@ def test_frameless_region_none_when_covering_whole_board():
     # 盤全体に広がる詰碁では set_region_of_interest が None 正規化するのと同じ扱いにする
     board = _board(stones=[(0, 0, "B"), (0, 12, "W"), (12, 0, "W"), (12, 12, "B")])
     assert frameless_region(board, 1) is None
+
+
+def test_frame_balance_distance():
+    # 枠は「攻め方成功 = offence_to_win(5) 目勝ち」に調整する設計。|lead| が 5 から離れるほど枠が壊れている
+    from katrain.core.tsumego_frame import frame_balance_distance
+
+    assert frame_balance_distance(5.0) == pytest.approx(0.0)
+    assert frame_balance_distance(-5.0) == pytest.approx(0.0)  # 攻め方の色に依存しない
+    assert frame_balance_distance(-23.3) == pytest.approx(18.3)
+    assert frame_balance_distance(0.0) == pytest.approx(5.0)
+
+
+def test_pick_balanced_frame_prefers_the_workable_frame():
+    # 実測値（2026-07-29, 400visits）。コウが正解の問題では ko_p=False で守り側にコウダテが
+    # 渡り白が無条件生き（-24.0）、ko_p=True で +1.9。コウでない問題は逆に ko_p=True が過剰
+    from katrain.core.tsumego_frame import pick_balanced_frame
+
+    ko_case = [(False, "boardA", "regA", -24.02), (True, "boardB", "regB", 1.92)]
+    assert pick_balanced_frame(ko_case)[0] is True
+    non_ko_case = [(False, "boardA", "regA", 2.82), (True, "boardB", "regB", 14.80)]
+    assert pick_balanced_frame(non_ko_case)[0] is False
+
+
+def test_pick_balanced_frame_ignores_failed_analyses():
+    # 解析が取れなかった枠（lead=None）は候補から外す。全滅なら None（呼び出し側が設定値へ戻す）
+    from katrain.core.tsumego_frame import pick_balanced_frame
+
+    assert pick_balanced_frame([(False, "a", "r", None), (True, "b", "r", 1.92)])[0] is True
+    assert pick_balanced_frame([(False, "a", "r", None), (True, "b", "r", None)]) is None
+    assert pick_balanced_frame([]) is None
+
+
+def test_pick_balanced_frame_prefers_attacker_ko_threats_on_a_tie():
+    # バランスが拮抗しているときは攻め方にコウダテを渡す枠（ko_p=True）を採る。
+    # 詰碁はコウダテがある前提で正解が決まり、守り側にコウダテが渡るとコウ手が無価値になるため
+    # （実測 2026-07-30: 距離 12.36 vs 11.61 の僅差でコイン投げになり、外れると誤答した）
+    from katrain.core.tsumego_frame import pick_balanced_frame
+
+    assert pick_balanced_frame([(False, "a", "r", 5.0), (True, "b", "r", -5.0)])[0] is True
+    assert pick_balanced_frame([(False, "a", "r", -17.36), (True, "b", "r", -16.61)])[0] is True
+
+
+def test_pick_balanced_frame_keeps_the_better_balance_beyond_the_tie_margin():
+    # 差が大きいときはバランス優先（コウでない問題に攻め方コウダテを渡すと得をさせすぎる）
+    from katrain.core.tsumego_frame import pick_balanced_frame
+
+    assert pick_balanced_frame([(False, "a", "r", 2.82), (True, "b", "r", 14.80)])[0] is False

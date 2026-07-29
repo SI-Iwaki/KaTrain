@@ -84,6 +84,46 @@ def tsumego_frame_board(bw_board, komi, black_to_play_p, ko_p, margin, drop_non_
     return (board, region)
 
 
+def frame_balance_distance(root_score_lead):
+    """枠バランスの悪さ。0 に近いほど枠が設計どおり働いている。
+
+    枠は「攻め方が成功したら offence_to_win(5) 目勝ち」に調整する設計なので、|lead| が
+    そこから離れているほど枠が壊れている（守り側が無条件生きで攻め方に勝ち目がない、
+    逆に攻め方が得をしすぎている等）。攻め方がどちらの色かを知らなくて済むよう絶対値で見る。
+    """
+    return abs(abs(root_score_lead) - offence_to_win)
+
+
+FRAME_BALANCE_TIE_MARGIN = 2.0  # この差以内は同点とみなし、攻め方コウダテのある枠を採る
+
+
+def pick_balanced_frame(candidates, tie_margin=FRAME_BALANCE_TIE_MARGIN):
+    """[(ko_p, board, region, root_score_lead), ...] から採用する枠を返す。選べなければ None。
+
+    正解がコウ止まりの詰碁では、守り側にコウダテ形が渡る枠（ko_p=False）だと
+    コウを守り側が勝つ＝守り側の無条件生きになり、攻め方に勝ち目がなくなる
+    （実測 2026-07-29: ko_p=False で -24.0、ko_p=True で +1.9）。逆にコウでない問題に
+    攻め方コウダテを渡すと今度は攻め方が得をしすぎる（+2.8 → +14.8）。どちらが正しいかは
+    問題ごとに違うので、両方の枠を張って root スコアが設計目標に近い方を採る。
+
+    バランス距離が tie_margin 以内で拮抗している場合は **攻め方にコウダテを渡す枠**を採る。
+    詰碁はコウダテがあるものとして正解が決まるので、迷ったら攻め方に渡すほうが慣習に近い
+    （実測 2026-07-30: 距離 12.36 vs 11.61 の僅差でキャプチャごとに枠が入れ替わり、
+    守り側コウダテを引いた回はコウの正解手が無価値になって誤答した）。
+
+    lead が None（解析失敗）の候補は除外する。
+    """
+    scored = [c for c in candidates if c[3] is not None]
+    if not scored:
+        return None
+    best = min(frame_balance_distance(c[3]) for c in scored)
+    finalists = [c for c in scored if frame_balance_distance(c[3]) <= best + tie_margin]
+    for candidate in finalists:
+        if candidate[0]:  # ko_p=True: 攻め方にコウダテ形が渡る枠
+            return candidate
+    return finalists[0]
+
+
 def fit_margin(sizes, komi, margin, imin, jmin, imax, jmax, occupied=None):
     """外側（枠矩形の外）に守り側の代償地帯 defense_area 相当が確保できる最大の margin を返す。
 

@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import copy
 import heapq
 import math
 import random
@@ -16,7 +17,15 @@ from katrain.core.constants import (
     OUTPUT_ERROR, OUTPUT_INFO, PRIORITY_EXTRA_AI_QUERY, ADDITIONAL_MOVE_ORDER, AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE
 )
 from katrain.core.engine import KataGoEngine
-from katrain.core.game import Game, GameNode, Move
+from katrain.core.game import (
+    REGION_ANALYSIS_WIDE_ROOT_NOISE,
+    BaseGame,
+    Game,
+    GameNode,
+    IllegalMoveException,
+    Move,
+    region_analysis_extra_settings,
+)
 from katrain.core.utils import var_to_grid, weighted_selection_without_replacement, evaluation_class
 
 # Decorator pattern for adding classes to the registry
@@ -1674,16 +1683,117 @@ def tsumego_ownership_gain(root_ownership, move_ownership, stones, board_size, p
     return sum(player_sign * (move_grid[y][x] - root_grid[y][x]) for x, y in stones)
 
 
-def select_tsumego_move(candidates, root_ownership, stones, board_size, player_sign, max_points_behind):
+# コウ判定の上限（解析1本ずつ増えるため）と、通常最善手を上回ったと見なす目数マージン
+_TSUMEGO_KO_MAX_CANDIDATES = 3
+_TSUMEGO_KO_MARGIN = 0.5
+_TSUMEGO_KO_MAX_ATARI_STONES = 6  # 打った石以外に調べる自分の1子アタリの数
+
+
+def _chain_and_liberties(game, coords):
+    """指定座標の連と呼吸点座標を返す。石が無ければ (None, [])"""
+    x, y = coords
+    chain_id = game.board[y][x]
+    if chain_id < 0:
+        return None, []
+    size_x, size_y = game.board_size
+    liberties = set()
+    for stone in game.chains[chain_id]:
+        sx, sy = stone.coords
+        for nx, ny in ((sx + 1, sy), (sx - 1, sy), (sx, sy + 1), (sx, sy - 1)):
+            if 0 <= nx < size_x and 0 <= ny < size_y and game.board[ny][nx] < 0:
+                liberties.add((nx, ny))
+    return game.chains[chain_id], sorted(liberties)
+
+
+def tsumego_simulation_game(game, node):
+    """本譜のツリーを汚さずに読みを進めるための使い捨てゲームを作る。作れなければ None"""
+    try:
+        sim = BaseGame(katrain=game.katrain, move_tree=GameNode(properties=copy.deepcopy(game.root.properties)))
+        for path_node in node.nodes_from_root[1:]:
+            if path_node.move is None:
+                return None  # 途中に着手以外のノード（追加配置等）がある局面は諦める
+            sim.play(path_node.move, ignore_ko=True)
+    except Exception:
+        return None
+    return sim
+
+
+def tsumego_ko_win_node(game, node, move):
+    """コウになる候補手について「攻め方がコウに勝った局面」のノードを返す。コウでなければ None。
+
+    詰碁ではコウダテがあるものとして正解が決まる（コウに持ち込めればそれが最大の成果）。
+    一方この枠の中では攻め方のコウダテが乏しく、KataGo は「コウは守り側が勝つ＝無価値」と
+    正しく読んでしまうため、殺せないセキ等の劣る手を選ぶ（実測 2026-07-30: 正解のコウ手が
+    -21.7目、セキの手が -12.3目。コウを黒が勝った局面は +8.1目）。
+    そこでコウの手だけは取り返した後の局面で評価し、詰碁の慣習に合わせる。
+
+    判定は「自分の1子が呼吸点1 → 守り側がそこを取る → 取り返しがコウで禁じられる」という
+    形かどうかで、KaTrain 自身の着手判定に委ねる。取られる1子は打った石自身とは限らない
+    （殺す詰碁では打った石自身、生きる詰碁では別の自石が取られてコウになる形が普通に出る）。
+    """
+    sim = tsumego_simulation_game(game, node)
+    if sim is None:
+        return None
+    player = move.player
+    opponent = "W" if player == "B" else "B"
+    try:
+        after_move = sim.play(move)
+    except IllegalMoveException:
+        return None
+    # 打った石自身を最優先で試し、次に他の1子アタリを試す
+    others = sorted(
+        {
+            chain[0].coords
+            for chain in sim.chains
+            if len(chain) == 1 and chain[0].player == player and chain[0].coords != move.coords
+        }
+    )
+    for coords in [move.coords] + others[:_TSUMEGO_KO_MAX_ATARI_STONES]:
+        sim.set_current_node(after_move)
+        chain, liberties = _chain_and_liberties(sim, coords)
+        if chain is None or len(chain) != 1 or len(liberties) != 1:
+            continue
+        try:
+            sim.play(Move(coords=liberties[0], player=opponent))
+        except IllegalMoveException:
+            continue
+        try:
+            sim.play(Move(coords=coords, player=player))
+        except IllegalMoveException as e:
+            if "Ko" not in str(e):
+                continue
+        else:
+            continue  # 取り返せてしまう＝コウではない
+        return sim.play(Move(coords=coords, player=player), ignore_ko=True)
+    return None
+
+
+def select_tsumego_move(
+    candidates, root_ownership, stones, board_size, player_sign, max_points_behind, gain_epsilon=0.3, min_visits=10
+):
     """目数ガードを通した候補から ownership gain 最大の手を返す。選べなければ None。
 
     詰碁の正解判定は対象石群の死活で決まるが KataGo の目的関数は盤全体の目数であり、
     この不一致が誤答の主因になる（実測: 目数では誤答手が上位、ownership では正解手が上位）。
     目数ガードは「gain は大きいが大損する手」を弾くためのもので、最善手からの相対で見る
     （詰碁では最善手自体が目数を損することがあるため、絶対値では判定できない）。
+
+    gain 差が gain_epsilon 以内の手は同着として扱い、目数の少ない方を選ぶ。root の時点で
+    対象石が既に決着している局面（KataGo が勝ちを読み切っている＝解答の途中では普通に起きる）
+    では正解手でも gain が動かず、上位手の gain 差が ±0.03 のノイズに埋もれて選択が
+    コイン投げになるため（実測 2026-07-29、4 run 中1回で誤答手を選択）。
+
+    min_visits 未満の手は候補から外す。1visit の手の ownership・スコアは探索結果ではなく
+    NN の生評価1回で、gain が実手の10〜100倍のノイズになる（実測 2026-07-30: 探索済みの手が
+    +0.00〜+0.06 のところ 1visit の手が +0.55／+1.19 で競り勝ち、-16.5目の手を打った）。
+    目数ガードより前に落とすのは、1visit の楽観的なスコアが best_loss を押し下げて
+    ガードを不当に狭めるのも防ぐため。全候補が min_visits 未満なら（＝解析がほとんど
+    進んでいない）フィルタせず従来どおり全候補で判断する。
     """
     if not candidates or not root_ownership or not stones:
         return None
+    searched = [c for c in candidates if c.get("visits", 0) >= min_visits]
+    candidates = searched or candidates
     best_loss = min(c["pointsLost"] for c in candidates)
     scored = [
         (tsumego_ownership_gain(root_ownership, c["ownership"], stones, board_size, player_sign), -c["pointsLost"], c)
@@ -1692,7 +1802,9 @@ def select_tsumego_move(candidates, root_ownership, stones, board_size, player_s
     ]
     if not scored:
         return None
-    return max(scored, key=lambda scored_move: (scored_move[0], scored_move[1]))[2]
+    best_gain = max(scored_move[0] for scored_move in scored)
+    finalists = [scored_move for scored_move in scored if best_gain - scored_move[0] <= gain_epsilon]
+    return max(finalists, key=lambda scored_move: (scored_move[1], scored_move[0]))[2]
 
 
 @register_strategy(AI_TSUMEGO)
@@ -1707,8 +1819,13 @@ class TsumegoOwnershipStrategy(AIStrategy):
             return Move(coords=None, player=self.cn.next_player), "候補手が無いためパス"
 
         max_points_behind = (self.settings or {}).get("max_points_behind", 2.0)
+        gain_epsilon = (self.settings or {}).get("gain_epsilon", 0.3)
+        min_visits = (self.settings or {}).get("min_visits", 10)
         stones = [s.coords for s in self.game.stones]
         player_sign = self.cn.player_sign(self.cn.next_player)
+        ko_move = self._pick_ko_win_move(candidate_moves, min_visits, player_sign)
+        if ko_move is not None:
+            return ko_move
         chosen = select_tsumego_move(
             candidate_moves,
             self.cn.ownership,
@@ -1716,6 +1833,8 @@ class TsumegoOwnershipStrategy(AIStrategy):
             self.game.board_size,
             player_sign,
             max_points_behind,
+            gain_epsilon,
+            min_visits,
         )
         if chosen is None:
             # ownership が無い（_enable_ownership が false 等）。無言で劣化させず既定動作に戻す
@@ -1735,10 +1854,101 @@ class TsumegoOwnershipStrategy(AIStrategy):
         self.game.katrain.log(
             f"[{self.strategy_name}] Final decision: {move.gtp()} "
             f"({gain_text}, pointsLost={chosen['pointsLost']:+.2f}, "
-            f"候補{len(candidate_moves)}手, max_points_behind={max_points_behind})",
+            f"候補{len(candidate_moves)}手, max_points_behind={max_points_behind}, "
+            f"gain_epsilon={gain_epsilon}, min_visits={min_visits})",
             OUTPUT_DEBUG,
         )
         return move, f"詰碁戦略: {len(candidate_moves)}手から {move.gtp()} を選択（{gain_text}）"
+
+    def _pick_ko_win_move(self, candidate_moves, min_visits, player_sign):
+        """コウに持ち込める手があり、コウに勝った局面が通常の最善手より良ければその手を返す。
+
+        詰碁ではコウダテがあるものとして正解が決まる（コウにできればそれが最大の成果）。
+        枠の中では攻め方のコウダテが乏しく KataGo は「コウは守り側が勝つ」と読むため、
+        殺せないセキ等を選んでしまう（実測 2026-07-30: 正解のコウ手 -21.7目 / セキ -12.3目 /
+        コウを勝った局面 +8.1目）。コウの手だけ取り返した後の局面で評価して慣習に合わせる。
+        """
+        settings = self.settings or {}
+        if not settings.get("ko_win_assumption", True):
+            self.game.katrain.log(f"[{self.strategy_name}] コウ判定: ko_win_assumption=false のため省略", OUTPUT_DEBUG)
+            return None
+        playable = [c for c in candidate_moves if c.get("move") and c["move"] != "pass"]
+        searched = [c for c in playable if c.get("visits", 0) >= min_visits]
+        if not searched:
+            return None
+        # 通常最善は信頼できる候補（min_visits 以上）から取る。一方コウの検査自体は構造判定で、
+        # 評価も別途取り直すので visits の下限を課さない（探索分散で正解手が数 visits に
+        # 沈むことがあり、そこで検査対象から外すと詰碁の慣習が効かなくなる）
+        best_normal = max(player_sign * c["scoreLead"] for c in searched)
+        player = self.cn.next_player
+        ko_visits = int(settings.get("ko_win_visits", 800))
+        best = None
+        checked = 0
+        for cand in sorted(playable, key=lambda c: -c.get("visits", 0)):
+            if checked >= _TSUMEGO_KO_MAX_CANDIDATES:
+                break
+            move = Move.from_gtp(cand["move"], player=player)
+            ko_node = tsumego_ko_win_node(self.game, self.cn, move)
+            if ko_node is None:
+                continue
+            checked += 1
+            lead = self._analyze_score_lead(ko_node, ko_visits)
+            if lead is None:
+                continue
+            value = player_sign * lead
+            self.game.katrain.log(
+                f"[{self.strategy_name}] コウ判定: {move.gtp()} 通常{player_sign * cand['scoreLead']:+.2f}目 → "
+                f"コウ勝ち前提{value:+.2f}目（通常の最善は{best_normal:+.2f}目）",
+                OUTPUT_INFO,
+            )
+            if best is None or value > best[0]:
+                best = (value, move, cand)
+        if best is None:
+            self.game.katrain.log(
+                f"[{self.strategy_name}] コウ判定: 候補{len(playable)}手にコウの形なし", OUTPUT_DEBUG
+            )
+            return None
+        if best[0] <= best_normal + _TSUMEGO_KO_MARGIN:
+            self.game.katrain.log(
+                f"[{self.strategy_name}] コウ判定: {best[1].gtp()} のコウ勝ち前提{best[0]:+.2f}目は"
+                f"通常最善{best_normal:+.2f}目を上回らないため不採用",
+                OUTPUT_INFO,
+            )
+            return None
+        value, move, cand = best
+        self.game.katrain.log(
+            f"[{self.strategy_name}] Final decision: {move.gtp()} "
+            f"（コウ勝ち前提{value:+.2f}目 > 通常最善{best_normal:+.2f}目、"
+            f"pointsLost={cand['pointsLost']:+.2f}, ko_win_visits={ko_visits}）",
+            OUTPUT_INFO,
+        )
+        return move, f"詰碁戦略: {move.gtp()} でコウに持ち込む（コウ勝ち前提 {value:+.2f}目）"
+
+    def _analyze_score_lead(self, node, visits, timeout=60.0):
+        """使い捨てノードを解析して root の scoreLead（黒視点）だけ取る。取れなければ None"""
+        engine = self.game.engines[self.cn.next_player]
+        result = {}
+        engine.request_analysis(
+            node,
+            callback=lambda analysis, partial_result: (
+                None if partial_result else result.setdefault("lead", analysis["rootInfo"]["scoreLead"])
+            ),
+            error_callback=lambda error: result.setdefault("error", error),
+            visits=visits,
+            time_limit=False,
+            ownership=False,
+            region_of_interest=self.game.region_of_interest,
+            extra_settings=region_analysis_extra_settings(
+                visits, getattr(self.game, "region_analysis_wide_root_noise", REGION_ANALYSIS_WIDE_ROOT_NOISE)
+            ),
+            priority=PRIORITY_EXTRA_AI_QUERY,
+        )
+        deadline = time.time() + timeout
+        while "lead" not in result and "error" not in result and time.time() < deadline:
+            time.sleep(0.02)
+        if "lead" not in result:
+            self.game.katrain.log(f"[{self.strategy_name}] コウ判定の解析に失敗しました", OUTPUT_INFO)
+        return result.get("lead")
 
 
 @register_strategy(AI_POLICY)

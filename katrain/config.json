@@ -55,9 +55,12 @@
         "board_sizes": [9, 13, 19],
         "frame_margin": 4,
         "frame_ko": false,
+        "frame_ko_auto": true,
+        "frame_ko_trial_visits": 400,
         "maximize_on_capture": true,
         "auto_ai_black": true,
         "analysis_visits": 1800,
+        "region_wide_root_noise": 0.04,
         "use_frame": true,
         "region_pad": 1
     },
@@ -159,7 +162,11 @@
             "tenuki_penalty": 0.5
         },
         "ai:tsumego": {
-            "max_points_behind": 2.0
+            "max_points_behind": 2.0,
+            "gain_epsilon": 0.3,
+            "min_visits": 10,
+            "ko_win_assumption": true,
+            "ko_win_visits": 800
         },
         "ai:p:weighted": {
             "weaken_fac": 1.25,

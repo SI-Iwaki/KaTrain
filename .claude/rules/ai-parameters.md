@@ -96,6 +96,32 @@ humanモードの悪手フィルタ閾値はHumanStyleStrategyと同じBAD_MOVE_
 
 **スコア適応型損失制御（ハードコード）**: 劣勢時（`score_lead < -6.0`）は `hunt_max_loss` と `hunt_invasion_max_loss` を `min(設定値, 4.0)` にキャップ。段階的緩和も4.0でキャップされ、候補がなければ即failsafe（最善手選択）。
 
+## 詰碁戦略（TsumegoOwnershipStrategy）
+
+詰碁キャプチャ専用の独立戦略（`ai:tsumego`）。GUI の戦略一覧には出さず、キャプチャ経路がプログラムから設定する（`AI_OPTION_VALUES` への登録は不要。設定は両方の `config.json` の `ai/ai:tsumego` に直接置く）。
+
+**着手選択**: リージョン限定解析（ownership 付き）の候補手に対し、(1) 目数ガード `pointsLost <= min(pointsLost) + max_points_behind` を通し、(2) 盤上の全石の ownership 変化量の合計（gain）が最大の手を選ぶ。(3) gain 差が `gain_epsilon` 以内の手は同着とみなし pointsLost で決める。
+
+| パラメータ | デフォルト | 備考 |
+|---|---|---|
+| max_points_behind | 2.0 | 最善手からの許容損失（目）。小さいと正解手を弾き、大きいと大損の手が入る |
+| gain_epsilon | 0.3 | gain の同着幅。root で死活が既に決着している局面では全候補の gain が ±0.03 のノイズに潰れ、選択がコイン投げになるため目数で決める。case B/C の実信号は 1.16 / 3.20 なので 0.3 では潰れない |
+| min_visits | 10 | この visits 未満の候補を除外（目数ガードより前）。1visit の手の ownership/スコアは NN の生評価1回で gain が10〜100倍のノイズになり、実測で −16.5目の手を選ばせた。全候補が未満ならフィルタしない |
+| ko_win_assumption | true | ON でコウになる候補手を「攻め方がコウに勝った局面」のスコアで評価する（詰碁はコウダテがある前提で正解が決まるため）。通常最善を 0.5目 超えて上回るときだけ採用。実測: 正解のコウ手が通常 −21.7目 → コウ勝ち前提 +3.1目 |
+| ko_win_visits | 800 | コウ勝ち局面の解析 visits。コウが見つかった候補だけ解析するので +1秒程度 |
+
+**リージョン解析クエリ側**（`tsumego_capture` セクション。戦略ではなく解析の設定）:
+
+| パラメータ | デフォルト | 備考 |
+|---|---|---|
+| analysis_visits | 1800 | リージョン限定解析の visits。0以下で既定解析にフォールバック |
+| region_wide_root_noise | 0.04 | root の探索の広げ方。0.0 だと探索が1手に集中し、正解手が 12〜29 visits で切り捨てられて「+14〜+21目損」と誤評価される（実測 8 trial 中 5 回）。0.04 で 7/8 が正解 |
+| frame_ko | false | コウダテ形を攻め方に与えるか（true=攻め方 / false=守り方）。問題の答えがコウかどうかで正解が変わる |
+| frame_ko_auto | true | ON でキャプチャ時に frame_ko の両方の枠を張り、root スコアが設計目標（攻め方成功=5目勝ち）に近い方を自動採用。正解がコウ止まりの問題は false 側だと守り側にコウダテが渡り白の無条件生きになる（実測 −23.0 vs +0.68）。バランス距離が `FRAME_BALANCE_TIE_MARGIN`(2.0目) 以内で拮抗する場合は攻め方コウダテ側(ko_p=True)を優先（僅差だとキャプチャごとに枠が入れ替わり誤答していた） |
+| frame_ko_trial_visits | 400 | 自動選択の試算 visits。400 で判別可能（実測 2本で約1.2秒） |
+
+Spec: `docs/superpowers/specs/2026-07-29-tsumego-ownership-design.md`（誤答実測と ε・wRN 変更の経緯は「追記（2026-07-29）」）
+
 ## AI一致率低減モード（DivergenceStrategy）
 
 評価レポートの AI 最善手一致率≤30%・上位5手一致率≤40%・平均損失<1.00 を目標とする新戦略モード。

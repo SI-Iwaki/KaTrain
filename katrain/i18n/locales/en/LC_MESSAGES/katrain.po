@@ -1063,6 +1063,27 @@ msgstr ""
 "Heavily down-weights candidate moves on or adjacent to the player's own stones "
 "that ownership confirms as dead, mimicking how strong human players ignore dead stones."
 
+msgid "ai:tsumego"
+msgstr "Tsumego"
+
+msgid "aihelp:tsumego"
+msgstr ""
+"Tsumego: move selection for the tsumego capture mode. Picks moves by the life "
+"and death of the target stones (change in ownership) instead of whole-board "
+"score, and evaluates ko moves as if the attacker wins the ko, as tsumego "
+"convention assumes ko threats.
+"
+"max_points_behind: how many points behind the best move is still acceptable.
+"
+"gain_epsilon: ownership differences within this are treated as a tie and "
+"decided on score.
+"
+"min_visits: ignore candidates searched less than this (raw NN values are noisy).
+"
+"ko_win_assumption: evaluate ko moves assuming the ko is won.
+"
+"ko_win_visits: visits used to read the position after winning the ko."
+
 msgid "ai:hunt_diverge"
 msgstr "Hunt Strategy (Low Agreement)"
 

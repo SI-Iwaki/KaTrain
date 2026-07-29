@@ -204,6 +204,17 @@ def test_analyze_passes_deep_region_settings():
     assert engine.requested["extra_settings"] == {"wideRootNoise": 0.0}
 
 
+def test_region_analysis_extra_settings():
+    # 深掘り指定があるときだけ wideRootNoise を上書きし、無ければ既定解析（engine 設定）に委ねる。
+    # 0 にすると root の探索が1手に集中し正解手が切り捨てられるため既定は 0.04
+    # （実測 2026-07-29: wRN 0 は 8 trial 中 3 回しか正解手を発見できず、0.04 で 7/8）
+    from katrain.core.game import REGION_ANALYSIS_WIDE_ROOT_NOISE, region_analysis_extra_settings
+
+    assert REGION_ANALYSIS_WIDE_ROOT_NOISE == 0.04
+    assert region_analysis_extra_settings(1800, 0.04) == {"wideRootNoise": 0.04}
+    assert region_analysis_extra_settings(None, 0.04) is None
+
+
 def test_analyze_passes_ownership_flag():
     # ownership は詰碁のリージョン解析でだけ要る。エンジン設定 _enable_ownership を全体で有効に
     # すると通常の対局・検討の全クエリに includeMovesOwnership（候補手ごとに盤面全点）が
@@ -232,37 +243,6 @@ def test_analyze_defaults_ownership_to_none():
     engine = FakeEngine()
     node.analyze(engine)
     assert engine.requested["ownership"] is None
-
-
-def test_tsumego_retry_candidate():
-    # 「アンドゥで次候補」: 全ての子が応手なしの自分側の着手（=試して却下された手）のとき、
-    # それらを除いた次順位候補を返す。別解ミスからの復帰手段（詰碁キャプチャ中のみ発火）
-    from katrain.core.game import Move
-    from katrain.core.game_node import GameNode
-
-    node = GameNode(properties={"SZ": "13"})
-    node.set_analysis(_fake_analysis([("A12", 5)]))  # 全盤fast（rootを設定。実運用の2段構えと同順）
-    node.set_analysis(_fake_analysis([("A12", 500), ("B11", 300), ("C10", 100)]), region_of_interest=[0, 10, 4, 12])
-    assert node.tsumego_retry_candidate() is None  # 子がない=通常の自動着手フロー
-    GameNode(parent=node, move=Move.from_gtp("A12", player="B"))
-    assert node.tsumego_retry_candidate() == "B11"  # 1位は却下済み → 2位
-    child2 = GameNode(parent=node, move=Move.from_gtp("B11", player="B"))
-    assert node.tsumego_retry_candidate() == "C10"  # 2位も却下 → 3位
-    GameNode(parent=child2, move=Move.from_gtp("A1", player="W"))
-    assert node.tsumego_retry_candidate() is None  # 応手が付いた分岐=採用済み → 発火しない
-
-
-def test_tsumego_retry_candidate_exhausted():
-    # 候補が尽きたら None（沈黙。junk手の無限提案はしない）
-    from katrain.core.game import Move
-    from katrain.core.game_node import GameNode
-
-    node = GameNode(properties={"SZ": "13"})
-    node.set_analysis(_fake_analysis([("A12", 5)]))  # 全盤fast（rootを設定）
-    node.set_analysis(_fake_analysis([("A12", 500), ("B11", 300)]), region_of_interest=[0, 10, 4, 12])
-    GameNode(parent=node, move=Move.from_gtp("A12", player="B"))
-    GameNode(parent=node, move=Move.from_gtp("B11", player="B"))
-    assert node.tsumego_retry_candidate() is None
 
 
 def test_cli_image_mode():

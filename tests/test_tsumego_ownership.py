@@ -75,6 +75,38 @@ def test_select_tiebreaks_on_points_lost():
     assert chosen["move"] == "B1"
 
 
+def test_select_falls_back_to_points_when_gain_is_noise():
+    # 実測（2026-07-29 13路詰碁）: root で対象の白石が既に全て死に判定（+0.99）のため
+    # 上位手の gain は ±0.03 のノイズしか出ず、run ごとに正解 C12 と誤答 D12 が入れ替わった。
+    # gain 差が gain_epsilon 以内なら同着とみなし、安定した目数差（0.6目）で決める
+    cands = [
+        {"move": "C12", "pointsLost": -0.31, "ownership": _own(x0_y0=-0.001)},
+        {"move": "D12", "pointsLost": 0.33, "ownership": _own(x0_y0=0.003)},
+    ]
+    chosen = select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0)
+    assert chosen["move"] == "C12"
+
+
+def test_select_keeps_ownership_priority_beyond_epsilon():
+    # gain 差が epsilon を超えるなら従来どおり ownership が目数に優先する
+    # （設計書の case B / case C の gain 差は 1.16 / 3.20 でこちら側）
+    cands = [
+        {"move": "A1", "pointsLost": 0.0, "ownership": ZERO},
+        {"move": "B1", "pointsLost": 1.5, "ownership": _own(x0_y0=1.1)},
+    ]
+    chosen = select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0)
+    assert chosen["move"] == "B1"
+
+
+def test_select_gain_epsilon_is_configurable():
+    cands = [
+        {"move": "A1", "pointsLost": 0.0, "ownership": ZERO},
+        {"move": "B1", "pointsLost": 1.0, "ownership": _own(x0_y0=0.5)},
+    ]
+    assert select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, gain_epsilon=0.0)["move"] == "B1"
+    assert select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, gain_epsilon=1.0)["move"] == "A1"
+
+
 def test_select_returns_none_without_ownership():
     # ownership が取れない場合は None（呼び出し側が candidate_moves[0] にフォールバックする）
     cands = [{"move": "A1", "pointsLost": 0.0}, {"move": "B1", "pointsLost": 1.0}]
@@ -89,3 +121,46 @@ def test_select_returns_none_without_root_ownership():
 def test_select_returns_none_without_stones():
     cands = [{"move": "A1", "pointsLost": 0.0, "ownership": ZERO}]
     assert select_tsumego_move(cands, ZERO, [], SIZE, +1, 2.0) is None
+
+
+def test_select_ignores_barely_searched_moves():
+    # 実測（2026-07-30）: 1visit の手の ownership は探索結果ではなく NN の生評価1回で、
+    # gain が実手の10〜100倍のノイズになる（探索済み +0.00〜+0.06 に対し 1visit は +0.55/+1.19）。
+    # これに負けて実戦で -16.5目の手を打った
+    cands = [
+        {"move": "M7", "pointsLost": 1.25, "visits": 1324, "ownership": _own(x0_y0=0.002)},
+        {"move": "M13", "pointsLost": 2.12, "visits": 1, "ownership": _own(x0_y0=1.0)},
+    ]
+    chosen = select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0)
+    assert chosen["move"] == "M7"
+
+
+def test_select_min_visits_also_guards_the_points_filter():
+    # 1visit の楽観的なスコアが best_loss を押し下げると目数ガードが不当に狭まり、
+    # 本命手まで弾かれてしまう。visits フィルタは目数ガードより前に効かせる
+    cands = [
+        {"move": "M7", "pointsLost": 1.25, "visits": 1324, "ownership": _own(x0_y0=0.002)},
+        {"move": "M13", "pointsLost": -5.0, "visits": 1, "ownership": _own(x0_y0=1.0)},
+    ]
+    chosen = select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0)
+    assert chosen is not None and chosen["move"] == "M7"
+
+
+def test_select_keeps_all_moves_when_none_are_searched():
+    # 解析がほとんど進んでいない局面で候補ゼロにしない（ownership 無しと誤認して
+    # 呼び出し側が「ownership が取れない」とログするのを避ける）
+    cands = [
+        {"move": "A1", "pointsLost": 0.0, "visits": 2, "ownership": ZERO},
+        {"move": "B1", "pointsLost": 1.0, "visits": 1, "ownership": _own(x0_y0=0.8)},
+    ]
+    chosen = select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0)
+    assert chosen is not None and chosen["move"] == "B1"
+
+
+def test_select_min_visits_is_configurable():
+    cands = [
+        {"move": "A1", "pointsLost": 1.0, "visits": 50, "ownership": ZERO},
+        {"move": "B1", "pointsLost": 1.5, "visits": 20, "ownership": _own(x0_y0=0.8)},
+    ]
+    assert select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, min_visits=10)["move"] == "B1"
+    assert select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, min_visits=30)["move"] == "A1"
