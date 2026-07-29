@@ -52,6 +52,30 @@ def test_9x9_margin_clamped_so_frame_fits():
     assert any(j == 4 for _i, j in blacks + whites)
 
 
+def test_9x9_small_board_guard_keeps_isolated_stone_intact():
+    # 回帰テスト: build_frame の `min(sizes) <= 9` ガードが drop_non_core を強制Falseにしている
+    # おかげで、9路以下では非コア石削除が発火しない。ガードが無いと孤立石(7,5)は本体クラスタから
+    # Chebyshev距離が離れすぎて非コア判定され、drop_non_core_stonesで消去された後、
+    # put_outsideの充填で反対色"B"として再充填されてしまう（盤面が別問題にすり替わる）。
+    # tsumego_frame_board（既定 drop_non_core=True）で呼び、(7,5)がWのまま残り、
+    # 全11石が無傷（変色も消失もしない）であることを確認する
+    board = _board(
+        size=9,
+        stones=[
+            (2, 2, "W"), (3, 1, "W"), (4, 0, "B"), (4, 1, "B"), (4, 2, "W"),
+            (5, 1, "B"), (5, 3, "W"), (6, 2, "B"), (7, 1, "W"), (7, 5, "W"), (8, 1, "B"),
+        ],
+    )
+    original = {
+        (2, 2): "W", (3, 1): "W", (4, 0): "B", (4, 1): "B", (4, 2): "W",
+        (5, 1): "B", (5, 3): "W", (6, 2): "B", (7, 1): "W", (7, 5): "W", (8, 1): "B",
+    }
+    out, _region = tsumego_frame_board(board, komi=7.0, black_to_play_p=True, ko_p=False, margin=4)
+    assert out[7][5] == "W", "孤立石(7,5)がガード無効時はdrop_non_coreで消され反対色Bに再充填される"
+    for (i, j), color in original.items():
+        assert out[i][j] == color, f"元の石({i},{j})が変色/消失している: expected {color}, got {out[i][j]}"
+
+
 def test_outlier_stone_falls_back_to_main_cluster():
     # 回帰テスト: 詰碁本体（上辺側）から遠く離れた無関係の石が1つ混ざると、全石のbbox+margin
     # が盤全体を覆い、壁・充填・リージョンが一切生成されず全盤解析に退化していた
@@ -167,9 +191,8 @@ class _StubKatrain:
         return None
 
 
-# target=60は除外: この深さは石が密集し1つの連結塊になるため core narrowing が発火せず、
-# 枠石が0個（no-op）になって assert placed が何も検証しないまま終わる。密な実戦局面での
-# manual path の既知の制約であり、リグレッションではない（screen-capture path が対象）
+# target=60は除外: 60手目は全石bboxがsnapで全盤化しfit_marginがNoneを返す上、
+# CORE_MIN_FRACTIONとfit_margin双方を満たす候補クラスタも無く、コア石0・枠石0のno-opになる
 @pytest.mark.parametrize("target", [20, 100])
 def test_manual_frame_never_places_on_occupied_point(target):
     # 回帰テスト: put_border は既存石をチェックせず上書きするため、壁が石を踏むと
