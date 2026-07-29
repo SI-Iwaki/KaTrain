@@ -766,12 +766,12 @@ class KaTrainGui(Screen, KaTrainBase):
         Clock.schedule_once(lambda _dt: self.controls.set_status(message, STATUS_ERROR, check_level=False), 0)
 
     def _do_tsumego_capture_apply(self, grid, ko, margin):
-        # メッセージループスレッドで実行。既定は枠なし: 認識盤面をそのまま新規局にし、
-        # 解析リージョンだけを詰碁本体に密着させる。枠は盤面を約80子書き換えるため
-        # 攻守判定・充填バランス・壁・非コア石削除と故障箇所が多く、死活そのものを
-        # 変えてしまう疑いがある（実測: 枠ありで KataGo が正解手を勝率4%と評価した例）。
-        # 空き地の手を候補から外す目的はリージョンだけで達成できる（実測で確認）。
-        # use_frame: true で従来の枠モードに戻せる。
+        # メッセージループスレッドで実行。既定は枠あり（use_frame: false で枠なし運用も選択可能）。
+        # 枠なしを既定にしなかった理由: 実機検証で二律背反が判明したため。空いた盤面を放置すると
+        # 地合いが支配し詰碁を読む動機が消える（実測: ある局面で-53目/勝率0%、別の局面で+37目/勝率100%）。
+        # コミで均衡させると今度はリージョン内の空点自体が最善手候補になり、正解手が埋もれる
+        # （実測: 正解手が1800visits中わずか2visits）。枠は盤面を約80子書き換えるため死活自体を
+        # 変えてしまう疑いも残り、これが枠なしモードをコードに残してある理由。
         # new-game と解析発行は同一メッセージ内で行う
         # （分割すると new-game で game_id が変わり後続メッセージが破棄されるため）
         from katrain.core.tsumego_capture import CaptureError, grid_to_sgf
