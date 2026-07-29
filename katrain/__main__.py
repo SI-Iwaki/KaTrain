@@ -784,7 +784,7 @@ class KaTrainGui(Screen, KaTrainBase):
         else:
             board = grid  # 認識結果そのまま。1子も書き換えない
             try:
-                pad = int(settings.get("region_pad", 1))
+                pad = max(0, int(settings.get("region_pad", 1)))
             except (TypeError, ValueError):
                 pad = 1
             analysis_region = frameless_region(grid, pad)
