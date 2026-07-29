@@ -596,15 +596,26 @@ class KaTrainGui(Screen, KaTrainBase):
             node.analyze(engine)
         self.update_state(redraw_board=True)
 
-    def _apply_tsumego_region(self, analysis_region):
-        """リージョンを設定し、全盤fast → リージョン限定の2段解析を発行する"""
+    def _apply_tsumego_region(self, analysis_region, board_size):
+        """リージョンを設定し、全盤fast → リージョン限定の2段解析を発行する。
+
+        analysis_region は tsumego_frame_board が返す ((imin, imax), (jmin, jmax))。
+        この i は認識グリッド（tsumego_capture.classify_intersections）準拠の上origin
+        （画面上でcyが下に増えるのに合わせて上から数えた行）。一方 KaTrain の
+        Move.coords / set_region_of_interest が使う y は下origin
+        （sgf_parser.Move.from_sgf の y = board_size - sgf_row_index - 1 と同じ変換）。
+        ここで y = board_size - 1 - i に変換しないと縦方向が反転したリージョンになり、
+        詰碁本体の一部がリージョン外に落ちて誤答の原因になる（実測で確認済みのバグ）。
+        手動枠付け経路（_do_tsumego_frame）は game.board から作るため既に下origin i=y
+        になっており、この変換は不要（対象が異なるので流用しない）。
+        """
         node = self.game.current_node
         if self.play_mode.mode == MODE_PLAY:
             self.play_mode.switch_ui_mode()  # go to analysis mode
         if analysis_region:
-            self.game.set_region_of_interest(
-                [analysis_region[1][0], analysis_region[1][1], analysis_region[0][0], analysis_region[0][1]]
-            )
+            (imin, imax), (jmin, jmax) = analysis_region
+            ymin, ymax = board_size - 1 - imax, board_size - 1 - imin  # 上origin i → 下origin y
+            self.game.set_region_of_interest([jmin, jmax, ymin, ymax])
         engine = self.game.engines[node.next_player]
         if self.game.region_of_interest:
             # Game.play() と同じ2段構え: 全盤の高速解析で root 勝率を得てから、リージョン限定で本解析
@@ -784,7 +795,7 @@ class KaTrainGui(Screen, KaTrainBase):
             self.game.region_analysis_visits = deep_visits if deep_visits > 0 else None
         except (TypeError, ValueError):
             self.game.region_analysis_visits = None
-        self._apply_tsumego_region(analysis_region)
+        self._apply_tsumego_region(analysis_region, board_size=len(grid))
         maximize = settings.get("maximize_on_capture", True)
         auto_ai = settings.get("auto_ai_black", True)
         if auto_ai:
