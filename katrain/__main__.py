@@ -766,17 +766,30 @@ class KaTrainGui(Screen, KaTrainBase):
         Clock.schedule_once(lambda _dt: self.controls.set_status(message, STATUS_ERROR, check_level=False), 0)
 
     def _do_tsumego_capture_apply(self, grid, ko, margin):
-        # メッセージループスレッドで実行。認識グリッドに枠を適用した「完成局面」を単一の
-        # AB/AW として新規局にする（枠ノードを足す方式と違い、枠外の無関係な石を除去でき、
-        # 占有点への重複配置も起きない）。new-game と解析発行は同一メッセージ内で行う
+        # メッセージループスレッドで実行。既定は枠なし: 認識盤面をそのまま新規局にし、
+        # 解析リージョンだけを詰碁本体に密着させる。枠は盤面を約80子書き換えるため
+        # 攻守判定・充填バランス・壁・非コア石削除と故障箇所が多く、死活そのものを
+        # 変えてしまう疑いがある（実測: 枠ありで KataGo が正解手を勝率4%と評価した例）。
+        # 空き地の手を候補から外す目的はリージョンだけで達成できる（実測で確認）。
+        # use_frame: true で従来の枠モードに戻せる。
+        # new-game と解析発行は同一メッセージ内で行う
         # （分割すると new-game で game_id が変わり後続メッセージが破棄されるため）
         from katrain.core.tsumego_capture import CaptureError, grid_to_sgf
-        from katrain.core.tsumego_frame import tsumego_frame_board
+        from katrain.core.tsumego_frame import frameless_region, tsumego_frame_board
 
+        settings = self._config.get("tsumego_capture") or {}
         komi = self.config("game/komi", 6.5)
-        framed, analysis_region = tsumego_frame_board(grid, komi, True, ko_p=ko, margin=margin)
+        if settings.get("use_frame", False):
+            board, analysis_region = tsumego_frame_board(grid, komi, True, ko_p=ko, margin=margin)
+        else:
+            board = grid  # 認識結果そのまま。1子も書き換えない
+            try:
+                pad = int(settings.get("region_pad", 1))
+            except (TypeError, ValueError):
+                pad = 1
+            analysis_region = frameless_region(grid, pad)
         try:
-            move_tree = KaTrainSGF.parse_sgf(grid_to_sgf(framed, komi=komi))
+            move_tree = KaTrainSGF.parse_sgf(grid_to_sgf(board, komi=komi))
         except ParseError as e:
             self.log(f"詰碁キャプチャSGF解析失敗: {e}", OUTPUT_ERROR)
             return
@@ -787,7 +800,6 @@ class KaTrainGui(Screen, KaTrainBase):
             self.log(f"詰碁キャプチャ失敗: {e}", OUTPUT_ERROR)
             return
         self._do_new_game(move_tree=move_tree)
-        settings = self._config.get("tsumego_capture") or {}
         try:
             # 詰碁の正解手判定用に、初期解析＋以降の毎手のリージョン解析を深掘り専用クエリ
             # （visits指定・時間無制限・wideRootNoise=0）にする。0以下で既定解析にフォールバック
