@@ -328,6 +328,43 @@ def test_framed_grid_round_trips_through_sgf():
     assert len(game.stones) == expected
 
 
+def test_frameless_grid_round_trips_through_sgf_exactly():
+    # 枠なしモード（既定）: 認識グリッドを一切書き換えずそのままSGF化するので、KaTrainで
+    # 読み込んだ後の石が認識グリッドと完全一致すること（増減も変色もない）。
+    # 枠モードの test_framed_grid_round_trips_through_sgf に対応する枠なし版
+    from katrain.core.game import BaseGame, KaTrainSGF
+
+    size = 13
+    grid = [["." for _ in range(size)] for _ in range(size)]
+    expected = {}
+    for i, j, c in [
+        (4, 2, "B"), (4, 3, "B"), (5, 3, "B"), (6, 4, "B"),  # 詰碁本体（黒）
+        (5, 8, "W"), (5, 9, "W"), (6, 9, "W"),  # 詰碁本体（白）
+        (0, 0, "W"),  # 本体から離れたお邪魔石
+    ]:
+        grid[i][j] = c
+        expected[(i, j)] = c
+
+    class _Stub:
+        def log(self, *_a, **_k):
+            pass
+
+        def config(self, *_a, **_k):
+            return None
+
+    root = KaTrainSGF.parse_sgf(grid_to_sgf(grid, komi=7.0))
+    game = BaseGame(_Stub(), move_tree=root)  # 重複配置があればここで例外
+
+    # game.stones の座標系は下origin(y = size-1-i)。認識グリッドと同じ上origin(i,j)に戻して比較
+    actual = {}
+    for s in game.stones:
+        x, y = s.coords
+        actual[(size - 1 - y, x)] = s.player
+
+    assert actual == expected, f"石が一致しない: expected={expected} actual={actual}"
+    assert len(game.stones) == len(expected)
+
+
 def test_capture_region_brackets_stones_in_move_coords():
     # 回帰テスト: tsumego_frame_board が返す region は認識グリッド
     # （tsumego_capture.classify_intersections）準拠の上origin i（画面上でcyが下に
