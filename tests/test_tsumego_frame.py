@@ -244,3 +244,15 @@ def test_frame_board_keeps_stones_when_drop_disabled():
     )
     # 除去しない場合、枠外の D10 は put_outside のガードで残る
     assert out[3][3] == "B"
+
+
+def test_fit_margin_prefers_boundary_without_stones():
+    from katrain.core.tsumego_frame import fit_margin
+
+    sizes = (13, 13)
+    bbox = (0, 7, 8, 12)  # imin, jmin, imax, jmax
+    # 石を渡さなければ従来どおり最大の margin
+    assert fit_margin(sizes, 7.0, 4, *bbox) == 2
+    # margin 2 の壁(j=5, i=10)上に石があるなら、面積条件を満たす他の margin を選ぶ
+    occupied = {(2, 5), (4, 5)}
+    assert fit_margin(sizes, 7.0, 4, *bbox, occupied=occupied) == 1

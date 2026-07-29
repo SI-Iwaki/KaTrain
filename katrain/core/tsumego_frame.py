@@ -77,22 +77,35 @@ def tsumego_frame_board(bw_board, komi, black_to_play_p, ko_p, margin, drop_non_
     return (board, region)
 
 
-def fit_margin(sizes, komi, margin, imin, jmin, imax, jmax):
+def fit_margin(sizes, komi, margin, imin, jmin, imax, jmax, occupied=None):
     """外側（枠矩形の外）に守り側の代償地帯 defense_area 相当が確保できる最大の margin を返す。
 
     put_outside は外側セルを守り側に defense_area（約 (盤面積-コミ-5)/2 ）だけ配分する設計
     だが、外側がそれ未満だと配分しきれず枠ゲームが一方的になる。確保できる margin がない
     場合は None を返す（呼び出し側が元の margin にフォールバックする）。
+
+    occupied を渡すと、面積条件を満たす margin のうち境界線に石が乗らないものを優先する
+    （壁が既存石を踏むと placement から除外されて壁に穴が空くため）。
+    どれも踏む場合は面積条件を満たす最大の margin を返す。
     """
     isize, jsize = sizes
     needed = (isize * jsize - abs(komi) - offence_to_win) / 2
+    fits = []
     for m in range(margin, 0, -1):
         i0, i1 = max(0, imin - m), min(isize - 1, imax + m)
         j0, j1 = max(0, jmin - m), min(jsize - 1, jmax + m)
         outside = isize * jsize - (i1 - i0 + 1) * (j1 - j0 + 1)
         if outside >= needed:
-            return m
-    return None
+            fits.append((m, (i0, i1, j0, j1)))
+    if not fits:
+        return None
+    if occupied:
+        for m, (i0, i1, j0, j1) in fits:
+            border = {(i, j) for i in (i0, i1) for j in range(j0, j1 + 1)}
+            border |= {(i, j) for j in (j0, j1) for i in range(i0, i1 + 1)}
+            if not (border & occupied):
+                return m
+    return fits[0][0]
 
 
 def snapped_bbox(entries, sizes):
@@ -248,7 +261,9 @@ def tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin, drop_non_c
     # 枠ゲームが一方的（±100点級）になり勝率が飽和し、死活より空き地・小さい得が優先される。
     # 外側が確保できるまで margin を縮める。どの margin でも確保できない盤（9路など）は
     # 従来値を維持する（縮めても焼け石に水で、既存挙動を変えないため）
-    margin = fit_margin(sizes, komi, margin, imin, jmin, imax, jmax) or margin
+    # drop_non_core=True の経路は非コア石を後で除去するので、壁が石を踏んでも穴が空かず不要
+    occupied = None if drop_non_core else {(z["i"], z["j"]) for z in all_ijs if not z["core"]}
+    margin = fit_margin(sizes, komi, margin, imin, jmin, imax, jmax, occupied=occupied) or margin
     # flip/rotate for standard position
     # don't mix flip and swap (FF = SS = identity, but SFSF != identity)
     flip_spec = (
