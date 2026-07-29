@@ -182,6 +182,9 @@ def test_manual_frame_never_places_on_occupied_point(target):
     occupied = {s.coords for s in game.stones}
     node, _region = tsumego_frame_from_katrain_game(game, 6.5, True, ko_p=False, margin=4)
     placed = [m.coords for m in node.placements]
+    # 枠石が1個も生成されないと上の2アサーションは空集合同士の比較で無条件に通ってしまい、
+    # 「重ならない」を何も検証しないまま緑になる。枠が実際に張られたことを保証する
+    assert placed, "枠石が1個も生成されていない（このケースは何も検証していない）"
     assert not (set(placed) & occupied), "枠石が既存石と重なっている"
     assert len(placed) == len(set(placed)), "枠石に重複座標がある"
     game.set_current_node(node)  # ここで例外が出なければ配置が正当
