@@ -100,7 +100,7 @@ humanモードの悪手フィルタ閾値はHumanStyleStrategyと同じBAD_MOVE_
 
 詰碁キャプチャ専用の独立戦略（`ai:tsumego`）。GUI の戦略一覧には出さず、キャプチャ経路がプログラムから設定する（`AI_OPTION_VALUES` への登録は不要。設定は両方の `config.json` の `ai/ai:tsumego` に直接置く）。
 
-**着手選択**: リージョン限定解析（ownership 付き）の候補手に対し、(1) 目数ガード `pointsLost <= min(pointsLost) + max_points_behind` を通し、(2) **リージョン内**の石の ownership 変化量の合計（gain）が最大の手を選ぶ。(3) gain 差が `gain_epsilon` 以内の手は同着とみなし pointsLost で決め、(4) pointsLost も `points_epsilon` 以内で並ぶ手は visits 最多（KataGo の本命）を採る。
+**着手選択**: リージョン限定解析（ownership 付き）の候補手に対し、(1) 目数ガード `pointsLost <= min(pointsLost) + max_points_behind` を通し、(2) **リージョン内**の石の ownership 変化量の合計（gain）が最大の手を選ぶ。(3) gain 差が `gain_epsilon` 以内の手は同着とみなし pointsLost で決め、(4) pointsLost も `points_epsilon` 以内で並ぶ同着バンドでは、コウ経路でない手（`tie_ko_screen` 参照）→ visits 最多（KataGo の本命）の順で採る。
 
 **gain の集計範囲はリージョン内の石のみ**（`tsumego_gain_stones`）。枠は `put_outside` でリージョン外を「守り側の代償地帯＋攻め方の地」に配る設計で、その境目の石の ownership は詰碁の成否と**逆相関する counterweight** になる。全石で集計すると符号が反転し、守り側が生きる手が選ばれる（実測 2026-07-30: 枠内 −9.65 に対し枠外 +11.6 で合計 +2.90 になり誤答手が4/4で選ばれた）。リージョンが無い枠なしモードでは従来どおり全石。
 
@@ -109,6 +109,7 @@ humanモードの悪手フィルタ閾値はHumanStyleStrategyと同じBAD_MOVE_
 | max_points_behind | 2.0 | 最善手からの許容損失（目）。小さいと正解手を弾き、大きいと大損の手が入る |
 | gain_epsilon | 0.3 | gain の同着幅。root で死活が既に決着している局面では全候補の gain が ±0.03 のノイズに潰れ、選択がコイン投げになるため目数で決める。case B/C の実信号は 1.16 / 3.20 なので 0.3 では潰れない |
 | points_epsilon | 0.25 | **目数同着バンド**: gain 同着（gain_epsilon 内）の目数タイブレークで、この幅以内の目数差は同着とみなし visits 最多の手（KataGo の本命）を採る。実測 case J (2026-07-30): 正解 N10(v1175 pt-0.05) と別解 N11(v616 pt-0.07) が gain・目数とも 0.02 差で並び、ノイズのコイン投げで解答樹に無い別解を打って不正解（N11 も殺しは成立＝8000visits でも分離不能、同深さ検証も差 0.05 で無力）。解答樹の本線は KataGo の principal variation と一致しやすい（case J の正解10手は全て visits 最多手）。0.25 はノイズ（〜0.07）と目数タイブレークが守るべき最小の実信号（2026-07-29 の C12/D12 = 0.64 目差）の中間。0 で旧動作（目数最良のみ・同着バンドなし）。A/B 回帰は points_tie_ab.py。バンド内の選択は score_best 同深さ検証の対象外（`tsumego_needs_score_best_verify`。等価な手は検証 margin 0.3 で分離できず必ず却下→目数最善へ巻き戻り、タイブレークが無効化されるため。GUI 実測で再発）。実 generate_move の E2E は generate_move_e2e.py |
+| tie_ko_screen | true | **同着バンドのコウ検査**: バンド（gain 同着 ∩ 目数同着）が2手以上のとき、各候補（visits 降順トップ4=`TSUMEGO_TIE_KO_MAX_CANDIDATES`）を1手進めてリージョン限定 gain_verify_visits で解析し、守り方の最善応手 PV がリージョン内のコウ形（1子取り・取った石が呼吸点1・取り返しがコウ禁止）に到達する候補を格下げする（`tsumego_pv_reaches_region_ko`、PV深さ6=`TSUMEGO_TIE_KO_PLIES`）。バンド内の選択順は (1)コウ経路でない → (2)visits → (3)目数 → (4)gain ＝詰碁の順序 無条件 > コウ のバンド内適用。実測 case K: コウで殺す A12 と無条件の C13 が gain・目数とも同着になり visits タイブレークが A12 を選んで不正解。クラス差はスコアに出ず（KataGo はコウも勝ちと読み切る）、親 PV にも出ない（守り方が枠へ手抜き）。リージョン子局面の応手 PV にだけ現れる（A11→B11 コウ形、3/3 run 安定）。リージョン外のコウ形は枠格子の偶発物なので数えない。E2E 回帰は generate_move_e2e.py（case K: C13 3/3 / case J 回帰: N10 3/3） |
 | gain_min_visit_ratio | 0.5 | **深さゲート**: gain で目数最善手を覆せるのは、その手の visits の この割合以上探索された候補だけ。gain は1本の root 探索の movesOwnership から取るので候補ごとに探索深さが違い、root が飽和した局面では浅い手ほど ownership が 0 方向へドリフトして片側ノイズになる（実測 case F: 同じ N7 が 214-307visits で +2.70〜+9.10、637visits で +0.06 に消える）。実測比は誤答 0.31/0.11 に対し case D の正解 1.00。0 でゲート無効 |
 | gain_verify | true | **同深さ検証**: gain が目数最善手を覆すとき、両者の子局面を同 visits で解析し直して対象石 ownership を絶対値で比較する（別クエリ同士は root 基準が揃わないので gain 差分は使えない）。実測 case F: N8 −26.60 > N7 −26.91 で正解が残る |
 | gain_verify_visits | 800 | 同深さ検証の visits。覆す判断が出たときだけ2本走るので +1〜2秒 |
