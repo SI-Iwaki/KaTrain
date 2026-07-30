@@ -774,17 +774,19 @@ class KaTrainGui(Screen, KaTrainBase):
         どの枠でも手番側（解く側）の本体石が開始時点で死と読まれる場合は None を返し、呼び出し側が
         枠なしで出題する。必ず正解手がある詰碁で開始時点から全滅はあり得ないので、それは枠が問題を
         壊しているサイン。枠バランスでは検出できない（`frame_destroys_problem` の説明を参照）。
+        ただし死と出た枠はそのまま捨てず、frame_validity_visits で読み直して確かめる（生き問題は
+        手番側の石そのものが戦いの対象なので、trial visits では有効な枠も死と読まれる）。
         """
         from katrain.core.tsumego_frame import (
             FRAME_BALANCE_WARN_DISTANCE,
+            FRAME_VALIDITY_VISITS,
             frame_balance_distance,
-            frame_destroys_problem,
+            frame_validity_verdicts,
             offence_to_win,
             pick_balanced_frame,
             solver_core_points,
             tsumego_frame_board,
         )
-        from katrain.core.utils import var_to_grid
 
         candidates = []
         for ko_p in (bool(ko), not ko):
@@ -804,35 +806,50 @@ class KaTrainGui(Screen, KaTrainBase):
             trial_visits = int(settings.get("frame_ko_trial_visits", 400))
         except (TypeError, ValueError):
             trial_visits = 400
-        scored, destroyed = [], []
-        for ko_p, board, region in candidates:
-            lead, ownership = self._tsumego_frame_trial(board, komi, region, trial_visits, settings)
+        try:
+            validity_visits = int(settings.get("frame_validity_visits", FRAME_VALIDITY_VISITS))
+        except (TypeError, ValueError):
+            validity_visits = FRAME_VALIDITY_VISITS
+
+        def read(candidate, visits):
+            """枠候補の root スコアと手番側の本体石 ownership を測ってログに出す"""
+            ko_p, board, region = candidate
             stones = solver_core_points(grid, board, region)
-            own_grid = var_to_grid(ownership, (len(board[0]), len(board))) if ownership else None
-            solver_own = sum(own_grid[y][x] for x, y in stones) if own_grid else None
-            self.log(
-                f"tsumego_capture: 枠バランス試算 ko={ko_p}: "
-                f"root={'解析失敗' if lead is None else f'{lead:+.2f}目'}"
-                + (
-                    ""
-                    if solver_own is None
-                    else f" / 手番側の本体石{len(stones)}子={solver_own:+.2f}"
-                    f"（{solver_own / max(1, len(stones)):+.2f}/子）"
-                ),
-                OUTPUT_INFO,
+            lead, solver_own = self._tsumego_frame_solver_reading(
+                board, komi, region, visits, settings, stones, f"ko={ko_p}", retry=visits != trial_visits
             )
-            if solver_own is not None and frame_destroys_problem(solver_own, len(stones)):
-                destroyed.append(ko_p)
+            return lead, solver_own, len(stones)
+
+        scored, destroyed = [], []
+        verdicts = frame_validity_verdicts(candidates, read, trial_visits, validity_visits)
+        for verdict in verdicts:
+            if len(verdict.readings) > 1:  # 浅い読みで死と出て読み直した枠だけ結論を明示する
+                self.log(
+                    f"tsumego_capture: 枠(ko={verdict.ko_p})の採否は{verdict.visits}visitsの読みで"
+                    f"{'壊れ' if verdict.destroys else '有効（枠を使います）'}",
+                    OUTPUT_INFO,
+                )
+            if verdict.destroys:
+                destroyed.append(verdict.ko_p)
                 continue
-            scored.append((ko_p, board, region, lead))
+            scored.append((verdict.ko_p, verdict.board, verdict.region, verdict.lead))
         if not scored:
+            rescued = self._tsumego_frame_beats_frameless(grid, komi, settings, verdicts, validity_visits)
+            if rescued is None:
+                self.log(
+                    f"tsumego_capture: 枠(ko={'/'.join(str(k) for k in destroyed)})では手番側の石が開始時点で"
+                    f"死と読まれます。必ず正解手がある詰碁でこれは起こり得ないので、枠が問題を壊していると"
+                    f"判断して枠なしで出題します",
+                    OUTPUT_INFO,
+                )
+                return None
             self.log(
-                f"tsumego_capture: 枠(ko={'/'.join(str(k) for k in destroyed)})では手番側の石が開始時点で"
-                f"死と読まれます。必ず正解手がある詰碁でこれは起こり得ないので、枠が問題を壊していると"
-                f"判断して枠なしで出題します",
+                f"tsumego_capture: どの枠も壊れ判定ですが、枠なし盤のほうが手番側の石を死と読むため"
+                f"（{rescued.ownership / max(1, rescued.stone_count):+.2f}/子 の ko={rescued.ko_p} を採用）"
+                f"枠を使います",
                 OUTPUT_INFO,
             )
-            return None
+            scored = [(rescued.ko_p, rescued.board, rescued.region, rescued.lead)]
         best = pick_balanced_frame(scored)
         if best is None:
             return scored[0][1], scored[0][2]
@@ -851,6 +868,42 @@ class KaTrainGui(Screen, KaTrainBase):
                 OUTPUT_INFO,
             )
         return best[1], best[2]
+
+    def _tsumego_frame_beats_frameless(self, grid, komi, settings, verdicts, visits):
+        """全枠が壊れ判定のとき、枠なし盤より手番側の本体石が生きている枠があれば返す。
+
+        枠なしは安全側のフォールバックではない（リージョン外が丸ごと相手の地になる）ので、
+        捨てる先を測ってから捨てる。実測 case N: 枠なし -0.75/子 に対し有効な枠は +0.42〜+0.95/子
+        """
+        from katrain.core.tsumego_frame import frame_over_frameless, solver_core_points
+
+        board, region = self._tsumego_frameless_board(grid, settings)
+        stones = solver_core_points(grid, board, region)
+        _lead, solver_own = self._tsumego_frame_solver_reading(
+            board, komi, region, visits, settings, stones, "枠なし"
+        )
+        return frame_over_frameless(verdicts, solver_own, len(stones))
+
+    def _tsumego_frame_solver_reading(self, board, komi, region, visits, settings, stones, label, retry=False):
+        """盤の root スコアと「手番側の本体石」ownership 合計を測ってログに出す。取れなければ None"""
+        from katrain.core.utils import var_to_grid
+
+        lead, ownership = self._tsumego_frame_trial(board, komi, region, visits, settings)
+        own_grid = var_to_grid(ownership, (len(board[0]), len(board))) if ownership else None
+        solver_own = sum(own_grid[y][x] for x, y in stones) if own_grid else None
+        self.log(
+            f"tsumego_capture: 枠バランス試算 {label}"
+            + (f"（{visits}visits で読み直し）" if retry else "")
+            + f": root={'解析失敗' if lead is None else f'{lead:+.2f}目'}"
+            + (
+                ""
+                if solver_own is None
+                else f" / 手番側の本体石{len(stones)}子={solver_own:+.2f}"
+                f"（{solver_own / max(1, len(stones)):+.2f}/子）"
+            ),
+            OUTPUT_INFO,
+        )
+        return lead, solver_own
 
     def _tsumego_frameless_board(self, grid, settings):
         """枠なしで出題する盤とリージョン。認識結果そのままで1子も書き換えない"""

@@ -1,3 +1,5 @@
+from collections import namedtuple
+
 from katrain.core.game_node import GameNode
 from katrain.core.sgf_parser import Move
 
@@ -115,6 +117,100 @@ FRAME_BALANCE_WARN_DISTANCE = 8.0
 # 来たため（case F の ko=False 枠）。0 だと run ごとに符号が反転して枠採否が入れ替わる
 FRAME_SOLVER_ALIVE_OWNERSHIP = 0.5
 
+# 上の判定で「死」と出た枠を捨てる前に読み直す深さ。生き問題では手番側の石そのものが戦いの
+# 対象なので、浅い読みでは有効な枠も死と出る。実測 2026-07-30 case N（黒番の生き・有効な枠）の
+# 1子平均、**プロセスを分けた独立サンプル**（同一プロセスの再クエリは探索木が再利用されて
+# 独立にならない。engine 起動を挟んで測ること）:
+#
+#     400visits   -0.69 / -0.80 / -0.98                      … 全部「死」＝枠を捨てる
+#    1800visits   +0.95 +0.93 +0.78 +0.92 +0.42 -0.02 -0.08 -0.23 -0.95  … 二峰性でコイン投げ
+#    6000visits   +0.96 / +0.98 / +0.99 / +1.00              … 生きで安定
+#
+# 一方、本当に壊れている枠は深くすると**より明確に死ぬ**（case F ko=False: 1800 で -0.72〜-0.85
+# → 6000 で -0.93/-0.95、case G: どの深さでも -0.98）。つまり深さは正常な枠だけを救う。
+# 6000visits の追加コストは 1候補あたり約 4〜8 秒で、支払うのは捨てる寸前の枠だけ
+FRAME_VALIDITY_VISITS = 6000
+
+# 「壊れている」と判定された枠を、それでも枠なしより残すべきかの差（手番側コアの1子平均）。
+# 実測 2026-07-30（読み直しと同じ 6000visits。枠は ko の2通り、枠なしは frameless_region）:
+#   case F -0.92〜-0.96 / -0.94〜-0.95 vs 枠なし -0.64   → 枠なしが上（従来どおり枠を捨てる）
+#   case G -0.98 / -0.99                vs 枠なし -0.68   → 同上
+#   case N +0.80〜+0.99 / -0.99         vs 枠なし -0.77   → 枠が 1.5 以上上回る
+# 残すべき側（+1.5〜）と落とすべき側（-0.26〜-0.32）の間で、run 間分散を吸収できる 0.5
+FRAME_OVER_FRAMELESS_MARGIN = 0.5
+
+
+def frame_solver_verdict(readings, stone_count, threshold=FRAME_SOLVER_ALIVE_OWNERSHIP):
+    """手番側の本体石の読み [(visits, solver_ownership), ...] から枠の採否を裁定する。
+
+    最も深い読み（visits 最大・同数なら後の読み）だけで判定する。浅い読みは深い読みが
+    取れなかったときの保険で、取れているなら混ぜない（平均すると浅いノイズが復活する）。
+    ownership が None の読み（解析失敗）は無かったものとして扱うので、深い読み直しに
+    失敗した場合は浅い読みの判定＝枠を捨てる（現行動作）に落ちる。
+
+    returns (詰碁を壊しているか, 判定に使った visits, 判定に使った ownership)
+    """
+    usable = [(visits, own) for visits, own in readings if own is not None]
+    if not usable:
+        return False, None, None  # 読めていない枠は判定できない（frame_destroys_problem と同じ扱い）
+    visits, own = sorted(usable, key=lambda reading: reading[0])[-1]  # 安定ソート＝同 visits なら後の読み
+    return frame_destroys_problem(own, stone_count, threshold), visits, own
+
+
+FrameVerdict = namedtuple("FrameVerdict", "ko_p board region lead destroys visits ownership stone_count readings")
+
+
+def frame_validity_verdicts(candidates, read, trial_visits, validity_visits=FRAME_VALIDITY_VISITS):
+    """枠候補 [(ko_p, board, region), ...] を「詰碁を壊していないか」で裁定して FrameVerdict を返す。
+
+    read(candidate, visits) -> (root_score_lead, solver_ownership, stone_count) は呼び出し側が
+    与える（解析とログは呼び出し側の仕事。この関数は解析の深さの使い分けだけを決める）。
+
+    浅い読み（trial_visits）で死と出た枠は**捨てる前に validity_visits で読み直す**。捨てた先の
+    枠なしは安全側ではないので、浅いノイズで枠を手放してはいけない（`FRAME_VALIDITY_VISITS`）。
+    生きている枠は読み直さないので、追加コストを払うのは捨てる寸前の枠だけ。
+    lead は判定に使った読みの値（深い読みが取れなければ浅い方）。
+    """
+    verdicts = []
+    for candidate in candidates:
+        ko_p, board, region = candidate
+        lead, own, n_stones = read(candidate, trial_visits)
+        readings = [(trial_visits, own)]
+        destroys, visits, used_own = frame_solver_verdict(readings, n_stones)
+        if destroys and validity_visits > trial_visits:
+            deep_lead, deep_own, n_stones = read(candidate, validity_visits)
+            readings.append((validity_visits, deep_own))
+            if deep_lead is not None:
+                lead = deep_lead  # バランス判定も深い読みの方が確か
+            destroys, visits, used_own = frame_solver_verdict(readings, n_stones)
+        verdicts.append(FrameVerdict(ko_p, board, region, lead, destroys, visits, used_own, n_stones, readings))
+    return verdicts
+
+
+def frame_over_frameless(verdicts, frameless_ownership, frameless_stone_count, margin=FRAME_OVER_FRAMELESS_MARGIN):
+    """全枠が「壊れている」判定でも、枠なし盤より手番側コアが明確に生きている枠があれば返す。
+
+    枠なしは安全側のフォールバックではない。リージョン外が丸ごと相手の地になるので、枠より
+    激しく詰碁を壊すことがある（実測 2026-07-30 case N: 枠なし -0.75/子 に対し有効な枠は
+    +0.96〜+1.00/子）。逆に枠が本当に壊れている case F/G は枠 -0.92〜-0.99/子 に対し枠なしが
+    -0.63〜-0.65/子 と上回るので、従来どおり枠なしに落ちる。
+
+    比較は1子平均（盤ごとに対象石数が違いうる）。差が margin 未満なら枠を残さない。
+    枠なしを読めなかった場合は比較しない＝従来動作（枠を捨てる）に落ちる。
+
+    `FRAME_VALIDITY_VISITS`(6000) で読み直すようになった後は、この比較が結論を変える実測ケースは
+    無い（case N は「生き」で安定して usable 側に出る）。1800visits 時代には -0.23/-0.08 と出た
+    run をこれが拾って正解にしていた（3run 中 2）ので、深く読んでもなお死と出る難問への保険。
+    """
+    if frameless_ownership is None:
+        return None
+    frameless_average = frameless_ownership / max(1, frameless_stone_count)
+    usable = [v for v in verdicts if v.ownership is not None and v.stone_count]
+    if not usable:
+        return None
+    best = max(usable, key=lambda v: v.ownership / v.stone_count)
+    return best if best.ownership / best.stone_count - frameless_average > margin else None
+
 
 def solver_core_points(recognized, framed, region, player=BLACK):
     """枠の壁・充填を除いた「問題本体の手番側の石」の (x, y) 座標列（ownership 添字順）。
@@ -149,10 +245,11 @@ def frame_destroys_problem(solver_ownership, stone_count, threshold=FRAME_SOLVER
                                                         （枠ありは誤答 B13＝この判定の動機）
 
     非対称性に注意: 殺し問題では手番側の攻め石が壁と連絡して自明に +1.00 になるので判定は
-    安全だが、生き問題では手番側の石自体が戦いの対象なので、難問をエンジンが trial visits で
-    読み切れないと ownership が下がり、有効な枠でも枠なしに落ちうる（解ける生き問題なら最善で
-    生きる＝本来は生きと読まれるはず。下がるのは読み切れない場合だけ）。枠なしは実測4ケース
-    全てで正解しているため実害は小さいが、ログでどちらの経路になったか分かるようにしてある。
+    安全だが、生き問題では手番側の石自体が戦いの対象で、この判定は実質「エンジンがその詰碁を
+    解けたか」を聞いている。**浅い読みでは必ず死側に倒れる**ので、単発の読みでこの関数の結果を
+    信じてはいけない（`frame_validity_verdicts` 経由で `FRAME_VALIDITY_VISITS` の読み直しを通す）。
+    2026-07-30 case N はこの偽陽性で有効な枠を捨て、枠なし盤（root -75目・手番側コア -0.75/子）で
+    詰碁が消えて誤答した。**枠なしは安全側のフォールバックではない**（`frame_over_frameless`）。
     """
     if not stone_count:
         return False

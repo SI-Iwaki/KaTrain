@@ -57,6 +57,7 @@
         "frame_ko": false,
         "frame_ko_auto": true,
         "frame_ko_trial_visits": 400,
+        "frame_validity_visits": 6000,
         "maximize_on_capture": true,
         "auto_ai_black": true,
         "analysis_visits": 1800,
