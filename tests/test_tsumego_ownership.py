@@ -1,15 +1,18 @@
 import pytest
 
 from katrain.core.ai import (
+    TSUMEGO_GAIN_RESCUE_MARGIN,
     TSUMEGO_GAIN_VERIFY_MARGIN,
     TSUMEGO_KO_MARGIN,
     select_tsumego_move,
     tsumego_absolute_ownership,
     tsumego_already_succeeded,
+    tsumego_eligible_candidates,
     tsumego_gain_stones,
     tsumego_ko_beats_normal,
     tsumego_override_confirmed,
     tsumego_ownership_gain,
+    tsumego_rescue_candidate,
 )
 
 # var_to_grid は grid[y][x] を返し、配列は上の行(y降順)から詰まる。
@@ -342,3 +345,92 @@ def test_already_succeeded_boundary_is_the_frame_balance_point():
     assert tsumego_already_succeeded(0.01)
     # 閾値は設定で動かせる（枠が偏っている問題向けの逃げ道）
     assert not tsumego_already_succeeded(3.0, threshold=5.0)
+
+
+# --- 目数ガードの救済（rescue）: case G 2手目（枠なし盤）の実測 2026-07-30 ---
+# 枠なし盤では「殺し損ねても外の空き地で取り返せる」ため KataGo の目数差が圧縮され、
+# 正解 C13 の pointsLost が 1.56〜2.26 とガード帯（best+2.0）を挟んで揺れる＝コイン投げ。
+# 一方 gain はリージョン内の石だけで集計するので汚染されず C13 が +5.79〜+6.60 で断トツ。
+#
+#   実戦: C13(v276 pt+2.26 g+5.94) 足切り → B13(pt-0.00 g-4.06) を選択して不正解
+#   run0: C13(v290 pt+1.69 g+6.60) 足切り → B13   run1: C13(v287 pt+1.56 g+6.25) 通過 → C13
+#   run2: C13(v347 pt+1.60 g+5.79) 足切り → B13
+#   同深さ検証(800visits)は C13 が +8.81〜+8.88 で3run とも安定して勝つ
+#
+# そこでガードで足切りされた候補でも、gain が選択手を rescue_margin 超えて上回り、探索の
+# 深さが比較でき（visit比）、同深さ検証で確定した場合だけ採用する（検証なしでは採用しない）。
+
+RESCUE_ROOT = ZERO
+
+
+def _rescue_cands():
+    return [
+        # 目数最善（ガード内）だが gain は負 = 白を生かす手（B13 相当）
+        {"move": "B1", "pointsLost": 0.0, "visits": 266, "ownership": _own(x0_y0=-0.5)},
+        # ガード外（pt+2.26 > 2.0）だが gain 断トツ・visits 同等（C13 相当）
+        {"move": "C1", "pointsLost": 2.26, "visits": 276, "ownership": _own(x0_y0=0.7, x1_y1=0.6)},
+    ]
+
+
+def _rescue(cands, chosen, min_visits=10, ratio=0.5, margin=TSUMEGO_GAIN_RESCUE_MARGIN):
+    eligible = tsumego_eligible_candidates(cands, 2.0, min_visits)
+    return tsumego_rescue_candidate(
+        cands, eligible, chosen, RESCUE_ROOT, [(0, 0), (1, 1)], SIZE, +1, min_visits, ratio, margin
+    )
+
+
+def test_rescue_returns_the_guard_excluded_top_gain_candidate():
+    cands = _rescue_cands()
+    rescue = _rescue(cands, chosen=cands[0])
+    assert rescue is not None and rescue["move"] == "C1"
+
+
+def test_rescue_requires_comparable_visits():
+    # 探索の浅い候補の gain は片側ノイズ（case F: N7 v205/847=0.24 が +4.87 を出した）。
+    # ガード外の救済でも同じ深さゲートを課す
+    cands = _rescue_cands()
+    cands[1]["visits"] = 100  # 100/266 = 0.38 < 0.5
+    assert _rescue(cands, chosen=cands[0]) is None
+
+
+def test_rescue_requires_min_visits():
+    cands = _rescue_cands()
+    cands[1]["visits"] = 5
+    assert _rescue(cands, chosen=cands[0]) is None
+
+
+def test_rescue_requires_clear_gain_margin():
+    # gain 差が margin 以下なら救済しない（ノイズで頻繁に同深さ検証を撃たないため）
+    cands = _rescue_cands()
+    cands[1]["ownership"] = _own(x0_y0=-0.5 + 0.9)  # 差 +0.9 < margin 1.0
+    assert _rescue(cands, chosen=cands[0]) is None
+
+
+def test_rescue_ignores_candidates_already_eligible():
+    # ガード内の候補は通常の gain 争いで評価済み。救済の対象はガード外だけ
+    cands = _rescue_cands()
+    cands[1]["pointsLost"] = 1.0  # ガード内に入る
+    assert _rescue(cands, chosen=cands[0]) is None
+
+
+def test_rescue_skips_candidates_without_ownership():
+    cands = _rescue_cands()
+    cands[1].pop("ownership")
+    assert _rescue(cands, chosen=cands[0]) is None
+
+
+def test_rescue_skips_visit_gate_without_visit_info():
+    # visits 情報の無い解析結果では深さゲートをかけない（tsumego_gain_contenders と同じ理由）
+    cands = _rescue_cands()
+    for c in cands:
+        c.pop("visits")
+    rescue = _rescue(cands, chosen=cands[0], min_visits=0)
+    assert rescue is not None and rescue["move"] == "C1"
+
+
+def test_rescue_picks_the_largest_gain_among_multiple():
+    cands = _rescue_cands() + [
+        {"move": "D1", "pointsLost": 2.5, "visits": 300, "ownership": _own(x0_y0=1.0, x1_y1=1.0)},
+    ]
+    rescue = _rescue(cands, chosen=cands[0])
+    assert rescue is not None and rescue["move"] == "D1"

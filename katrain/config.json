@@ -169,6 +169,7 @@
             "gain_verify": true,
             "gain_verify_visits": 800,
             "gain_verify_margin": 0.3,
+            "gain_rescue_margin": 1.0,
             "ko_win_assumption": true,
             "ko_win_visits": 800,
             "ko_win_margin": 5.0,

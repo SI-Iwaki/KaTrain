@@ -1893,6 +1893,59 @@ def tsumego_gain_contenders(eligible, score_best, min_visit_ratio):
     return [c for c in eligible if c is score_best or c.get("visits", 0) >= min_visit_ratio * ref]
 
 
+# 目数ガードの救済: ガード外の候補の gain が選択手をこれ以上上回っていたら同深さ検証にかける。
+# 実測 2026-07-30（case G 2手目、枠なし盤）: 枠なしでは「殺し損ねても外の空き地で取り返せる」
+# ため目数差が圧縮され、正解 C13 の pointsLost が 1.56〜2.26 とガード帯（best+2.0）を挟んで
+# 揺れる＝コイン投げで足切りされる。一方 gain はリージョン内の石だけの集計なので汚染されず、
+# C13 +5.79〜+6.60 vs 選択手 B13 -3.19〜-4.09 と差が約10で断トツ。同深さ検証（800visits）も
+# C13 が +8.81〜+8.88 で3run とも安定して勝つ。深いのに偽の gain を出す候補は視認されておらず
+# （深さゲート通過後の偽 gain は ≦0.7）、margin 1.0 で十分に分離できる
+TSUMEGO_GAIN_RESCUE_MARGIN = 1.0
+
+
+def tsumego_rescue_candidate(
+    candidates,
+    eligible,
+    chosen,
+    root_ownership,
+    stones,
+    board_size,
+    player_sign,
+    min_visits,
+    min_visit_ratio,
+    rescue_margin=TSUMEGO_GAIN_RESCUE_MARGIN,
+):
+    """目数ガードで足切りされた候補のうち、同深さ検証にかける価値のある手を返す（無ければ None）。
+
+    条件: (1) ガード外（eligible に居ない）で ownership がある (2) min_visits 以上かつ選択手と
+    探索の深さが比較できる（visit比 min_visit_ratio 以上。浅い候補の gain は片側ノイズ＝case F）
+    (3) gain が選択手を rescue_margin 超えて上回る。複数あれば gain 最大の手。
+
+    ここで返した手を**そのまま採用してはいけない**。ガード外は本当に大損な手も含むので、
+    呼び出し側が同深さ検証（`_verified_override`）で裏づけが取れたときだけ採用する。
+    """
+    if chosen is None or not chosen.get("ownership") or not root_ownership or not stones:
+        return None
+    eligible_moves = {c["move"] for c in eligible}
+    chosen_gain = tsumego_ownership_gain(root_ownership, chosen["ownership"], stones, board_size, player_sign)
+    ref = chosen.get("visits", 0)
+    best = None
+    for cand in candidates:
+        if cand["move"] in eligible_moves or not cand.get("ownership"):
+            continue
+        visits = cand.get("visits", 0)
+        if visits < min_visits:
+            continue
+        if ref and min_visit_ratio > 0 and visits < min_visit_ratio * ref:
+            continue
+        gain = tsumego_ownership_gain(root_ownership, cand["ownership"], stones, board_size, player_sign)
+        if gain <= chosen_gain + rescue_margin:
+            continue
+        if best is None or gain > best[0]:
+            best = (gain, cand)
+    return best[1] if best else None
+
+
 def select_tsumego_move(
     candidates,
     root_ownership,
@@ -1983,11 +2036,36 @@ class TsumegoOwnershipStrategy(AIStrategy):
             chosen = candidate_moves[0]
             gain_text = "ownership なし"
         else:
-            score_best = tsumego_score_best(
-                tsumego_eligible_candidates(candidate_moves, max_points_behind, min_visits)
-            )
+            eligible = tsumego_eligible_candidates(candidate_moves, max_points_behind, min_visits)
+            score_best = tsumego_score_best(eligible)
             if score_best is not None and chosen["move"] != score_best["move"]:
                 chosen = self._verified_override(chosen, score_best, stones, player_sign)
+            if (self.settings or {}).get("gain_verify", True):
+                # 目数ガードの救済: ガード外でも gain が明確に上回る手は同深さ検証にかける。
+                # 検証なしでは絶対に採用しない（ガード外は本当に大損な手も含むため）。
+                # 実測 case G 2手目: 枠なし盤で正解 C13 がガード帯を挟んで揺れて足切りされた
+                rescue_margin = float((self.settings or {}).get("gain_rescue_margin", TSUMEGO_GAIN_RESCUE_MARGIN))
+                rescue = tsumego_rescue_candidate(
+                    candidate_moves,
+                    eligible,
+                    chosen,
+                    self.cn.ownership,
+                    stones,
+                    self.game.board_size,
+                    player_sign,
+                    min_visits,
+                    min_visit_ratio,
+                    rescue_margin,
+                )
+                if rescue is not None:
+                    self.game.katrain.log(
+                        f"[{self.strategy_name}] ガード外救済: {rescue['move']}"
+                        f"(pointsLost={rescue['pointsLost']:+.2f}, visits={rescue.get('visits', 0)}) の "
+                        f"gain が選択手 {chosen['move']} を gain_rescue_margin={rescue_margin} 超えて"
+                        f"上回るため同深さ検証にかけます",
+                        OUTPUT_INFO,
+                    )
+                    chosen = self._verified_override(rescue, chosen, stones, player_sign, incumbent_label="選択手")
             gain = tsumego_ownership_gain(
                 self.cn.ownership, chosen["ownership"], stones, self.game.board_size, player_sign
             )
@@ -2037,8 +2115,8 @@ class TsumegoOwnershipStrategy(AIStrategy):
             OUTPUT_DEBUG,
         )
 
-    def _verified_override(self, challenger, score_best, stones, player_sign):
-        """gain が目数最善手を覆すときだけ、両者を同じ深さで測り直して裏づけを取る。
+    def _verified_override(self, challenger, score_best, stones, player_sign, incumbent_label="目数最善"):
+        """gain が現在の選択を覆すときだけ、両者を同じ深さで測り直して裏づけを取る。
 
         gain は1本の root 探索の movesOwnership から取るので候補ごとに探索の深さが違い、浅い手ほど
         ownership が未決着側へドリフトする（実測 case F: N7 が 214-307visits で +2.70〜+9.10、
@@ -2075,9 +2153,9 @@ class TsumegoOwnershipStrategy(AIStrategy):
         confirmed = tsumego_override_confirmed(challenger_value, best_value, margin)
         self.game.katrain.log(
             f"[{self.strategy_name}] 同深さ検証({visits}visits): {challenger['move']} {challenger_value:+.2f} "
-            f"vs 目数最善 {score_best['move']} {best_value:+.2f}"
+            f"vs {incumbent_label} {score_best['move']} {best_value:+.2f}"
             f"（差{challenger_value - best_value:+.2f} / gain_verify_margin={margin}）→ "
-            f"{'採用' if confirmed else '却下（目数最善に戻す）'}",
+            f"{'採用' if confirmed else f'却下（{incumbent_label}に戻す）'}",
             OUTPUT_INFO,
         )
         return challenger if confirmed else score_best
