@@ -126,9 +126,16 @@ humanモードの悪手フィルタ閾値はHumanStyleStrategyと同じBAD_MOVE_
 | region_wide_root_noise | 0.04 | root の探索の広げ方。0.0 だと探索が1手に集中し、正解手が 12〜29 visits で切り捨てられて「+14〜+21目損」と誤評価される（実測 8 trial 中 5 回）。0.04 で 7/8 が正解 |
 | frame_ko | false | コウダテ形を攻め方に与えるか（true=攻め方 / false=守り方）。問題の答えがコウかどうかで正解が変わる |
 | frame_ko_auto | true | ON でキャプチャ時に frame_ko の両方の枠を張り、root スコアが設計目標（攻め方成功=5目勝ち）に近い方を自動採用。正解がコウ止まりの問題は false 側だと守り側にコウダテが渡り白の無条件生きになる（実測 −23.0 vs +0.68）。バランス距離が `FRAME_BALANCE_TIE_MARGIN`(2.0目) 以内で拮抗する場合は攻め方コウダテ側(ko_p=True)を優先（僅差だとキャプチャごとに枠が入れ替わり誤答していた） |
-| frame_ko_trial_visits | 400 | 自動選択の試算 visits。400 で判別可能（実測 2本で約1.2秒） |
+| frame_ko_trial_visits | 400 | 自動選択の試算 visits。400 で判別可能（実測 2本で約1.2秒）。この試算の ownership を枠採否判定にも流用する（下記） |
 
-Spec: `docs/superpowers/specs/2026-07-29-tsumego-ownership-design.md`（誤答実測と ε・wRN 変更の経緯は「追記（2026-07-29）」）
+**枠の採否判定**（設定キーではなくコード定数。`tsumego_frame.py` / `__main__._choose_tsumego_frame`）:
+
+| 定数 | 値 | 備考 |
+|---|---|---|
+| FRAME_SOLVER_ALIVE_OWNERSHIP | 0.5 | 手番側の**本体石**（壁・充填を除く）の ownership 1子平均がこれ未満の枠は「詰碁を壊している」と判定して捨てる（`frame_destroys_problem`）。全候補が落ちたらその回だけ枠なしで出題。必ず正解手がある詰碁で開始時点から解く側が全滅はあり得ない、が根拠。実測: 正常枠 +1.00/子、壊れた枠 −0.09〜−0.99/子（case F/G）。0 だと −0.09 の枠が run ごとに採否反転するので 0.5。**枠バランス距離では検出できない**（攻め方推定が反転していても想定攻め方が成功するのでバランスは完璧に見える。case G: 距離 2.06 で過去最良なのに黒の攻め石全滅） |
+| FRAME_BALANCE_WARN_DISTANCE | 8.0 | 採用した枠のバランス距離がこれを超えたら警告ログ（絶対スコア判定が信用できない域）。判定には使わない |
+
+Spec: `docs/superpowers/specs/2026-07-29-tsumego-ownership-design.md`（誤答実測と ε・wRN 変更の経緯は「追記（2026-07-29）」、枠採否判定は「追記9（2026-07-30）」）
 
 ## AI一致率低減モード（DivergenceStrategy）
 

@@ -7,6 +7,7 @@
 | `case-d-gain-region-20260730.sgf` | 枠外の代償地帯が gain の符号を反転させた誤答局面（13路左下、正解 A4／別解 B3、旧実装は C3 で失敗）。region = `0,8,0,8`、対象は 4手目 |
 | `case-e-ko-margin-20260730.sgf` | コウ勝ち前提のマージンが小さすぎて無条件の正解を捨てた誤答局面（13路下辺、正解 K1、旧実装は L1 でコウにして失敗）。region = `3,12,0,8`、対象は 6手目 |
 | `case-f-gain-visit-share-20260730.sgf` | 探索の浅い候補の gain ノイズが正解を上回った誤答局面（13路右上、正解 N8、旧実装は N7 を選び白が生きた）。region = `4,12,3,12`、対象は 2手目。`gain_min_visit_ratio`（深さゲート）と `gain_verify`（同深さ検証）の回帰対象 |
+| `case-g-frame-role-20260730.sgf` | 枠が詰碁自体を消していた誤答局面（13路左上、正解は初手 A11 でコウ、旧実装は B13 で不正解）。region = `0,7,3,12`、対象は 1手目（初手）。`frame_destroys_problem` / `solver_core_points`（枠採否判定と枠なしフォールバック）の回帰対象 |
 
 ## 診断スクリプト
 
@@ -45,6 +46,21 @@ python docs/superpowers/specs/calibration-data/tsumego/ko_margin_ab.py <sgf> <mo
 
 現在の `ko_win_margin` で N 回走らせ、最後に `ko_win_margin=0.5`（旧既定）でも1回走らせて
 新旧を比較する。コウ判定ログ（通常最善・コウ勝ち前提・差・閾値）だけを抜き出して表示する。
+
+### `frame_validity_probe.py` — 枠が詰碁を壊していないか判定し、枠あり／枠なしを比較
+
+```bash
+python docs/superpowers/specs/calibration-data/tsumego/frame_validity_probe.py <sgf> <move_number> <xmin,xmax,ymin,ymax> <期待手csv> [trial_visits] [visits]
+# 例: ... case-g-frame-role-20260730.sgf 0 0,7,3,12 A11
+```
+
+引数の SGF は**枠を張った後の盤**（保存SGFのroot）。そこから本体（コア）石を復元し
+（4辺の壁の総当たり×攻め方×コウダテを再枠張りして元の盤に一致する組合せを採る）、
+枠候補ごとに「手番側の本体石が生きているか」（`frame_destroys_problem`）を判定した上で、
+**枠あり・枠なしそれぞれで `select_tsumego_move` が何を選ぶか**を出す。
+
+誤答報告が来たら最初にこれを回す。枠が詰碁を消していれば `DESTROYS the problem` が出る
+（＝選択則をいじっても無駄。実測 case G: 枠あり B13 NG / 枠なし A11 OK）。
 
 ## 注意
 

@@ -1,0 +1,7 @@
+(;GM[1]FF[4]CA[UTF-8]SZ[13]KM[7.0]PL[B]AB[ja][la][bb][cb][db][ib][kb][mb][ec][jc][lc][cd][dd][ed][id][kd][md][ce][je][le][cf][if][kf][mf][bg][cg][jg][lg][ih][kh][mh][ji][li][ij][kj][mj][ck][dk][ek][fk][hk][jk][lk][al][bl][cl][gl][il][kl][ml][bm][hm][jm][lm]AW[fa][ha][ab][eb][gb][hb][bc][cc][dc][fc][hc][bd][fd][hd][be][ee][he][ef][hf][dg][hg][dh][hh][bi][ci][hi][aj][bj][cj][dj][ej][fj][gj][hj][ak][bk][cm][dm]RU[chinese]AP[KaTrain:1.17.1]KTV[1.0]C[case G (2026-07-30): 枠が詰碁自体を消していた誤答局面（13路左上、黒番、正解は初手 A11 でコウ）。これは枠を張った後の盤＝実際に出題された盤で、region = 0,7,3,12。app の正解手順は A11 / W-A10 / C13 / W-E13 / A13 でコウ。AI は初手 B13 を打ち、白 D13 で殺すこともコウにすることも不可能になった。
+
+この枠では白の標的群（A12 B11 C11 D11 B10 B9）が +5.98/6 で完全に生存、黒の攻め石11子が -10.86/11 で全滅と読まれ、候補34手の目数差は 6000visits でも 0.05 目（A11 +0.00 / B13 +0.05）＝どの手も同値。選択則では原理的に当たらない。
+
+原因: guess_black_to_attack が役割を反転（この問題は図に白の外壁が描かれているため extrema が 4/4 とも白）。壁が白で張られ、黒の攻め石が封じ込められて死亡した。枠バランスは距離 2.13 で過去最良（19路に置き直しても 5.42）＝バランスでは検出できない。枠は「想定した攻め方が成功したら5目勝ち」に調整するので、役割が反転していても想定攻め方が実際に成功しバランスは完璧に見える。
+
+回帰対象: frame_destroys_problem / solver_core_points（枠採用時の trial 400visits で手番側の本体石が +0.5/子 未満なら枠を捨てて枠なしで出題）。本体（コア）石はこの盤から復元できる（リージョン内から壁の辺 xmax=H列・ymin=4行 を除く。復元したコアを再度枠張りすると black_attacks=False ko=True でこの盤に一致する）。枠なしで出題すると select_tsumego_move は A11 を選ぶ。frame_validity_probe.py で再現可能])
