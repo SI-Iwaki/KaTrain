@@ -1733,6 +1733,15 @@ TSUMEGO_GAIN_MIN_VISIT_RATIO = 0.5
 TSUMEGO_GAIN_VERIFY_VISITS = 800
 TSUMEGO_GAIN_VERIFY_MARGIN = 0.3
 
+# gain 同着（gain_epsilon 内）の目数タイブレークで、この幅以内の目数差は同着とみなし
+# visits 最多の手（KataGo の principal variation）を採る。実測 case J (2026-07-30):
+# 正解 N10(v1175 pt-0.05) と別解 N11(v616 pt-0.07) が 0.02 目差で並び、目数タイブレークが
+# ノイズで N11 を選んでアプリの解答樹に無い別解を打った（N11 も白を殺せている＝8000visits
+# でも分離不能、同深さ検証も差 0.05 で無力）。アプリの解答樹の本線は KataGo の本命手と
+# 一致しやすい（case J の正解10手はすべて visits 最多手）。0.25 はノイズ（〜0.07）と
+# 目数タイブレークが守るべき最小の実信号（2026-07-29 の C12/D12 = 0.64 目差）の中間
+TSUMEGO_POINTS_EPSILON = 0.25
+
 
 def tsumego_override_confirmed(challenger_value, score_best_value, margin):
     """同深さで測り直した対象石 ownership が、目数最善手を覆す判断を裏づけているか。
@@ -1968,6 +1977,7 @@ def select_tsumego_move(
     gain_epsilon=0.3,
     min_visits=10,
     gain_min_visit_ratio=TSUMEGO_GAIN_MIN_VISIT_RATIO,
+    points_epsilon=TSUMEGO_POINTS_EPSILON,
 ):
     """目数ガードを通した候補から ownership gain 最大の手を返す。選べなければ None。
 
@@ -1980,6 +1990,13 @@ def select_tsumego_move(
     対象石が既に決着している局面（KataGo が勝ちを読み切っている＝解答の途中では普通に起きる）
     では正解手でも gain が動かず、上位手の gain 差が ±0.03 のノイズに埋もれて選択が
     コイン投げになるため（実測 2026-07-29、4 run 中1回で誤答手を選択）。
+
+    その目数も points_epsilon 以内で並ぶなら visits 最多の手（KataGo の principal variation）を
+    採る。複数の手が同じ死活結果に到達する局面では目数差もノイズになり、コイン投げの先が
+    アプリの解答樹に無い「正しい別解」だと不正解になる（実測 case J 2026-07-30: N10/N11 が
+    gain・目数とも 0.02 差で並び N11 を選択。両手とも殺しは成立しており 8000visits でも
+    分離不能）。解答樹の本線は KataGo の本命手と一致しやすいので visits に寄せる。
+    別解自体は原理的に防げないため、これは的中率を上げるヒューリスティック。
 
     min_visits 未満の手は候補から外す。1visit の手の ownership・スコアは探索結果ではなく
     NN の生評価1回で、gain が実手の10〜100倍のノイズになる（実測 2026-07-30: 探索済みの手が
@@ -2003,7 +2020,9 @@ def select_tsumego_move(
         return None
     best_gain = max(scored_move[0] for scored_move in scored)
     finalists = [scored_move for scored_move in scored if best_gain - scored_move[0] <= gain_epsilon]
-    return max(finalists, key=lambda scored_move: (scored_move[1], scored_move[0]))[2]
+    best_points = max(scored_move[1] for scored_move in finalists)
+    band = [scored_move for scored_move in finalists if best_points - scored_move[1] <= points_epsilon]
+    return max(band, key=lambda scored_move: (scored_move[2].get("visits", 0), scored_move[1], scored_move[0]))[2]
 
 
 @register_strategy(AI_TSUMEGO)
@@ -2021,6 +2040,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
         gain_epsilon = (self.settings or {}).get("gain_epsilon", 0.3)
         min_visits = (self.settings or {}).get("min_visits", 10)
         min_visit_ratio = float((self.settings or {}).get("gain_min_visit_ratio", TSUMEGO_GAIN_MIN_VISIT_RATIO))
+        points_epsilon = float((self.settings or {}).get("points_epsilon", TSUMEGO_POINTS_EPSILON))
         stones = tsumego_gain_stones([s.coords for s in self.game.stones], self.game.region_of_interest)
         player_sign = self.cn.player_sign(self.cn.next_player)
         ko_move = self._pick_ko_win_move(candidate_moves, min_visits, player_sign)
@@ -2037,6 +2057,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
             gain_epsilon,
             min_visits,
             min_visit_ratio,
+            points_epsilon,
         )
         if chosen is None:
             # ownership が無い（_enable_ownership が false 等）。無言で劣化させず既定動作に戻す
@@ -2100,7 +2121,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
             f"候補{len(candidate_moves)}手, gain集計石{len(stones)}子, "
             f"max_points_behind={max_points_behind}, "
             f"gain_epsilon={gain_epsilon}, min_visits={min_visits}, "
-            f"gain_min_visit_ratio={min_visit_ratio})",
+            f"gain_min_visit_ratio={min_visit_ratio}, points_epsilon={points_epsilon})",
             OUTPUT_DEBUG,
         )
         return move, f"詰碁戦略: {len(candidate_moves)}手から {move.gtp()} を選択（{gain_text}）"

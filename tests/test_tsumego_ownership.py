@@ -122,6 +122,56 @@ def test_select_gain_epsilon_is_configurable():
     assert select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, gain_epsilon=1.0)["move"] == "A1"
 
 
+def test_select_points_tie_prefers_most_searched():
+    """gain も目数もノイズ同着なら visits 最多（KataGo の本命）を採る。
+
+    実測 case J (2026-07-30, 13路詰碁 11手目): 正解 N10(v1175 pt-0.05 g+0.00) と
+    別解 N11(v616 pt-0.07 g-0.02) が gain・目数とも 0.02 差の完全同着になり、
+    目数タイブレークがノイズで N11 を選んでアプリの解答樹に無い別解を打った。
+    両手とも白を殺せている（8000visits でも lead +5.5 / 白11子全滅で分離不能、
+    同深さ検証も +43.97 vs +43.92 で margin 0.3 に遠く及ばない）ので、
+    解答樹の本線と一致しやすい principal variation（visits 最多手）に寄せる。
+    この対局の正解10手はすべて visits 最多手だった。
+    """
+    cands = [
+        {"move": "N10", "pointsLost": -0.05, "visits": 1175, "ownership": ZERO},
+        {"move": "N11", "pointsLost": -0.07, "visits": 616, "ownership": _own(x0_y0=-0.02)},
+    ]
+    chosen = select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0)
+    assert chosen["move"] == "N10"
+
+
+def test_select_real_points_gap_still_decides_by_points():
+    # 目数差が points_epsilon を超える実信号（2026-07-29 の C12/D12 は 0.64 目差）なら
+    # visits が少なくても従来どおり目数で決める
+    cands = [
+        {"move": "C12", "pointsLost": -0.31, "visits": 600, "ownership": ZERO},
+        {"move": "D12", "pointsLost": 0.33, "visits": 1100, "ownership": _own(x0_y0=0.003)},
+    ]
+    chosen = select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0)
+    assert chosen["move"] == "C12"
+
+
+def test_select_points_epsilon_is_configurable():
+    cands = [
+        {"move": "N10", "pointsLost": -0.05, "visits": 1175, "ownership": ZERO},
+        {"move": "N11", "pointsLost": -0.07, "visits": 616, "ownership": _own(x0_y0=-0.02)},
+    ]
+    # 0 で現行動作（目数最良のみ。同着バンドなし）
+    assert select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, points_epsilon=0.0)["move"] == "N11"
+    assert select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, points_epsilon=0.25)["move"] == "N10"
+
+
+def test_select_points_tie_without_visit_info_keeps_points_order():
+    # visits の無い解析結果（テスト等）ではバンド内でも従来どおり目数で決める
+    cands = [
+        {"move": "A1", "pointsLost": 0.1, "ownership": ZERO},
+        {"move": "B1", "pointsLost": 0.0, "ownership": _own(x0_y0=0.01)},
+    ]
+    chosen = select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0)
+    assert chosen["move"] == "B1"
+
+
 def test_select_returns_none_without_ownership():
     # ownership が取れない場合は None（呼び出し側が candidate_moves[0] にフォールバックする）
     cands = [{"move": "A1", "pointsLost": 0.0}, {"move": "B1", "pointsLost": 1.0}]

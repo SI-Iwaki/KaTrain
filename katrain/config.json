@@ -164,6 +164,7 @@
         "ai:tsumego": {
             "max_points_behind": 2.0,
             "gain_epsilon": 0.3,
+            "points_epsilon": 0.25,
             "min_visits": 10,
             "gain_min_visit_ratio": 0.5,
             "gain_verify": true,
