@@ -2315,20 +2315,49 @@ def tsumego_class_screen_pool(chosen, eligible, max_candidates=TSUMEGO_TIE_KO_MA
     return [chosen] + rivals[: max(0, max_candidates - 1)]
 
 
-def tsumego_declass_choice(chosen, pool, ko_routes):
+def tsumego_declass_choice(chosen, pool, ko_routes, points_epsilon=TSUMEGO_POINTS_EPSILON):
     """選択手がコウ経路なら、pool の clean な対抗馬（visits 最多、次いで目数）に格下げする。
 
     詰碁の正解順序 無条件 > コウ の適用。gain・目数・同深さ検証はすべて「コウに勝った」
     前提のスコアを含むためクラスを分離できず（実測 case K: 0.1 目差 / case M: 検証 +1.29 で
     コウ側を追認）、分離できるのは到達局面の構造検出（ko_routes）だけ。全員コウ経路
     （＝同じクラス）や clean な対抗馬が居ない場合は選択手を維持する。
+
+    **ただし格下げ先は同着バンド（`points_epsilon`）内に限る**。クラス裁定は同着の裁定で
+    あって、実測の目数差を覆す権限は無い。「無条件」は「詰碁と無関係で何も起きないので
+    自明に clean」でも成立してしまい、**答えがコウの詰碁では ply1 に成否が現れない**ので
+    格下げ先が本物かを ownership で検算することもできない（実測 case R 2026-07-31、13路上辺
+    枠なし・正解 G13→白 J12→黒 J13 のコウ: 同深さ800visits の全リージョン石 ownership は
+    正解 G13 +0.86/+0.97 に対し誤答 D8 +1.32/+2.34 と**誤答のほうが高く**、相手石は全候補で
+    −0.55〜−0.72＝どの手でも白は生きている。`tsumego_ko_escape_accepts` を流用しても
+    D8 は素通りする）。
+
+    符号が一貫している唯一の指標は目数だった。格下げが正しかった実測4ケースは格下げ先が
+    例外なく目数で**優る**（K −0.05 / L −0.11 / M −0.57 / P −0.03）のに対し、case R の D8 は
+    +0.52 劣る。無条件の正解がコウ手より目数で下に出るのは「コウに勝った前提」の下駄ぶん
+    （実測 case O の同深さ ownership で 0.10）なので、同着バンド幅で足りる。
     """
     if chosen["move"] not in ko_routes:
         return chosen
-    clean = [c for c in pool if c["move"] not in ko_routes]
+    clean = [
+        c
+        for c in pool
+        if c["move"] not in ko_routes and c["pointsLost"] - chosen["pointsLost"] <= points_epsilon
+    ]
     if not clean:
         return chosen
     return max(clean, key=lambda c: (c.get("visits", 0), -c["pointsLost"]))
+
+
+def tsumego_class_screen_all_ko(pool, ko_routes):
+    """検査した pool が全員コウ経路か＝コウ脱出（`_ko_escape_choice`）のトリガー。
+
+    脱出の前提は「到達できる手が全部コウなら、無条件の正解はプールの外にいる」（case O）。
+    **「格下げしなかった」を代わりに使ってはいけない** — 目数で劣る clean 手が居るために
+    格下げを断った場合（case R）は前提が偽で、成否と無関係な ownership で root policy の
+    上位を拾って的外れな手に飛ぶ。格下げを断った理由を区別するための述語。
+    """
+    return all(c["move"] in ko_routes for c in pool)
 
 
 # コウ一色バンドからの脱出。選択手も目数ガード内の対抗馬も**全部**コウ経路だったとき、その事実
@@ -2514,7 +2543,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
                 pool = tsumego_class_screen_pool(chosen, eligible)
                 if len(pool) >= 2 and self._ko_route_screen([chosen]):
                     ko_routes = frozenset({chosen["move"]}) | self._ko_route_screen(pool[1:])
-                    declassed = tsumego_declass_choice(chosen, pool, ko_routes)
+                    declassed = tsumego_declass_choice(chosen, pool, ko_routes, points_epsilon)
                     if declassed["move"] != chosen["move"]:
                         self.game.katrain.log(
                             f"[{self.strategy_name}] コウ経路検査: 選択手 {chosen['move']} を格下げし、"
@@ -2522,7 +2551,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
                             OUTPUT_INFO,
                         )
                         chosen = declassed
-                    else:
+                    elif tsumego_class_screen_all_ko(pool, ko_routes):
                         # 目数ガード内が全部コウ＝正解（無条件）は候補プールの外にいる、という信号。
                         # root policy の上位から探し直す（`_ko_escape_choice`）
                         self.game.katrain.log(
@@ -2532,6 +2561,21 @@ class TsumegoOwnershipStrategy(AIStrategy):
                         )
                         chosen, escape_value = self._ko_escape_choice(
                             chosen, candidate_moves, {c["move"] for c in pool}, stones, player_sign
+                        )
+                    else:
+                        # clean な対抗馬は居るが同着バンドの外＝答えがコウの詰碁（case R）。
+                        # 脱出も前提が偽なので走らせない（`tsumego_class_screen_all_ko` 参照）
+                        self.game.katrain.log(
+                            f"[{self.strategy_name}] コウ経路検査: 選択手 {chosen['move']} はコウ経路だが、"
+                            f"clean な対抗馬 "
+                            + " ".join(
+                                f"{c['move']}(pt{c['pointsLost']:+.2f})"
+                                for c in pool
+                                if c["move"] not in ko_routes
+                            )
+                            + f" は目数同着バンド（points_epsilon={points_epsilon}）の外なので格下げしません"
+                            f"（答えがコウの詰碁）",
+                            OUTPUT_INFO,
                         )
             if escape_value is not None:
                 # 脱出で採った手の root ownership は 1visit の生評価なので gain を出しても意味がない

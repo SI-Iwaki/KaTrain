@@ -1,0 +1,2 @@
+(;GM[1]FF[4]CA[UTF-8]SZ[13]KM[7.0]PL[B]RU[chinese]AB[ea][ja][cb][db][hb][ec][fc][lc][fd][gd][id][jd][kd][ld][gf]AW[ca][bb][gb][lb][mb][bc][cc][dc][hc][ic][jc][kc][ed][ee]C[case R (2026-07-31, 13路上辺・枠なし・初手): 正解は B G13 → W J12 → B J13 でコウ。旧実装はコウ経路検査が正しく G13 をコウと判定した上で、詰碁と無関係な clean 手 D8 に格下げして不正解。region = 0,12,7,12]
+;B[ga];W[ib];B[ia])

@@ -9,6 +9,7 @@ from katrain.core.ai import (
     TSUMEGO_KO_REGION_UNTIL_DEPTH,
     TSUMEGO_TIE_KO_PLIES,
     select_tsumego_move,
+    tsumego_class_screen_all_ko,
     tsumego_class_screen_pool,
     tsumego_competitive_replies,
     tsumego_declass_choice,
@@ -217,6 +218,58 @@ def test_declass_covers_gain_separated_ko_choice():
     k1 = {"move": "K1", "pointsLost": -0.06, "visits": 1316, "ownership": ZERO}
     chosen = tsumego_declass_choice(m2, [m2, k1], frozenset({"M2"}))
     assert chosen["move"] == "K1"
+
+
+def test_declass_does_not_demote_to_a_score_inferior_clean_rival():
+    """クラス裁定は同着の裁定であって、実測の目数差を覆す権限は無い。
+
+    実測 case R (2026-07-31, 13路上辺・**枠なし**・初手): 正解は G13 → 白 J12 → 黒 J13 で
+    コウにする問題で、G13 は目数最善（pt+0.03 v1345）。旧実装はコウ経路検査が G13 を
+    正しくコウと判定した上で、詰碁と無関係な clean 手 D8（pt+0.55 v288）へ格下げして誤答した。
+
+    **「無条件」は「何も起きないので自明に clean」でも成立してしまう**のに、格下げ先が本当に
+    成功しているかは ply1 では測れない。実測（`class_screen_probe.py` 2run・同深さ800visits）:
+
+        G13(正解/コウ) value +0.86/+0.97   自石 +0.71/+0.72  相手石 -0.70/-0.71
+        D8 (誤答/clean) value +1.32/+2.34   自石 +0.76/+0.79  相手石 -0.72/-0.68
+
+    ＝ownership は**誤答のほうが高く**、相手石は全候補で −0.55〜−0.72（どの手でも白は生きて
+    いる＝答えがコウの問題では ply1 に成否が現れない）。`_ko_escape_choice` の採用検査
+    （`tsumego_ko_escape_accepts`）をこちらに流用しても D8 は素通りする。
+
+    唯一符号が一貫しているのは目数で、格下げが正しかった実測4ケースでは格下げ先が例外なく
+    目数で**優る**（K −0.05 / L −0.11 / M −0.57 / P −0.03）のに対し case R の D8 は +0.52 劣る。
+    同着バンド幅 `points_epsilon` を超えて劣る手には格下げしない（両側 0.26 以上の余裕）。
+    """
+    g13 = {"move": "G13", "pointsLost": 0.03, "visits": 1345, "ownership": ZERO}
+    d8 = {"move": "D8", "pointsLost": 0.55, "visits": 288, "ownership": ZERO}
+    j13 = {"move": "J13", "pointsLost": 0.93, "visits": 53, "ownership": ZERO}
+    chosen = tsumego_declass_choice(g13, [g13, d8, j13], frozenset({"G13"}), points_epsilon=0.25)
+    assert chosen["move"] == "G13"
+
+
+def test_declass_points_tolerance_boundary():
+    # 同着バンド（points_epsilon）以内なら従来どおり格下げする
+    ko = {"move": "A1", "pointsLost": 0.0, "visits": 100, "ownership": ZERO}
+    inside = {"move": "B1", "pointsLost": 0.25, "visits": 50, "ownership": ZERO}
+    outside = {"move": "C1", "pointsLost": 0.26, "visits": 50, "ownership": ZERO}
+    assert tsumego_declass_choice(ko, [ko, inside], frozenset({"A1"}), 0.25)["move"] == "B1"
+    assert tsumego_declass_choice(ko, [ko, outside], frozenset({"A1"}), 0.25)["move"] == "A1"
+
+
+def test_class_screen_all_ko_is_the_escape_trigger():
+    """コウ脱出のトリガーは「pool が全員コウ」であって「格下げしなかった」ではない。
+
+    脱出（`_ko_escape_choice`）の前提は「到達できる手が全部コウ＝無条件の正解はプールの外」。
+    目数で劣る clean 手が**居る**のに脱出すると、前提が偽のまま root policy 上位を
+    同深さ ownership で拾うことになり、case R のように ownership が成否と無関係な局面では
+    でたらめな手に飛ぶ。格下げを断った理由（クラスが同じ／目数で劣る）を区別する。
+    """
+    ko1 = {"move": "A1", "pointsLost": 0.0, "visits": 100}
+    ko2 = {"move": "B1", "pointsLost": 0.1, "visits": 50}
+    clean = {"move": "C1", "pointsLost": 0.9, "visits": 50}
+    assert tsumego_class_screen_all_ko([ko1, ko2], frozenset({"A1", "B1"}))
+    assert not tsumego_class_screen_all_ko([ko1, clean], frozenset({"A1"}))
 
 
 def test_class_screen_pool_is_choice_plus_guard_rivals_by_visits():

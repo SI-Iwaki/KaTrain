@@ -8,7 +8,7 @@
 **期待手（正解）を本譜から探してはいけない** — 黒が正解を打ち損ねた後に**白が急所を取った手**を
 拾って、解く側が白の局面を測ってしまう（実測 2026-07-31: case D の `WA4`、case E の `WK1` で
 これを踏み、D/E を誤った局面で回帰させた）。導出済みの値:
-`D=4 / E=6 / F=2 / G=0 / G2=2 / H=4 / F2=4 / I=0 / J=10 / K=0 / L=0 / M=4 / N=0 / O=0 / P=2 / Q=0`
+`D=4 / E=6 / F=2 / G=0 / G2=2 / H=4 / F2=4 / I=0 / J=10 / K=0 / L=0 / M=4 / N=0 / O=0 / P=2 / Q=0 / R=0`
 
 | ファイル | 内容 |
 |---|---|
@@ -32,6 +32,8 @@
 | `case-p-visits-tie-ko-20260731.sgf` | **コウ経路検査の証拠（守り方の応手 PV）が枠へ手抜きして消えた誤答局面**（13路下辺・枠あり、3手目、正解 J1=無条件、旧実装は H1 で白 G1 のコウ）。region = `2,12,0,6`、対象は **2手目まで進めた局面**（`generate_move_e2e.py ... 2 2,12,0,6`）。選択自体は設計どおり（gain 飽和 → 目数差 0.03 が `points_epsilon` 内 → visits 最多の H1）で、**正解 J1 は目数最善**だったのでクラス裁定さえ働けば必ず J1 になる。不発の原因は `avoidMoves` の `untilDepth=1` が root の着手選択しか縛らず、**PV が ply3 で枠外（J12）へ手抜き**して肝心の G1 に届かないこと。歩く深さぶん縛る `TSUMEGO_KO_REGION_UNTIL_DEPTH`（=`TSUMEGO_TIE_KO_PLIES`=6）の回帰対象（spec 追記20）。実測 4 trial: untilDepth=1 で検出 1/4（PV `J1,L2,J12,...`）→ untilDepth=6 で 4/4（`J1,L2,G1,...`）、正解 J1 はどちらでも 4/4 clean。**必ずプロセスを分けて測ること**（1プロセス内では NN キャッシュで 3/3・4/4 と安定して見える） |
 
 | `case-q-ko-is-answer-20260731.sgf` | **未対処の既知限界**: 準備手が正解の詰碁で、どの指標にも信号が出なかった誤答局面（13路右上・枠あり、初手、正解 N9=コウ、AI は H13 で白の無条件生き）。region = `4,12,4,12`。白は2群 A={J13,K13,J12} / B={L12,K11,L11,M11,J10,K10,K9,L9} が **K12 を共通の最後の呼吸点**として持ち、黒は外側の H13 と N11 を詰めてから K12 で両取りする形。ところが **B N11 は単独では自殺手**（M11・N10 に挟まれ呼吸点 N12 のみ）なので、先に **N9 で N10 をアタリ**にする準備手が要る。実測: root は H13 に 1800visits 中 1764・**12000visits でも 11943** を割き、N9 は v1〜v4。**全盤 20000visits/wRN=0 でも N9 は v3・winrate 0.450**（KataGo の value が準備手を「負け」と読んでいる）。子局面 8000visits でも白12子は H13 −11.56 / N9 −10.30 で**どちらも生存**、コウ勝ち前提の ownership はむしろ H13 が上（−7.45 で A群が死ぬ vs N9 −9.24）。同深さ検証は untilDepth=1 で差 2.2 → 8000visits で 1.26 → untilDepth=6 で 0.2（誤差内）と**解析パラメータで消える＝実信号ではない**。枠は `frame_validity_probe.py` で復元すると `black_attacks=True, ko=True`（推定もコウダテ側も正しい）で、**枠なし盤でも H13 が選ばれる**ため枠起因でもない。case O と違い policy 上位を同深さで測り直しても浮かばないので `_ko_escape_choice` でも救えない（spec 追記21）。**エンジン更新時に再評価** |
+
+| `case-r-declass-nonsolution-20260731.sgf` | **答えがコウの詰碁で、クラス裁定が正解を「詰碁と無関係な clean 手」に差し替えた誤答局面**（13路上辺・**枠なし**、初手、正解 G13→白 J12→黒 J13 のコウ、旧実装は D8）。region = `0,12,7,12`。選択パイプラインは正解 G13（目数最善 pt+0.03 v1345）を選んでおり、コウ経路検査の**検出も正しい**（応手 J12 の PV がコウ形に到達）。落ちたのは格下げ先の妥当性で、**「無条件」は「攻めないので何も起きず自明に clean」でも成立する**。ownership で検算しても救えない（`class_screen_probe.py` 2run: 正解 G13 +0.86/+0.97 に対し誤答 D8 +1.32/+2.34 と**誤答のほうが高い**。相手石は全候補 −0.55〜−0.72＝答えがコウなら ply1 で成否は決着しない）。符号が一貫するのは目数だけで、格下げが正しい4ケースは格下げ先が必ず目数で優る（K −0.05 / L −0.11 / M −0.57 / P −0.03）のに case R の D8 は +0.52 劣る。格下げ先を同着バンド `points_epsilon` 内に限る `tsumego_declass_choice` と、脱出トリガーを「pool が全員コウ」に戻す `tsumego_class_screen_all_ko` の回帰対象（spec 追記23。R: G13 3/3） |
 
 ## 診断スクリプト
 
@@ -113,6 +115,21 @@ python docs/superpowers/specs/calibration-data/tsumego/ko_route_probe.py \
 同深さの目数と相手石 ownership も出す。**クラス（コウ/無条件）と成否（殺せている/いない）は
 別軸**であることを1枚で確認できる（実測 case O: A11=clean かつ成功 / B12・C10=コウだが成功 /
 C13・B13=clean だが失敗）。`repeats` で run 間の安定性を見る。
+
+### `class_screen_probe.py` — コウ経路検査の「格下げ先」が本当に詰碁を解いているか測る
+
+```bash
+python docs/superpowers/specs/calibration-data/tsumego/class_screen_probe.py \
+    <sgf> <move_n> <xmin,xmax,ymin,ymax> <moves_csv> [visits] [repeats]
+# 例: ... case-r-declass-nonsolution-20260731.sgf 0 0,12,7,12 G13,D8,J13,C8 800 2
+```
+
+本番の `_region_child_verdict` をそのまま呼び、クラス（コウ/無条件）に加えて**格下げの採否に
+使える値**（全リージョン石の絶対 ownership＝`tsumego_ko_escape_accepts` が見る値、自石・相手石の
+1子平均）を並べる。`ko_route_probe.py` はクラスと相手石しか出さないので、「clean な対抗馬が
+**成功しているか**」を判定できるかどうかの検算にはこちらを使う。実測 case R: どの指標でも
+正解（コウ）が誤答（clean）を下回り、**答えがコウの詰碁では ply1 の ownership では判別できない**
+ことがこれで確定した（→ 目数の同着バンドで裁定する設計になった。spec 追記23）。
 
 ### `ko_margin_ab.py` — コウ勝ち前提の採用判定を検証
 
