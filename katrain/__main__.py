@@ -771,7 +771,13 @@ class KaTrainGui(Screen, KaTrainBase):
         正しいかは問題ごとに違うため、両方を短い解析にかけて枠の設計目標（攻め方成功=5目勝ち）に
         近い方を選ぶ。解析できない場合は設定値の枠をそのまま使う。
         """
-        from katrain.core.tsumego_frame import pick_balanced_frame, tsumego_frame_board
+        from katrain.core.tsumego_frame import (
+            FRAME_BALANCE_WARN_DISTANCE,
+            frame_balance_distance,
+            offence_to_win,
+            pick_balanced_frame,
+            tsumego_frame_board,
+        )
 
         candidates = []
         for ko_p in (bool(ko), not ko):
@@ -805,6 +811,18 @@ class KaTrainGui(Screen, KaTrainBase):
             return candidates[0][1], candidates[0][2]
         if best[0] != candidates[0][0]:
             self.log(f"tsumego_capture: 枠バランスが良い ko={best[0]} の枠を採用します", OUTPUT_INFO)
+        distance = frame_balance_distance(best[3])
+        if distance > FRAME_BALANCE_WARN_DISTANCE:
+            # 大型詰碁ではリージョン内の空き地がまるごと片側の地になり、この枠の設計
+            # （攻め方成功 = offence_to_win 目勝ち）が成立しない。絶対スコアに依る判定
+            # （既に成功・コウ勝ち前提）が効かなくなるので、黙って進めずに知らせる
+            self.log(
+                f"tsumego_capture: 警告 枠バランスが設計目標から離れています"
+                f"（root={best[3]:+.2f}目 / 目標±{offence_to_win}目, 距離{distance:.1f}）。"
+                f"絶対スコアに依る判定は信頼できません。frame_margin を変えて再キャプチャすると"
+                f"改善する場合があります",
+                OUTPUT_INFO,
+            )
         return best[1], best[2]
 
     def _tsumego_frame_root_lead(self, board, komi, analysis_region, visits, settings, timeout=30.0):

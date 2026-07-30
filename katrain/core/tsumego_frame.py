@@ -96,6 +96,13 @@ def frame_balance_distance(root_score_lead):
 
 FRAME_BALANCE_TIE_MARGIN = 2.0  # この差以内は同点とみなし、攻め方コウダテのある枠を採る
 
+# 採用した枠がこの距離を超えていたら警告する。枠は成功／失敗が約10目離れる設計なので、
+# その半分を超えるズレは「絶対スコアに依る判定（既に成功・コウ勝ち前提）が信用できない」域。
+# 実測 2026-07-30（case F: 13路右上の大型詰碁）: 攻め方×コウダテの4通りとも -25.5/-33.4/
+# -48.3/-73.7目で、最良でも距離 20.5。リージョンが盤の53%（90/169点）を占めるとリージョン内の
+# 空き地がまるごと片側の地になり、この設計（攻め方成功=5目勝ち）が成立しない
+FRAME_BALANCE_WARN_DISTANCE = 8.0
+
 
 def pick_balanced_frame(candidates, tie_margin=FRAME_BALANCE_TIE_MARGIN):
     """[(ko_p, board, region, root_score_lead), ...] から採用する枠を返す。選べなければ None。
