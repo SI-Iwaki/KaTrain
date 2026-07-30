@@ -1932,6 +1932,24 @@ def tsumego_pv_reaches_region_ko(sim, first_player, pv, region_of_interest, max_
     return False
 
 
+def tsumego_candidate_reaches_region_ko(game, node, candidate_gtp, reply_pv, region_of_interest, max_plies=None):
+    """候補手＋守り方の応手 PV を親局面から並べ直してコウ形を検査する。
+
+    検査シーケンスは必ず候補手自身から始めること。コウ形は候補手そのものにも現れる
+    （実測 case L 2026-07-30: B L5 が白 L6 を1子取りして自身が呼吸点1になる「打った瞬間に
+    コウを開始する手」。守り方は次にコウ禁止で取り返せないため応手 PV にはコウ形が出ず、
+    応手 PV だけを歩いた旧実装は L5 を無条件と誤判定した）。応手 PV 側のコウ形
+    （実測 case K: A11 → B11）も同じ1回の歩きで拾う。
+    """
+    sim = tsumego_simulation_game(game, node)
+    if sim is None:
+        return False
+    pv = [candidate_gtp] + list(reply_pv or [])
+    if max_plies is None:
+        max_plies = 1 + TSUMEGO_TIE_KO_PLIES  # 応手 PV の深さは従来どおり、先頭に候補手が乗る分を足す
+    return tsumego_pv_reaches_region_ko(sim, node.next_player, pv, region_of_interest, max_plies)
+
+
 def tsumego_eligible_candidates(candidates, max_points_behind, min_visits):
     """目数ガード・min_visits・ownership 有無を通した候補（gain の競争に参加できる手）"""
     searched = [c for c in candidates if c.get("visits", 0) >= min_visits]
@@ -2332,9 +2350,18 @@ class TsumegoOwnershipStrategy(AIStrategy):
         settings = self.settings or {}
         visits = int(settings.get("gain_verify_visits", TSUMEGO_GAIN_VERIFY_VISITS))
         player = self.cn.next_player
-        opponent = "W" if player == "B" else "B"
+        region = self.game.region_of_interest
         routes = set()
         for cand in sorted(band, key=lambda c: -c.get("visits", 0))[:TSUMEGO_TIE_KO_MAX_CANDIDATES]:
+            # 候補自身がコウを開始する形（実測 case L: L5 の1子取り）は解析クエリ不要で確定
+            if tsumego_candidate_reaches_region_ko(self.game, self.cn, cand["move"], [], region):
+                routes.add(cand["move"])
+                self.game.katrain.log(
+                    f"[{self.strategy_name}] 同着バンドのコウ検査: {cand['move']} はコウ経路"
+                    f"（候補自身がリージョン内のコウ形の1子取り）",
+                    OUTPUT_INFO,
+                )
+                continue
             sim = tsumego_simulation_game(self.game, self.cn)
             if sim is None:
                 self.game.katrain.log(f"[{self.strategy_name}] 同着バンドのコウ検査: 局面を再現できないため省略", OUTPUT_DEBUG)
@@ -2348,8 +2375,9 @@ class TsumegoOwnershipStrategy(AIStrategy):
             if not replies:
                 continue
             top_reply = max(replies, key=lambda m: m.get("visits", 0))
-            sim.set_current_node(node)
-            if tsumego_pv_reaches_region_ko(sim, opponent, top_reply.get("pv") or [], self.game.region_of_interest):
+            if tsumego_candidate_reaches_region_ko(
+                self.game, self.cn, cand["move"], top_reply.get("pv") or [], region
+            ):
                 routes.add(cand["move"])
                 self.game.katrain.log(
                     f"[{self.strategy_name}] 同着バンドのコウ検査: {cand['move']} はコウ経路"
@@ -2359,7 +2387,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
             else:
                 self.game.katrain.log(
                     f"[{self.strategy_name}] 同着バンドのコウ検査: {cand['move']} は無条件"
-                    f"（応手 {top_reply.get('move')} の PV にコウ形なし）",
+                    f"（候補自身・応手 {top_reply.get('move')} の PV ともコウ形なし）",
                     OUTPUT_DEBUG,
                 )
         if routes:

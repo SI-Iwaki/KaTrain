@@ -1,6 +1,10 @@
 import pytest
 
-from katrain.core.ai import tsumego_ko_win_node, tsumego_pv_reaches_region_ko
+from katrain.core.ai import (
+    tsumego_candidate_reaches_region_ko,
+    tsumego_ko_win_node,
+    tsumego_pv_reaches_region_ko,
+)
 from katrain.core.game import BaseGame, KaTrainSGF, Move
 
 # 5路のコウ形。黒 C3 は単独で呼吸点1（B3）になり、白 B3 で取られ、黒の C3 取り返しがコウで禁じられる
@@ -128,6 +132,30 @@ def test_pv_ko_treats_no_region_as_whole_board():
     # 枠なしモード（リージョン無し）では盤全体を対象にする
     game = _game(CAPTURE_KO_SGF)
     assert tsumego_pv_reaches_region_ko(game, "B", ["C2"], None)
+
+
+def test_candidate_ko_check_includes_the_candidate_itself():
+    """コウ検査のシーケンスは応手 PV だけでなく候補手自身から始める。
+
+    実測 case L (2026-07-30): B L5 は白 L6 を1子取りして自身が呼吸点1になる
+    「打った瞬間にコウを開始する手」。白は次にコウ禁止で取り返せないため
+    応手 PV（L3）にはコウ形が現れず、応手 PV しか歩かない旧実装は L5 を
+    「無条件」と誤判定して visits タイブレークで選び不正解になった。
+    """
+    game = _game(CAPTURE_KO_SGF)
+    # 候補 C2 自身がコウ形の1子取り（応手 PV が空でも検出する）
+    assert tsumego_candidate_reaches_region_ko(game, game.current_node, "C2", [], WHOLE_BOARD)
+
+
+def test_candidate_ko_check_still_walks_the_reply_pv():
+    # 候補自身は clean でも応手 PV の途中のコウ形（case K の A11→B11）は従来どおり拾う
+    game = _game(CAPTURE_KO_SGF)
+    assert tsumego_candidate_reaches_region_ko(game, game.current_node, "E5", ["E4", "C2"], WHOLE_BOARD)
+
+
+def test_candidate_ko_check_is_false_for_a_clean_line():
+    game = _game(CAPTURE_KO_SGF)
+    assert not tsumego_candidate_reaches_region_ko(game, game.current_node, "E5", ["E4", "D5"], WHOLE_BOARD)
 
 
 # 打った石とは「別の1子」が取られてコウになる形。生きる詰碁ではこちらが普通に出る。
