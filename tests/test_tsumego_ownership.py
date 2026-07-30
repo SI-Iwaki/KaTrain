@@ -5,6 +5,9 @@ from katrain.core.ai import (
     TSUMEGO_GAIN_VERIFY_MARGIN,
     TSUMEGO_KO_MARGIN,
     select_tsumego_move,
+    tsumego_class_screen_pool,
+    tsumego_competitive_replies,
+    tsumego_declass_choice,
     tsumego_needs_score_best_verify,
     tsumego_selection_band,
     tsumego_absolute_ownership,
@@ -164,35 +167,105 @@ def test_select_points_epsilon_is_configurable():
     assert select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, points_epsilon=0.25)["move"] == "N10"
 
 
-def test_select_demotes_ko_routes_inside_the_tie_band():
-    """同着バンド内では「無条件に殺す（生きる）手」が「コウで殺す手」に優先する。
+def test_declass_demotes_ko_route_choice_to_clean_rival():
+    """選択手がコウ経路で clean な対抗馬がいれば、そちら（visits 最多）に格下げする。
 
     実測 case K (2026-07-30, 13路左上): コウで殺す A12(v822 pt+0.02) と無条件の
     C13(v585 pt-0.05) が gain・目数とも同着になり、visits タイブレークがコウ側の
     A12 を選んで不正解（KataGo はコウも黒勝ちと読むのでスコアでは区別できない。
     差 0.02〜0.13 は 4/4 観測で C13 側に符号一貫＝無条件のわずかな期待値優位）。
-    詰碁の正解順序 無条件 > コウ をバンド内の第一キーにする。ko_routes は
-    呼び出し側がリージョン子局面解析＋PV コウ検出で計算して渡す。
+    詰碁の正解順序 無条件 > コウ の適用。ko_routes は呼び出し側がリージョン
+    子局面解析＋PV コウ検出で計算して渡す。
     """
-    cands = [
-        {"move": "A12", "pointsLost": 0.02, "visits": 822, "ownership": ZERO},
-        {"move": "C13", "pointsLost": -0.05, "visits": 585, "ownership": _own(x0_y0=0.001)},
-    ]
-    args = (cands, ZERO, [(0, 0)], SIZE, +1, 2.0)
-    # コウ経路情報が無ければ従来どおり visits 最多（case J の動作）
-    assert select_tsumego_move(*args)["move"] == "A12"
+    a12 = {"move": "A12", "pointsLost": 0.02, "visits": 822, "ownership": ZERO}
+    c13 = {"move": "C13", "pointsLost": -0.05, "visits": 585, "ownership": _own(x0_y0=0.001)}
+    pool = [a12, c13]
+    # コウ経路情報が無ければ選択手のまま
+    assert tsumego_declass_choice(a12, pool, frozenset())["move"] == "A12"
     # A12 がコウ経路なら無条件の C13 が勝つ
-    assert select_tsumego_move(*args, ko_routes=frozenset({"A12"}))["move"] == "C13"
+    assert tsumego_declass_choice(a12, pool, frozenset({"A12"}))["move"] == "C13"
 
 
-def test_select_falls_back_to_visits_when_all_band_moves_are_ko_routes():
-    # 全員コウ経路（＝クラスが同じ）なら従来どおり visits で決める
-    cands = [
-        {"move": "A12", "pointsLost": 0.02, "visits": 822, "ownership": ZERO},
-        {"move": "C13", "pointsLost": -0.05, "visits": 585, "ownership": _own(x0_y0=0.001)},
-    ]
-    chosen = select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, ko_routes=frozenset({"A12", "C13"}))
+def test_declass_keeps_choice_when_all_pool_moves_are_ko_routes():
+    # 全員コウ経路（＝クラスが同じ）なら選択手を維持する
+    a12 = {"move": "A12", "pointsLost": 0.02, "visits": 822, "ownership": ZERO}
+    c13 = {"move": "C13", "pointsLost": -0.05, "visits": 585, "ownership": _own(x0_y0=0.001)}
+    chosen = tsumego_declass_choice(a12, [a12, c13], frozenset({"A12", "C13"}))
     assert chosen["move"] == "A12"
+
+
+def test_declass_covers_gain_separated_ko_choice():
+    """コウ検査は同着バンドに限らず、成功クラス（目数ガード内）全体を対象にする。
+
+    実測 case M (2026-07-30, 13路右下): コウ経路の M2 は L2/M3 の白石を「コウに
+    勝つ前提」で取り切るため gain +1.76〜1.92 の**実信号**が出て、gain_epsilon の
+    同着から抜け出しバンドが形成されず、旧検査（バンド2手以上が条件）が走らなかった。
+    同深さ検証も +1.29 で M2 を追認する（クラス差はスコア系メトリックに現れない）ので、
+    検証・救済のどの経路で選ばれても最後にクラスで裁定する。構造検出は 2/2 run 安定:
+    M2 の子局面の白最善応手は K1 で、その PV の B M4（1子取り）がコウ形。K1 は clean。
+    """
+    m2 = {"move": "M2", "pointsLost": 0.56, "visits": 470, "ownership": _own(x0_y0=0.9)}
+    k1 = {"move": "K1", "pointsLost": -0.06, "visits": 1316, "ownership": ZERO}
+    chosen = tsumego_declass_choice(m2, [m2, k1], frozenset({"M2"}))
+    assert chosen["move"] == "K1"
+
+
+def test_class_screen_pool_is_choice_plus_guard_rivals_by_visits():
+    """検査対象 = 選択手 + 目数ガードを通った対抗馬（visits 降順、計4手まで）。
+
+    case M の実測値: eligible が {M2, K1} のとき、どちらが選択手でも pool は2手になる。
+    """
+    m2 = {"move": "M2", "pointsLost": 0.56, "visits": 470, "ownership": _own(x0_y0=0.9)}
+    k1 = {"move": "K1", "pointsLost": -0.06, "visits": 1316, "ownership": ZERO}
+    assert [c["move"] for c in tsumego_class_screen_pool(m2, [k1, m2])] == ["M2", "K1"]
+    assert [c["move"] for c in tsumego_class_screen_pool(k1, [k1, m2])] == ["K1", "M2"]
+
+
+def test_class_screen_pool_skips_outside_guard_choice():
+    """目数ガード外から救済で採用した手はコウ経路検査にかけない（pool は選択手のみ）。
+
+    実測 case F2 (2026-07-30): 枠なし盤の救済採用手 N11(pt+3.85、ガード外) は正解だが、
+    子局面解析の応手が N9 に振れた run（3run 中 1）だけ PV にコウ形が出て格下げされ、
+    ガード内の clean な J10 — 同深さ検証 -18.8 で N11 -17.0 に負けている**失敗手** — に
+    差し替わった。クラス裁定（無条件 > コウ）が意味を持つのは「スコアが同じ成功と見なす
+    帯（目数ガード）」の中だけ。帯の外から ownership 検証で拾った手は、スコアが嘘をつく
+    枠なし局面（case G2 の圧縮）であり、帯内の clean な対抗馬は成功していない手でありうる。
+    検証の実測をスコアの嘘で上書きしないため、pool を選択手だけにして検査を成立させない。
+    """
+    n11 = {"move": "N11", "pointsLost": 3.85, "visits": 124, "ownership": ZERO}
+    j10 = {"move": "J10", "pointsLost": 0.23, "visits": 403, "ownership": ZERO}
+    j11 = {"move": "J11", "pointsLost": 0.35, "visits": 300, "ownership": ZERO}
+    assert [c["move"] for c in tsumego_class_screen_pool(n11, [j10, j11])] == ["N11"]
+
+
+def test_competitive_replies_walks_all_contested_defenses():
+    """コウ経路検査は「拮抗している応手」を全部歩く（top 1本だけでは応手分散で素通りする）。
+
+    実測 case M (2026-07-30): B M2 の子局面の白応手は K1（コウ仕掛け）と M4（穏健）が
+    v144 vs v103 で拮抗し、800visits の解析では top がどちらにも振れる。top 1本だけを
+    歩く旧実装は M4 が top の run（3run 中 2）でコウを見逃した。守り方が選べる競争力の
+    ある抵抗の中にコウがあるなら、その手はコウ経路（doomed な抵抗は visits 比で沈む）。
+    """
+    k1 = {"move": "K1", "visits": 144, "pv": ["K1", "M4"]}
+    m4 = {"move": "M4", "visits": 103, "pv": ["M4"]}
+    assert tsumego_competitive_replies([m4, k1]) == [k1, m4]
+    # 支配的な応手が1本なら従来どおり1本だけ（K1 の子局面: M4 v230 vs M2 v27 = 比 0.12）
+    m4d = {"move": "M4", "visits": 230, "pv": ["M4"]}
+    m2 = {"move": "M2", "visits": 27, "pv": ["M2"]}
+    assert tsumego_competitive_replies([m2, m4d]) == [m4d]
+    # 上限3本（visits 降順）
+    replies = [{"move": f"A{i}", "visits": 100 + i} for i in range(5)]
+    assert [r["move"] for r in tsumego_competitive_replies(replies)] == ["A4", "A3", "A2"]
+    assert tsumego_competitive_replies([]) == []
+
+
+def test_class_screen_pool_caps_rivals():
+    # 対抗馬は visits 降順で、選択手込み計4手（TSUMEGO_TIE_KO_MAX_CANDIDATES）まで
+    eligible = [
+        {"move": f"A{i}", "pointsLost": 0.1 * i, "visits": 100 * i, "ownership": ZERO} for i in range(1, 6)
+    ]
+    pool = tsumego_class_screen_pool(eligible[0], eligible)
+    assert [c["move"] for c in pool] == ["A1", "A5", "A4", "A3"]
 
 
 def test_selection_band_returns_the_tie_members():

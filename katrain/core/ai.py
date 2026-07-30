@@ -1883,6 +1883,25 @@ def tsumego_ko_win_node(game, node, move):
 TSUMEGO_TIE_KO_PLIES = 6
 TSUMEGO_TIE_KO_MAX_CANDIDATES = 4
 
+# コウ経路検査で歩く応手の「拮抗」閾値と本数上限。守り方の最善応手が1本に読み切られていれば
+# その PV だけで足りるが、コウを仕掛ける抵抗と穏健な応手が拮抗する局面では 800visits の解析
+# ごとに top が入れ替わる（実測 case M 2026-07-30: B M2 への白応手 K1 v144 vs M4 v103 =
+# 比 0.72。top 1本だけを歩く旧実装は M4 が top に振れた run でコウを見逃し 3run 中 2 で
+# 素通りした）。守り方が選べる競争力のある抵抗のどれかにコウがあるなら、その候補はコウ経路。
+# 比 0.5 未満の応手は doomed な抵抗として無視する（実測 case M の K1 子局面: 白 M2 の
+# 取り返しは v27/M4 v230 = 比 0.12 で沈む＝正解 K1 は安定して clean）
+TSUMEGO_KO_REPLY_RATIO = 0.5
+TSUMEGO_KO_REPLY_MAX = 3
+
+
+def tsumego_competitive_replies(replies, ratio=TSUMEGO_KO_REPLY_RATIO, max_replies=TSUMEGO_KO_REPLY_MAX):
+    """visits 降順で top と拮抗する応手（比 ratio 以上）を最大 max_replies 本返す"""
+    ordered = sorted(replies, key=lambda m: -m.get("visits", 0))
+    if not ordered:
+        return []
+    top_visits = ordered[0].get("visits", 0)
+    return [r for r in ordered[:max_replies] if r.get("visits", 0) >= ratio * top_visits]
+
 
 def tsumego_pv_reaches_region_ko(sim, first_player, pv, region_of_interest, max_plies=TSUMEGO_TIE_KO_PLIES):
     """PV を sim の現局面から並べ直し、リージョン内でコウ形の1子取りに到達するかを返す。
@@ -2051,7 +2070,6 @@ def select_tsumego_move(
     min_visits=10,
     gain_min_visit_ratio=TSUMEGO_GAIN_MIN_VISIT_RATIO,
     points_epsilon=TSUMEGO_POINTS_EPSILON,
-    ko_routes=frozenset(),
 ):
     """目数ガードを通した候補から ownership gain 最大の手を返す。選べなければ None。
 
@@ -2065,16 +2083,15 @@ def select_tsumego_move(
     では正解手でも gain が動かず、上位手の gain 差が ±0.03 のノイズに埋もれて選択が
     コイン投げになるため（実測 2026-07-29、4 run 中1回で誤答手を選択）。
 
-    その目数も points_epsilon 以内で並ぶなら「同着バンド」として扱い、(1) コウ経路でない手
-    （`ko_routes` 外）、(2) visits 最多（KataGo の principal variation）の順で選ぶ。
+    その目数も points_epsilon 以内で並ぶなら「同着バンド」として扱い、visits 最多
+    （KataGo の principal variation）を選ぶ。
 
-    (1) は詰碁の正解順序 無条件 > コウ のバンド内適用。コウでも勝てると KataGo が読み切った
-    局面では、コウで殺す手と無条件に殺す手が gain・目数とも同着になり、スコアでは区別できない
-    （実測 case K 2026-07-30: コウの A12 と無条件の C13 が 4/4 観測で 0.1 目差以内）。
-    ko_routes は呼び出し側がリージョン子局面解析＋PV コウ検出（`tsumego_pv_reaches_region_ko`）
-    で計算して渡す。空なら従来どおり visits へ。
+    詰碁の正解順序 無条件 > コウ の裁定（コウ経路の格下げ）はここではやらない。かつては
+    このバンド内だけで格下げしていたが、コウで殺す手の gain は「コウに勝つ前提」の実信号で
+    バンドから抜け出してしまう（実測 case M 2026-07-30: gain +1.9 で単独首位）ため、
+    呼び出し側が選択の最後に成功クラス全体へ適用する（`tsumego_declass_choice`）。
 
-    (2) は複数の手が同じ死活結果に到達する局面向け。目数差もノイズになり、コイン投げの先が
+    visits タイブレークは複数の手が同じ死活結果に到達する局面向け。目数差もノイズになり、コイン投げの先が
     アプリの解答樹に無い「正しい別解」だと不正解になる（実測 case J 2026-07-30: N10/N11 が
     gain・目数とも 0.02 差で並び N11 を選択。両手とも殺しは成立しており 8000visits でも
     分離不能）。解答樹の本線は KataGo の本命手と一致しやすいので visits に寄せる。
@@ -2107,7 +2124,6 @@ def select_tsumego_move(
     return max(
         band,
         key=lambda scored_move: (
-            scored_move[2]["move"] not in ko_routes,
             scored_move[2].get("visits", 0),
             scored_move[1],
             scored_move[0],
@@ -2191,6 +2207,49 @@ def tsumego_needs_score_best_verify(chosen, score_best, points_epsilon=TSUMEGO_P
     return chosen["pointsLost"] - score_best["pointsLost"] > points_epsilon
 
 
+def tsumego_class_screen_pool(chosen, eligible, max_candidates=TSUMEGO_TIE_KO_MAX_CANDIDATES):
+    """コウ経路検査（クラスの裁定）にかける候補列: 選択手＋目数ガード内の対抗馬（visits 降順）。
+
+    検査対象を同着バンド（gain 同着 ∩ 目数同着）に限っていた旧設計は case M（2026-07-30）で
+    破れた: コウで殺す手の gain は L2/M3 の白石を「コウに勝つ前提」で取り切る**実信号**
+    （同深さ検証でも +1.29 と裏づけられる）なので、gain がバンドの同着から抜け出して検査が
+    走らず、検証・救済のどの経路もクラスを見ないまま採用してしまう。クラス（無条件 > コウ）は
+    スコアの多寡ではなく到達局面の構造なので、成功している候補（目数ガード＝同じ成功クラスの
+    proxy）全員が検査対象になる。上限は同着バンド検査と同じ `TSUMEGO_TIE_KO_MAX_CANDIDATES`。
+
+    ただし**選択手が目数ガード外（eligible 非メンバー）のときは検査自体を成立させない**
+    （pool は選択手のみ → 呼び出し側の「2手以上」条件で検査が走らない）。クラス裁定が意味を
+    持つのは「スコアが同じ成功と見なす帯」の中だけで、帯の外から同深さ検証で拾った手
+    （救済採用）は、スコアが嘘をつく枠なし局面（case G2 の圧縮）にいる。実測 case F2
+    （2026-07-30）: 救済採用の正解 N11(pt+3.85、ガード外) が、応手が N9 に振れた run の
+    PV の偶発コウ形で格下げされ、ガード内の clean な J10 — 同深さ検証 -18.8 で N11 -17.0 に
+    負けている**失敗手** — に差し替わった。検証の実測をスコアの嘘で上書きしてはならない。
+    """
+    if not any(c["move"] == chosen["move"] for c in eligible):
+        return [chosen]
+    rivals = sorted(
+        [c for c in eligible if c["move"] != chosen["move"]],
+        key=lambda c: -c.get("visits", 0),
+    )
+    return [chosen] + rivals[: max(0, max_candidates - 1)]
+
+
+def tsumego_declass_choice(chosen, pool, ko_routes):
+    """選択手がコウ経路なら、pool の clean な対抗馬（visits 最多、次いで目数）に格下げする。
+
+    詰碁の正解順序 無条件 > コウ の適用。gain・目数・同深さ検証はすべて「コウに勝った」
+    前提のスコアを含むためクラスを分離できず（実測 case K: 0.1 目差 / case M: 検証 +1.29 で
+    コウ側を追認）、分離できるのは到達局面の構造検出（ko_routes）だけ。全員コウ経路
+    （＝同じクラス）や clean な対抗馬が居ない場合は選択手を維持する。
+    """
+    if chosen["move"] not in ko_routes:
+        return chosen
+    clean = [c for c in pool if c["move"] not in ko_routes]
+    if not clean:
+        return chosen
+    return max(clean, key=lambda c: (c.get("visits", 0), -c["pointsLost"]))
+
+
 @register_strategy(AI_TSUMEGO)
 class TsumegoOwnershipStrategy(AIStrategy):
     """詰碁用: 盤全体の目数ではなく対象石群の死活（ownership の変化量）で手を選ぶ"""
@@ -2225,12 +2284,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
             min_visit_ratio,
             points_epsilon,
         )
-        ko_routes = frozenset()
-        if (self.settings or {}).get("tie_ko_screen", True):
-            band = tsumego_selection_band(*selection_args)
-            if len(band) >= 2:
-                ko_routes = self._tie_band_ko_routes(band)
-        chosen = select_tsumego_move(*selection_args, ko_routes=ko_routes)
+        chosen = select_tsumego_move(*selection_args)
         if chosen is None:
             # ownership が無い（_enable_ownership が false 等）。無言で劣化させず既定動作に戻す
             self.game.katrain.log(
@@ -2285,6 +2339,29 @@ class TsumegoOwnershipStrategy(AIStrategy):
                         margin=rescue_margin,
                         fallback=chosen,
                     )
+            if (self.settings or {}).get("tie_ko_screen", True):
+                # クラスの裁定（詰碁の順序 無条件 > コウ）は選択パイプラインの最後に置く。
+                # コウで殺す手の gain・目数・同深さ検証値は「コウに勝った」前提の実信号なので
+                # （実測 case M: gain +1.9 単独首位・検証 +1.29 で追認）、バンド・検証・救済の
+                # どの経路で選ばれてもスコア系メトリックではクラス混同を検出できない。
+                # 選択手が clean なら検査1本で終わる。対抗馬の検査は選択手がコウ経路のときだけ
+                pool = tsumego_class_screen_pool(chosen, eligible)
+                if len(pool) >= 2 and self._ko_route_screen([chosen]):
+                    ko_routes = frozenset({chosen["move"]}) | self._ko_route_screen(pool[1:])
+                    declassed = tsumego_declass_choice(chosen, pool, ko_routes)
+                    if declassed["move"] != chosen["move"]:
+                        self.game.katrain.log(
+                            f"[{self.strategy_name}] コウ経路検査: 選択手 {chosen['move']} を格下げし、"
+                            f"無条件の {declassed['move']} を採用します（詰碁の順序: 無条件 > コウ）",
+                            OUTPUT_INFO,
+                        )
+                        chosen = declassed
+                    else:
+                        self.game.katrain.log(
+                            f"[{self.strategy_name}] コウ経路検査: 選択手 {chosen['move']} はコウ経路だが"
+                            f" clean な対抗馬が居ないため維持します",
+                            OUTPUT_INFO,
+                        )
             gain = tsumego_ownership_gain(
                 self.cn.ownership, chosen["ownership"], stones, self.game.board_size, player_sign
             )
@@ -2334,37 +2411,39 @@ class TsumegoOwnershipStrategy(AIStrategy):
             OUTPUT_DEBUG,
         )
 
-    def _tie_band_ko_routes(self, band):
-        """同着バンドの各候補を1手進めてリージョン解析し、コウ経路の候補の手（GTP）を返す。
+    def _ko_route_screen(self, pool):
+        """pool の各候補を1手進めてリージョン解析し、コウ経路の候補の手（GTP）を返す。
 
         詰碁の正解順序は 無条件 > コウ で、目数はクラス内のタイブレークにすぎない。
-        コウでも勝てると KataGo が読み切った局面では、コウで殺す手と無条件に殺す手の
-        gain・目数が同着になりスコアではクラスが見えない（実測 case K: A12/C13 が
-        4/4 観測で 0.1 目差以内）。クラス差は「守り方に局所応答を強制する」リージョン
-        子局面解析の最善応手 PV にだけ現れる（実測 3/3 run 安定: A12 には白 A11 →
-        黒 B11 のコウ形、C13/A10 は clean）。検出は `tsumego_pv_reaches_region_ko`。
+        コウでも勝てると KataGo が読み切った局面では、コウで殺す手のスコア系メトリック
+        （gain・目数・同深さ検証値）は全て「コウに勝った」前提の値になりクラスが見えない
+        （実測 case K: A12/C13 が 4/4 観測で 0.1 目差以内。case M: gain +1.9 が実信号で
+        単独首位、同深さ検証 +1.29 もコウ側を追認）。クラス差は「守り方に局所応答を
+        強制する」リージョン子局面解析の最善応手 PV にだけ現れる（実測 case K 3/3 /
+        case M 2/2 run 安定: M2 には白 K1 → 黒 M4 の1子取りコウ形、K1/C13 は clean）。
+        検出は `tsumego_pv_reaches_region_ko`。
 
-        コストは候補1つあたり解析1本（gain_verify_visits）。バンドが2手以上に潰れた
-        手番だけ走るので、通常の手番では発動しない。
+        コストは候補1つあたり解析1本（gain_verify_visits）。呼び出し側は選択手を先に
+        検査し、コウ経路だったときだけ対抗馬を検査する（通常の手番は1本で済む）。
         """
         settings = self.settings or {}
         visits = int(settings.get("gain_verify_visits", TSUMEGO_GAIN_VERIFY_VISITS))
         player = self.cn.next_player
         region = self.game.region_of_interest
         routes = set()
-        for cand in sorted(band, key=lambda c: -c.get("visits", 0))[:TSUMEGO_TIE_KO_MAX_CANDIDATES]:
+        for cand in sorted(pool, key=lambda c: -c.get("visits", 0))[:TSUMEGO_TIE_KO_MAX_CANDIDATES]:
             # 候補自身がコウを開始する形（実測 case L: L5 の1子取り）は解析クエリ不要で確定
             if tsumego_candidate_reaches_region_ko(self.game, self.cn, cand["move"], [], region):
                 routes.add(cand["move"])
                 self.game.katrain.log(
-                    f"[{self.strategy_name}] 同着バンドのコウ検査: {cand['move']} はコウ経路"
+                    f"[{self.strategy_name}] コウ経路検査: {cand['move']} はコウ経路"
                     f"（候補自身がリージョン内のコウ形の1子取り）",
                     OUTPUT_INFO,
                 )
                 continue
             sim = tsumego_simulation_game(self.game, self.cn)
             if sim is None:
-                self.game.katrain.log(f"[{self.strategy_name}] 同着バンドのコウ検査: 局面を再現できないため省略", OUTPUT_DEBUG)
+                self.game.katrain.log(f"[{self.strategy_name}] コウ経路検査: 局面を再現できないため省略", OUTPUT_DEBUG)
                 break
             try:
                 node = sim.play(Move.from_gtp(cand["move"], player=player))
@@ -2372,30 +2451,32 @@ class TsumegoOwnershipStrategy(AIStrategy):
                 continue
             root = self._analyze_region_root(node, visits, ownership=False)
             replies = (root or {}).get("moves") or []
-            if not replies:
+            # 拮抗している応手は全部歩く。top 1本では応手ランキングの分散でコウを見逃す
+            # （実測 case M: 白のコウ仕掛け K1 と穏健な M4 が拮抗し、M4 が top の run で素通り）
+            walk = tsumego_competitive_replies(replies)
+            if not walk:
                 continue
-            top_reply = max(replies, key=lambda m: m.get("visits", 0))
-            if tsumego_candidate_reaches_region_ko(
-                self.game, self.cn, cand["move"], top_reply.get("pv") or [], region
-            ):
+            ko_reply = next(
+                (
+                    r
+                    for r in walk
+                    if tsumego_candidate_reaches_region_ko(self.game, self.cn, cand["move"], r.get("pv") or [], region)
+                ),
+                None,
+            )
+            if ko_reply is not None:
                 routes.add(cand["move"])
                 self.game.katrain.log(
-                    f"[{self.strategy_name}] 同着バンドのコウ検査: {cand['move']} はコウ経路"
-                    f"（応手 {top_reply.get('move')} の PV がリージョン内のコウ形に到達）",
+                    f"[{self.strategy_name}] コウ経路検査: {cand['move']} はコウ経路"
+                    f"（応手 {ko_reply.get('move')} の PV がリージョン内のコウ形に到達）",
                     OUTPUT_INFO,
                 )
             else:
                 self.game.katrain.log(
-                    f"[{self.strategy_name}] 同着バンドのコウ検査: {cand['move']} は無条件"
-                    f"（候補自身・応手 {top_reply.get('move')} の PV ともコウ形なし）",
+                    f"[{self.strategy_name}] コウ経路検査: {cand['move']} は無条件"
+                    f"（候補自身・拮抗応手 {[r.get('move') for r in walk]} の PV ともコウ形なし）",
                     OUTPUT_DEBUG,
                 )
-        if routes:
-            self.game.katrain.log(
-                f"[{self.strategy_name}] 同着バンドのコウ検査: {sorted(routes)} を格下げし、"
-                f"無条件に殺す（生きる）手を優先します（詰碁の順序: 無条件 > コウ）",
-                OUTPUT_INFO,
-            )
         return frozenset(routes)
 
     def _verified_choice(
