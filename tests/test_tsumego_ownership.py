@@ -8,11 +8,13 @@ from katrain.core.ai import (
     tsumego_absolute_ownership,
     tsumego_already_succeeded,
     tsumego_eligible_candidates,
+    tsumego_gain_contenders,
     tsumego_gain_stones,
     tsumego_ko_beats_normal,
     tsumego_override_confirmed,
     tsumego_ownership_gain,
     tsumego_rescue_candidate,
+    tsumego_score_best,
 )
 
 # var_to_grid は grid[y][x] を返し、配列は上の行(y降順)から詰まる。
@@ -374,8 +376,9 @@ def _rescue_cands():
 
 def _rescue(cands, chosen, min_visits=10, ratio=0.5, margin=TSUMEGO_GAIN_RESCUE_MARGIN):
     eligible = tsumego_eligible_candidates(cands, 2.0, min_visits)
+    contenders = tsumego_gain_contenders(eligible, tsumego_score_best(eligible), ratio)
     return tsumego_rescue_candidate(
-        cands, eligible, chosen, RESCUE_ROOT, [(0, 0), (1, 1)], SIZE, +1, min_visits, ratio, margin
+        cands, contenders, chosen, RESCUE_ROOT, [(0, 0), (1, 1)], SIZE, +1, min_visits, margin
     )
 
 
@@ -385,12 +388,27 @@ def test_rescue_returns_the_guard_excluded_top_gain_candidate():
     assert rescue is not None and rescue["move"] == "C1"
 
 
-def test_rescue_requires_comparable_visits():
-    # 探索の浅い候補の gain は片側ノイズ（case F: N7 v205/847=0.24 が +4.87 を出した）。
-    # ガード外の救済でも同じ深さゲートを課す
+def test_rescue_covers_depth_gate_excluded_candidates():
+    # case H (2026-07-30): 正解 N4 は目数ガード内（pt+6.1 <= best+2.0）なのに visit比
+    # 0.46-0.49 < 0.5 で深さゲートに足切りされ、gain 争いに参加できず誤答 J7 が選ばれた。
+    # 救済の対象は「ガード外」ではなく「gain 争いに参加できなかった全候補」（非 contenders）
+    cands = [
+        {"move": "F1", "pointsLost": 0.0, "visits": 350, "ownership": _own(x0_y0=-0.1)},
+        # ガード内（+1.3 < 2.0）・ratio 160/350=0.46 < 0.5 でゲート外・gain 断トツ（N4 相当）
+        {"move": "N1", "pointsLost": 1.3, "visits": 160, "ownership": _own(x0_y0=0.9, x1_y1=0.9)},
+    ]
+    rescue = _rescue(cands, chosen=cands[0])
+    assert rescue is not None and rescue["move"] == "N1"
+
+
+def test_rescue_does_not_require_comparable_visits():
+    # 浅い候補の gain は片側ノイズだが、救済は採用前に必ず同深さ検証（子局面を測り直す）を
+    # 通るので、ここで visit比は課さない（実測: 偽 gain N6 は検証で -0.24 と負け、本物の
+    # N4/C13 は +4.5/+8.4 で勝つ。比では 0.21 の本物と 0.24-0.36 の偽が分離できない）
     cands = _rescue_cands()
-    cands[1]["visits"] = 100  # 100/266 = 0.38 < 0.5
-    assert _rescue(cands, chosen=cands[0]) is None
+    cands[1]["visits"] = 100  # 100/266 = 0.38 < 0.5 でも検証行きにする
+    rescue = _rescue(cands, chosen=cands[0])
+    assert rescue is not None and rescue["move"] == "C1"
 
 
 def test_rescue_requires_min_visits():
@@ -420,7 +438,7 @@ def test_rescue_skips_candidates_without_ownership():
 
 
 def test_rescue_skips_visit_gate_without_visit_info():
-    # visits 情報の無い解析結果では深さゲートをかけない（tsumego_gain_contenders と同じ理由）
+    # visits 情報の無い解析結果でも壊れない（min_visits=0 なら床もかからない）
     cands = _rescue_cands()
     for c in cands:
         c.pop("visits")
