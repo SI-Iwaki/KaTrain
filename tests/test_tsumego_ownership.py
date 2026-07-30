@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 
 from katrain.core.ai import (
@@ -23,7 +25,9 @@ from katrain.core.ai import (
     tsumego_override_confirmed,
     tsumego_ownership_gain,
     tsumego_rescue_candidates,
+    tsumego_region_stones_by_player,
     tsumego_score_best,
+    tsumego_success_ownership,
 )
 from katrain.core.engine import REGION_AVOID_UNTIL_DEPTH, region_avoid_moves
 
@@ -565,6 +569,87 @@ def test_already_succeeded_boundary_is_the_frame_balance_point():
     assert tsumego_already_succeeded(0.01)
     # 閾値は設定で動かせる（枠が偏っている問題向けの逃げ道）
     assert not tsumego_already_succeeded(3.0, threshold=5.0)
+
+
+# --- 目数だけでは成否を判定できない（実測 2026-07-31、既存16ケースの横断計測）---
+# 枠の代償地帯が未決着だとスコアが詰碁の成否から切り離される。実測の食い違い3件は全て
+# 「目数は成功と言うが関係石は生きている」方向:
+#
+#   case Q  枠あり  +10.45目  相手石 -0.99/子（12子すべて生存）  ← 全盤最善手が枠の充填部 B9
+#   case E  枠あり  +21.08目  相手石 -0.65/子
+#   case H  枠なし  +27.69目  相手石 -0.15/子
+#
+# 成功している局面（J/K/L/M/O/P）は +0.98〜+1.00 に飽和するので、境界には 1.1 の空白がある。
+CASE_Q_LEAD, CASE_Q_OPP_OWN = 10.45, -0.99
+CASE_H_LEAD, CASE_H_OPP_OWN = 27.69, -0.15
+SOLVED_OPP_OWN = 1.00
+
+
+def test_success_ownership_takes_the_stricter_side():
+    """自石・相手石の 1子平均のうち小さいほうを採る（どちらの詰碁か戦略に渡っていないため）。"""
+    # 黒番。自石 (0,0) は生きている(+1)、相手石 (1,1) も相手のもの(-1)=殺せていない
+    own = _own(x0_y0=1.0, x1_y1=-1.0)
+    assert tsumego_success_ownership(own, [(0, 0)], [(1, 1)], SIZE, +1) == pytest.approx(-1.0)
+    # 相手石も取り切っていれば両方 +1
+    own = _own(x0_y0=1.0, x1_y1=1.0)
+    assert tsumego_success_ownership(own, [(0, 0)], [(1, 1)], SIZE, +1) == pytest.approx(1.0)
+    # 白番は符号が反転する
+    own = _own(x0_y0=-1.0, x1_y1=-1.0)
+    assert tsumego_success_ownership(own, [(0, 0)], [(1, 1)], SIZE, -1) == pytest.approx(1.0)
+
+
+def test_success_ownership_is_none_without_stones():
+    # 判定材料が無ければ None（呼び出し側は ownership の条件を課さない）
+    assert tsumego_success_ownership(ZERO, [], [], SIZE, +1) is None
+
+
+def test_success_ownership_is_none_without_ownership():
+    # _enable_ownership=false 等で ownership が取れない経路。ここで落ちると最善手
+    # フォールバックごと壊れるので、判定材料なしとして None を返す
+    assert tsumego_success_ownership(None, [(0, 0)], [(1, 1)], SIZE, +1) is None
+    assert tsumego_success_ownership([], [(0, 0)], [(1, 1)], SIZE, +1) is None
+    # そのぶん振り分けは従来どおり目数だけになる
+    assert tsumego_already_succeeded(CASE_Q_LEAD, success_ownership=None)
+
+
+def test_success_ownership_averages_per_stone():
+    # 石数で割るので、石数の違う問題どうしで同じ閾値が使える
+    own = _own(x0_y0=1.0, x1_y1=0.0)
+    assert tsumego_success_ownership(own, [(0, 0), (1, 1)], [], SIZE, +1) == pytest.approx(0.5)
+
+
+def test_score_alone_would_skip_the_ko_route_on_unsolved_positions():
+    """実測の食い違い3件: 目数だけ見ると「既に成功」と誤判定する。"""
+    assert tsumego_already_succeeded(CASE_Q_LEAD)  # 目数だけなら成功扱い
+    assert tsumego_already_succeeded(CASE_H_LEAD)
+    # ownership を渡すと成功扱いされない＝コウ機構をスキップしない
+    assert not tsumego_already_succeeded(CASE_Q_LEAD, success_ownership=CASE_Q_OPP_OWN)
+    assert not tsumego_already_succeeded(CASE_H_LEAD, success_ownership=CASE_H_OPP_OWN)
+
+
+def test_solved_positions_still_skip_the_ko_route():
+    # 本当に成功している局面（相手石が飽和）はこれまでどおりスキップする
+    assert tsumego_already_succeeded(CASE_Q_LEAD, success_ownership=SOLVED_OPP_OWN)
+
+
+def test_ownership_check_only_tightens_the_gate():
+    """ownership が成功と言っても、目数が失敗ならスキップしない（判定は厳しくなる方向だけ）。"""
+    assert not tsumego_already_succeeded(-1.0, success_ownership=SOLVED_OPP_OWN)
+
+
+def test_region_stones_split_by_player():
+    stones = [
+        SimpleNamespace(player="B", coords=(0, 0)),
+        SimpleNamespace(player="W", coords=(1, 1)),
+        SimpleNamespace(player="B", coords=(2, 2)),  # リージョン外
+    ]
+    own, opp = tsumego_region_stones_by_player(stones, [0, 1, 0, 1], "B")
+    assert own == [(0, 0)]
+    assert opp == [(1, 1)]
+    # リージョンが無ければ全石
+    own, opp = tsumego_region_stones_by_player(stones, None, "B")
+    assert own == [(0, 0), (2, 2)]
+    assert opp == [(1, 1)]
 
 
 # --- 目数ガードの救済（rescue）: case G 2手目（枠なし盤）の実測 2026-07-30 ---

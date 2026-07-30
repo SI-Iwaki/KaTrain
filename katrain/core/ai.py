@@ -1763,7 +1763,63 @@ _TSUMEGO_KO_MAX_ATARI_STONES = 6  # 打った石以外に調べる自分の1子�
 TSUMEGO_SUCCESS_LEAD = 0.0
 
 
-def tsumego_already_succeeded(best_normal, threshold=TSUMEGO_SUCCESS_LEAD):
+# スコアだけでは「成功している」と判定できないので、ownership でも裏を取る（1子平均）。
+# 枠の代償地帯が未決着だとスコアが詰碁の成否から切り離される: 実測 case Q（2026-07-31）は
+# 相手石が 12子すべて生存（−0.99/子）なのに手番側 +10.45目で、全盤 20000visits の最善手が
+# 枠の充填部（B9 v17448）＝黒はどう打っても勝てる盤になっていた。枠なし盤ではもっと露骨で、
+# case H は +27.69目・相手石 −0.15/子。
+#
+# 既存16ケースの実測（成功＝手番側から見た関係石の 1子平均 ownership）:
+#   成功している局面  J/K/L/M/O/P … +0.98〜+1.00 に飽和
+#   失敗している局面  D/E/F/G/G2/H/F2/I/N/Q … −0.15〜−1.00
+# 境界は −0.15 と +0.98 の間に 1.1 の空白があり、どこを取っても分離できる。0.5 は
+# `tsumego_frame.FRAME_SOLVER_ALIVE_OWNERSHIP` と同じ「その石群は生きているか」の閾値。
+TSUMEGO_SUCCESS_OWNERSHIP = 0.5
+
+
+def tsumego_region_stones_by_player(stones, region_of_interest, player):
+    """リージョン内の石を (手番側, 相手側) の座標リストに分ける。リージョンが無ければ全石。"""
+    split = lambda mine: tsumego_gain_stones(  # noqa: E731
+        [s.coords for s in stones if (s.player == player) == mine], region_of_interest
+    )
+    return split(True), split(False)
+
+
+def tsumego_success_ownership(root_ownership, own_stones, opponent_stones, board_size, player_sign):
+    """手番側が詰碁として成功しているかの ownership 尺度（自石・相手石の 1子平均の**小さいほう**）。
+
+    成功の中身は問題の種類で違う（殺す詰碁＝相手石が死ぬ／生きる詰碁＝自石が生きる）が、
+    どちらも「手番側がその石を所有している」＝`player_sign * ownership` が正、で表せるので
+    符号は共通に取れる。**どちらの問題か**は戦略に渡ってきていない（枠生成側の
+    `black_to_attack_p` は選択則まで伝わらない）ので、両方を測って厳しいほうを採る。
+
+    min を取ると生きる詰碁で相手（攻め方）の石が生きたまま＝負に出るので、成功していても
+    「成功していない」側に倒れる（実測 case M: 自石 +1.00 / 相手石 −0.93）。これは意図的な
+    非対称で、この尺度は**コウ機構をスキップしてよいか**の判定にしか使わない。誤って
+    スキップしないほうが安全側（スキップしない場合の保険は `ko_win_margin`＝コウ勝ち前提の
+    構造的な数目の下駄を超える 5.0 で、case E の誤答 +1.06目を確実に落とす）。
+
+    ownership が取れない（`_enable_ownership=false` 等）／石が1つも無ければ None を返す
+    ＝判定材料なしとして ownership 側の条件を課さない（従来どおり目数だけで振り分ける）。
+    この経路は `select_tsumego_move` が None を返して最善手フォールバックする局面と同じで、
+    ここで例外を投げるとフォールバックごと壊れる。
+    """
+    if not root_ownership:
+        return None
+    per_stone = [
+        tsumego_absolute_ownership(root_ownership, stones, board_size, player_sign) / len(stones)
+        for stones in (own_stones, opponent_stones)
+        if stones
+    ]
+    return min(per_stone) if per_stone else None
+
+
+def tsumego_already_succeeded(
+    best_normal,
+    threshold=TSUMEGO_SUCCESS_LEAD,
+    success_ownership=None,
+    ownership_threshold=TSUMEGO_SUCCESS_OWNERSHIP,
+):
     """通常評価の最善手だけで既に成功しているか（＝コウに持ち込む理由が無い）。
 
     詰碁の正解は目数ではなく**結果の順序**で決まる: 無条件に殺す（生きる） > コウ > セキ。
@@ -1775,8 +1831,16 @@ def tsumego_already_succeeded(best_normal, threshold=TSUMEGO_SUCCESS_LEAD):
     役目はもともと「枠の中では攻め方のコウダテが乏しく、正解のコウ手がセキより悪く見える」
     局面の**救済**に限られる（追記4）。既に成功しているならその救済は不要で、
     コウに持ち込むのは慣習上むしろ格下げになる。
+
+    ただし**目数だけでは成否を判定できない**（`TSUMEGO_SUCCESS_OWNERSHIP` 参照。枠の代償地帯が
+    未決着だとスコアが詰碁から切り離され、実測 E/H/Q の3ケースで「成功していないのに成功」と
+    出る）。`success_ownership` が渡されたら ownership でも裏を取り、**両方が成功と言うときだけ**
+    スキップする。判定を厳しくする方向にしか動かないので、外れても保険（`ko_win_margin`）の
+    効いた従来経路に落ちるだけ。
     """
-    return best_normal > threshold
+    if best_normal <= threshold:
+        return False
+    return success_ownership is None or success_ownership >= ownership_threshold
 
 
 def tsumego_ko_beats_normal(ko_value, best_normal, margin):
@@ -2815,14 +2879,33 @@ class TsumegoOwnershipStrategy(AIStrategy):
         # 沈むことがあり、そこで検査対象から外すと詰碁の慣習が効かなくなる）
         best_normal = max(player_sign * c["scoreLead"] for c in searched)
         success_lead = float(settings.get("ko_success_lead", TSUMEGO_SUCCESS_LEAD))
-        if tsumego_already_succeeded(best_normal, success_lead):
+        own_stones, opponent_stones = tsumego_region_stones_by_player(
+            self.game.stones, self.game.region_of_interest, self.cn.next_player
+        )
+        success_own = tsumego_success_ownership(
+            self.cn.ownership, own_stones, opponent_stones, self.game.board_size, player_sign
+        )
+        own_text = "n/a" if success_own is None else f"{success_own:+.2f}/子"
+        success_own_threshold = float(settings.get("ko_success_ownership", TSUMEGO_SUCCESS_OWNERSHIP))
+        if tsumego_already_succeeded(best_normal, success_lead, success_own, success_own_threshold):
             # 無条件に成功できるならコウは慣習上の格下げ。解析1本も節約できる
             self.game.katrain.log(
-                f"[{self.strategy_name}] コウ判定: 通常最善{best_normal:+.2f}目で既に成功しているため省略"
-                f"（ko_success_lead={success_lead}。詰碁の順序は 無条件 > コウ > セキ）",
+                f"[{self.strategy_name}] コウ判定: 通常最善{best_normal:+.2f}目・関係石 ownership {own_text} で"
+                f"既に成功しているため省略（ko_success_lead={success_lead}、"
+                f"ko_success_ownership={success_own_threshold}。詰碁の順序は 無条件 > コウ > セキ）",
                 OUTPUT_INFO,
             )
             return None
+        if best_normal > success_lead:
+            # 目数は成功と言っているが ownership が同意しない。枠の代償地帯が未決着でスコアが
+            # 詰碁から切り離されている局面（実測 case Q: +10.45目・相手石 −0.99/子）なので、
+            # スキップせずコウ機構を走らせる（保険は ko_win_margin）
+            self.game.katrain.log(
+                f"[{self.strategy_name}] コウ判定: 通常最善{best_normal:+.2f}目は成功と言っているが"
+                f"関係石 ownership {own_text} が ko_success_ownership={success_own_threshold} に届かないため"
+                f"省略しません（枠の代償地帯が未決着でスコアが詰碁から切り離されている可能性）",
+                OUTPUT_INFO,
+            )
         player = self.cn.next_player
         ko_visits = int(settings.get("ko_win_visits", 800))
         ko_margin = float(settings.get("ko_win_margin", TSUMEGO_KO_MARGIN))

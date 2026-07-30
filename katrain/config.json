@@ -177,6 +177,7 @@
             "ko_win_visits": 800,
             "ko_win_margin": 5.0,
             "ko_success_lead": 0.0,
+            "ko_success_ownership": 0.5,
             "ko_escape_candidates": 4,
             "ko_escape_min_prior": 0.001,
             "ko_escape_tolerance": 0.5
