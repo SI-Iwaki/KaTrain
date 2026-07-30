@@ -13,7 +13,7 @@ from katrain.core.ai import (
     tsumego_ko_beats_normal,
     tsumego_override_confirmed,
     tsumego_ownership_gain,
-    tsumego_rescue_candidate,
+    tsumego_rescue_candidates,
     tsumego_score_best,
 )
 
@@ -377,7 +377,7 @@ def _rescue_cands():
 def _rescue(cands, chosen, min_visits=10, ratio=0.5, margin=TSUMEGO_GAIN_RESCUE_MARGIN):
     eligible = tsumego_eligible_candidates(cands, 2.0, min_visits)
     contenders = tsumego_gain_contenders(eligible, tsumego_score_best(eligible), ratio)
-    return tsumego_rescue_candidate(
+    return tsumego_rescue_candidates(
         cands, contenders, chosen, RESCUE_ROOT, [(0, 0), (1, 1)], SIZE, +1, min_visits, margin
     )
 
@@ -385,7 +385,7 @@ def _rescue(cands, chosen, min_visits=10, ratio=0.5, margin=TSUMEGO_GAIN_RESCUE_
 def test_rescue_returns_the_guard_excluded_top_gain_candidate():
     cands = _rescue_cands()
     rescue = _rescue(cands, chosen=cands[0])
-    assert rescue is not None and rescue["move"] == "C1"
+    assert [c["move"] for c in rescue] == ["C1"]
 
 
 def test_rescue_covers_depth_gate_excluded_candidates():
@@ -398,7 +398,7 @@ def test_rescue_covers_depth_gate_excluded_candidates():
         {"move": "N1", "pointsLost": 1.3, "visits": 160, "ownership": _own(x0_y0=0.9, x1_y1=0.9)},
     ]
     rescue = _rescue(cands, chosen=cands[0])
-    assert rescue is not None and rescue["move"] == "N1"
+    assert [c["move"] for c in rescue] == ["N1"]
 
 
 def test_rescue_does_not_require_comparable_visits():
@@ -408,33 +408,33 @@ def test_rescue_does_not_require_comparable_visits():
     cands = _rescue_cands()
     cands[1]["visits"] = 100  # 100/266 = 0.38 < 0.5 でも検証行きにする
     rescue = _rescue(cands, chosen=cands[0])
-    assert rescue is not None and rescue["move"] == "C1"
+    assert [c["move"] for c in rescue] == ["C1"]
 
 
 def test_rescue_requires_min_visits():
     cands = _rescue_cands()
     cands[1]["visits"] = 5
-    assert _rescue(cands, chosen=cands[0]) is None
+    assert _rescue(cands, chosen=cands[0]) == []
 
 
 def test_rescue_requires_clear_gain_margin():
     # gain 差が margin 以下なら救済しない（ノイズで頻繁に同深さ検証を撃たないため）
     cands = _rescue_cands()
     cands[1]["ownership"] = _own(x0_y0=-0.5 + 0.9)  # 差 +0.9 < margin 1.0
-    assert _rescue(cands, chosen=cands[0]) is None
+    assert _rescue(cands, chosen=cands[0]) == []
 
 
 def test_rescue_ignores_candidates_already_eligible():
     # ガード内の候補は通常の gain 争いで評価済み。救済の対象はガード外だけ
     cands = _rescue_cands()
     cands[1]["pointsLost"] = 1.0  # ガード内に入る
-    assert _rescue(cands, chosen=cands[0]) is None
+    assert _rescue(cands, chosen=cands[0]) == []
 
 
 def test_rescue_skips_candidates_without_ownership():
     cands = _rescue_cands()
     cands[1].pop("ownership")
-    assert _rescue(cands, chosen=cands[0]) is None
+    assert _rescue(cands, chosen=cands[0]) == []
 
 
 def test_rescue_skips_visit_gate_without_visit_info():
@@ -443,12 +443,29 @@ def test_rescue_skips_visit_gate_without_visit_info():
     for c in cands:
         c.pop("visits")
     rescue = _rescue(cands, chosen=cands[0], min_visits=0)
-    assert rescue is not None and rescue["move"] == "C1"
+    assert [c["move"] for c in rescue] == ["C1"]
 
 
-def test_rescue_picks_the_largest_gain_among_multiple():
+def test_rescue_returns_all_qualifiers_sorted_by_gain():
+    # 実測 case F2 (2026-07-30): v10 のノイズ手 N9(g+6.77) が gain 1位に立ち、トップ1だけを
+    # 検証する設計では N9 の却下で救済が終わり、2位3位の本物 N11(g+5.41)/M12(g+5.30) が
+    # 検証の機会を失って誤答 J11 を打った。救済は gain 降順の複数候補を返し、検証側が
+    # 全員を測って最良を採る（検証は毎回正しく序列化する: N9 -26.9 / N11 -17.1 / J11 -19.4）
     cands = _rescue_cands() + [
         {"move": "D1", "pointsLost": 2.5, "visits": 300, "ownership": _own(x0_y0=1.0, x1_y1=1.0)},
     ]
     rescue = _rescue(cands, chosen=cands[0])
-    assert rescue is not None and rescue["move"] == "D1"
+    assert [c["move"] for c in rescue] == ["D1", "C1"]
+
+
+def test_rescue_caps_the_number_of_candidates():
+    # 検証は1候補あたり同深さ解析1本のコストがかかるので上限を設ける（既定3）
+    cands = [{"move": "B1", "pointsLost": 0.0, "visits": 266, "ownership": _own(x0_y0=-0.5)}]
+    for i, col in enumerate("CDEF"):
+        cands.append(
+            {"move": f"{col}1", "pointsLost": 3.0, "visits": 200,
+             "ownership": _own(x0_y0=0.3 + 0.1 * i, x1_y1=0.5)}
+        )
+    rescue = _rescue(cands, chosen=cands[0])
+    assert len(rescue) == 3
+    assert [c["move"] for c in rescue] == ["F1", "E1", "D1"]  # gain 降順
