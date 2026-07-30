@@ -900,6 +900,21 @@ gain_epsilon 内 → 目数委譲 → **0.02 目差**で N11。複数の手が�
 3run とも N10 の方が visits 多（v938〜985 vs v802〜852）なのに、旧則は毎回
 0.02〜0.03 目のノイズ差で N11 を選んでいた（コイン投げではなく一貫して誤答側）。
 
+### 再発と修正（同日 GUI 実測）: select 単体の A/B は generate_move の検証ゲートを見逃す
+
+GUI で同じ問題を再実行すると再び N11。ログ上 `select_tsumego_move` は N10 を選んで
+いたが、後段の「選択手 ≠ 目数最善」の**無条件 score_best 同深さ検証**が発動し、
+等価な2手は margin 0.3 で分離できない（N10 +43.97 vs N11 +43.92、差 +0.05）ため
+必ず却下 → 目数最善 N11 へ巻き戻り、同着タイブレークが丸ごと無効化されていた。
+`points_tie_ab.py`（select 単体）はこの後段を通らないため検出できなかった。
+
+対処は `tsumego_needs_score_best_verify`: 検証が要るのは「目数を本当に犠牲にして
+gain で覆す」選択（目数差 > points_epsilon）だけ。同着バンド内の選択は「等価なので
+PV に寄せる」判断なので検証しない（ムダな 800visits 解析2本の節約にもなる）。
+実 generate_move E2E（`generate_move_e2e.py`、検証・救済経路込み）×3run で
+誤答局面 N10 3/3・1手目 M11 3/3 を確認。**以後、選択則の変更は select A/B に加えて
+必ずこの E2E も回すこと**。
+
 ## 影響範囲
 
 - `katrain/core/constants.py` — `AI_TSUMEGO` の定義と各リストへの登録

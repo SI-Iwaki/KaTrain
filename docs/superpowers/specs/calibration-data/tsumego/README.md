@@ -54,6 +54,18 @@ gain_region_ab.py と同じく **1回の解析から旧（points_epsilon=0）/�
 両方の選択を計算する**。gain も目数もノイズ同着の局面（case J）で、旧則がコイン投げに
 なるのに対し新則が visits 最多（KataGo の本命）へ寄ることを確認する。
 
+### `generate_move_e2e.py` — 実 generate_move の E2E（検証・救済経路込み）
+
+```bash
+python docs/superpowers/specs/calibration-data/tsumego/generate_move_e2e.py <sgf> <moves_csv> <xmin,xmax,ymin,ymax> [repeats]
+# 例: ... case-j-points-tie-20260730.sgf 0,10 6,12,1,12 3
+```
+
+select 単体の A/B は generate_move 後段（score_best 同深さ検証・救済）を通らないので、
+そこで巻き戻される回帰を見逃す（実測 case J: select は N10 を選んだのに無条件の
+score_best 検証が却下して N11 に巻き戻し、GUI で誤答が再発）。**選択則を変えたら
+select レベルの A/B に加えて必ずこれも回すこと**。
+
 ### `ko_margin_ab.py` — コウ勝ち前提の採用判定を検証
 
 ```bash
