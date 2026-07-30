@@ -14,6 +14,7 @@ from katrain.core.constants import DATA_FOLDER
 from katrain.core.engine import KataGoEngine
 from katrain.core.game import region_analysis_extra_settings
 from katrain.core.ai import (
+    TSUMEGO_KO_REGION_UNTIL_DEPTH,
     tsumego_absolute_ownership,
     tsumego_candidate_reaches_region_ko,
     tsumego_competitive_replies,
@@ -52,6 +53,9 @@ def analyze_region(engine, node, visits, ownership=False, timeout=600.0):
         time_limit=False,
         ownership=ownership,
         region_of_interest=REGION,
+        # 本番の `_ko_route_screen` と同じ拘束深さ。既定(1)だと PV が ply2 以降で枠外へ
+        # 手抜きして、コウ経路の候補が clean に見える（spec 追記20 / case P）
+        region_until_depth=TSUMEGO_KO_REGION_UNTIL_DEPTH,
         extra_settings=region_analysis_extra_settings(visits, 0.04),
         priority=0,
     )
@@ -114,6 +118,16 @@ def main():
                     f"{m:>4}  {verdict:<28} lead(手番){sign * info['lead']:+7.2f} tgtOWN{own:+7.2f} "
                     f"拮抗応手={[(r.get('move'), r.get('visits')) for r in walk]}"
                 )
+                # PV も出す。clean 判定が「本当に無条件」なのか「PV が枠外へ手抜きして証拠が
+                # 消えた」のかは PV を見ないと区別できない（実測 case P: `J1,L2,J12` の J12 が
+                # 枠外。本番は untilDepth を歩く深さぶん指定して防いでいる＝spec 追記20）
+                for r in walk:
+                    pv = r.get("pv") or []
+                    # 手抜きを見るのは歩く範囲（= 拘束した深さ）だけ。その先の枠外手は無害
+                    walked = pv[:TSUMEGO_KO_REGION_UNTIL_DEPTH]
+                    outside = [g for g in walked if (c := Move.from_gtp(g).coords) and not in_region(c)]
+                    print(f"        応手 {r.get('move'):>4} v{r.get('visits'):>4} pv={','.join(pv[:8])}"
+                          f"{'  ← 枠外へ手抜き: ' + ','.join(outside) if outside else ''}")
     finally:
         engine.shutdown(finish=False)
 

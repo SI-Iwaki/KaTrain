@@ -1,0 +1,7 @@
+(;GM[1]FF[4]CA[UTF-8]SZ[13]KM[7.0]PL[B]AB[la][jb][kb][lb][mb][ag][bg][cg][dg][eg][fg][gg][hg][ig][jg][kg][lg][mg][ah][bh][ch][ai][bi][ci][li][mi][aj][bj][cj][hj][ij][jj][kj][ak][bk][ck][fk][hk][lk][al][bl][cl][el][gl][am][bm][cm][fm]AW[ba][da][ia][ja][ka][ab][cb][bc][dc][fc][hc][jc][lc][ad][cd][ed][gd][id][kd][md][be][de][fe][he][je][le][af][bf][cf][df][ef][ff][gf][hf][if][jf][kf][lf][mf][mj][gk][ik][jk][kk][hl][ll][ml]RU[chinese]AP[KaTrain:1.17.1]KTV[1.0]C[case P (2026-07-31) 13路・region C1-N7 = 2,12,0,6。黒番で白8子を無条件に殺す詰碁。誤答は3手目（move_n=2）: AI は H1 を選び、白 J1・黒 L2 の後に白 G1（黒 H1 の1子取り）でコウにされて不正解。正解は J1。]
+;B[jm];W[il]
+(;B[im]C[正解 J1]
+;W[hm];B[kl];W[km];B[lm]C[白は無条件死])
+(;B[hm]C[誤答 H1（root visits 最多）]
+;W[im];B[kl];W[gm]C[白 G1 が黒 H1 を1子取り = コウ]
+;B[gj]))
