@@ -100,7 +100,7 @@ humanモードの悪手フィルタ閾値はHumanStyleStrategyと同じBAD_MOVE_
 
 詰碁キャプチャ専用の独立戦略（`ai:tsumego`）。GUI の戦略一覧には出さず、キャプチャ経路がプログラムから設定する（`AI_OPTION_VALUES` への登録は不要。設定は両方の `config.json` の `ai/ai:tsumego` に直接置く）。
 
-**着手選択**: リージョン限定解析（ownership 付き）の候補手に対し、(1) 目数ガード `pointsLost <= min(pointsLost) + max_points_behind` を通し、(2) **リージョン内**の石の ownership 変化量の合計（gain）が最大の手を選ぶ。(3) gain 差が `gain_epsilon` 以内の手は同着とみなし pointsLost で決め、(4) pointsLost も `points_epsilon` 以内で並ぶ同着バンドでは visits 最多（KataGo の本命）を採る。(5) 選択パイプライン（バンド → score_best 同深さ検証 → 救済）の**最後に**、目数ガード内の選択手はコウ経路検査（`tie_ko_screen` 参照）でクラス裁定し、コウ経路で clean な対抗馬がいれば格下げする。
+**着手選択**: リージョン限定解析（ownership 付き）の候補手に対し、(1) 目数ガード `pointsLost <= min(pointsLost) + max_points_behind` を通し、(2) **リージョン内**の石の ownership 変化量の合計（gain）が最大の手を選ぶ。(3) gain 差が `gain_epsilon` 以内の手は同着とみなし pointsLost で決め、(4) pointsLost も `points_epsilon` 以内で並ぶ同着バンドでは visits 最多（KataGo の本命）を採る。(5) 選択パイプライン（バンド → score_best 同深さ検証 → 救済）の**最後に**、目数ガード内の選択手はコウ経路検査（`tie_ko_screen` 参照）でクラス裁定し、コウ経路で clean な対抗馬がいれば格下げする。(6) その検査で**対抗馬も全部コウ経路**だったときは、それを「正解が候補プールの外にいる」信号とみなし、root policy の上位（未検査分）を同深さで測り直して無条件の手を探す（`ko_escape_candidates` 参照）。
 
 **gain の集計範囲はリージョン内の石のみ**（`tsumego_gain_stones`）。枠は `put_outside` でリージョン外を「守り側の代償地帯＋攻め方の地」に配る設計で、その境目の石の ownership は詰碁の成否と**逆相関する counterweight** になる。全石で集計すると符号が反転し、守り側が生きる手が選ばれる（実測 2026-07-30: 枠内 −9.65 に対し枠外 +11.6 で合計 +2.90 になり誤答手が4/4で選ばれた）。リージョンが無い枠なしモードでは従来どおり全石。
 
@@ -120,6 +120,10 @@ humanモードの悪手フィルタ閾値はHumanStyleStrategyと同じBAD_MOVE_
 | ko_win_visits | 800 | コウ勝ち局面の解析 visits。コウが見つかった候補だけ解析するので +1秒程度 |
 | ko_success_lead | 0.0 | この目数を超えて通常最善が勝っていれば「既に成功」と見なしコウ検査を省略する。**詰碁の正解順序は 無条件に殺す（生きる） > コウ > セキ で、目数はクラス内のタイブレークにすぎない**。枠は成功側が offence_to_win(5)目勝つ設計なので符号が成否になり、player_sign 込みで攻め・守りの両方に効く。コウ解析より前に判定するので成功局面では解析1本ぶん速い |
 | ko_win_margin | 5.0 | コウ勝ち前提が通常最善を上回ったと見なす目数差（`ko_success_lead` を通った局面向けの保険）。コウ勝ちノードは攻め方が1手多く相手石を1子取った局面なので比較が構造的にコウ側へ数目偏る。実測の分離幅: 誤答 +1.06目 / 正解がコウ +15.5目。旧既定 0.5 かつ成功ゲート無しでは 1visit・−34目の手が +1.06目差で採用された |
+
+| ko_escape_candidates | 4 | **コウ一色バンドからの脱出**: 選択手も目数ガード内の対抗馬も**全部**コウ経路だったとき、詰碁の順序（無条件 > コウ）からするとそれは「正解が候補プールの外にいる」という信号なので、root policy の上位（未検査分）をこの本数まで同深さ `gain_verify_visits` で測り直す（`_ko_escape_choice` / `tsumego_ko_escape_candidates`）。**探す先が policy なのは、value が壊れているから正解が漏れているため**。実測 case O (2026-07-31): 正解 A11 は root 1800visits でも **12000visits でも v1 のまま**（root の value が約29目ずれ PUCT が二度と訪れない＝深さでは原理的に届かない）で、その 1visit 評価 pt+28.74 で min_visits・目数ガード・gain・救済・コウ検査プールの全部から締め出されていた。prior は `B12 .68 / C10 .20 / B13 .043 / C13 .011 / A11 .0076〜.0091 / A8 .0008 / 残り42手すべて .0001(NN下限)` で正解は 2/2 run とも5位固定。0 で機構を停止。回帰は generate_move_e2e.py（O: A11 3/3。K/L/M/J/F2/I は脱出が発動せず不変） |
+| ko_escape_min_prior | 0.001 | 脱出候補に要求する root policy の下限。NN 下限（.0001）に張り付いた手を除くための崖の位置。case O では A11(.0091) と A8(.00089) の間に10倍の崖がある |
+| ko_escape_tolerance | 0.5 | **採用条件の許容幅。不等号の向きに注意** — 「incumbent を上回る」ではなく「tolerance 超えて**下回らない**」（`tsumego_ko_escape_accepts`）。コウ手のスコアは「コウに勝った前提」で出るので無条件の正解より**むしろ高い**（実測 同深さ800visits・リージョン内42子: コウの B12 +41.95 > 正解 A11 +41.85）。既存の覆し `tsumego_override_confirmed`（gain_verify_margin 0.3 超えで上回ること）を使うと正解が却下される。順序を決めるのはクラスであってスコアではなく、スコアは「その手で本当に詰碁が成立しているか」の確認にだけ使う。失敗する clean 手は同じ尺度で +18.5〜+18.8（−23）まで落ちるので 0.5 で十分に分離できる。**この非対称性が安全弁**: 答えが本当にコウの詰碁では clean 候補が ownership 検査を通らず、脱出は何もせずコウを維持する |
 
 **リージョン解析クエリ側**（`tsumego_capture` セクション。戦略ではなく解析の設定）:
 

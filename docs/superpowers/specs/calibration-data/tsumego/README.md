@@ -19,6 +19,8 @@
 | `case-n-live-frame-drop-20260730.sgf` | 生き問題の有効な枠が浅い読みで捨てられ、枠なし盤で詰碁が消えた誤答局面（13路左下・**枠なし**、初手、正解 B3=無条件生き、旧実装は D10＝死活と無関係な点）。region = `0,5,0,9`。**保存 SGF は認識盤そのもの**（枠なしで出題された回なので枠を剥がす復元ができない。`frame_validity_probe.py` は `core` として扱う）。枠あり（実 generate_move）B3 5/5 OK・枠なし D10 2/2 NG で、枠を捨てた判断そのものが誤答の原因。`frame_validity_visits`（捨てる前に 1800visits・**wideRootNoise=0** で読み直す）と `frame_over_frameless`（捨てる先の枠なし盤を測ってから捨てる）の回帰対象（spec 追記18）。**測るときは engine 起動を挟むこと**: 同一プロセスの再クエリは NN キャッシュが効いて独立サンプルにならない |
 | `case-m-capture-gain-ko-20260730.sgf` | コウ手の gain が実信号になり同着バンドのコウ検査を素通りした誤答局面（13路右下・枠あり、5手目、正解 K1=無条件生き、旧実装は M2=白L2の1子取りからコウ生きに転落）。region = `4,12,0,8`。M2 の gain +1.8〜1.9 は「コウに勝つ前提」で白 L2/M3 を取り切る**実信号**（同深さ検証も +1.29 でコウ側を追認＝gain・目数・検証のスコア系メトリックはクラスを分離できない）のため gain 同着バンドが形成されず、旧 tie_ko_screen（バンド2手以上が条件）が不発のまま採用された。コウ検査を「選択パイプライン最後の成功クラス裁定」に一般化した `tsumego_class_screen_pool` / `tsumego_declass_choice` の回帰対象（spec 追記17）。構造検出は安定: 子局面の白最善応手 K1（アプリの反撃と同一）の PV の B M4（1子取り）がコウ形（2/2 run） |
 
+| `case-o-all-ko-band-20260731.sgf` | **正解が root 探索の visit 配分から漏れ、到達できる候補が全部コウだった誤答局面**（13路左上・枠あり、初手、正解 A11=無条件、旧実装は B12 で白 A11 のコウ）。region = `0,8,3,12`。root 1800visits の配分は B12 v1172 / C10 v622 / **残り46手すべて v1** で、正解 A11 は **12000visits にしても v1 のまま**（root の value が約29目ずれており PUCT が二度と訪れない＝深さでは原理的に届かない）。1visit の評価 pt+28.74 で min_visits・目数ガード・gain・救済・コウ検査プールの全部から締め出される。コウ経路検査自体は B12/C10 の両方を正しくコウと判定していた（2/2）ので、足りないのは対抗馬プールだけ。「目数ガード内が全部コウ経路」をトリガーに root policy 上位（未検査分）を同深さで測り直す `_ko_escape_choice` / `tsumego_ko_escape_candidates` / `tsumego_ko_escape_accepts` の回帰対象（spec 追記19）。**採用条件の不等号に注意**: コウ手のほうがスコアは高く出る（同深さ検証 B12 +41.95 > 正解 A11 +41.85）ので「上回ること」を要求すると正解が落ちる。失敗する clean 手は +18.5〜18.8 で 23 点下 |
+
 ## 診断スクリプト
 
 KaTrain 本体とは独立。KataGo を起動するのでプロジェクトルートから実行する。
@@ -69,6 +71,36 @@ select 単体の A/B は generate_move 後段（score_best 同深さ検証・救
 そこで巻き戻される回帰を見逃す（実測 case J: select は N10 を選んだのに無条件の
 score_best 検証が却下して N11 に巻き戻し、GUI で誤答が再発）。**選択則を変えたら
 select レベルの A/B に加えて必ずこれも回すこと**。
+
+### `child_depth_probe.py` — 「本当に悪い手」か「読まれていないだけ」かを切り分ける
+
+```bash
+python docs/superpowers/specs/calibration-data/tsumego/child_depth_probe.py \
+    <sgf> <move_n> <xmin,xmax,ymin,ymax> <moves_csv|-> [root_visits] [child_visits] [root_wrn]
+# 例: ... case-o-all-ko-band-20260731.sgf 0 0,8,3,12 A11,B12,C10 1800 1800
+```
+
+root の候補表（visits / **prior** / pointsLost / gain / 相手石 ownership）と、指定手を1手
+進めた**子局面を独立に解析した値**を並べる。root の movesOwnership・pointsLost は候補ごとに
+探索の深さが違うので、**visits が付かなかった手の数字は NN の生評価1回でしかない**。
+「その手が本当に悪いのか、単に読まれていないだけか」はこれを回さないと区別できない
+（実測 case O: root 1visit の A11 は pt+28.74/白は生き、子局面 1800visits では +11.53目/白は全滅）。
+
+`moves_csv` に `-` を渡すと root の表だけ出す。`root_visits` を変えて **深さで届くのか**を
+確かめるのにも使う（case O は 12000visits でも A11 が v1 のままだった）。
+
+### `ko_route_probe.py` — 候補がコウ経路か無条件かを本番と同じ手順で判定
+
+```bash
+python docs/superpowers/specs/calibration-data/tsumego/ko_route_probe.py \
+    <sgf> <move_n> <xmin,xmax,ymin,ymax> <moves_csv> [visits] [repeats]
+# 例: ... case-o-all-ko-band-20260731.sgf 0 0,8,3,12 A11,B12,C10,C13,B13 800 2
+```
+
+`_ko_route_screen` と同じ判定（候補手自身の1子取り＋守り方の拮抗応手の PV）に加え、
+同深さの目数と相手石 ownership も出す。**クラス（コウ/無条件）と成否（殺せている/いない）は
+別軸**であることを1枚で確認できる（実測 case O: A11=clean かつ成功 / B12・C10=コウだが成功 /
+C13・B13=clean だが失敗）。`repeats` で run 間の安定性を見る。
 
 ### `ko_margin_ab.py` — コウ勝ち前提の採用判定を検証
 
