@@ -2370,6 +2370,22 @@ class TsumegoOwnershipStrategy(AIStrategy):
             min_visit_ratio,
             points_epsilon,
         )
+        eligible = tsumego_eligible_candidates(candidate_moves, max_points_behind, min_visits)
+        if len(eligible) <= 1:
+            # 対抗馬が居ない＝この手番で戦略は何も判断していない（KataGo の最善手をそのまま返すだけ）。
+            # gain・同深さ検証・救済・コウ経路検査・コウ脱出は全部「目数ガード内の候補を比べる」
+            # 機構なので、eligible が1手に潰れると揃って不発になる。root が1手に visits を集中させ、
+            # 残りが min_visits 未満に沈むと起きる（実測 case Q 2026-07-31: H13 が 1800visits 中 1764、
+            # 12000visits でも 11943 を占め、正解 N9 は v1〜v4 で eligible から脱落。全盤 20000visits
+            # でも N9 は v3・winrate 0.450 で、KataGo の value がこの準備手を読めていない）。
+            # 「候補37手」だけを見ると選択則が37手から選んだように読めてしまい誤答の切り分けが
+            # 遅れるので、不発だったことをログに残す
+            self.game.katrain.log(
+                f"[{self.strategy_name}] 対抗馬なし: 目数ガード＋min_visits={min_visits} を通ったのは "
+                f"{[c['move'] for c in eligible] or '0手'}（候補{len(candidate_moves)}手中）。"
+                f"gain・同深さ検証・救済・コウ経路検査は全て不発で、KataGo の最善手をそのまま返します",
+                OUTPUT_INFO,
+            )
         chosen = select_tsumego_move(*selection_args)
         if chosen is None:
             # ownership が無い（_enable_ownership が false 等）。無言で劣化させず既定動作に戻す
@@ -2382,7 +2398,6 @@ class TsumegoOwnershipStrategy(AIStrategy):
             gain_text = "ownership なし"
         else:
             escape_value = None
-            eligible = tsumego_eligible_candidates(candidate_moves, max_points_behind, min_visits)
             score_best = tsumego_score_best(eligible)
             if (
                 score_best is not None
@@ -2468,7 +2483,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
             f"[{self.strategy_name}] Final decision: {move.gtp()} "
             f"({gain_text}, pointsLost={chosen['pointsLost']:+.2f}, "
             f"visits={chosen.get('visits', 0)}, "
-            f"候補{len(candidate_moves)}手, gain集計石{len(stones)}子, "
+            f"候補{len(candidate_moves)}手（うち対抗馬{len(eligible)}手）, gain集計石{len(stones)}子, "
             f"max_points_behind={max_points_behind}, "
             f"gain_epsilon={gain_epsilon}, min_visits={min_visits}, "
             f"gain_min_visit_ratio={min_visit_ratio}, points_epsilon={points_epsilon})",
