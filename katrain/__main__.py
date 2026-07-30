@@ -770,14 +770,21 @@ class KaTrainGui(Screen, KaTrainBase):
         問題では攻め方に渡さないと守り側の無条件生きになる（＝正解手が価値を失う）。どちらが
         正しいかは問題ごとに違うため、両方を短い解析にかけて枠の設計目標（攻め方成功=5目勝ち）に
         近い方を選ぶ。解析できない場合は設定値の枠をそのまま使う。
+
+        どの枠でも手番側（解く側）の本体石が開始時点で死と読まれる場合は None を返し、呼び出し側が
+        枠なしで出題する。必ず正解手がある詰碁で開始時点から全滅はあり得ないので、それは枠が問題を
+        壊しているサイン。枠バランスでは検出できない（`frame_destroys_problem` の説明を参照）。
         """
         from katrain.core.tsumego_frame import (
             FRAME_BALANCE_WARN_DISTANCE,
             frame_balance_distance,
+            frame_destroys_problem,
             offence_to_win,
             pick_balanced_frame,
+            solver_core_points,
             tsumego_frame_board,
         )
+        from katrain.core.utils import var_to_grid
 
         candidates = []
         for ko_p in (bool(ko), not ko):
@@ -791,24 +798,44 @@ class KaTrainGui(Screen, KaTrainBase):
             candidates.append((ko_p, board, region))
         if not candidates:
             return tsumego_frame_board(grid, komi, True, ko_p=ko, margin=margin)  # 例外は呼び出し側へ
-        if len(candidates) == 1 or not settings.get("frame_ko_auto", True):
-            return candidates[0][1], candidates[0][2]
+        if not settings.get("frame_ko_auto", True):
+            candidates = candidates[:1]  # コウダテの自動選択はしないが、本体石の死活は確かめる
         try:
             trial_visits = int(settings.get("frame_ko_trial_visits", 400))
         except (TypeError, ValueError):
             trial_visits = 400
-        scored = []
+        scored, destroyed = [], []
         for ko_p, board, region in candidates:
-            lead = self._tsumego_frame_root_lead(board, komi, region, trial_visits, settings)
-            scored.append((ko_p, board, region, lead))
+            lead, ownership = self._tsumego_frame_trial(board, komi, region, trial_visits, settings)
+            stones = solver_core_points(grid, board, region)
+            own_grid = var_to_grid(ownership, (len(board[0]), len(board))) if ownership else None
+            solver_own = sum(own_grid[y][x] for x, y in stones) if own_grid else None
             self.log(
                 f"tsumego_capture: 枠バランス試算 ko={ko_p}: "
-                f"root={'解析失敗' if lead is None else f'{lead:+.2f}目'}",
+                f"root={'解析失敗' if lead is None else f'{lead:+.2f}目'}"
+                + (
+                    ""
+                    if solver_own is None
+                    else f" / 手番側の本体石{len(stones)}子={solver_own:+.2f}"
+                    f"（{solver_own / max(1, len(stones)):+.2f}/子）"
+                ),
                 OUTPUT_INFO,
             )
+            if solver_own is not None and frame_destroys_problem(solver_own, len(stones)):
+                destroyed.append(ko_p)
+                continue
+            scored.append((ko_p, board, region, lead))
+        if not scored:
+            self.log(
+                f"tsumego_capture: 枠(ko={'/'.join(str(k) for k in destroyed)})では手番側の石が開始時点で"
+                f"死と読まれます。必ず正解手がある詰碁でこれは起こり得ないので、枠が問題を壊していると"
+                f"判断して枠なしで出題します",
+                OUTPUT_INFO,
+            )
+            return None
         best = pick_balanced_frame(scored)
         if best is None:
-            return candidates[0][1], candidates[0][2]
+            return scored[0][1], scored[0][2]
         if best[0] != candidates[0][0]:
             self.log(f"tsumego_capture: 枠バランスが良い ko={best[0]} の枠を採用します", OUTPUT_INFO)
         distance = frame_balance_distance(best[3])
@@ -825,18 +852,39 @@ class KaTrainGui(Screen, KaTrainBase):
             )
         return best[1], best[2]
 
-    def _tsumego_frame_root_lead(self, board, komi, analysis_region, visits, settings, timeout=30.0):
-        """枠バランス判定用に root の scoreLead だけ取る。取れなければ None"""
+    def _tsumego_frameless_board(self, grid, settings):
+        """枠なしで出題する盤とリージョン。認識結果そのままで1子も書き換えない"""
+        from katrain.core.tsumego_frame import frameless_region
+
+        try:
+            pad = max(0, int(settings.get("region_pad", 1)))
+        except (TypeError, ValueError):
+            pad = 1
+        analysis_region = frameless_region(grid, pad)
+        if analysis_region is None:
+            # Noneのまま進めると解析リージョンが無い＝全盤解析になり、この機能が防ごうと
+            # している状態そのものに陥る。A/Bテスト中はエンジンの誤判定と見分けがつかず
+            # 気づけないため、ここで明示的に警告する（region_padが盤外まで広すぎる、
+            # または石クラスタが検出できず全石bboxに退化した等が原因）
+            self.log(
+                f"tsumego_capture: 解析リージョンを絞り込めなかったため全盤を解析します。"
+                f"AIの着手が詰碁の正解手と一致しないことがあります（region_pad={pad} を確認してください）",
+                OUTPUT_ERROR,
+            )
+        return grid, analysis_region
+
+    def _tsumego_frame_trial(self, board, komi, analysis_region, visits, settings, timeout=30.0):
+        """枠の採否判定用に root の scoreLead と ownership を取る。取れなければ (None, None)"""
         from katrain.core.tsumego_capture import grid_to_sgf
 
         engine = self.engine
         if engine is None:
-            return None
+            return None, None
         try:
             node = KaTrainSGF.parse_sgf(grid_to_sgf(board, komi=komi))
         except Exception as e:
             self.log(f"tsumego_capture: 枠バランス試算のSGF化に失敗しました: {e}", OUTPUT_INFO)
-            return None
+            return None, None
         # grid_to_sgf は RU を出さない。BaseGame は未指定なら設定のルールを入れるが、ここは
         # Game を作る前なので自分で入れる（未指定だと engine 既定の japanese になり、
         # 面積計算前提の枠のスコアが 25 目規模でずれる）
@@ -849,24 +897,28 @@ class KaTrainGui(Screen, KaTrainBase):
         engine.request_analysis(
             node,
             callback=lambda analysis, partial_result: (
-                None if partial_result else result.setdefault("lead", analysis["rootInfo"]["scoreLead"])
+                None
+                if partial_result
+                else result.setdefault(
+                    "done", (analysis["rootInfo"]["scoreLead"], analysis.get("ownership"))
+                )
             ),
             error_callback=lambda error: result.setdefault("error", error),
             visits=visits,
             time_limit=False,
-            ownership=False,
+            ownership=True,  # 手番側の本体石が生きているかの判定に使う
             region_of_interest=region,
             extra_settings=region_analysis_extra_settings(visits, self._tsumego_region_wide_root_noise(settings)),
         )
         deadline = time.time() + timeout
-        while "lead" not in result and "error" not in result and time.time() < deadline:
+        while "done" not in result and "error" not in result and time.time() < deadline:
             time.sleep(0.05)
             try:
                 engine.check_alive(exception_if_dead=True)
             except Exception as e:
                 self.log(f"tsumego_capture: 枠バランス試算中にエンジンが停止しました: {e}", OUTPUT_INFO)
-                return None
-        return result.get("lead")
+                return None, None
+        return result.get("done", (None, None))
 
     def _tsumego_capture_failed(self, message):
         """失敗をターミナルと GUI の両方に出す（作業スレッドから呼ばれるため GUI 更新は Clock 経由）"""
@@ -880,32 +932,21 @@ class KaTrainGui(Screen, KaTrainBase):
         # コミで均衡させると今度はリージョン内の空点自体が最善手候補になり、正解手が埋もれる
         # （実測: 正解手が1800visits中わずか2visits）。枠は盤面を約80子書き換えるため死活自体を
         # 変えてしまう疑いも残り、これが枠なしモードをコードに残してある理由。
+        # ただし枠が詰碁自体を壊している（手番側の石が開始時点で死）と判定されたキャプチャは、
+        # 枠あり設定でもその回だけ枠なしに落ちる（_choose_tsumego_frame が None を返す）。
         # new-game と解析発行は同一メッセージ内で行う
         # （分割すると new-game で game_id が変わり後続メッセージが破棄されるため）
         from katrain.core.tsumego_capture import CaptureError, grid_to_sgf
-        from katrain.core.tsumego_frame import frameless_region, tsumego_frame_board
 
         settings = self._config.get("tsumego_capture") or {}
         komi = self.config("game/komi", 6.5)
+        board, analysis_region = None, None
         if settings.get("use_frame", False):
-            board, analysis_region = self._choose_tsumego_frame(grid, komi, ko, margin, settings)
-        else:
-            board = grid  # 認識結果そのまま。1子も書き換えない
-            try:
-                pad = max(0, int(settings.get("region_pad", 1)))
-            except (TypeError, ValueError):
-                pad = 1
-            analysis_region = frameless_region(grid, pad)
-            if analysis_region is None:
-                # Noneのまま進めると解析リージョンが無い＝全盤解析になり、この機能が防ごうと
-                # している状態そのものに陥る。A/Bテスト中はエンジンの誤判定と見分けがつかず
-                # 気づけないため、ここで明示的に警告する（region_padが盤外まで広すぎる、
-                # または石クラスタが検出できず全石bboxに退化した等が原因）
-                self.log(
-                    f"tsumego_capture: 解析リージョンを絞り込めなかったため全盤を解析します。"
-                    f"AIの着手が詰碁の正解手と一致しないことがあります（region_pad={pad} を確認してください）",
-                    OUTPUT_ERROR,
-                )
+            chosen = self._choose_tsumego_frame(grid, komi, ko, margin, settings)
+            if chosen is not None:
+                board, analysis_region = chosen
+        if board is None:  # 枠なし設定、または枠が詰碁を壊していると判定された場合
+            board, analysis_region = self._tsumego_frameless_board(grid, settings)
         try:
             move_tree = KaTrainSGF.parse_sgf(grid_to_sgf(board, komi=komi))
         except ParseError as e:

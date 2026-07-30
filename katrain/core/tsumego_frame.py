@@ -104,6 +104,61 @@ FRAME_BALANCE_TIE_MARGIN = 2.0  # この差以内は同点とみなし、攻め�
 FRAME_BALANCE_WARN_DISTANCE = 8.0
 
 
+# 枠を採用してよいかの判定。詰碁は「必ず正解手がある」前提の出題なので、開始時点で解く側
+# （手番側）の石が相手の地と読まれている枠は、枠が問題そのものを壊している（正解手があるなら
+# 開始時点で全滅しているはずがない）。この判定は枠バランスでは代替できない: 枠は「想定した
+# 攻め方が成功したら offence_to_win 目勝ち」に調整するので、攻め方の推定が反転していても
+# 想定攻め方が実際に成功する＝バランスは完璧に見える（実測 2026-07-30 case G: 距離 2.1 で
+# 過去最良なのに黒の攻め石は全滅、19路に置き直しても距離 5.4 で同じ）
+# 手番側の本体石はこの ownership（1子平均）以上で「明確に生きている」とみなす。0 ではなく
+# 0.5 なのは、実測で正常な枠が +1.00/子（完全生存）に対し壊れた枠の1つが -0.09/子 と 0 付近に
+# 来たため（case F の ko=False 枠）。0 だと run ごとに符号が反転して枠採否が入れ替わる
+FRAME_SOLVER_ALIVE_OWNERSHIP = 0.5
+
+
+def solver_core_points(recognized, framed, region, player=BLACK):
+    """枠の壁・充填を除いた「問題本体の手番側の石」の (x, y) 座標列（ownership 添字順）。
+
+    認識盤（枠を張る前）と枠付き盤の両方に同じ色で存在する点だけを採る。壁・充填は認識盤に
+    無いので落ち、drop_non_core で消えた石は枠付き盤に無いので落ちる。壁石を混ぜてはいけない
+    のは、壁が自明に生きていて判定を埋もれさせるため（実測 case D: 壁込み +25.00/25 で常に
+    正常判定、本体だけなら +8.00/8 と本来の値になる）。
+    """
+    isize, jsize = ij_sizes(framed)
+    if region:
+        (imin, imax), (jmin, jmax) = region
+    else:
+        imin, imax, jmin, jmax = 0, isize - 1, 0, jsize - 1
+    return [
+        (j, isize - 1 - i)
+        for i in range(max(0, imin), min(isize - 1, imax) + 1)
+        for j in range(max(0, jmin), min(jsize - 1, jmax) + 1)
+        if recognized[i][j] == player and framed[i][j] == player
+    ]
+
+
+def frame_destroys_problem(solver_ownership, stone_count, threshold=FRAME_SOLVER_ALIVE_OWNERSHIP):
+    """手番側の本体石が平均で生きていると読まれなければ True（この枠では詰碁が解けない）。
+
+    実測 2026-07-30（trial 400visits、リージョン内の本体石のみ、手番=黒。枠は ko の2通り）:
+
+        case D  +8.00/8  +1.00/子 ／ +8.00/8  +1.00/子   正常 → 枠を使う（正解 A4）
+        case E +21.98/22 +1.00/子 ／ +21.95/22 +1.00/子  正常 → 枠を使う（正解 K1）
+        case F  -0.98/11 -0.09/子 ／ -10.33/11 -0.94/子  壊れ → 枠なしで正解 N8
+        case G -10.76/11 -0.98/子 ／ -10.85/11 -0.99/子  壊れ → 枠なしで正解 A11
+                                                        （枠ありは誤答 B13＝この判定の動機）
+
+    非対称性に注意: 殺し問題では手番側の攻め石が壁と連絡して自明に +1.00 になるので判定は
+    安全だが、生き問題では手番側の石自体が戦いの対象なので、難問をエンジンが trial visits で
+    読み切れないと ownership が下がり、有効な枠でも枠なしに落ちうる（解ける生き問題なら最善で
+    生きる＝本来は生きと読まれるはず。下がるのは読み切れない場合だけ）。枠なしは実測4ケース
+    全てで正解しているため実害は小さいが、ログでどちらの経路になったか分かるようにしてある。
+    """
+    if not stone_count:
+        return False
+    return solver_ownership / stone_count < threshold
+
+
 def pick_balanced_frame(candidates, tie_margin=FRAME_BALANCE_TIE_MARGIN):
     """[(ko_p, board, region, root_score_lead), ...] から採用する枠を返す。選べなければ None。
 

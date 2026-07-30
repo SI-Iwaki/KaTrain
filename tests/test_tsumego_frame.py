@@ -3,7 +3,9 @@ import pytest
 from katrain.core.game import BaseGame, KaTrainSGF
 from katrain.core.tsumego_frame import (
     dense_core_bbox,
+    frame_destroys_problem,
     frameless_region,
+    solver_core_points,
     tsumego_frame,
     tsumego_frame_board,
     tsumego_frame_from_katrain_game,
@@ -452,3 +454,57 @@ def test_pick_balanced_frame_keeps_the_better_balance_beyond_the_tie_margin():
     from katrain.core.tsumego_frame import pick_balanced_frame
 
     assert pick_balanced_frame([(False, "a", "r", 2.82), (True, "b", "r", 14.80)])[0] is False
+
+
+def test_frame_destroys_problem_uses_the_solver_stones_average():
+    # 実測 2026-07-30、枠採用時（trial 400visits、リージョン内の本体石のみ、手番=黒）:
+    #   case D  +8.00/8   (+1.00/子) 正常 → 枠を使う
+    #   case E +21.98/22  (+1.00/子) 正常 → 枠を使う
+    #   case F -10.33/11  (-0.94/子) 壊れ → 枠を捨てる（枠なしでも正解 N8）
+    #   case G -10.86/11  (-0.99/子) 壊れ → 枠を捨てる（枠ありは誤答 B13、枠なしで正解 A11）
+    assert frame_destroys_problem(-10.86, 11) is True
+    assert frame_destroys_problem(-10.33, 11) is True
+    assert frame_destroys_problem(8.00, 8) is False
+    assert frame_destroys_problem(21.98, 22) is False
+
+
+def test_frame_destroys_problem_rejects_stones_that_are_merely_not_dead():
+    # case F の ko=False 枠は -0.98/11 = -0.09/子 で 0 付近。閾値を 0 にすると run ごとに
+    # 符号が反転して枠採否がコイン投げになるため、「明確に生きている（+0.5/子）」を要求する。
+    # 実測の正常枠は両ケースとも +1.00/子 なので上下 0.5 の余裕がある
+    assert frame_destroys_problem(-0.98, 11) is True
+    assert frame_destroys_problem(0.09 * 11, 11) is True
+    assert frame_destroys_problem(0.6 * 11, 11) is False
+
+
+def test_frame_destroys_problem_is_silent_without_stones():
+    # 手番側の石がまだ無い問題（相手の石だけの図）では判定できないので枠を捨てない
+    assert frame_destroys_problem(0.0, 0) is False
+
+
+def test_solver_core_points_skips_wall_fill_and_dropped_stones():
+    # 判定対象は「問題本体の手番側の石」だけ。枠の壁石は自明に生きているので混ぜると判定が
+    # 埋もれる（実測 case D: 壁込みだと +25.00/25 で常に正常判定、本体だけなら +8.00/8）
+    recognized = _board(stones=[(5, 5, "B"), (5, 6, "W"), (6, 6, "B")])
+    framed = _board(
+        stones=[
+            (5, 5, "B"),  # 本体の手番側の石 → 対象
+            (5, 6, "W"),  # 相手の石 → 対象外
+            (4, 4, "B"),  # 壁（リージョン内だが認識盤に無い） → 対象外
+            (11, 11, "B"),  # 枠外の充填 → 対象外
+        ]
+    )
+    # (6,6) は認識されていたが drop_non_core で枠から落ちた石 → 対象外
+    assert solver_core_points(recognized, framed, ((3, 7), (3, 7))) == [(5, 7)]
+
+
+def test_solver_core_points_ignores_stones_outside_the_region():
+    recognized = _board(stones=[(5, 5, "B"), (1, 1, "B")])
+    framed = _board(stones=[(5, 5, "B"), (1, 1, "B")])
+    assert solver_core_points(recognized, framed, ((3, 7), (3, 7))) == [(5, 7)]
+
+
+def test_solver_core_points_without_region_covers_the_board():
+    recognized = _board(stones=[(0, 0, "B"), (12, 12, "B")])
+    framed = _board(stones=[(0, 0, "B"), (12, 12, "B")])
+    assert solver_core_points(recognized, framed, None) == [(0, 12), (12, 0)]
