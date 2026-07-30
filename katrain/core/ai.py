@@ -1877,6 +1877,61 @@ def tsumego_ko_win_node(game, node, move):
     return None
 
 
+# 同着バンドのコウ検査: 守り方の最善応手 PV を並べ直す深さと、検査する候補数の上限。
+# 実測 case K はコウ形が応手 PV の ply2（B11）に出る。深くするほど詰碁と無関係な
+# 偶発コウを拾うリスクが増えるので、リージョン制限とセットで短めに切る
+TSUMEGO_TIE_KO_PLIES = 6
+TSUMEGO_TIE_KO_MAX_CANDIDATES = 4
+
+
+def tsumego_pv_reaches_region_ko(sim, first_player, pv, region_of_interest, max_plies=TSUMEGO_TIE_KO_PLIES):
+    """PV を sim の現局面から並べ直し、リージョン内でコウ形の1子取りに到達するかを返す。
+
+    コウ形 = 取った石が単独・呼吸点1で、相手の取り返しが KaTrain の着手判定でコウとして
+    禁じられる形。詰碁の正解順序（無条件 > コウ）を同着バンドで効かせるための構造判定で、
+    コウでも勝てると KataGo が読み切った局面ではスコア・gain・ownership のどれにも
+    クラス差が出ない（実測 case K 2026-07-30: コウで殺す A12 と無条件の C13 が同着）。
+    親局面の PV は使えないことに注意 — KataGo は読み切った詰碁への応対を放棄して
+    枠へ手抜きするため、肝心のコウが現れない（実測: A12 の親 PV は白 K12 手抜き）。
+    リージョン限定の子局面解析（depth1 で守り方が局所応答を強制される）の応手 PV を渡すこと。
+
+    リージョン外のコウ形は枠格子の偶発物なので数えない（実測 probe: 枠内 L5 の偶発コウが
+    詰碁と無関係に検出された）。region_of_interest が無い枠なしモードでは盤全体を対象にする。
+    sim は使い捨ての局面を渡すこと（この関数は sim に読み筋を書き足す）。PV が現盤面と
+    食い違って打てない場合は判定不能としてコウ扱いしない。
+    """
+    if not pv:
+        return False
+
+    def in_region(coords):
+        return region_of_interest is None or (
+            region_of_interest[0] <= coords[0] <= region_of_interest[1]
+            and region_of_interest[2] <= coords[1] <= region_of_interest[3]
+        )
+
+    for i, gtp in enumerate(pv[:max_plies]):
+        if gtp == "pass":
+            break
+        mover = first_player if i % 2 == 0 else ("W" if first_player == "B" else "B")
+        opponent = "W" if mover == "B" else "B"
+        move = Move.from_gtp(gtp, player=mover)
+        try:
+            played = sim.play(move)
+        except IllegalMoveException:
+            return False
+        chain, liberties = _chain_and_liberties(sim, move.coords)
+        if chain is not None and len(chain) == 1 and len(liberties) == 1 and in_region(move.coords):
+            try:
+                sim.play(Move(coords=liberties[0], player=opponent))
+            except IllegalMoveException as e:
+                if "Ko" in str(e):
+                    return True
+                # 自殺手等でそもそも取り返せない形。盤面は変わっていないので PV を続ける
+            else:
+                sim.set_current_node(played)  # 取り返せた＝コウではない。試した手を外して続行
+    return False
+
+
 def tsumego_eligible_candidates(candidates, max_points_behind, min_visits):
     """目数ガード・min_visits・ownership 有無を通した候補（gain の競争に参加できる手）"""
     searched = [c for c in candidates if c.get("visits", 0) >= min_visits]
@@ -1978,6 +2033,7 @@ def select_tsumego_move(
     min_visits=10,
     gain_min_visit_ratio=TSUMEGO_GAIN_MIN_VISIT_RATIO,
     points_epsilon=TSUMEGO_POINTS_EPSILON,
+    ko_routes=frozenset(),
 ):
     """目数ガードを通した候補から ownership gain 最大の手を返す。選べなければ None。
 
@@ -1991,8 +2047,16 @@ def select_tsumego_move(
     では正解手でも gain が動かず、上位手の gain 差が ±0.03 のノイズに埋もれて選択が
     コイン投げになるため（実測 2026-07-29、4 run 中1回で誤答手を選択）。
 
-    その目数も points_epsilon 以内で並ぶなら visits 最多の手（KataGo の principal variation）を
-    採る。複数の手が同じ死活結果に到達する局面では目数差もノイズになり、コイン投げの先が
+    その目数も points_epsilon 以内で並ぶなら「同着バンド」として扱い、(1) コウ経路でない手
+    （`ko_routes` 外）、(2) visits 最多（KataGo の principal variation）の順で選ぶ。
+
+    (1) は詰碁の正解順序 無条件 > コウ のバンド内適用。コウでも勝てると KataGo が読み切った
+    局面では、コウで殺す手と無条件に殺す手が gain・目数とも同着になり、スコアでは区別できない
+    （実測 case K 2026-07-30: コウの A12 と無条件の C13 が 4/4 観測で 0.1 目差以内）。
+    ko_routes は呼び出し側がリージョン子局面解析＋PV コウ検出（`tsumego_pv_reaches_region_ko`）
+    で計算して渡す。空なら従来どおり visits へ。
+
+    (2) は複数の手が同じ死活結果に到達する局面向け。目数差もノイズになり、コイン投げの先が
     アプリの解答樹に無い「正しい別解」だと不正解になる（実測 case J 2026-07-30: N10/N11 が
     gain・目数とも 0.02 差で並び N11 を選択。両手とも殺しは成立しており 8000visits でも
     分離不能）。解答樹の本線は KataGo の本命手と一致しやすいので visits に寄せる。
@@ -2008,8 +2072,46 @@ def select_tsumego_move(
     さらに gain で目数最善手を覆せるのは、その手と探索の深さが比較できる候補だけに限る
     （`gain_min_visit_ratio`。理由と実測は `TSUMEGO_GAIN_MIN_VISIT_RATIO` のコメント参照）。
     """
-    if not candidates or not root_ownership or not stones:
+    band = _tsumego_scored_band(
+        candidates,
+        root_ownership,
+        stones,
+        board_size,
+        player_sign,
+        max_points_behind,
+        gain_epsilon,
+        min_visits,
+        gain_min_visit_ratio,
+        points_epsilon,
+    )
+    if not band:
         return None
+    return max(
+        band,
+        key=lambda scored_move: (
+            scored_move[2]["move"] not in ko_routes,
+            scored_move[2].get("visits", 0),
+            scored_move[1],
+            scored_move[0],
+        ),
+    )[2]
+
+
+def _tsumego_scored_band(
+    candidates,
+    root_ownership,
+    stones,
+    board_size,
+    player_sign,
+    max_points_behind,
+    gain_epsilon,
+    min_visits,
+    gain_min_visit_ratio,
+    points_epsilon,
+):
+    """select_tsumego_move の最終同着バンドを (gain, -pointsLost, cand) のリストで返す"""
+    if not candidates or not root_ownership or not stones:
+        return []
     eligible = tsumego_eligible_candidates(candidates, max_points_behind, min_visits)
     contenders = tsumego_gain_contenders(eligible, tsumego_score_best(eligible), gain_min_visit_ratio)
     scored = [
@@ -2017,12 +2119,45 @@ def select_tsumego_move(
         for c in contenders
     ]
     if not scored:
-        return None
+        return []
     best_gain = max(scored_move[0] for scored_move in scored)
     finalists = [scored_move for scored_move in scored if best_gain - scored_move[0] <= gain_epsilon]
     best_points = max(scored_move[1] for scored_move in finalists)
-    band = [scored_move for scored_move in finalists if best_points - scored_move[1] <= points_epsilon]
-    return max(band, key=lambda scored_move: (scored_move[2].get("visits", 0), scored_move[1], scored_move[0]))[2]
+    return [scored_move for scored_move in finalists if best_points - scored_move[1] <= points_epsilon]
+
+
+def tsumego_selection_band(
+    candidates,
+    root_ownership,
+    stones,
+    board_size,
+    player_sign,
+    max_points_behind,
+    gain_epsilon=0.3,
+    min_visits=10,
+    gain_min_visit_ratio=TSUMEGO_GAIN_MIN_VISIT_RATIO,
+    points_epsilon=TSUMEGO_POINTS_EPSILON,
+):
+    """最終同着バンドの候補 dict を返す。generate_move がコウ検査（tie_ko_screen）の対象を知る入口。
+
+    バンドが2手以上のときだけコウ検査（候補1つあたりリージョン解析1本）を走らせるための
+    事前照会なので、select_tsumego_move と同じ計算を共有する（結果は決定的に一致する）。
+    """
+    return [
+        scored_move[2]
+        for scored_move in _tsumego_scored_band(
+            candidates,
+            root_ownership,
+            stones,
+            board_size,
+            player_sign,
+            max_points_behind,
+            gain_epsilon,
+            min_visits,
+            gain_min_visit_ratio,
+            points_epsilon,
+        )
+    ]
 
 
 def tsumego_needs_score_best_verify(chosen, score_best, points_epsilon=TSUMEGO_POINTS_EPSILON):
@@ -2060,7 +2195,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
         if ko_move is not None:
             return ko_move
         self._log_candidates(candidate_moves, stones, player_sign)
-        chosen = select_tsumego_move(
+        selection_args = (
             candidate_moves,
             self.cn.ownership,
             stones,
@@ -2072,6 +2207,12 @@ class TsumegoOwnershipStrategy(AIStrategy):
             min_visit_ratio,
             points_epsilon,
         )
+        ko_routes = frozenset()
+        if (self.settings or {}).get("tie_ko_screen", True):
+            band = tsumego_selection_band(*selection_args)
+            if len(band) >= 2:
+                ko_routes = self._tie_band_ko_routes(band)
+        chosen = select_tsumego_move(*selection_args, ko_routes=ko_routes)
         if chosen is None:
             # ownership が無い（_enable_ownership が false 等）。無言で劣化させず既定動作に戻す
             self.game.katrain.log(
@@ -2174,6 +2315,60 @@ class TsumegoOwnershipStrategy(AIStrategy):
             f"[{self.strategy_name}] 目数順: " + " ".join(text(r) for r in sorted(rows, key=lambda r: r[2])[:top]),
             OUTPUT_DEBUG,
         )
+
+    def _tie_band_ko_routes(self, band):
+        """同着バンドの各候補を1手進めてリージョン解析し、コウ経路の候補の手（GTP）を返す。
+
+        詰碁の正解順序は 無条件 > コウ で、目数はクラス内のタイブレークにすぎない。
+        コウでも勝てると KataGo が読み切った局面では、コウで殺す手と無条件に殺す手の
+        gain・目数が同着になりスコアではクラスが見えない（実測 case K: A12/C13 が
+        4/4 観測で 0.1 目差以内）。クラス差は「守り方に局所応答を強制する」リージョン
+        子局面解析の最善応手 PV にだけ現れる（実測 3/3 run 安定: A12 には白 A11 →
+        黒 B11 のコウ形、C13/A10 は clean）。検出は `tsumego_pv_reaches_region_ko`。
+
+        コストは候補1つあたり解析1本（gain_verify_visits）。バンドが2手以上に潰れた
+        手番だけ走るので、通常の手番では発動しない。
+        """
+        settings = self.settings or {}
+        visits = int(settings.get("gain_verify_visits", TSUMEGO_GAIN_VERIFY_VISITS))
+        player = self.cn.next_player
+        opponent = "W" if player == "B" else "B"
+        routes = set()
+        for cand in sorted(band, key=lambda c: -c.get("visits", 0))[:TSUMEGO_TIE_KO_MAX_CANDIDATES]:
+            sim = tsumego_simulation_game(self.game, self.cn)
+            if sim is None:
+                self.game.katrain.log(f"[{self.strategy_name}] 同着バンドのコウ検査: 局面を再現できないため省略", OUTPUT_DEBUG)
+                break
+            try:
+                node = sim.play(Move.from_gtp(cand["move"], player=player))
+            except IllegalMoveException:
+                continue
+            root = self._analyze_region_root(node, visits, ownership=False)
+            replies = (root or {}).get("moves") or []
+            if not replies:
+                continue
+            top_reply = max(replies, key=lambda m: m.get("visits", 0))
+            sim.set_current_node(node)
+            if tsumego_pv_reaches_region_ko(sim, opponent, top_reply.get("pv") or [], self.game.region_of_interest):
+                routes.add(cand["move"])
+                self.game.katrain.log(
+                    f"[{self.strategy_name}] 同着バンドのコウ検査: {cand['move']} はコウ経路"
+                    f"（応手 {top_reply.get('move')} の PV がリージョン内のコウ形に到達）",
+                    OUTPUT_INFO,
+                )
+            else:
+                self.game.katrain.log(
+                    f"[{self.strategy_name}] 同着バンドのコウ検査: {cand['move']} は無条件"
+                    f"（応手 {top_reply.get('move')} の PV にコウ形なし）",
+                    OUTPUT_DEBUG,
+                )
+        if routes:
+            self.game.katrain.log(
+                f"[{self.strategy_name}] 同着バンドのコウ検査: {sorted(routes)} を格下げし、"
+                f"無条件に殺す（生きる）手を優先します（詰碁の順序: 無条件 > コウ）",
+                OUTPUT_INFO,
+            )
+        return frozenset(routes)
 
     def _verified_choice(
         self, incumbent, challengers, stones, player_sign, incumbent_label="目数最善", margin=None, fallback=None
@@ -2345,7 +2540,12 @@ class TsumegoOwnershipStrategy(AIStrategy):
                 None
                 if partial_result
                 else result.setdefault(
-                    "root", {"lead": analysis["rootInfo"]["scoreLead"], "ownership": analysis.get("ownership")}
+                    "root",
+                    {
+                        "lead": analysis["rootInfo"]["scoreLead"],
+                        "ownership": analysis.get("ownership"),
+                        "moves": analysis.get("moveInfos"),
+                    },
                 )
             ),
             error_callback=lambda error: result.setdefault("error", error),

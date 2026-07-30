@@ -1,6 +1,6 @@
 import pytest
 
-from katrain.core.ai import tsumego_ko_win_node
+from katrain.core.ai import tsumego_ko_win_node, tsumego_pv_reaches_region_ko
 from katrain.core.game import BaseGame, KaTrainSGF, Move
 
 # 5路のコウ形。黒 C3 は単独で呼吸点1（B3）になり、白 B3 で取られ、黒の C3 取り返しがコウで禁じられる
@@ -73,6 +73,61 @@ def test_ko_win_node_does_not_touch_the_real_game():
 def test_ko_win_node_is_none_for_an_illegal_move():
     game = _game()
     assert tsumego_ko_win_node(game, game.current_node, Move.from_gtp("B4", player="B")) is None
+
+
+# --- PV のコウ経路検出（tsumego_pv_reaches_region_ko） ---
+# 実測 case K (2026-07-30): gain・目数とも同着の A12（コウで殺す）と C13（無条件に殺す）は
+# スコアでは区別できないが、リージョン限定の子局面解析では守り方の最善応手 A11 の PV に
+# コウ形の1子取り（B11）が現れる（3/3 run 安定）。PV を盤上で並べ直し、リージョン内で
+# 「1子取り・取った石が呼吸点1・取り返しがコウで禁止」の形に到達するかを構造判定する。
+#
+# 5路の取るコウ形。黒 C2 で白 B2 を1子取りし、取った C2 自身が呼吸点1（B2）になる
+#    A B C D E
+#  3 B W . . .
+#  2 . W? -> 黒C2で取り B W(C3/C1/D2)が囲む
+#  1 . B W . .
+CAPTURE_KO_SGF = "(;GM[1]FF[4]SZ[5]KM[0]RU[chinese]PL[B]AB[ad][be][bc]AW[bd][ce][cc][dd])"
+WHOLE_BOARD = [0, 4, 0, 4]
+
+
+def test_pv_ko_detects_a_capture_ko_inside_the_region():
+    game = _game(CAPTURE_KO_SGF)
+    assert tsumego_pv_reaches_region_ko(game, "B", ["C2"], WHOLE_BOARD)
+
+
+def test_pv_ko_ignores_a_ko_outside_the_region():
+    # 枠格子の中で偶発的に出るコウ形（実測 case K probe: ply7 の L5）を拾わないための
+    # リージョン制限。コウ点がリージョン外なら数えない
+    game = _game(CAPTURE_KO_SGF)
+    assert not tsumego_pv_reaches_region_ko(game, "B", ["C2"], [3, 4, 3, 4])
+
+
+def test_pv_ko_is_false_for_a_clean_pv():
+    game = _game(CAPTURE_KO_SGF)
+    assert not tsumego_pv_reaches_region_ko(game, "B", ["E5", "E4"], WHOLE_BOARD)
+
+
+def test_pv_ko_walks_the_pv_with_alternating_players():
+    # コウ取りが PV の途中（3手目）にあっても拾う。手番は PV の並びで交互
+    game = _game(CAPTURE_KO_SGF)
+    assert tsumego_pv_reaches_region_ko(game, "B", ["E5", "E4", "C2"], WHOLE_BOARD)
+
+
+def test_pv_ko_is_false_for_an_unplayable_pv():
+    # PV が現盤面と食い違う（着手不能）場合は判定不能＝コウ扱いしない
+    game = _game(CAPTURE_KO_SGF)
+    assert not tsumego_pv_reaches_region_ko(game, "B", ["B2"], WHOLE_BOARD)
+
+
+def test_pv_ko_stops_at_max_plies():
+    game = _game(CAPTURE_KO_SGF)
+    assert not tsumego_pv_reaches_region_ko(game, "B", ["E5", "E4", "C2"], WHOLE_BOARD, max_plies=2)
+
+
+def test_pv_ko_treats_no_region_as_whole_board():
+    # 枠なしモード（リージョン無し）では盤全体を対象にする
+    game = _game(CAPTURE_KO_SGF)
+    assert tsumego_pv_reaches_region_ko(game, "B", ["C2"], None)
 
 
 # 打った石とは「別の1子」が取られてコウになる形。生きる詰碁ではこちらが普通に出る。

@@ -6,6 +6,7 @@ from katrain.core.ai import (
     TSUMEGO_KO_MARGIN,
     select_tsumego_move,
     tsumego_needs_score_best_verify,
+    tsumego_selection_band,
     tsumego_absolute_ownership,
     tsumego_already_succeeded,
     tsumego_eligible_candidates,
@@ -161,6 +162,48 @@ def test_select_points_epsilon_is_configurable():
     # 0 で現行動作（目数最良のみ。同着バンドなし）
     assert select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, points_epsilon=0.0)["move"] == "N11"
     assert select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, points_epsilon=0.25)["move"] == "N10"
+
+
+def test_select_demotes_ko_routes_inside_the_tie_band():
+    """同着バンド内では「無条件に殺す（生きる）手」が「コウで殺す手」に優先する。
+
+    実測 case K (2026-07-30, 13路左上): コウで殺す A12(v822 pt+0.02) と無条件の
+    C13(v585 pt-0.05) が gain・目数とも同着になり、visits タイブレークがコウ側の
+    A12 を選んで不正解（KataGo はコウも黒勝ちと読むのでスコアでは区別できない。
+    差 0.02〜0.13 は 4/4 観測で C13 側に符号一貫＝無条件のわずかな期待値優位）。
+    詰碁の正解順序 無条件 > コウ をバンド内の第一キーにする。ko_routes は
+    呼び出し側がリージョン子局面解析＋PV コウ検出で計算して渡す。
+    """
+    cands = [
+        {"move": "A12", "pointsLost": 0.02, "visits": 822, "ownership": ZERO},
+        {"move": "C13", "pointsLost": -0.05, "visits": 585, "ownership": _own(x0_y0=0.001)},
+    ]
+    args = (cands, ZERO, [(0, 0)], SIZE, +1, 2.0)
+    # コウ経路情報が無ければ従来どおり visits 最多（case J の動作）
+    assert select_tsumego_move(*args)["move"] == "A12"
+    # A12 がコウ経路なら無条件の C13 が勝つ
+    assert select_tsumego_move(*args, ko_routes=frozenset({"A12"}))["move"] == "C13"
+
+
+def test_select_falls_back_to_visits_when_all_band_moves_are_ko_routes():
+    # 全員コウ経路（＝クラスが同じ）なら従来どおり visits で決める
+    cands = [
+        {"move": "A12", "pointsLost": 0.02, "visits": 822, "ownership": ZERO},
+        {"move": "C13", "pointsLost": -0.05, "visits": 585, "ownership": _own(x0_y0=0.001)},
+    ]
+    chosen = select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, ko_routes=frozenset({"A12", "C13"}))
+    assert chosen["move"] == "A12"
+
+
+def test_selection_band_returns_the_tie_members():
+    # generate_move 側がコウ検査の対象（同着バンド）を知るための入口
+    cands = [
+        {"move": "A12", "pointsLost": 0.02, "visits": 822, "ownership": ZERO},
+        {"move": "C13", "pointsLost": -0.05, "visits": 585, "ownership": _own(x0_y0=0.001)},
+        {"move": "A11", "pointsLost": 21.13, "visits": 6, "ownership": _own(x0_y0=-1.0)},
+    ]
+    band = tsumego_selection_band(cands, ZERO, [(0, 0)], SIZE, +1, 2.0)
+    assert sorted(c["move"] for c in band) == ["A12", "C13"]
 
 
 def test_no_verify_inside_the_points_tie_band():
