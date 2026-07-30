@@ -26,6 +26,26 @@ from katrain.core.lang import i18n
 from katrain.core.sgf_parser import Move
 from katrain.core.utils import find_package_resource, json_truncate_arrays
 
+# リージョン限定解析で枠外の着手を禁じる深さ（KataGo avoidMoves の untilDepth）の既定値。
+# 1 = root の着手選択だけを枠内に縛る（upstream の選択。大きい値や 2 も試したうえで、
+# 通常の解析にはこれが最も自然という判断）。ただし **untilDepth=1 では PV は ply2 以降で
+# 枠の外へ出ていける**ので、「PV が局所に留まること自体が答え」になる問い（詰碁のコウ経路
+# 検査＝`ai.TSUMEGO_KO_REGION_UNTIL_DEPTH`）では呼び出し側が深い値を指定する。
+REGION_AVOID_UNTIL_DEPTH = 1
+
+
+def region_avoid_moves(board_size, region_of_interest, until_depth=REGION_AVOID_UNTIL_DEPTH):
+    """リージョン外の着手を両者に禁じる avoidMoves エントリを返す（pass は禁じない）"""
+    size_x, size_y = board_size
+    xmin, xmax, ymin, ymax = region_of_interest
+    outside = [
+        Move((x, y)).gtp()
+        for x in range(0, size_x)
+        for y in range(0, size_y)
+        if x < xmin or x > xmax or y < ymin or y > ymax
+    ]
+    return [{"moves": outside, "player": player, "untilDepth": until_depth} for player in "BW"]
+
 
 class BaseEngine:  # some common elements between analysis and contribute engine
 
@@ -387,6 +407,7 @@ class KataGoEngine(BaseEngine):
         time_limit=True,
         find_alternatives: bool = False,
         region_of_interest: Optional[List] = None,
+        region_until_depth: Optional[int] = None,
         priority: int = 0,
         ponder=False,  # infinite visits, cancellable
         ownership: Optional[bool] = None,
@@ -424,20 +445,8 @@ class KataGoEngine(BaseEngine):
                 }
             ]
         elif region_of_interest:
-            xmin, xmax, ymin, ymax = region_of_interest
-            avoid = [
-                {
-                    "moves": [
-                        Move((x, y)).gtp()
-                        for x in range(0, size_x)
-                        for y in range(0, size_y)
-                        if x < xmin or x > xmax or y < ymin or y > ymax
-                    ],
-                    "player": player,
-                    "untilDepth": 1,  # tried a large number here, or 2, but this seems more natural
-                }
-                for player in "BW"
-            ]
+            until_depth = region_until_depth or REGION_AVOID_UNTIL_DEPTH
+            avoid = region_avoid_moves((size_x, size_y), region_of_interest, until_depth)
         else:
             avoid = []
 

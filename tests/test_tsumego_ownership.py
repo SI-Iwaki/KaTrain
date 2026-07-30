@@ -4,6 +4,8 @@ from katrain.core.ai import (
     TSUMEGO_GAIN_RESCUE_MARGIN,
     TSUMEGO_GAIN_VERIFY_MARGIN,
     TSUMEGO_KO_MARGIN,
+    TSUMEGO_KO_REGION_UNTIL_DEPTH,
+    TSUMEGO_TIE_KO_PLIES,
     select_tsumego_move,
     tsumego_class_screen_pool,
     tsumego_competitive_replies,
@@ -23,6 +25,7 @@ from katrain.core.ai import (
     tsumego_rescue_candidates,
     tsumego_score_best,
 )
+from katrain.core.engine import REGION_AVOID_UNTIL_DEPTH, region_avoid_moves
 
 # var_to_grid は grid[y][x] を返し、配列は上の行(y降順)から詰まる。
 # 3x3 なら array[0:3]=grid[2], array[3:6]=grid[1], array[6:9]=grid[0]
@@ -259,6 +262,29 @@ def test_competitive_replies_walks_all_contested_defenses():
     replies = [{"move": f"A{i}", "visits": 100 + i} for i in range(5)]
     assert [r["move"] for r in tsumego_competitive_replies(replies)] == ["A4", "A3", "A2"]
     assert tsumego_competitive_replies([]) == []
+
+
+def test_ko_screen_constrains_the_region_for_every_ply_it_walks():
+    """コウ経路検査の子局面解析は、歩く深さぶんリージョン外を禁じて撃つ。
+
+    既定のリージョン解析（untilDepth=1）が縛るのは root の着手選択だけで、**PV は ply2 以降
+    枠へ自由に出ていける**。詰碁を読み切った KataGo にとって負けている側の局所の抵抗は枠の
+    一点と同値なので、守り方の PV は肝心のコウを打たずに枠へ手抜きし、検査の証拠が消える。
+    実測 case P (2026-07-31): 黒 H1 の子局面で白の最善応手 J1 の PV が untilDepth=1 では
+    `J1,L2,J12`（ply3 で枠外）でコウ検出 1/4、untilDepth=6 では `J1,L2,G1` で 4/4。
+    無条件の正解 J1 はどちらでも 4/4 clean（深く縛っても偽陽性は増えない）。
+    """
+    assert TSUMEGO_KO_REGION_UNTIL_DEPTH == TSUMEGO_TIE_KO_PLIES
+    assert TSUMEGO_KO_REGION_UNTIL_DEPTH > REGION_AVOID_UNTIL_DEPTH
+    region = [1, 2, 1, 2]  # 3x3 盤の右上 2x2 だけを残す
+    avoid = region_avoid_moves(SIZE, region, TSUMEGO_KO_REGION_UNTIL_DEPTH)
+    assert [entry["player"] for entry in avoid] == ["B", "W"]  # 両者を縛らないと守り方が枠へ逃げる
+    for entry in avoid:
+        assert entry["untilDepth"] == TSUMEGO_KO_REGION_UNTIL_DEPTH
+        assert sorted(entry["moves"]) == ["A1", "A2", "A3", "B1", "C1"]
+        assert "pass" not in entry["moves"]  # 局所で打つ手が無い側は pass できる（着手強制はしない）
+    # 既定は upstream どおり untilDepth=1（本譜の候補評価の条件を変えない）
+    assert all(entry["untilDepth"] == 1 for entry in region_avoid_moves(SIZE, region))
 
 
 def test_class_screen_pool_caps_rivals():

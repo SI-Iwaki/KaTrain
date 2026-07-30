@@ -1893,6 +1893,23 @@ TSUMEGO_TIE_KO_MAX_CANDIDATES = 4
 TSUMEGO_KO_REPLY_RATIO = 0.5
 TSUMEGO_KO_REPLY_MAX = 3
 
+# コウ経路検査の子局面解析で、リージョン外の着手を禁じる深さ（avoidMoves の untilDepth）。
+# 既定のリージョン解析は untilDepth=1 で root の着手選択だけを枠内に縛るが、**PV は ply2 以降
+# 枠へ自由に出ていける**。詰碁を読み切った KataGo にとって負けている側の局所の抵抗は枠の一点と
+# 同値なので、守り方の PV は肝心のコウを打たずに枠へ手抜きする＝検査の証拠そのものが消える。
+#
+# 実測 case P（2026-07-31、13路下辺・黒番3手目。正解 J1 に対し AI は同着バンドの visits
+# タイブレークで H1 を選び、白 J1・黒 L2 の後に白 G1 が黒 H1 を1子取ってコウ）: H1 の子局面で
+# 白の最善応手 J1（v59〜91 で単独首位＝応手の選択自体は安定）の PV が
+#
+#   untilDepth=1   `J1,L2,J12,...`  ply3 で枠外(J12)へ手抜き → コウ検出 **1/4**
+#   untilDepth=6   `J1,L2,G1,...`   局所に留まりコウに到達   → コウ検出 **4/4**
+#
+# （プロセスを分けた 4 trial。GUI 実戦は 1/4 の側を外して誤答した）。無条件の正解 J1 は
+# どちらの深さでも 4/4 clean なので、深く縛っても偽陽性は増えていない。
+# 歩く深さと同じだけ縛るのが自明な整合点（PV を見る範囲＝局所を強制した範囲）。
+TSUMEGO_KO_REGION_UNTIL_DEPTH = TSUMEGO_TIE_KO_PLIES
+
 
 def tsumego_competitive_replies(replies, ratio=TSUMEGO_KO_REPLY_RATIO, max_replies=TSUMEGO_KO_REPLY_MAX):
     """visits 降順で top と拮抗する応手（比 ratio 以上）を最大 max_replies 本返す"""
@@ -2503,6 +2520,10 @@ class TsumegoOwnershipStrategy(AIStrategy):
         case M 2/2 run 安定: M2 には白 K1 → 黒 M4 の1子取りコウ形、K1/C13 は clean）。
         検出は `tsumego_pv_reaches_region_ko`。
 
+        子局面の解析は **PV の内容そのものが証拠**なので、歩く深さぶんリージョン外を禁じて
+        撃つ（`TSUMEGO_KO_REGION_UNTIL_DEPTH`）。既定の untilDepth=1 では ply2 以降の PV が
+        枠へ手抜きしてコウが現れない（実測 case P: 検出 1/4 → 4/4）。
+
         コストは候補1つあたり解析1本（gain_verify_visits）。呼び出し側は選択手を先に
         検査し、コウ経路だったときだけ対抗馬を検査する（通常の手番は1本で済む）。
         """
@@ -2529,7 +2550,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
                 node = sim.play(Move.from_gtp(cand["move"], player=player))
             except IllegalMoveException:
                 continue
-            root = self._analyze_region_root(node, visits, ownership=False)
+            root = self._analyze_region_root(node, visits, ownership=False, until_depth=TSUMEGO_KO_REGION_UNTIL_DEPTH)
             replies = (root or {}).get("moves") or []
             # 拮抗している応手は全部歩く。top 1本では応手ランキングの分散でコウを見逃す
             # （実測 case M: 白のコウ仕掛け K1 と穏健な M4 が拮抗し、M4 が top の run で素通り）
@@ -2567,6 +2588,10 @@ class TsumegoOwnershipStrategy(AIStrategy):
         こちらを別に用意する（選択手だけは両方で1本ずつ撃つことになるが、脱出はコウ一色のときに
         しか走らないので実害はない。既に回帰の取れている `_ko_route_screen` を触らずに済むほうを取る）。
 
+        リージョンの拘束深さも `_ko_route_screen` と揃える（`TSUMEGO_KO_REGION_UNTIL_DEPTH`）。
+        `value` は候補と incumbent を同条件で測った相対比較にしか使わないので、拘束を深くしても
+        両者に同じだけ効く。
+
         取れなければ None。
         """
         region = self.game.region_of_interest
@@ -2578,7 +2603,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
             node = sim.play(Move.from_gtp(move_gtp, player=player))
         except IllegalMoveException:
             return None
-        root = self._analyze_region_root(node, visits, ownership=True)
+        root = self._analyze_region_root(node, visits, ownership=True, until_depth=TSUMEGO_KO_REGION_UNTIL_DEPTH)
         if root is None or root.get("ownership") is None:
             return None
         ko_reply = None
@@ -2834,11 +2859,15 @@ class TsumegoOwnershipStrategy(AIStrategy):
         root = self._analyze_region_root(node, visits, ownership=False, timeout=timeout)
         return None if root is None else root["lead"]
 
-    def _analyze_region_root(self, node, visits, ownership=False, timeout=60.0):
+    def _analyze_region_root(self, node, visits, ownership=False, timeout=60.0, until_depth=None):
         """使い捨てノードをリージョン限定で解析し root の {lead(黒視点), ownership} を返す。
 
         本譜の解析と同じリージョン・wideRootNoise で撃つ（条件を変えると本譜の候補評価と
         比較できなくなる）。取れなければ None。
+
+        `until_depth` はリージョン外を禁じる深さ。既定（None=1）は本譜と同じで root の着手選択
+        だけを縛る。**PV の内容を証拠に使う呼び出しだけ** `TSUMEGO_KO_REGION_UNTIL_DEPTH` を渡す
+        （untilDepth=1 の PV は ply2 以降で枠へ手抜きし、コウが現れない）。
         """
         engine = self.game.engines[self.cn.next_player]
         result = {}
@@ -2861,6 +2890,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
             time_limit=False,
             ownership=ownership,
             region_of_interest=self.game.region_of_interest,
+            region_until_depth=until_depth,
             extra_settings=region_analysis_extra_settings(
                 visits, getattr(self.game, "region_analysis_wide_root_noise", REGION_ANALYSIS_WIDE_ROOT_NOISE)
             ),
