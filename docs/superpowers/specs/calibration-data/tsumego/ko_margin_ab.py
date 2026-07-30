@@ -62,8 +62,9 @@ def main():
             print(f"run{i+1} new(ko_win_margin=default): {got:>3}  expect {'|'.join(EXPECT):<6} {'OK' if ok else 'FAIL'}")
             for line in lines:
                 print("      " + line.replace("[TsumegoOwnershipStrategy] ", ""))
-        got, lines = run(engine, stub, {"ko_win_margin": 0.5})
-        print(f"\nold(ko_win_margin=0.5): {got}  <- 旧既定の再現")
+        # 旧挙動の再現: 成功ゲートを無効化（閾値を実質無限にする）＋旧マージン 0.5
+        got, lines = run(engine, stub, {"ko_win_margin": 0.5, "ko_success_lead": 1e9})
+        print(f"\nold(成功ゲート無効 + ko_win_margin=0.5): {got}  <- 旧挙動の再現")
         for line in lines:
             print("      " + line.replace("[TsumegoOwnershipStrategy] ", ""))
     finally:

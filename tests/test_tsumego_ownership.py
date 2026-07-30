@@ -3,6 +3,7 @@ import pytest
 from katrain.core.ai import (
     TSUMEGO_KO_MARGIN,
     select_tsumego_move,
+    tsumego_already_succeeded,
     tsumego_gain_stones,
     tsumego_ko_beats_normal,
     tsumego_ownership_gain,
@@ -244,3 +245,22 @@ def test_ko_margin_separates_both_measured_cases_with_room():
 def test_old_ko_margin_would_have_taken_the_losing_move():
     # 旧既定 0.5 では case E のおまけ分 +1.06 が通ってしまい、-34目の手を打った
     assert tsumego_ko_beats_normal(CASE_E_KO_WIN, CASE_E_NORMAL, 0.5)
+
+
+def test_already_succeeded_skips_the_ko_route():
+    """詰碁の正解順序は「無条件に殺す > コウ > セキ・生き」で、目数はクラス内のタイブレークにすぎない。
+
+    コウ勝ち前提の役目は「正解のコウ手が失敗（セキ等）より悪く見える」局面の救済だけなので、
+    通常最善で既に成功しているなら適用してはいけない。枠は成功側が offence_to_win(5)目
+    勝つよう調整されるため、手番側から見たスコアの符号がそのまま成否になる。
+    """
+    assert tsumego_already_succeeded(CASE_E_NORMAL)  # +11.44目: K1 が無条件に殺している
+    assert not tsumego_already_succeeded(KO_ANSWER_NORMAL)  # -12.3目: セキ止まり = 失敗
+
+
+def test_already_succeeded_boundary_is_the_frame_balance_point():
+    # 枠は ±offence_to_win を挟むよう調整されるので境界は 0。ちょうど 0 は「成功していない」側
+    assert not tsumego_already_succeeded(0.0)
+    assert tsumego_already_succeeded(0.01)
+    # 閾値は設定で動かせる（枠が偏っている問題向けの逃げ道）
+    assert not tsumego_already_succeeded(3.0, threshold=5.0)

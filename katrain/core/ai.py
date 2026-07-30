@@ -1709,6 +1709,27 @@ TSUMEGO_KO_MARGIN = 5.0
 _TSUMEGO_KO_MAX_ATARI_STONES = 6  # 打った石以外に調べる自分の1子アタリの数
 
 
+# 枠は「成功した側が offence_to_win(5)目勝ち」に調整されるので、手番側から見たスコアの
+# 符号がそのまま成否になる。境界は 0（攻める詰碁・生きる詰碁のどちらでも player_sign 込みで成立）
+TSUMEGO_SUCCESS_LEAD = 0.0
+
+
+def tsumego_already_succeeded(best_normal, threshold=TSUMEGO_SUCCESS_LEAD):
+    """通常評価の最善手だけで既に成功しているか（＝コウに持ち込む理由が無い）。
+
+    詰碁の正解は目数ではなく**結果の順序**で決まる: 無条件に殺す（生きる） > コウ > セキ。
+    目数はクラス内のタイブレークにすぎず、クラスを跨いだ比較には使えない。ところが
+    コウ勝ち前提のノードは攻め方が1手多く打ち相手石を1子取った局面なので、
+    **無条件の成功より高い目数が出てしまう**（実測 case E: 無条件死 +11.44目 < コウ勝ち +12.50目）。
+
+    そこで目数で殴り合わせる前に、通常最善が既に成功しているかで振り分ける。コウ勝ち前提の
+    役目はもともと「枠の中では攻め方のコウダテが乏しく、正解のコウ手がセキより悪く見える」
+    局面の**救済**に限られる（追記4）。既に成功しているならその救済は不要で、
+    コウに持ち込むのは慣習上むしろ格下げになる。
+    """
+    return best_normal > threshold
+
+
 def tsumego_ko_beats_normal(ko_value, best_normal, margin):
     """コウ勝ち前提の評価が「結果を変える」幅で通常最善を上回っているか。
 
@@ -1920,6 +1941,15 @@ class TsumegoOwnershipStrategy(AIStrategy):
         # 評価も別途取り直すので visits の下限を課さない（探索分散で正解手が数 visits に
         # 沈むことがあり、そこで検査対象から外すと詰碁の慣習が効かなくなる）
         best_normal = max(player_sign * c["scoreLead"] for c in searched)
+        success_lead = float(settings.get("ko_success_lead", TSUMEGO_SUCCESS_LEAD))
+        if tsumego_already_succeeded(best_normal, success_lead):
+            # 無条件に成功できるならコウは慣習上の格下げ。解析1本も節約できる
+            self.game.katrain.log(
+                f"[{self.strategy_name}] コウ判定: 通常最善{best_normal:+.2f}目で既に成功しているため省略"
+                f"（ko_success_lead={success_lead}。詰碁の順序は 無条件 > コウ > セキ）",
+                OUTPUT_INFO,
+            )
+            return None
         player = self.cn.next_player
         ko_visits = int(settings.get("ko_win_visits", 800))
         ko_margin = float(settings.get("ko_win_margin", TSUMEGO_KO_MARGIN))
