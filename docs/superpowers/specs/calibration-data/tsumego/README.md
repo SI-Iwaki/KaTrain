@@ -13,6 +13,7 @@
 | `case-h-gate-cliff-20260730.sgf` | 深さゲートが目数ガード内の正解を足切りした誤答局面（13路右下・枠なし、5手目、正解 N4、旧実装は J7）。region = `5,12,0,6`。N4 は gain +4.4 断トツ・ガード内なのに visit比 0.46〜0.49 < 0.5 でゲート外、当時の救済（ガード外のみ）も届かず。救済対象の拡大（非 contenders 全体・visit比撤廃・採用マージン 1.0）の回帰対象。同深さ検証 N4 +13.2〜+14.2 vs 代替 +8.9〜+9.7 |
 
 | `case-i-defender-ko-20260730.sgf` | **未対処の既知限界**: 守り側で「無条件の生き（捨て石あり）> コウ」を選べなかった誤答局面（13路右下・枠なし、初手、正解 N2、AI は J1 でコウ生きになり不正解）。region = `6,12,0,8`。原因は KataGo の探索崩壊（咎め W-N2 を 6000visits でも誤読）で、選択則・枠・深掘りのどれでも判別不能と実測済み（spec 追記13）。復帰はアンドゥで次候補（N2 が2位）。**エンジン更新時に再評価** |
+| `case-j-points-tie-20260730.sgf` | gain も目数も 0.02 差で並んだ「正しい別解」を選んで不正解になった局面（13路右上・枠あり、11手目、正解 N10、旧実装は N11）。region = `6,12,1,12`。N11 も実際に白を殺せている（8000visits でも分離不能・同深さ検証も差 0.05 で無力）が、アプリの解答樹には N10 しか無い。目数同着バンド `points_epsilon` 内で visits 最多（KataGo の本命）を採るタイブレークの回帰対象（spec 追記14） |
 
 ## 診断スクリプト
 
@@ -41,6 +42,17 @@ python docs/superpowers/specs/calibration-data/tsumego/gain_region_ab.py <sgf> <
 **1回の解析から旧（全石）/新（リージョン内）の両方の選択を計算する**ので、
 KataGo の並列探索の run 間分散が交絡しない。選択則を変えるときはこの形で比較すること
 （別 run で比べると分散に埋もれる → memory `feedback_batch_eval_variance` と同じ罠）。
+
+### `points_tie_ab.py` — 目数同着タイブレーク（points_epsilon）の A/B 比較
+
+```bash
+python docs/superpowers/specs/calibration-data/tsumego/points_tie_ab.py <sgf> <moves_csv> <xmin,xmax,ymin,ymax> [repeats]
+# 例: ... case-j-points-tie-20260730.sgf 0,2,4,6,8,10 6,12,1,12 3
+```
+
+gain_region_ab.py と同じく **1回の解析から旧（points_epsilon=0）/新（既定 0.25）の
+両方の選択を計算する**。gain も目数もノイズ同着の局面（case J）で、旧則がコイン投げに
+なるのに対し新則が visits 最多（KataGo の本命）へ寄ることを確認する。
 
 ### `ko_margin_ab.py` — コウ勝ち前提の採用判定を検証
 
