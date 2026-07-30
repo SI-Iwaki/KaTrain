@@ -2250,6 +2250,75 @@ def tsumego_declass_choice(chosen, pool, ko_routes):
     return max(clean, key=lambda c: (c.get("visits", 0), -c["pointsLost"]))
 
 
+# コウ一色バンドからの脱出。選択手も目数ガード内の対抗馬も**全部**コウ経路だったとき、その事実
+# 自体が「無条件の正解は候補プールの外にいる」という信号になる（詰碁の正解順序は 無条件 > コウ
+# なので、無条件の手があるならそれが答え）。
+#
+# 実測 case O（2026-07-31、13路左上・黒番初手。正解 A11 に対し AI は B12 を打ち、白 A11 でコウに
+# されて不正解）: root 1800visits の visit 配分は B12 1172 / C10 622 で、**残り46手はすべて v1**。
+# 正解 A11 は root を 12000visits にしても v1 のまま＝深さでは絶対に届かない。原因は root の
+# value 推定が約29目ずれていること:
+#
+#   A11  root 1visit の評価      pt +28.74  白石 own -7.03（＝白は生き）
+#   A11  子局面を独立に 1800v    lead +11.53  白10子すべて +0.99（＝白は全滅）
+#
+# この 1visit の数字で min_visits(10)・目数ガード(best+2.0)・gain・救済・コウ検査プールの
+# すべてから締め出されるため、選択パイプラインのどの経路にも A11 は入れない。
+#
+# 探す先は root policy の上位。実測 prior は B12 .68 / C10 .20 / B13 .043 / C13 .011 /
+# A11 .0076-.0091 / A8 .0008 / **残り42手すべて .0001（NN の下限）** で、正解 A11 は 2/2 run とも
+# 5位で固定。value は壊れていても policy は「読む価値のある手」を正しく挙げている。下限手との間に
+# 10倍近い崖があるので、prior の下限と本数上限で「未検査だが policy が認めた手」だけを拾える。
+TSUMEGO_KO_ESCAPE_MAX_CANDIDATES = 4
+TSUMEGO_KO_ESCAPE_MIN_PRIOR = 0.001
+
+# 脱出候補の採用条件は「incumbent を**上回る**」ではなく「tolerance 超えて下回らない」。
+# コウ手のスコアは「コウに勝った前提」で出るので無条件の正解よりむしろわずかに高い
+# （実測 case O の同深さ 800visits: コウの B12 +9.95 / C10 +9.94 に対し無条件の正解 A11 +9.91）。
+# 既存の覆し（`tsumego_override_confirmed`: gain_verify_margin=0.3 超えで上回ること）をそのまま
+# 使うと正解が却下される。順序を決めるのはスコアではなくクラス（無条件 > コウ）で、スコアは
+# 「その手で本当に詰碁が成立しているか」の確認にだけ使う。失敗する clean 手は同じ尺度で
+# -9.98〜-10.00（差 20）に落ちるので 0.5 で十分に分離できる。
+#
+# この非対称性が安全弁でもある: 答えが本当にコウの詰碁（case E/L/M）では、clean な候補は
+# 詰碁が成立しないので ownership 検査を通らず、脱出は何もせずコウを維持する。
+TSUMEGO_KO_ESCAPE_TOLERANCE = 0.5
+
+
+def tsumego_ko_escape_candidates(
+    candidates,
+    screened_moves,
+    min_prior=TSUMEGO_KO_ESCAPE_MIN_PRIOR,
+    max_candidates=TSUMEGO_KO_ESCAPE_MAX_CANDIDATES,
+):
+    """コウ経路検査を通っていない候補のうち、root policy が認めた上位手を prior 降順で返す。
+
+    root 探索の visits・pointsLost・gain は当てにできない（それらが壊れているから正解が
+    漏れている）ので、**policy だけ**で絞る。ここで返した手を**そのまま採用してはいけない**。
+    呼び出し側が1本ずつ子局面を同深さで解析し、「clean かつ詰碁が成立している」ことを
+    確かめた手だけを採る（`TSUMEGO_KO_ESCAPE_MAX_CANDIDATES` のコメント参照）。
+    """
+    pool = [
+        c
+        for c in candidates
+        if c.get("move")
+        and c["move"] != "pass"
+        and c["move"] not in screened_moves
+        and c.get("prior", 0.0) >= min_prior
+    ]
+    pool.sort(key=lambda c: -c.get("prior", 0.0))
+    return pool[: max(0, max_candidates)]
+
+
+def tsumego_ko_escape_accepts(value, incumbent_value, tolerance=TSUMEGO_KO_ESCAPE_TOLERANCE):
+    """脱出候補（clean）の同深さ ownership が、コウの選択手に tolerance 超えて劣らないか。
+
+    不等号の向きに注意（`TSUMEGO_KO_ESCAPE_TOLERANCE` のコメント参照）。コウ手のほうが
+    スコアは高く出るのが正常で、それでも無条件を採るのが詰碁の順序。
+    """
+    return value >= incumbent_value - tolerance
+
+
 @register_strategy(AI_TSUMEGO)
 class TsumegoOwnershipStrategy(AIStrategy):
     """詰碁用: 盤全体の目数ではなく対象石群の死活（ownership の変化量）で手を選ぶ"""
@@ -2295,6 +2364,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
             chosen = candidate_moves[0]
             gain_text = "ownership なし"
         else:
+            escape_value = None
             eligible = tsumego_eligible_candidates(candidate_moves, max_points_behind, min_visits)
             score_best = tsumego_score_best(eligible)
             if (
@@ -2357,15 +2427,25 @@ class TsumegoOwnershipStrategy(AIStrategy):
                         )
                         chosen = declassed
                     else:
+                        # 目数ガード内が全部コウ＝正解（無条件）は候補プールの外にいる、という信号。
+                        # root policy の上位から探し直す（`_ko_escape_choice`）
                         self.game.katrain.log(
                             f"[{self.strategy_name}] コウ経路検査: 選択手 {chosen['move']} はコウ経路だが"
-                            f" clean な対抗馬が居ないため維持します",
+                            f" clean な対抗馬が居ないため、プールの外を探します",
                             OUTPUT_INFO,
                         )
-            gain = tsumego_ownership_gain(
-                self.cn.ownership, chosen["ownership"], stones, self.game.board_size, player_sign
-            )
-            gain_text = f"gain={gain:+.2f}"
+                        chosen, escape_value = self._ko_escape_choice(
+                            chosen, candidate_moves, {c["move"] for c in pool}, stones, player_sign
+                        )
+            if escape_value is not None:
+                # 脱出で採った手の root ownership は 1visit の生評価なので gain を出しても意味がない
+                # （実測 case O: 正解 A11 の root gain は -16.99）。同深さ検証値のほうを見せる
+                gain_text = f"コウ脱出/同深さ検証{escape_value:+.2f}"
+            else:
+                gain = tsumego_ownership_gain(
+                    self.cn.ownership, chosen["ownership"], stones, self.game.board_size, player_sign
+                )
+                gain_text = f"gain={gain:+.2f}"
         move = Move.from_gtp(chosen["move"], player=self.cn.next_player)
         self.game.katrain.log(
             f"[{self.strategy_name}] Final decision: {move.gtp()} "
@@ -2478,6 +2558,125 @@ class TsumegoOwnershipStrategy(AIStrategy):
                     OUTPUT_DEBUG,
                 )
         return frozenset(routes)
+
+    def _region_child_verdict(self, move_gtp, stones, player_sign, visits):
+        """候補手を1手進め、リージョン解析**1本**で「コウ経路か」と「同深さ ownership」を同時に取る。
+
+        コウ経路の判定は `_ko_route_screen` と同じ手順（候補手自身の1子取り＋守り方の拮抗応手の
+        PV）。あちらは ownership を要求しないので、脱出の判定に必要な絶対 ownership を得るために
+        こちらを別に用意する（選択手だけは両方で1本ずつ撃つことになるが、脱出はコウ一色のときに
+        しか走らないので実害はない。既に回帰の取れている `_ko_route_screen` を触らずに済むほうを取る）。
+
+        取れなければ None。
+        """
+        region = self.game.region_of_interest
+        player = self.cn.next_player
+        sim = tsumego_simulation_game(self.game, self.cn)
+        if sim is None:
+            return None
+        try:
+            node = sim.play(Move.from_gtp(move_gtp, player=player))
+        except IllegalMoveException:
+            return None
+        root = self._analyze_region_root(node, visits, ownership=True)
+        if root is None or root.get("ownership") is None:
+            return None
+        ko_reply = None
+        if tsumego_candidate_reaches_region_ko(self.game, self.cn, move_gtp, [], region):
+            ko_reply = "候補手自身"
+        else:
+            walk = tsumego_competitive_replies(root.get("moves") or [])
+            hit = next(
+                (
+                    r
+                    for r in walk
+                    if tsumego_candidate_reaches_region_ko(self.game, self.cn, move_gtp, r.get("pv") or [], region)
+                ),
+                None,
+            )
+            if hit is not None:
+                ko_reply = hit.get("move")
+        return {
+            "ko": ko_reply is not None,
+            "ko_reply": ko_reply,
+            "value": tsumego_absolute_ownership(root["ownership"], stones, self.game.board_size, player_sign),
+            "lead": player_sign * root["lead"],
+        }
+
+    def _ko_escape_choice(self, chosen, candidate_moves, screened_moves, stones, player_sign):
+        """選択手も対抗馬も全部コウ経路のとき、root が読まなかった policy 上位手から無条件手を探す。
+
+        「目数ガード内が全部コウ」は、詰碁の順序（無条件 > コウ）からすると
+        **正解が候補プールの外にいる**という信号になる。実測 case O（2026-07-31）では正解 A11 が
+        root 12000visits でも 1visit のままで、その 1visit の評価（+28.74目損）で選択則の全ゲートから
+        締め出されていた（詳細は `TSUMEGO_KO_ESCAPE_MAX_CANDIDATES` のコメント）。
+
+        採用は「clean かつ、同深さ ownership がコウの選択手に tolerance 超えて劣らない」ときだけ。
+        スコアで上回ることは要求しない（コウ手のほうが高く出るのが正常）。答えが本当にコウの詰碁
+        では clean な候補が ownership 検査を通らないので、この機構は何もしない。
+
+        (採用する候補, 検証値) を返す。脱出しなかったときは (chosen, None)。
+        """
+        settings = self.settings or {}
+        max_candidates = int(settings.get("ko_escape_candidates", TSUMEGO_KO_ESCAPE_MAX_CANDIDATES))
+        if max_candidates <= 0:
+            return chosen, None
+        min_prior = float(settings.get("ko_escape_min_prior", TSUMEGO_KO_ESCAPE_MIN_PRIOR))
+        tolerance = float(settings.get("ko_escape_tolerance", TSUMEGO_KO_ESCAPE_TOLERANCE))
+        visits = int(settings.get("gain_verify_visits", TSUMEGO_GAIN_VERIFY_VISITS))
+        shortlist = tsumego_ko_escape_candidates(candidate_moves, screened_moves, min_prior, max_candidates)
+        if not shortlist:
+            self.game.katrain.log(
+                f"[{self.strategy_name}] コウ脱出: prior>={min_prior} の未検査候補が無いため打ち切ります",
+                OUTPUT_INFO,
+            )
+            return chosen, None
+        incumbent = self._region_child_verdict(chosen["move"], stones, player_sign, visits)
+        if incumbent is None:
+            self.game.katrain.log(
+                f"[{self.strategy_name}] コウ脱出: 選択手 {chosen['move']} を測れないため打ち切ります", OUTPUT_INFO
+            )
+            return chosen, None
+        listed = " ".join("{}(p{:.4f})".format(c["move"], c.get("prior", 0.0)) for c in shortlist)
+        self.game.katrain.log(
+            f"[{self.strategy_name}] コウ脱出: 目数ガード内が全てコウ経路のため、root が読まなかった "
+            f"policy 上位 {listed} を同深さ{visits}visits で測ります"
+            f"（選択手 {chosen['move']} の検証値{incumbent['value']:+.2f}、tolerance={tolerance}）",
+            OUTPUT_INFO,
+        )
+        best = None
+        for cand in shortlist:
+            verdict = self._region_child_verdict(cand["move"], stones, player_sign, visits)
+            if verdict is None:
+                continue
+            accepted = not verdict["ko"] and tsumego_ko_escape_accepts(
+                verdict["value"], incumbent["value"], tolerance
+            )
+            reason = (
+                f"コウ経路（{verdict['ko_reply']}）"
+                if verdict["ko"]
+                else ("採用候補" if accepted else "詰碁が成立していない")
+            )
+            self.game.katrain.log(
+                f"[{self.strategy_name}] コウ脱出: {cand['move']} 検証値{verdict['value']:+.2f} "
+                f"目数{verdict['lead']:+.2f} → {reason}",
+                OUTPUT_INFO,
+            )
+            if accepted and (best is None or verdict["value"] > best[0]):
+                best = (verdict["value"], cand)
+        if best is None:
+            self.game.katrain.log(
+                f"[{self.strategy_name}] コウ脱出: 無条件で成立する手が無いためコウの {chosen['move']} を維持します",
+                OUTPUT_INFO,
+            )
+            return chosen, None
+        self.game.katrain.log(
+            f"[{self.strategy_name}] コウ脱出: 無条件の {best[1]['move']}（検証値{best[0]:+.2f}）を採用します"
+            f"（詰碁の順序: 無条件 > コウ。root では v{best[1].get('visits', 0)}/pt{best[1]['pointsLost']:+.2f} で"
+            f"読まれていなかった手）",
+            OUTPUT_INFO,
+        )
+        return best[1], best[0]
 
     def _verified_choice(
         self, incumbent, challengers, stones, player_sign, incumbent_label="目数最善", margin=None, fallback=None

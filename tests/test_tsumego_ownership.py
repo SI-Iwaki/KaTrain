@@ -15,6 +15,8 @@ from katrain.core.ai import (
     tsumego_eligible_candidates,
     tsumego_gain_contenders,
     tsumego_gain_stones,
+    tsumego_ko_escape_accepts,
+    tsumego_ko_escape_candidates,
     tsumego_ko_beats_normal,
     tsumego_override_confirmed,
     tsumego_ownership_gain,
@@ -659,3 +661,68 @@ def test_rescue_caps_the_number_of_candidates():
     rescue = _rescue(cands, chosen=cands[0])
     assert len(rescue) == 3
     assert [c["move"] for c in rescue] == ["F1", "E1", "D1"]  # gain 降順
+
+
+# --- コウ一色バンドからの脱出（case O 2026-07-31） -------------------------------------
+# 実測: 13路左上、黒番初手。root 1800visits の visit 配分は B12 1172 / C10 622 で、残り46手は
+# すべて v1。正解 A11 は 12000visits でも v1 のまま（1visit 評価は pt+28.74 / 白石 own -7.03 =
+# 生き だが、子局面を独立に 1800visits で測ると +11.53目 / 白10子すべて +0.99 = 全滅）。
+# 目数ガード内の B12/C10 はどちらもコウ経路なので、既存のコウ経路検査は「clean な対抗馬なし」で
+# 維持を選ぶしかなかった。正解は pool の外＝root policy の上位にいる。
+CASE_O_PRIORS = [
+    {"move": "B12", "prior": 0.68056, "visits": 1172},
+    {"move": "C10", "prior": 0.22802, "visits": 622},
+    {"move": "B13", "prior": 0.05466, "visits": 1},
+    {"move": "C13", "prior": 0.01247, "visits": 1},
+    {"move": "A11", "prior": 0.00914, "visits": 1},  # 正解
+    {"move": "A8", "prior": 0.00089, "visits": 1},
+    {"move": "H5", "prior": 0.00011, "visits": 1},
+    {"move": "H13", "prior": 0.00010, "visits": 1},
+    {"move": "pass", "prior": 0.00010, "visits": 1},
+]
+
+
+def test_ko_escape_shortlist_is_the_unscreened_policy_top():
+    # 検査済み（コウ経路と分かっている）B12/C10 を除いた policy 上位を返す。
+    # A11 は prior 5位（2/2 run で固定）なので、上限4なら確実に入る
+    out = tsumego_ko_escape_candidates(CASE_O_PRIORS, {"B12", "C10"}, min_prior=0.001, max_candidates=4)
+    assert [c["move"] for c in out] == ["B13", "C13", "A11"]
+
+
+def test_ko_escape_shortlist_drops_the_policy_floor():
+    # 48手中42手が prior 0.0001（NN の下限）に張り付く。A11(0.0091) と A8(0.00089) の間に
+    # 10倍の崖があるので、下限を切れば「NN が読む価値を認めた手」だけが残る
+    out = tsumego_ko_escape_candidates(CASE_O_PRIORS, set(), min_prior=0.001, max_candidates=99)
+    assert [c["move"] for c in out] == ["B12", "C10", "B13", "C13", "A11"]
+
+
+def test_ko_escape_shortlist_never_returns_pass():
+    out = tsumego_ko_escape_candidates(
+        [{"move": "pass", "prior": 0.9, "visits": 1}], set(), min_prior=0.0, max_candidates=4
+    )
+    assert out == []
+
+
+def test_ko_escape_shortlist_caps_the_number_of_candidates():
+    # 候補ごとに同深さ解析1本のコストがかかるので上限を設ける
+    out = tsumego_ko_escape_candidates(CASE_O_PRIORS, set(), min_prior=0.0, max_candidates=2)
+    assert [c["move"] for c in out] == ["B12", "C10"]
+
+
+def test_ko_escape_accepts_a_clean_move_that_does_not_outscore_the_ko():
+    # **この不等号の向きがこの修正の要**。コウ手のスコアは「コウに勝った前提」で出るので
+    # 無条件の正解よりわずかに高い（実測 同深さ800visits: B12 +9.95 / A11 +9.91）。
+    # 既存の覆し（gain_verify_margin=0.3 超えで上回ること）を使うと正解が却下される
+    assert tsumego_ko_escape_accepts(9.91, 9.95, tolerance=0.5)
+
+
+def test_ko_escape_rejects_a_clean_move_that_fails_to_kill():
+    # clean でも詰碁が成立していない手は落とす。実測 case O: 失敗する clean 手 C13 -9.98 /
+    # B13 -9.99 / A8 -10.00 に対し正解 A11 +9.91 で差 20 なので、tolerance 0.5 で十分分離できる
+    assert not tsumego_ko_escape_accepts(-9.98, 9.95, tolerance=0.5)
+    assert not tsumego_ko_escape_accepts(-9.99, 9.95, tolerance=0.5)
+
+
+def test_ko_escape_tolerance_boundary():
+    assert tsumego_ko_escape_accepts(9.45, 9.95, tolerance=0.5)
+    assert not tsumego_ko_escape_accepts(9.44, 9.95, tolerance=0.5)
