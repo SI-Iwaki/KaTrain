@@ -35,6 +35,7 @@ from katrain.core.tsumego_capture import grid_to_sgf
 from katrain.core.tsumego_frame import (
     BLACK,
     FRAME_VALIDITY_VISITS,
+    FRAME_VALIDITY_WIDE_ROOT_NOISE,
     WHITE,
     covers_board_p,
     fallback_region,
@@ -133,7 +134,7 @@ def katrain_region(region, board):
     return [jmin, jmax, len(board) - 1 - imax, len(board) - 1 - imin]
 
 
-def trial(engine, board, region, visits):
+def trial(engine, board, region, visits, wide_root_noise=0.04):
     """枠の採否判定に使う root 解析（lead と ownership）"""
     node = KaTrainSGF.parse_sgf(grid_to_sgf(board, komi=KOMI))
     node.set_property("RU", "chinese")
@@ -148,7 +149,7 @@ def trial(engine, board, region, visits):
         time_limit=False,
         ownership=True,
         region_of_interest=katrain_region(region, board),
-        extra_settings=region_analysis_extra_settings(visits, 0.04),
+        extra_settings=region_analysis_extra_settings(visits, wide_root_noise),
     )
     deadline = time.time() + 120
     while "done" not in out and "err" not in out and time.time() < deadline:
@@ -234,9 +235,13 @@ def main():
             candidates.append((ko, board, region))
 
         def read(candidate, visits):
-            """本番（_choose_tsumego_frame）と同じ読み。深さは frame_validity_verdicts が決める"""
+            """本番（_choose_tsumego_frame）と同じ読み。深さは frame_validity_verdicts が決める。
+
+            読み直しは wideRootNoise=0（裁定では探索を critical line に集中させる）
+            """
             ko, board, region = candidate
-            lead, ownership = trial(engine, board, region, visits)
+            wrn = FRAME_VALIDITY_WIDE_ROOT_NOISE if visits != TRIAL_VISITS else 0.04
+            lead, ownership = trial(engine, board, region, visits, wrn)
             pts = solver_core_points(core, board, region)
             own = var_to_grid(ownership, (len(board[0]), len(board))) if ownership else None
             solver_own = sum(own[y][x] for x, y in pts) if own else None
@@ -282,7 +287,8 @@ def main():
             ko, board, region = (pick_balanced_frame(scored) or scored[0])[:3]
             print(f"  decision: frame ko={ko}")
         else:
-            rescued = frame_over_frameless(verdicts, *fl_readings[VALIDITY_VISITS])
+            # 本番は枠なし側を trial の浅い読みで比較する（深さにほぼ不感なので）
+            rescued = frame_over_frameless(verdicts, *fl_readings[TRIAL_VISITS])
             if rescued is None:
                 board, region = None, None
                 print("  decision: FRAMELESS (every frame kills the solver's stones)")

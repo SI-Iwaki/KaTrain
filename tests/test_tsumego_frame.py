@@ -484,20 +484,21 @@ def test_frame_destroys_problem_is_silent_without_stones():
 
 def test_frame_solver_verdict_lets_the_deeper_reading_overrule_the_shallow_one():
     # 実測 2026-07-30 case N（13路・生き問題・手番側コア10子）: trial 400visits では
-    # -8.01/10 (-0.80/子) で死と読まれるが、6000visits では +9.80/10 (+0.98/子) で生き。
+    # -8.01/10 (-0.80/子) で死と読まれるが、読み直し（1800visits・wideRootNoise=0）では
+    # +9.70/10 (+0.97/子) で生き。
     # 浅い読みだけで枠を捨てると枠なし盤（lead -75目・コア -0.79/子）に落ちて詰碁自体が消える
     from katrain.core.tsumego_frame import frame_solver_verdict
 
-    assert frame_solver_verdict([(400, -8.01), (6000, 9.80)], 10) == (False, 6000, 9.80)
+    assert frame_solver_verdict([(400, -8.01), (1800, 9.70)], 10) == (False, 1800, 9.70)
 
 
 def test_frame_solver_verdict_confirms_a_genuinely_broken_frame():
     # 実測 2026-07-30: 本当に壊れている枠は深く読むと**より明確に**死ぬ
-    #   case F ko=False -0.09/子(400) → -0.93/子(6000) ／ case G ko=False -0.97 → -0.98/子
+    #   case F ko=False -0.20/子(400) → -0.72/子(読み直し) ／ case G ko=False -0.98 のまま
     from katrain.core.tsumego_frame import frame_solver_verdict
 
-    assert frame_solver_verdict([(400, -1.01), (6000, -10.23)], 11) == (True, 6000, -10.23)
-    assert frame_solver_verdict([(400, -10.72), (6000, -10.78)], 11) == (True, 6000, -10.78)
+    assert frame_solver_verdict([(400, -2.20), (1800, -7.92)], 11) == (True, 1800, -7.92)
+    assert frame_solver_verdict([(400, -10.72), (1800, -10.78)], 11) == (True, 1800, -10.78)
 
 
 def test_frame_solver_verdict_keeps_the_shallow_verdict_when_the_deep_read_fails():
@@ -505,8 +506,8 @@ def test_frame_solver_verdict_keeps_the_shallow_verdict_when_the_deep_read_fails
     # 掴んだまま出題してしまう。読めた中で最も深い読みで裁定する＝現行動作（枠を捨てる）を保つ
     from katrain.core.tsumego_frame import frame_solver_verdict
 
-    assert frame_solver_verdict([(400, -8.01), (6000, None)], 10) == (True, 400, -8.01)
-    assert frame_solver_verdict([(400, None), (6000, None)], 10) == (False, None, None)
+    assert frame_solver_verdict([(400, -8.01), (1800, None)], 10) == (True, 400, -8.01)
+    assert frame_solver_verdict([(400, None), (1800, None)], 10) == (False, None, None)
 
 
 def test_frame_solver_verdict_with_a_single_reading_matches_frame_destroys_problem():
@@ -531,20 +532,39 @@ def _reader(by_visits, calls):
 
 def test_frame_validity_verdicts_rereads_before_dropping_a_frame():
     # case N（生き問題）の実測: 400visits では両枠とも死（-0.80/-0.99 per stone）だが、
-    # ko=False は 6000visits で +0.98/子 に反転して有効。読み直さないと枠なしに落ちて誤答した
+    # ko=False は読み直し（1800visits・wRN=0）で +0.97/子 に反転して有効。
+    # 読み直さないと枠なしに落ちて誤答した
     from katrain.core.tsumego_frame import frame_validity_verdicts
 
     calls = []
     candidates = [(False, "boardF", "regF"), (True, "boardT", "regT")]
     readers = {
-        "boardF": _reader({400: (-6.20, -8.01, 10), 6000: (-0.44, 9.80, 10)}, calls),
-        "boardT": _reader({400: (2.77, -9.88, 10), 6000: (2.55, -9.92, 10)}, calls),
+        "boardF": _reader({400: (-6.20, -8.01, 10), 1800: (-0.44, 9.70, 10)}, calls),
+        "boardT": _reader({400: (2.77, -9.88, 10), 1800: (2.55, -9.92, 10)}, calls),
     }
-    verdicts = frame_validity_verdicts(candidates, lambda c, v: readers[c[1]](c, v), 400, 6000)
-    assert [(v.ko_p, v.destroys, v.visits) for v in verdicts] == [(False, False, 6000), (True, True, 6000)]
+    verdicts = frame_validity_verdicts(candidates, lambda c, v: readers[c[1]](c, v), 400, 1800)
+    assert [(v.ko_p, v.destroys, v.visits) for v in verdicts] == [(False, False, 1800), (True, True, 400)]
     # バランス判定に使う lead も深い読みの値に差し替わる（-6.20 → -0.44）
     assert verdicts[0].lead == pytest.approx(-0.44)
-    assert calls == [(False, 400), (False, 6000), (True, 400), (True, 6000)]
+    # 浅い読みは両枠とも先に測るが、深い読みは「生きに近い ko=False」だけで打ち切る
+    # （有効な枠が1つ出れば残りを深く読んでも出題する枠は変わらない。1本 3〜4 秒かかる）
+    assert calls == [(False, 400), (True, 400), (False, 1800)]
+
+
+def test_frame_validity_verdicts_rereads_every_frame_when_none_survives():
+    # case F/G のように全枠が壊れている場合は全部読み直してから枠なしに落ちる
+    # （frame_over_frameless の比較材料として、捨てる枠の深い読みが要る）
+    from katrain.core.tsumego_frame import frame_validity_verdicts
+
+    calls = []
+    candidates = [(False, "boardF", "regF"), (True, "boardT", "regT")]
+    readers = {
+        "boardF": _reader({400: (-31.9, -2.20, 11), 1800: (-40.9, -7.92, 11)}, calls),
+        "boardT": _reader({400: (-26.3, -10.01, 11), 1800: (-25.4, -10.56, 11)}, calls),
+    }
+    verdicts = frame_validity_verdicts(candidates, lambda c, v: readers[c[1]](c, v), 400, 1800)
+    assert all(v.destroys and v.visits == 1800 for v in verdicts)
+    assert calls == [(False, 400), (True, 400), (False, 1800), (True, 1800)]  # 浅い読みが良い順
 
 
 def test_frame_validity_verdicts_does_not_reread_a_living_frame():
@@ -589,7 +609,7 @@ def _verdict(ko_p, ownership, stone_count, destroys=True, visits=1800):
 def test_frame_over_frameless_keeps_a_frame_that_beats_the_fallback():
     # case N の実測（手番側コア10子）: 枠 ko=False は 1800visits では +0.42/子 まで落ちる run が
     # あったが、枠なしは -0.75/子 で安定。閾値 0.5 を割った読みでも枠なしよりはるかに生きている
-    # ので枠を使う（読み直しを 6000visits にした現在は +0.80〜+0.99 で usable 側に安定する）
+    # ので枠を使う（読み直しを wideRootNoise=0 にした現在は +0.96〜+0.98 で usable 側に安定する）
     from katrain.core.tsumego_frame import frame_over_frameless
 
     verdicts = [_verdict(False, 4.17, 10), _verdict(True, -9.87, 10)]
@@ -597,12 +617,12 @@ def test_frame_over_frameless_keeps_a_frame_that_beats_the_fallback():
 
 
 def test_frame_over_frameless_falls_back_when_the_frameless_board_is_healthier():
-    # case F の実測（6000visits）: 枠 -0.96/-0.94 に対し枠なし -0.64 → 従来どおり枠なしで出題する
+    # case F の実測（読み直し）: 枠 -0.72/-0.96 に対し枠なし -0.70 → 従来どおり枠なしで出題する
     # （case G も枠 -0.98/-0.99 に対し枠なし -0.68 で同じ結論）
     from katrain.core.tsumego_frame import frame_over_frameless
 
-    verdicts = [_verdict(False, -10.56, 11), _verdict(True, -10.34, 11)]
-    assert frame_over_frameless(verdicts, -7.04, 11) is None
+    verdicts = [_verdict(False, -7.92, 11), _verdict(True, -10.56, 11)]
+    assert frame_over_frameless(verdicts, -7.70, 11) is None
     assert frame_over_frameless(verdicts, 11.0, 11) is None
 
 

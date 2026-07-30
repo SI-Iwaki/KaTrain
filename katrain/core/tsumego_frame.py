@@ -117,26 +117,33 @@ FRAME_BALANCE_WARN_DISTANCE = 8.0
 # 来たため（case F の ko=False 枠）。0 だと run ごとに符号が反転して枠採否が入れ替わる
 FRAME_SOLVER_ALIVE_OWNERSHIP = 0.5
 
-# 上の判定で「死」と出た枠を捨てる前に読み直す深さ。生き問題では手番側の石そのものが戦いの
-# 対象なので、浅い読みでは有効な枠も死と出る。実測 2026-07-30 case N（黒番の生き・有効な枠）の
-# 1子平均、**プロセスを分けた独立サンプル**（同一プロセスの再クエリは探索木が再利用されて
-# 独立にならない。engine 起動を挟んで測ること）:
+# 上の判定で「死」と出た枠を捨てる前に読み直すときの visits と wideRootNoise。生き問題では
+# 手番側の石そのものが戦いの対象なので、浅い読み・散らした読みでは有効な枠も死と出る。
+# 実測 2026-07-30 case N（黒番の生き・有効な枠）の1子平均、**プロセスを分けた独立サンプル**
+# （同一プロセスの再クエリは NN キャッシュが効いて独立にならない。engine 起動を挟んで測ること）:
 #
-#     400visits   -0.69 / -0.80 / -0.98                      … 全部「死」＝枠を捨てる
+#   wRN=0.04（着手選択と同じ設定）
+#     400visits   -0.69 / -0.80 / -0.98                          … 全部「死」＝枠を捨てる
 #    1800visits   +0.95 +0.93 +0.78 +0.92 +0.42 -0.02 -0.08 -0.23 -0.95  … 二峰性でコイン投げ
-#    6000visits   +0.96 / +0.98 / +0.99 / +1.00              … 生きで安定
+#    3000visits   +0.85 / +0.28 / +0.91                          … まだ閾値をまたぐ
+#    6000visits   +0.96 / +0.98 / +0.99 / +1.00                  … 生きで安定（1本 4.8〜8.4秒）
+#   wRN=0（この判定用）
+#    1800visits   +0.97 / +0.97 / +0.96 / +0.96                  … 生きで安定（1本 約1.3秒）
 #
-# 一方、本当に壊れている枠は深くすると**より明確に死ぬ**（case F ko=False: 1800 で -0.72〜-0.85
-# → 6000 で -0.93/-0.95、case G: どの深さでも -0.98）。つまり深さは正常な枠だけを救う。
-# 6000visits の追加コストは 1候補あたり約 4〜8 秒で、支払うのは捨てる寸前の枠だけ
-FRAME_VALIDITY_VISITS = 6000
+# 二峰性の正体は深さ不足ではなく **wideRootNoise による探索の分散**だった。wRN は着手選択で
+# 候補リストを広げるための設定で、「手番側が生きているか」という裁定には害しかない（root の
+# 探索が critical line に集中できず ownership が決着しない）。wRN=0 なら 1800visits で分離が
+# 桁違いに明確になる（case N +0.96 に対し、壊れた枠は case F -0.67/-0.76・case G -0.98）。
+FRAME_VALIDITY_VISITS = 1800
+FRAME_VALIDITY_WIDE_ROOT_NOISE = 0.0
 
 # 「壊れている」と判定された枠を、それでも枠なしより残すべきかの差（手番側コアの1子平均）。
-# 実測 2026-07-30（読み直しと同じ 6000visits。枠は ko の2通り、枠なしは frameless_region）:
-#   case F -0.92〜-0.96 / -0.94〜-0.95 vs 枠なし -0.64   → 枠なしが上（従来どおり枠を捨てる）
-#   case G -0.98 / -0.99                vs 枠なし -0.68   → 同上
-#   case N +0.80〜+0.99 / -0.99         vs 枠なし -0.77   → 枠が 1.5 以上上回る
-# 残すべき側（+1.5〜）と落とすべき側（-0.26〜-0.32）の間で、run 間分散を吸収できる 0.5
+# 実測 2026-07-30（枠は読み直しの設定、枠なしは trial 400visits。枠は ko の2通り）:
+#   case F -0.72 / -0.96  vs 枠なし -0.70   → 枠なしが上（従来どおり枠を捨てる）
+#   case G -0.98 / -0.99  vs 枠なし -0.68   → 同上
+#   case N +0.96 / -0.99  vs 枠なし -0.75   → 枠が 1.7 上回る（ただし読み直しで usable なので
+#                                             この比較には来ない＝深い読みでも死と出る難問の保険）
+# 残すべき側（+1.7）と落とすべき側（-0.02〜-0.31）の間で、run 間分散を吸収できる 0.5
 FRAME_OVER_FRAMELESS_MARGIN = 0.5
 
 
@@ -168,22 +175,38 @@ def frame_validity_verdicts(candidates, read, trial_visits, validity_visits=FRAM
 
     浅い読み（trial_visits）で死と出た枠は**捨てる前に validity_visits で読み直す**。捨てた先の
     枠なしは安全側ではないので、浅いノイズで枠を手放してはいけない（`FRAME_VALIDITY_VISITS`）。
-    生きている枠は読み直さないので、追加コストを払うのは捨てる寸前の枠だけ。
     lead は判定に使った読みの値（深い読みが取れなければ浅い方）。
+
+    読み直しはキャプチャの待ち時間に直接乗る（実測 1本 1.5〜1.9秒）ので本数を絞る:
+    生きている枠は読み直さない、読み直しは**浅い読みが生きに近い枠から順に**行い、**有効な枠が
+    1つ出た時点で打ち切る**（残りは浅い判定のまま捨てる＝この修正前の動作）。case N の実測では
+    生き残る枠 ko=False の浅い読みは -0.69〜-0.98/子 で、落選する ko=True の -0.99/子 より 4/4 で
+    上だった。同点・読めなかった枠は候補順（設定の frame_ko が先）。
     """
-    verdicts = []
-    for candidate in candidates:
+    verdicts = [None] * len(candidates)
+    for i, candidate in enumerate(candidates):
         ko_p, board, region = candidate
         lead, own, n_stones = read(candidate, trial_visits)
         readings = [(trial_visits, own)]
         destroys, visits, used_own = frame_solver_verdict(readings, n_stones)
-        if destroys and validity_visits > trial_visits:
-            deep_lead, deep_own, n_stones = read(candidate, validity_visits)
-            readings.append((validity_visits, deep_own))
-            if deep_lead is not None:
-                lead = deep_lead  # バランス判定も深い読みの方が確か
-            destroys, visits, used_own = frame_solver_verdict(readings, n_stones)
-        verdicts.append(FrameVerdict(ko_p, board, region, lead, destroys, visits, used_own, n_stones, readings))
+        verdicts[i] = FrameVerdict(ko_p, board, region, lead, destroys, visits, used_own, n_stones, readings)
+    if validity_visits <= trial_visits:
+        return verdicts
+
+    def aliveness(i):  # 生きに近い順。読めなかった枠は最後（順位付けできない）
+        v = verdicts[i]
+        return (0, 0.0) if v.ownership is None or not v.stone_count else (1, v.ownership / v.stone_count)
+
+    for i in sorted((i for i, v in enumerate(verdicts) if v.destroys), key=aliveness, reverse=True):
+        if any(not v.destroys for v in verdicts):
+            break  # 有効な枠が既にある＝残りを深く読んでも出題する枠は変わらない
+        deep_lead, deep_own, n_stones = read(candidates[i], validity_visits)
+        readings = verdicts[i].readings + [(validity_visits, deep_own)]
+        destroys, visits, used_own = frame_solver_verdict(readings, n_stones)
+        lead = verdicts[i].lead if deep_lead is None else deep_lead  # バランス判定も深い読みの方が確か
+        verdicts[i] = verdicts[i]._replace(
+            lead=lead, destroys=destroys, visits=visits, ownership=used_own, stone_count=n_stones, readings=readings
+        )
     return verdicts
 
 
@@ -192,15 +215,21 @@ def frame_over_frameless(verdicts, frameless_ownership, frameless_stone_count, m
 
     枠なしは安全側のフォールバックではない。リージョン外が丸ごと相手の地になるので、枠より
     激しく詰碁を壊すことがある（実測 2026-07-30 case N: 枠なし -0.75/子 に対し有効な枠は
-    +0.96〜+1.00/子）。逆に枠が本当に壊れている case F/G は枠 -0.92〜-0.99/子 に対し枠なしが
-    -0.63〜-0.65/子 と上回るので、従来どおり枠なしに落ちる。
+    +0.96/子）。逆に枠が本当に壊れている case F/G は枠 -0.72〜-0.99/子 に対し枠なしが
+    -0.68〜-0.70/子 と上回るので、従来どおり枠なしに落ちる。
 
     比較は1子平均（盤ごとに対象石数が違いうる）。差が margin 未満なら枠を残さない。
     枠なしを読めなかった場合は比較しない＝従来動作（枠を捨てる）に落ちる。
 
-    `FRAME_VALIDITY_VISITS`(6000) で読み直すようになった後は、この比較が結論を変える実測ケースは
-    無い（case N は「生き」で安定して usable 側に出る）。1800visits 時代には -0.23/-0.08 と出た
-    run をこれが拾って正解にしていた（3run 中 2）ので、深く読んでもなお死と出る難問への保険。
+    **枠なし側は浅い読みで足りる**（枠と違って深さにほぼ不感）。実測 400/1800/6000visits の1子平均は
+    case N -0.75/-0.79/-0.77、case F -0.70/-0.65/-0.64、case G -0.65/-0.63/-0.68 で最大差 0.06、
+    margin 0.5 に対して十分小さい。枠なし盤では手番側の石の生死がリージョン外の地で決まっていて
+    読みの深さで動かないため（＝この盤で詰碁が消えているという判断そのもの）。
+
+    `FRAME_VALIDITY_WIDE_ROOT_NOISE` で読み直すようになった後は、この比較が結論を変える実測ケースは
+    無い（case N は「生き」で安定して usable 側に出る）。wRN=0.04 で読み直していた時期には
+    -0.23/-0.08 と出た run をこれが拾って正解にしていた（3run 中 2）ので、それでも死と出る
+    難問への保険として残す。
     """
     if frameless_ownership is None:
         return None
