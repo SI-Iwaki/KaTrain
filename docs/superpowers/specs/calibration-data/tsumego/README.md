@@ -4,7 +4,8 @@
 
 | ファイル | 内容 |
 |---|---|
-| `case-d-gain-region-20260730.sgf` | 枠外の代償地帯が gain の符号を反転させた誤答局面（13路左下、正解 A4／別解 B3、旧実装は C3 で失敗）。region = `[0, 8, 0, 8]` |
+| `case-d-gain-region-20260730.sgf` | 枠外の代償地帯が gain の符号を反転させた誤答局面（13路左下、正解 A4／別解 B3、旧実装は C3 で失敗）。region = `0,8,0,8`、対象は 4手目 |
+| `case-e-ko-margin-20260730.sgf` | コウ勝ち前提のマージンが小さすぎて無条件の正解を捨てた誤答局面（13路下辺、正解 K1、旧実装は L1 でコウにして失敗）。region = `3,12,0,8`、対象は 6手目 |
 
 ## 診断スクリプト
 
@@ -33,6 +34,16 @@ python docs/superpowers/specs/calibration-data/tsumego/gain_region_ab.py <sgf> <
 **1回の解析から旧（全石）/新（リージョン内）の両方の選択を計算する**ので、
 KataGo の並列探索の run 間分散が交絡しない。選択則を変えるときはこの形で比較すること
 （別 run で比べると分散に埋もれる → memory `feedback_batch_eval_variance` と同じ罠）。
+
+### `ko_margin_ab.py` — コウ勝ち前提の採用判定を検証
+
+```bash
+python docs/superpowers/specs/calibration-data/tsumego/ko_margin_ab.py <sgf> <move_number> <xmin,xmax,ymin,ymax> <期待手> [repeats]
+# 例: ... case-e-ko-margin-20260730.sgf 6 3,12,0,8 K1 3
+```
+
+現在の `ko_win_margin` で N 回走らせ、最後に `ko_win_margin=0.5`（旧既定）でも1回走らせて
+新旧を比較する。コウ判定ログ（通常最善・コウ勝ち前提・差・閾値）だけを抜き出して表示する。
 
 ## 注意
 

@@ -1705,8 +1705,27 @@ def tsumego_ownership_gain(root_ownership, move_ownership, stones, board_size, p
 
 # コウ判定の上限（解析1本ずつ増えるため）と、通常最善手を上回ったと見なす目数マージン
 _TSUMEGO_KO_MAX_CANDIDATES = 3
-_TSUMEGO_KO_MARGIN = 0.5
+TSUMEGO_KO_MARGIN = 5.0
 _TSUMEGO_KO_MAX_ATARI_STONES = 6  # 打った石以外に調べる自分の1子アタリの数
+
+
+def tsumego_ko_beats_normal(ko_value, best_normal, margin):
+    """コウ勝ち前提の評価が「結果を変える」幅で通常最善を上回っているか。
+
+    コウ勝ち前提のノードは（手を打つ → 守り側が取る → 取り返す）と進めた局面なので、
+    攻め方が1手多く打ち相手の石を1子取った状態になっている。つまり通常最善との比較は
+    構造的に数目ぶんコウ側へ偏っており、素の大小比較だと「通常最善が既に無条件で殺して
+    いるのに、おまけの分だけコウが勝つ」ことが起きる。実測 2026-07-30（case E）:
+
+        K1  1776visits  無条件に殺して      +11.44目  ← 正解
+        L1     1visit   実際は -34.26目 / コウ勝ち前提 +12.50目（差 +1.06目）← 選ばれた
+
+    一方コウが本当の正解である問題では通常最善はセキ止まり等の失敗なので、差は桁違いに
+    大きい（実測: セキ -12.3目 に対しコウ勝ち前提 +8.1目 = 差 +20.4目）。枠は「攻め方成功
+    = offence_to_win(5)目勝ち」に調整する設計で成功と失敗は約10目離れるため、その半分を
+    要求することで「コウが結果を変えるのか、おまけ分の上積みなのか」を切り分けられる。
+    """
+    return ko_value > best_normal + margin
 
 
 def _chain_and_liberties(game, coords):
@@ -1903,6 +1922,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
         best_normal = max(player_sign * c["scoreLead"] for c in searched)
         player = self.cn.next_player
         ko_visits = int(settings.get("ko_win_visits", 800))
+        ko_margin = float(settings.get("ko_win_margin", TSUMEGO_KO_MARGIN))
         best = None
         checked = 0
         for cand in sorted(playable, key=lambda c: -c.get("visits", 0)):
@@ -1929,18 +1949,19 @@ class TsumegoOwnershipStrategy(AIStrategy):
                 f"[{self.strategy_name}] コウ判定: 候補{len(playable)}手にコウの形なし", OUTPUT_DEBUG
             )
             return None
-        if best[0] <= best_normal + _TSUMEGO_KO_MARGIN:
+        if not tsumego_ko_beats_normal(best[0], best_normal, ko_margin):
             self.game.katrain.log(
                 f"[{self.strategy_name}] コウ判定: {best[1].gtp()} のコウ勝ち前提{best[0]:+.2f}目は"
-                f"通常最善{best_normal:+.2f}目を上回らないため不採用",
+                f"通常最善{best_normal:+.2f}目を ko_win_margin={ko_margin} 超えて上回らないため不採用"
+                f"（差{best[0] - best_normal:+.2f}目）",
                 OUTPUT_INFO,
             )
             return None
         value, move, cand = best
         self.game.katrain.log(
             f"[{self.strategy_name}] Final decision: {move.gtp()} "
-            f"（コウ勝ち前提{value:+.2f}目 > 通常最善{best_normal:+.2f}目、"
-            f"pointsLost={cand['pointsLost']:+.2f}, ko_win_visits={ko_visits}）",
+            f"（コウ勝ち前提{value:+.2f}目 > 通常最善{best_normal:+.2f}目、差{value - best_normal:+.2f}目 > "
+            f"ko_win_margin={ko_margin}、pointsLost={cand['pointsLost']:+.2f}, ko_win_visits={ko_visits}）",
             OUTPUT_INFO,
         )
         return move, f"詰碁戦略: {move.gtp()} でコウに持ち込む（コウ勝ち前提 {value:+.2f}目）"

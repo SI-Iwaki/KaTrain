@@ -166,7 +166,8 @@
             "gain_epsilon": 0.3,
             "min_visits": 10,
             "ko_win_assumption": true,
-            "ko_win_visits": 800
+            "ko_win_visits": 800,
+            "ko_win_margin": 5.0
         },
         "ai:p:weighted": {
             "weaken_fac": 1.25,

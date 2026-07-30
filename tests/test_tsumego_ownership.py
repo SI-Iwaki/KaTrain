@@ -1,6 +1,12 @@
 import pytest
 
-from katrain.core.ai import select_tsumego_move, tsumego_gain_stones, tsumego_ownership_gain
+from katrain.core.ai import (
+    TSUMEGO_KO_MARGIN,
+    select_tsumego_move,
+    tsumego_gain_stones,
+    tsumego_ko_beats_normal,
+    tsumego_ownership_gain,
+)
 
 # var_to_grid は grid[y][x] を返し、配列は上の行(y降順)から詰まる。
 # 3x3 なら array[0:3]=grid[2], array[3:6]=grid[1], array[6:9]=grid[0]
@@ -205,3 +211,36 @@ def test_select_is_not_inverted_by_the_frame_counterweight():
     # リージョン内だけで集計すれば正解手が残る
     region_stones = tsumego_gain_stones(all_stones, REGION)
     assert select_tsumego_move(cands, ZERO, region_stones, SIZE, +1, 2.0)["move"] == "A4"
+
+
+# --- コウ勝ち前提の採用判定 ---
+# 実測データ（どちらも 13路・枠あり・region 限定 1800visits）
+# case E (2026-07-30): 無条件に殺す K1(1776visits) が +11.44目。L1(1visit) は実際には
+#   -34.26目でコウにしかならないが、コウ勝ち前提だと +12.50目。差は +1.06目しかない
+# 追記4 (2026-07-30): 正解がコウの問題。通常最善はセキ止まりで -12.3目、コウ勝ち前提 +8.1目
+CASE_E_KO_WIN, CASE_E_NORMAL = 12.50, 11.44
+KO_ANSWER_KO_WIN, KO_ANSWER_NORMAL = 8.1, -12.3
+
+
+def test_ko_rejected_when_normal_best_already_succeeds():
+    """通常最善が既に無条件で殺しているならコウに持ち込む理由がない。
+
+    コウ勝ち前提のノードは攻め方が1手多く打ち白石を1子取った局面なので、比較は構造的に
+    コウ側へ偏る。その「おまけ」分だけで採用されると、無条件の正解を捨ててコウで不正解になる。
+    """
+    assert not tsumego_ko_beats_normal(CASE_E_KO_WIN, CASE_E_NORMAL, TSUMEGO_KO_MARGIN)
+
+
+def test_ko_adopted_when_normal_best_fails():
+    # 正解がコウの問題では通常最善が失敗（セキ）なので差が桁違いに大きい
+    assert tsumego_ko_beats_normal(KO_ANSWER_KO_WIN, KO_ANSWER_NORMAL, TSUMEGO_KO_MARGIN)
+
+
+def test_ko_margin_separates_both_measured_cases_with_room():
+    # 実測2ケースの差は +1.06 と +20.4。既定マージンは両者から十分離れていること
+    assert CASE_E_KO_WIN - CASE_E_NORMAL < TSUMEGO_KO_MARGIN < KO_ANSWER_KO_WIN - KO_ANSWER_NORMAL
+
+
+def test_old_ko_margin_would_have_taken_the_losing_move():
+    # 旧既定 0.5 では case E のおまけ分 +1.06 が通ってしまい、-34目の手を打った
+    assert tsumego_ko_beats_normal(CASE_E_KO_WIN, CASE_E_NORMAL, 0.5)
