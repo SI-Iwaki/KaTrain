@@ -16,6 +16,7 @@
 | `case-j-points-tie-20260730.sgf` | gain も目数も 0.02 差で並んだ「正しい別解」を選んで不正解になった局面（13路右上・枠あり、11手目、正解 N10、旧実装は N11）。region = `6,12,1,12`。N11 も実際に白を殺せている（8000visits でも分離不能・同深さ検証も差 0.05 で無力）が、アプリの解答樹には N10 しか無い。目数同着バンド `points_epsilon` 内で visits 最多（KataGo の本命）を採るタイブレークの回帰対象（spec 追記14） |
 | `case-k-ko-route-20260730.sgf` | 同着バンドの visits タイブレークが「コウで殺す手」を選んだ誤答局面（13路左上・枠あり、初手、正解 C13=無条件、旧実装は A12=W A11→B B11 のコウ）。region = `0,8,3,12`。KataGo はコウも黒勝ちと読むので gain・目数とも同着でクラス差が出ず、親 PV は白が枠へ手抜きしてコウが現れない。リージョン子局面解析の最善応手 PV のコウ形検出（`tie_ko_screen` / `tsumego_pv_reaches_region_ko`＝バンド内 無条件 > コウ）の回帰対象（spec 追記15）。A12 格下げ後の clean な2手 {C13, A10} は visits 接近の別解同士で、稀に手順前後の別解 A10 が選ばれる（spec 追記16 の残余） |
 | `case-l-immediate-ko-20260730.sgf` | 候補手自身がコウを開始する形をコウ検査が素通しした誤答局面（13路右下・枠あり、初手、正解 J6=2子捨ての石の下、旧実装は L5=白L6の1子取りコウ）。region = `4,12,0,9`。守り方は次にコウ禁止で取り返せないため応手 PV にコウ形が現れない。検査シーケンスを [候補手]+応手PV に拡張した `tsumego_candidate_reaches_region_ko`（ply0 はクエリ不要で確定）の回帰対象（spec 追記16） |
+| `case-n-live-frame-drop-20260730.sgf` | 生き問題の有効な枠が浅い読みで捨てられ、枠なし盤で詰碁が消えた誤答局面（13路左下・**枠なし**、初手、正解 B3=無条件生き、旧実装は D10＝死活と無関係な点）。region = `0,5,0,9`。**保存 SGF は認識盤そのもの**（枠なしで出題された回なので枠を剥がす復元ができない。`frame_validity_probe.py` は `core` として扱う）。枠あり（実 generate_move）B3 5/5 OK・枠なし D10 2/2 NG で、枠を捨てた判断そのものが誤答の原因。`frame_validity_visits`（捨てる前に 6000visits で読み直す）と `frame_over_frameless`（捨てる先の枠なし盤を測ってから捨てる）の回帰対象（spec 追記18）。**測るときは engine 起動を挟むこと**: 同一プロセスの再クエリは探索木が再利用されて独立サンプルにならない |
 | `case-m-capture-gain-ko-20260730.sgf` | コウ手の gain が実信号になり同着バンドのコウ検査を素通りした誤答局面（13路右下・枠あり、5手目、正解 K1=無条件生き、旧実装は M2=白L2の1子取りからコウ生きに転落）。region = `4,12,0,8`。M2 の gain +1.8〜1.9 は「コウに勝つ前提」で白 L2/M3 を取り切る**実信号**（同深さ検証も +1.29 でコウ側を追認＝gain・目数・検証のスコア系メトリックはクラスを分離できない）のため gain 同着バンドが形成されず、旧 tie_ko_screen（バンド2手以上が条件）が不発のまま採用された。コウ検査を「選択パイプライン最後の成功クラス裁定」に一般化した `tsumego_class_screen_pool` / `tsumego_declass_choice` の回帰対象（spec 追記17）。構造検出は安定: 子局面の白最善応手 K1（アプリの反撃と同一）の PV の B M4（1子取り）がコウ形（2/2 run） |
 
 ## 診断スクリプト
@@ -82,14 +83,21 @@ python docs/superpowers/specs/calibration-data/tsumego/ko_margin_ab.py <sgf> <mo
 ### `frame_validity_probe.py` — 枠が詰碁を壊していないか判定し、枠あり／枠なしを比較
 
 ```bash
-python docs/superpowers/specs/calibration-data/tsumego/frame_validity_probe.py <sgf> <move_number> <xmin,xmax,ymin,ymax> <期待手csv> [trial_visits] [visits]
+python docs/superpowers/specs/calibration-data/tsumego/frame_validity_probe.py <sgf> <move_number> <xmin,xmax,ymin,ymax> <期待手csv> [trial_visits] [visits] [validity_visits]
 # 例: ... case-g-frame-role-20260730.sgf 0 0,7,3,12 A11
+# 枠なしで出題された回の SGF（case N）もそのまま渡せる（枠が無い盤はコアとして扱う）
 ```
 
-引数の SGF は**枠を張った後の盤**（保存SGFのroot）。そこから本体（コア）石を復元し
-（4辺の壁の総当たり×攻め方×コウダテを再枠張りして元の盤に一致する組合せを採る）、
-枠候補ごとに「手番側の本体石が生きているか」（`frame_destroys_problem`）を判定した上で、
+引数の SGF は**キャプチャで出題された盤**（保存SGFのroot）。枠付きならそこから本体（コア）石を
+復元し（4辺の壁の総当たり×攻め方×コウダテを再枠張りして元の盤に一致する組合せを採る）、
+枠候補ごとに「手番側の本体石が生きているか」を**本番と同じ二段構え**（浅い読みで死と出たら
+`validity_visits` で読み直す＝`frame_validity_verdicts`）で判定し、全枠が壊れ判定なら
+捨てる先の枠なし盤も測って比較する（`frame_over_frameless`）。その上で
 **枠あり・枠なしそれぞれで `select_tsumego_move` が何を選ぶか**を出す。
+
+**分散を見るときは engine 起動を挟むこと**（1プロセス内で同じ局面を測り直しても探索木が
+再利用されて独立サンプルにならない。実測 case N: 1プロセス内では +0.57/+0.76/+0.71 と
+安定して見えるが、プロセスを分けると -0.95〜+0.95 の二峰性）。
 
 誤答報告が来たら最初にこれを回す。枠が詰碁を消していれば `DESTROYS the problem` が出る
 （＝選択則をいじっても無駄。実測 case G: 枠あり B13 NG / 枠なし A11 OK）。
