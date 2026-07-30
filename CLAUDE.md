@@ -6,7 +6,7 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 
 - 上流リポジトリ: https://github.com/sanderland/katrain
 - ランタイム設定: `C:\Users\iwaki\.katrain\`
-- 主な改修: Human-like AI（9段）モードの拡張。悪手フィルタ（スコアベースのフィルタリング）に加え、力戦派（Fighting）・攻城（Siege）・狩猟（Hunt）・狩猟一致率低減（HuntDivergence）・AI一致率低減（Divergence）・地合い勝ち（Jigo）等の戦略モードを追加・改修。力戦派には複雑化モード `complex`（切りボーナス＋リード適応の損失予算ゲートで盤面を紛れさせる）を追加。Jigo には序盤星打ち強制オプション `jigo_force_sanrensei`（19路のみ・黒=三連星/白=2連星）を追加。さらに Jigo には9路専用の独立戦略 `ai:jigo9`（持碁（9路））を追加（既存 `ai:jigo` は19/13路専用に整理）し、9路 deception の phase 境界・target を5スライダーで調整可能にした（phase3前倒しで挽回を間に合わせる）。星打ち布石ロジックは `ai.py` の共有ヘルパー `_compute_star_opening_targets` に集約し HumanStyle の2連星と共用。詰碁画面キャプチャ（tsumego_capture: グローバルホットキーでBlueStacks上の詰碁アプリ盤面を認識しKaTrainに反映+外枠自動適用（大型詰碁は適応marginで補償面積を確保）+黒番AIが正解手を自動着手し白番はユーザーが応手、auto_ai_black:falseで従来動作）を追加。詰碁の着手選択 `ai:tsumego` は ownership gain（同着はgain_epsilonで目数に委ねる／min_visits未満の候補は除外）に加え、コウは「コウダテがある前提」でコウ勝ち後の局面を評価（ko_win_assumption）。枠はキャプチャ時に frame_ko の両方を張って root スコアがバランスの取れた方を自動採用（拮抗時は攻め方コウダテ側）
+- 主な改修: Human-like AI（9段）モードの拡張。悪手フィルタ（スコアベースのフィルタリング）に加え、力戦派（Fighting）・攻城（Siege）・狩猟（Hunt）・狩猟一致率低減（HuntDivergence）・AI一致率低減（Divergence）・地合い勝ち（Jigo）等の戦略モードを追加・改修。力戦派には複雑化モード `complex`（切りボーナス＋リード適応の損失予算ゲートで盤面を紛れさせる）を追加。Jigo には序盤星打ち強制オプション `jigo_force_sanrensei`（19路のみ・黒=三連星/白=2連星）を追加。さらに Jigo には9路専用の独立戦略 `ai:jigo9`（持碁（9路））を追加（既存 `ai:jigo` は19/13路専用に整理）し、9路 deception の phase 境界・target を5スライダーで調整可能にした（phase3前倒しで挽回を間に合わせる）。星打ち布石ロジックは `ai.py` の共有ヘルパー `_compute_star_opening_targets` に集約し HumanStyle の2連星と共用。詰碁画面キャプチャ（tsumego_capture: グローバルホットキーでBlueStacks上の詰碁アプリ盤面を認識しKaTrainに反映+外枠自動適用（大型詰碁は適応marginで補償面積を確保）+黒番AIが正解手を自動着手し白番はユーザーが応手、auto_ai_black:falseで従来動作）を追加。詰碁の着手選択 `ai:tsumego` は ownership gain（集計対象は**リージョン内の石のみ**＝枠外の代償地帯は成否と逆相関する／同着はgain_epsilonで目数に委ねる／min_visits未満の候補は除外）に加え、コウは「コウダテがある前提」でコウ勝ち後の局面を評価（ko_win_assumption）。枠はキャプチャ時に frame_ko の両方を張って root スコアがバランスの取れた方を自動採用（拮抗時は攻め方コウダテ側）
 
 ## 技術スタック
 
@@ -107,6 +107,7 @@ python -m katrain_debug --sgf FILE --strategy hunt --batch --settings hunt_max_l
 - **ユーザーローカル`config.json`（`C:\Users\iwaki\.katrain\config.json`）の編集をサブエージェントに委任しない** — サブエージェントが成功を報告しても実際に反映されないことがある。このファイルは必ずメインセッションで直接Editする
 - **`analysis_config.cfg`や`katago.exe`を直接編集しない** — ランタイムエンジン設定は手動管理
 - **i18nの`.po`ファイルだけ編集して終わらない** — `python tools/compile_mo.py` で`.mo`にコンパイルしないと翻訳が反映されない
+- **詰碁の ownership 集計にリージョン外の石を混ぜない** — 枠は `put_outside` で枠外を「守り側の代償地帯＋攻め方の地」に配る設計なので、枠外の石の ownership は詰碁の成否と**逆相関する**。全石で合計すると符号が反転し、守り側が生きる手が選ばれる（実測: 枠内 −9.65 vs 枠外 +11.6）
 - **偏差/dodgeメカニズムで生humanPolicyを順位判定に使わない** — proximity/intensity込みのcombined weightを使わないと、攻撃対象から遠い手に差し替わり棋風が崩壊する
 - **空間的に離れた2点の座標平均をフォーカス/ターゲット中心に使わない** — 盤の反対側にある2点の平均は「どちらにも近くない幻影中心」になり、実際の戦闘エリアの手がペナルティを受ける。代わりに独立したGaussianのmaxを取る（2アンカーmax方式）
 - **Kivyモジュールをimportするスクリプトでargparseを使う場合、`os.environ["KIVY_NO_ARGS"] = "1"` を先頭で設定する** — KivyのConfigが`--help`等のCLI引数を横取りする

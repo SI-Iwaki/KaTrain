@@ -1,6 +1,6 @@
 import pytest
 
-from katrain.core.ai import select_tsumego_move, tsumego_ownership_gain
+from katrain.core.ai import select_tsumego_move, tsumego_gain_stones, tsumego_ownership_gain
 
 # var_to_grid は grid[y][x] を返し、配列は上の行(y降順)から詰まる。
 # 3x3 なら array[0:3]=grid[2], array[3:6]=grid[1], array[6:9]=grid[0]
@@ -164,3 +164,44 @@ def test_select_min_visits_is_configurable():
     ]
     assert select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, min_visits=10)["move"] == "B1"
     assert select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, min_visits=30)["move"] == "A1"
+
+
+# --- gain の集計範囲（リージョン外の枠石を除く） ---
+
+REGION = [0, 1, 0, 1]  # 3x3 の左下 2x2。(2,*) と (*,2) は枠外
+
+
+def test_gain_stones_drops_stones_outside_the_region():
+    stones = [(0, 0), (1, 1), (2, 2), (2, 0), (0, 2)]
+    assert tsumego_gain_stones(stones, REGION) == [(0, 0), (1, 1)]
+
+
+def test_gain_stones_keeps_everything_without_a_region():
+    # 枠なしモード等でリージョンが無い場合は従来どおり全石で集計する
+    stones = [(0, 0), (2, 2)]
+    assert tsumego_gain_stones(stones, None) == stones
+
+
+def test_select_is_not_inverted_by_the_frame_counterweight():
+    """枠外の代償地帯の ownership は詰碁の成否と逆相関するので gain に混ぜてはいけない。
+
+    実測（2026-07-30, 13路の詰碁 case D）: 白が生きてしまう C3 はリージョン内 −9.65 で
+    正しく最下位なのに、枠外6石が +11.6 動いて合計 +2.90 と最上位に化け、正解 A4（枠内
+    +0.33）を押しのけて選ばれた。枠は「リージョン外に守り側の代償地帯を配る」設計
+    （tsumego_frame.put_outside）なので、この反転は偶発ではなく構造的に起きる。
+    """
+    good = {"move": "A4", "pointsLost": 0.06, "visits": 857, "ownership": _own(x0_y0=0.1, x1_y1=0.1)}
+    bad = {  # 枠内は大きく損、枠外(2,2)がそれを上回って逆符号に動く
+        "move": "C3",
+        "pointsLost": 1.91,
+        "visits": 294,
+        "ownership": _own(x0_y0=-1.0, x1_y1=-1.0, x2_y2=3.0),
+    }
+    cands = [good, bad]
+    all_stones = [(0, 0), (1, 1), (2, 2)]
+
+    # 枠外を混ぜると誤答手が勝ってしまう（修正前の挙動）
+    assert select_tsumego_move(cands, ZERO, all_stones, SIZE, +1, 2.0)["move"] == "C3"
+    # リージョン内だけで集計すれば正解手が残る
+    region_stones = tsumego_gain_stones(all_stones, REGION)
+    assert select_tsumego_move(cands, ZERO, region_stones, SIZE, +1, 2.0)["move"] == "A4"

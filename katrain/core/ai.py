@@ -1672,11 +1672,31 @@ class SettleStonesStrategy(OwnershipBaseStrategy):
         return aimove, ai_thoughts
 
 
+def tsumego_gain_stones(stones, region_of_interest):
+    """gain の集計対象になる石座標。リージョンがあれば枠外の石を落とす。
+
+    枠は「リージョン外を守り側の代償地帯 defense_area と攻め方の地に配る」設計
+    （`tsumego_frame.put_outside`）で、その境目は未決着のまま残る。つまり枠外の石の
+    ownership は詰碁の成否と**逆相関する counterweight** になっており、gain に混ぜると
+    符号が反転する。実測 2026-07-30（13路 case D、正解 A4 を捨てて C3 で白を生かした局面）:
+
+        リージョン内 5石  −9.65（正しく「白が生還した」と出ている）
+        枠外の境目 6石   +11.6
+        合計             +2.90 ← 候補中最大になり誤答手が選ばれた
+
+    枠内に残る枠石（壁）は堅く生きているので ownership が動かず、集計に混ぜても害はない。
+    """
+    if not region_of_interest:
+        return list(stones)  # 枠なしモード等: 従来どおり全石で集計する
+    xmin, xmax, ymin, ymax = region_of_interest
+    return [(x, y) for x, y in stones if xmin <= x <= xmax and ymin <= y <= ymax]
+
+
 def tsumego_ownership_gain(root_ownership, move_ownership, stones, board_size, player_sign):
-    """盤上の全石について、手番側から見て有利な向きの ownership 変化量を合計する。
+    """渡された石について、手番側から見て有利な向きの ownership 変化量を合計する。
 
     石ごとに合計するので大きい連の死活ほど重く効く。石の無い点は数えないので、
-    空き地の手は gain がほぼ 0 になり自動的に沈む。
+    空き地の手は gain がほぼ 0 になり自動的に沈む。集計範囲は `tsumego_gain_stones` が決める。
     """
     root_grid = var_to_grid(root_ownership, board_size)
     move_grid = var_to_grid(move_ownership, board_size)
@@ -1821,7 +1841,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
         max_points_behind = (self.settings or {}).get("max_points_behind", 2.0)
         gain_epsilon = (self.settings or {}).get("gain_epsilon", 0.3)
         min_visits = (self.settings or {}).get("min_visits", 10)
-        stones = [s.coords for s in self.game.stones]
+        stones = tsumego_gain_stones([s.coords for s in self.game.stones], self.game.region_of_interest)
         player_sign = self.cn.player_sign(self.cn.next_player)
         ko_move = self._pick_ko_win_move(candidate_moves, min_visits, player_sign)
         if ko_move is not None:
@@ -1854,7 +1874,8 @@ class TsumegoOwnershipStrategy(AIStrategy):
         self.game.katrain.log(
             f"[{self.strategy_name}] Final decision: {move.gtp()} "
             f"({gain_text}, pointsLost={chosen['pointsLost']:+.2f}, "
-            f"候補{len(candidate_moves)}手, max_points_behind={max_points_behind}, "
+            f"候補{len(candidate_moves)}手, gain集計石{len(stones)}子, "
+            f"max_points_behind={max_points_behind}, "
             f"gain_epsilon={gain_epsilon}, min_visits={min_visits})",
             OUTPUT_DEBUG,
         )

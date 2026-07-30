@@ -100,7 +100,9 @@ humanモードの悪手フィルタ閾値はHumanStyleStrategyと同じBAD_MOVE_
 
 詰碁キャプチャ専用の独立戦略（`ai:tsumego`）。GUI の戦略一覧には出さず、キャプチャ経路がプログラムから設定する（`AI_OPTION_VALUES` への登録は不要。設定は両方の `config.json` の `ai/ai:tsumego` に直接置く）。
 
-**着手選択**: リージョン限定解析（ownership 付き）の候補手に対し、(1) 目数ガード `pointsLost <= min(pointsLost) + max_points_behind` を通し、(2) 盤上の全石の ownership 変化量の合計（gain）が最大の手を選ぶ。(3) gain 差が `gain_epsilon` 以内の手は同着とみなし pointsLost で決める。
+**着手選択**: リージョン限定解析（ownership 付き）の候補手に対し、(1) 目数ガード `pointsLost <= min(pointsLost) + max_points_behind` を通し、(2) **リージョン内**の石の ownership 変化量の合計（gain）が最大の手を選ぶ。(3) gain 差が `gain_epsilon` 以内の手は同着とみなし pointsLost で決める。
+
+**gain の集計範囲はリージョン内の石のみ**（`tsumego_gain_stones`）。枠は `put_outside` でリージョン外を「守り側の代償地帯＋攻め方の地」に配る設計で、その境目の石の ownership は詰碁の成否と**逆相関する counterweight** になる。全石で集計すると符号が反転し、守り側が生きる手が選ばれる（実測 2026-07-30: 枠内 −9.65 に対し枠外 +11.6 で合計 +2.90 になり誤答手が4/4で選ばれた）。リージョンが無い枠なしモードでは従来どおり全石。
 
 | パラメータ | デフォルト | 備考 |
 |---|---|---|

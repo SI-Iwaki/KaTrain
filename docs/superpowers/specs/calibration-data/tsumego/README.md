@@ -1,0 +1,41 @@
+# 詰碁（ai:tsumego）の校正・回帰データ
+
+## SGF
+
+| ファイル | 内容 |
+|---|---|
+| `case-d-gain-region-20260730.sgf` | 枠外の代償地帯が gain の符号を反転させた誤答局面（13路左下、正解 A4／別解 B3、旧実装は C3 で失敗）。region = `[0, 8, 0, 8]` |
+
+## 診断スクリプト
+
+KaTrain 本体とは独立。KataGo を起動するのでプロジェクトルートから実行する。
+`REGION` は各スクリプト先頭の定数で、SGF ごとに合わせる（本番のリージョンは
+`__main__.py` の `_apply_tsumego_region` / `_do_tsumego_frame` が設定する値。
+KaTrain のログの `avoidMoves` から読み取れる）。
+
+### `gain_probe.py` — 候補手ごとの gain 内訳を出す
+
+```bash
+python docs/superpowers/specs/calibration-data/tsumego/gain_probe.py <sgf> <move_number> [visits]
+```
+
+候補手を `gain(全石)` / `gain(リージョン内)` / `gain(リージョン内の相手石)` の3通りで並べ、
+注目手については石ごとの ownership 変化（枠内 `in` / 枠外 `OUT` の区別つき）を出す。
+**枠外の石が大きく動いていたら counterweight が効いている**サイン。
+
+### `gain_region_ab.py` — 選択則の A/B 比較
+
+```bash
+python docs/superpowers/specs/calibration-data/tsumego/gain_region_ab.py <sgf> <moves_csv> [repeats]
+# 例: ... case-d-gain-region-20260730.sgf 0,2,4 4
+```
+
+**1回の解析から旧（全石）/新（リージョン内）の両方の選択を計算する**ので、
+KataGo の並列探索の run 間分散が交絡しない。選択則を変えるときはこの形で比較すること
+（別 run で比べると分散に埋もれる → memory `feedback_batch_eval_variance` と同じ罠）。
+
+## 注意
+
+- SGF には必ず `RU[chinese]` を入れる。未指定だと engine 既定の japanese になり、
+  面積計算前提の枠のスコアが 25目規模でずれる（spec の「落とし穴（要注意）」参照）
+- 実測値は spec `docs/superpowers/specs/2026-07-29-tsumego-ownership-design.md` の追記に記録
