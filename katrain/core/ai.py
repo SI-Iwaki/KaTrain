@@ -1703,6 +1703,46 @@ def tsumego_ownership_gain(root_ownership, move_ownership, stones, board_size, p
     return sum(player_sign * (move_grid[y][x] - root_grid[y][x]) for x, y in stones)
 
 
+def tsumego_absolute_ownership(ownership, stones, board_size, player_sign):
+    """渡された石の ownership を手番側視点で合計する（root 差分を取らない絶対値）。
+
+    別々のクエリで測った局面同士を比べるときは gain（root 差分）を使えない。root ownership は
+    「その探索の平均」なので基準が揃わないため。同深さで測り直した子局面の比較にはこちらを使う。
+    """
+    grid = var_to_grid(ownership, board_size)
+    return sum(player_sign * grid[y][x] for x, y in stones)
+
+
+# gain は1本の root 探索の movesOwnership から取るため、候補ごとに探索の深さが違う。探索が浅い
+# 候補ほど ownership が未決着側へドリフトし、root が飽和している局面では**片側ノイズ**になる。
+# 実測 2026-07-30（13路右上 case F。正解 N8 に対し AI は N7 を選び白が生きた）:
+#
+#   N8(正解) 780-890visits  ptLost -0.60〜-0.79  gain -0.45〜-0.55  → 8000v(2565visits) で -0.04
+#   N7(誤答) 214-307visits  ptLost +1.35〜+1.60  gain +2.70〜+9.10  → 8000v( 637visits) で +0.06
+#   N6       89- 90visits   ptLost +1.44         gain +11.06〜+11.98 → 8000v( 502visits) で +0.66
+#
+# visits を与えると gain が消える＝死活の信号ではない。ノイズ幅（+12）は spec が想定した
+# ±0.03 の 400 倍で、case B / C の実信号 1.16 / 3.20 も飲み込むので gain_epsilon では止まらず、
+# min_visits=10 も無力（N7 は 214-307visits）。そこで「目数最善手を gain で覆せるのは、その手と
+# 探索の深さが比較できる候補だけ」に絞る。実測の比は N7 0.31-0.34 / N6 0.11 に対し case D の
+# 正解 A4 は 1.00 なので、0.5 で誤答だけを落とせる
+TSUMEGO_GAIN_MIN_VISIT_RATIO = 0.5
+
+# 目数最善手を覆す判断が出たときに両者を測り直す visits と、採用に要求する ownership 差。
+# 同深さでも ±0.3 程度は動く（実測 case F: N8 -26.60 / N6 -26.84 / M7 -26.89 / N7 -26.91）
+TSUMEGO_GAIN_VERIFY_VISITS = 800
+TSUMEGO_GAIN_VERIFY_MARGIN = 0.3
+
+
+def tsumego_override_confirmed(challenger_value, score_best_value, margin):
+    """同深さで測り直した対象石 ownership が、目数最善手を覆す判断を裏づけているか。
+
+    実測 case F: 挑戦者 N7 は -26.91 で目数最善 N8 の -26.60 に負ける（差 -0.31）ので却下。
+    一方 gain が本物のケース（case B / C の実信号 1.16 / 3.20）はこの margin を余裕で超える。
+    """
+    return challenger_value > score_best_value + margin
+
+
 # コウ判定の上限（解析1本ずつ増えるため）と、通常最善手を上回ったと見なす目数マージン
 _TSUMEGO_KO_MAX_CANDIDATES = 3
 TSUMEGO_KO_MARGIN = 5.0
@@ -1828,8 +1868,41 @@ def tsumego_ko_win_node(game, node, move):
     return None
 
 
+def tsumego_eligible_candidates(candidates, max_points_behind, min_visits):
+    """目数ガード・min_visits・ownership 有無を通した候補（gain の競争に参加できる手）"""
+    searched = [c for c in candidates if c.get("visits", 0) >= min_visits]
+    candidates = searched or candidates
+    best_loss = min(c["pointsLost"] for c in candidates)
+    return [c for c in candidates if c.get("ownership") and c["pointsLost"] <= best_loss + max_points_behind]
+
+
+def tsumego_score_best(eligible):
+    """目数ガードを通った中で最も目数の良い手＝gain の挑戦者が覆す相手。無ければ None"""
+    return min(eligible, key=lambda c: c["pointsLost"]) if eligible else None
+
+
+def tsumego_gain_contenders(eligible, score_best, min_visit_ratio):
+    """目数最善手と探索の深さが比較できる候補だけに絞る（`TSUMEGO_GAIN_MIN_VISIT_RATIO` 参照）。
+
+    visits 情報が無い解析結果ではゲートしない（解析がほぼ進んでいない局面で候補ゼロにすると、
+    呼び出し側が「ownership が取れない」と誤認して最善手フォールバックに落ちる）。
+    """
+    ref = (score_best or {}).get("visits", 0)
+    if not ref or min_visit_ratio <= 0:
+        return list(eligible)
+    return [c for c in eligible if c is score_best or c.get("visits", 0) >= min_visit_ratio * ref]
+
+
 def select_tsumego_move(
-    candidates, root_ownership, stones, board_size, player_sign, max_points_behind, gain_epsilon=0.3, min_visits=10
+    candidates,
+    root_ownership,
+    stones,
+    board_size,
+    player_sign,
+    max_points_behind,
+    gain_epsilon=0.3,
+    min_visits=10,
+    gain_min_visit_ratio=TSUMEGO_GAIN_MIN_VISIT_RATIO,
 ):
     """目数ガードを通した候補から ownership gain 最大の手を返す。選べなければ None。
 
@@ -1849,16 +1922,17 @@ def select_tsumego_move(
     目数ガードより前に落とすのは、1visit の楽観的なスコアが best_loss を押し下げて
     ガードを不当に狭めるのも防ぐため。全候補が min_visits 未満なら（＝解析がほとんど
     進んでいない）フィルタせず従来どおり全候補で判断する。
+
+    さらに gain で目数最善手を覆せるのは、その手と探索の深さが比較できる候補だけに限る
+    （`gain_min_visit_ratio`。理由と実測は `TSUMEGO_GAIN_MIN_VISIT_RATIO` のコメント参照）。
     """
     if not candidates or not root_ownership or not stones:
         return None
-    searched = [c for c in candidates if c.get("visits", 0) >= min_visits]
-    candidates = searched or candidates
-    best_loss = min(c["pointsLost"] for c in candidates)
+    eligible = tsumego_eligible_candidates(candidates, max_points_behind, min_visits)
+    contenders = tsumego_gain_contenders(eligible, tsumego_score_best(eligible), gain_min_visit_ratio)
     scored = [
         (tsumego_ownership_gain(root_ownership, c["ownership"], stones, board_size, player_sign), -c["pointsLost"], c)
-        for c in candidates
-        if c.get("ownership") and c["pointsLost"] <= best_loss + max_points_behind
+        for c in contenders
     ]
     if not scored:
         return None
@@ -1881,11 +1955,13 @@ class TsumegoOwnershipStrategy(AIStrategy):
         max_points_behind = (self.settings or {}).get("max_points_behind", 2.0)
         gain_epsilon = (self.settings or {}).get("gain_epsilon", 0.3)
         min_visits = (self.settings or {}).get("min_visits", 10)
+        min_visit_ratio = float((self.settings or {}).get("gain_min_visit_ratio", TSUMEGO_GAIN_MIN_VISIT_RATIO))
         stones = tsumego_gain_stones([s.coords for s in self.game.stones], self.game.region_of_interest)
         player_sign = self.cn.player_sign(self.cn.next_player)
         ko_move = self._pick_ko_win_move(candidate_moves, min_visits, player_sign)
         if ko_move is not None:
             return ko_move
+        self._log_candidates(candidate_moves, stones, player_sign)
         chosen = select_tsumego_move(
             candidate_moves,
             self.cn.ownership,
@@ -1895,6 +1971,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
             max_points_behind,
             gain_epsilon,
             min_visits,
+            min_visit_ratio,
         )
         if chosen is None:
             # ownership が無い（_enable_ownership が false 等）。無言で劣化させず既定動作に戻す
@@ -1906,6 +1983,11 @@ class TsumegoOwnershipStrategy(AIStrategy):
             chosen = candidate_moves[0]
             gain_text = "ownership なし"
         else:
+            score_best = tsumego_score_best(
+                tsumego_eligible_candidates(candidate_moves, max_points_behind, min_visits)
+            )
+            if score_best is not None and chosen["move"] != score_best["move"]:
+                chosen = self._verified_override(chosen, score_best, stones, player_sign)
             gain = tsumego_ownership_gain(
                 self.cn.ownership, chosen["ownership"], stones, self.game.board_size, player_sign
             )
@@ -1914,12 +1996,91 @@ class TsumegoOwnershipStrategy(AIStrategy):
         self.game.katrain.log(
             f"[{self.strategy_name}] Final decision: {move.gtp()} "
             f"({gain_text}, pointsLost={chosen['pointsLost']:+.2f}, "
+            f"visits={chosen.get('visits', 0)}, "
             f"候補{len(candidate_moves)}手, gain集計石{len(stones)}子, "
             f"max_points_behind={max_points_behind}, "
-            f"gain_epsilon={gain_epsilon}, min_visits={min_visits})",
+            f"gain_epsilon={gain_epsilon}, min_visits={min_visits}, "
+            f"gain_min_visit_ratio={min_visit_ratio})",
             OUTPUT_DEBUG,
         )
         return move, f"詰碁戦略: {len(candidate_moves)}手から {move.gtp()} を選択（{gain_text}）"
+
+    def _log_candidates(self, candidate_moves, stones, player_sign, top=5):
+        """上位候補を visits / 最多手比 / 目数 / gain つきで残す。
+
+        誤答の切り分けをログだけで済ませるため（case F の調査では、ログに選択手の gain しか
+        無かったので盤面を再構築するまで「gain ノイズか本物の信号か」が分からなかった）。
+        """
+        root_ownership = self.cn.ownership
+        if not root_ownership:
+            return
+        rows = [
+            (
+                c["move"],
+                c.get("visits", 0),
+                c["pointsLost"],
+                tsumego_ownership_gain(root_ownership, c["ownership"], stones, self.game.board_size, player_sign),
+            )
+            for c in candidate_moves
+            if c.get("ownership")
+        ]
+        if not rows:
+            return
+        ref = max(row[1] for row in rows) or 1
+        text = lambda row: f"{row[0]}(v{row[1]}/{row[1] / ref:.2f} pt{row[2]:+.2f} g{row[3]:+.2f})"  # noqa: E731
+        self.game.katrain.log(
+            f"[{self.strategy_name}] gain順: " + " ".join(text(r) for r in sorted(rows, key=lambda r: -r[3])[:top]),
+            OUTPUT_DEBUG,
+        )
+        self.game.katrain.log(
+            f"[{self.strategy_name}] 目数順: " + " ".join(text(r) for r in sorted(rows, key=lambda r: r[2])[:top]),
+            OUTPUT_DEBUG,
+        )
+
+    def _verified_override(self, challenger, score_best, stones, player_sign):
+        """gain が目数最善手を覆すときだけ、両者を同じ深さで測り直して裏づけを取る。
+
+        gain は1本の root 探索の movesOwnership から取るので候補ごとに探索の深さが違い、浅い手ほど
+        ownership が未決着側へドリフトする（実測 case F: N7 が 214-307visits で +2.70〜+9.10、
+        同じ手を 637visits まで探索すると +0.06 に消えた）。そこで子局面を同 visits で解析し直し、
+        対象石の ownership を**絶対値**で直接比較する（root 差分は基準が揃わないので使えない）。
+        実測 case F（各1800visits）: N8 -26.60 > N7 -26.91 で正解が残る。
+
+        解析できない局面（着手以外のノードを含む・エンジン応答なし等）は現状の選択を尊重する。
+        """
+        settings = self.settings or {}
+        if not settings.get("gain_verify", True):
+            return challenger
+        visits = int(settings.get("gain_verify_visits", TSUMEGO_GAIN_VERIFY_VISITS))
+        margin = float(settings.get("gain_verify_margin", TSUMEGO_GAIN_VERIFY_MARGIN))
+        sim = tsumego_simulation_game(self.game, self.cn)
+        if sim is None:
+            self.game.katrain.log(f"[{self.strategy_name}] 同深さ検証: 局面を再現できないため省略", OUTPUT_DEBUG)
+            return challenger
+        base = sim.current_node
+        values = {}
+        for cand in (score_best, challenger):
+            sim.set_current_node(base)
+            try:
+                node = sim.play(Move.from_gtp(cand["move"], player=self.cn.next_player))
+            except IllegalMoveException:
+                return challenger
+            root = self._analyze_region_root(node, visits, ownership=True)
+            if root is None or root.get("ownership") is None:
+                return challenger
+            values[cand["move"]] = tsumego_absolute_ownership(
+                root["ownership"], stones, self.game.board_size, player_sign
+            )
+        challenger_value, best_value = values[challenger["move"]], values[score_best["move"]]
+        confirmed = tsumego_override_confirmed(challenger_value, best_value, margin)
+        self.game.katrain.log(
+            f"[{self.strategy_name}] 同深さ検証({visits}visits): {challenger['move']} {challenger_value:+.2f} "
+            f"vs 目数最善 {score_best['move']} {best_value:+.2f}"
+            f"（差{challenger_value - best_value:+.2f} / gain_verify_margin={margin}）→ "
+            f"{'採用' if confirmed else '却下（目数最善に戻す）'}",
+            OUTPUT_INFO,
+        )
+        return challenger if confirmed else score_best
 
     def _pick_ko_win_move(self, candidate_moves, min_visits, player_sign):
         """コウに持ち込める手があり、コウに勝った局面が通常の最善手より良ければその手を返す。
@@ -1998,17 +2159,30 @@ class TsumegoOwnershipStrategy(AIStrategy):
 
     def _analyze_score_lead(self, node, visits, timeout=60.0):
         """使い捨てノードを解析して root の scoreLead（黒視点）だけ取る。取れなければ None"""
+        root = self._analyze_region_root(node, visits, ownership=False, timeout=timeout)
+        return None if root is None else root["lead"]
+
+    def _analyze_region_root(self, node, visits, ownership=False, timeout=60.0):
+        """使い捨てノードをリージョン限定で解析し root の {lead(黒視点), ownership} を返す。
+
+        本譜の解析と同じリージョン・wideRootNoise で撃つ（条件を変えると本譜の候補評価と
+        比較できなくなる）。取れなければ None。
+        """
         engine = self.game.engines[self.cn.next_player]
         result = {}
         engine.request_analysis(
             node,
             callback=lambda analysis, partial_result: (
-                None if partial_result else result.setdefault("lead", analysis["rootInfo"]["scoreLead"])
+                None
+                if partial_result
+                else result.setdefault(
+                    "root", {"lead": analysis["rootInfo"]["scoreLead"], "ownership": analysis.get("ownership")}
+                )
             ),
             error_callback=lambda error: result.setdefault("error", error),
             visits=visits,
             time_limit=False,
-            ownership=False,
+            ownership=ownership,
             region_of_interest=self.game.region_of_interest,
             extra_settings=region_analysis_extra_settings(
                 visits, getattr(self.game, "region_analysis_wide_root_noise", REGION_ANALYSIS_WIDE_ROOT_NOISE)
@@ -2016,11 +2190,11 @@ class TsumegoOwnershipStrategy(AIStrategy):
             priority=PRIORITY_EXTRA_AI_QUERY,
         )
         deadline = time.time() + timeout
-        while "lead" not in result and "error" not in result and time.time() < deadline:
+        while "root" not in result and "error" not in result and time.time() < deadline:
             time.sleep(0.02)
-        if "lead" not in result:
-            self.game.katrain.log(f"[{self.strategy_name}] コウ判定の解析に失敗しました", OUTPUT_INFO)
-        return result.get("lead")
+        if "root" not in result:
+            self.game.katrain.log(f"[{self.strategy_name}] 追加解析に失敗しました（{visits}visits）", OUTPUT_INFO)
+        return result.get("root")
 
 
 @register_strategy(AI_POLICY)

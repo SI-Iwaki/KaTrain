@@ -1,11 +1,14 @@
 import pytest
 
 from katrain.core.ai import (
+    TSUMEGO_GAIN_VERIFY_MARGIN,
     TSUMEGO_KO_MARGIN,
     select_tsumego_move,
+    tsumego_absolute_ownership,
     tsumego_already_succeeded,
     tsumego_gain_stones,
     tsumego_ko_beats_normal,
+    tsumego_override_confirmed,
     tsumego_ownership_gain,
 )
 
@@ -165,12 +168,84 @@ def test_select_keeps_all_moves_when_none_are_searched():
 
 
 def test_select_min_visits_is_configurable():
+    # visits は深さゲート（gain_min_visit_ratio）とも噛むので、ここでは両手を深さ比較可能
+    # （40/50 = 0.80）にして min_visits だけを効かせる
     cands = [
         {"move": "A1", "pointsLost": 1.0, "visits": 50, "ownership": ZERO},
-        {"move": "B1", "pointsLost": 1.5, "visits": 20, "ownership": _own(x0_y0=0.8)},
+        {"move": "B1", "pointsLost": 1.5, "visits": 40, "ownership": _own(x0_y0=0.8)},
     ]
     assert select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, min_visits=10)["move"] == "B1"
-    assert select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, min_visits=30)["move"] == "A1"
+    assert select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, min_visits=45)["move"] == "A1"
+
+
+# --- gain の深さゲート（探索の浅い候補は目数最善手を覆せない） ---
+# 実測（2026-07-30, 13路右上 case F。正解 N8 に対し AI は N7 を選び白が生きた）
+# region 1800visits を3 run + 8000visits で深掘りした値:
+#   N8(正解) 780-890visits  ptLost -0.60〜-0.79  gain -0.45〜-0.55  → 8000v(2565visits) で -0.04
+#   N7(誤答) 214-307visits  ptLost +1.35〜+1.60  gain +2.70〜+9.10  → 8000v( 637visits) で +0.06
+#   N6       89- 90visits   ptLost +1.44         gain +11.06〜+11.98 → 8000v( 502visits) で +0.66
+# visits を与えると gain が消える＝これは死活の信号ではなく探索解像度の差。root の ownership が
+# 飽和（対象の黒石 -10.4/11、リージョン90点中 -87.3）しているため 0 方向への片側ノイズになる
+
+
+def test_select_ignores_gain_of_undersearched_challenger():
+    """探索の浅い候補の gain は目数最善手を覆せない（case F の N7 = 307/890visits, +9.10）"""
+    cands = [
+        {"move": "N8", "pointsLost": -0.60, "visits": 890, "ownership": ZERO},
+        {"move": "N7", "pointsLost": 1.35, "visits": 307, "ownership": _own(x0_y0=1.0, x1_y1=1.0)},
+    ]
+    chosen = select_tsumego_move(cands, ZERO, [(0, 0), (1, 1)], SIZE, +1, 2.0)
+    assert chosen["move"] == "N8"
+
+
+def test_select_allows_gain_of_comparably_searched_challenger():
+    """同程度に探索された候補なら従来どおり gain が目数に優先する（case D の A4 は最多探索）"""
+    cands = [
+        {"move": "B3", "pointsLost": -0.16, "visits": 397, "ownership": ZERO},
+        {"move": "A4", "pointsLost": -0.07, "visits": 1045, "ownership": _own(x0_y0=1.0)},
+    ]
+    chosen = select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, gain_epsilon=0.0)
+    assert chosen["move"] == "A4"
+
+
+def test_select_visit_ratio_is_configurable():
+    cands = [
+        {"move": "A1", "pointsLost": 0.0, "visits": 1000, "ownership": ZERO},
+        {"move": "B1", "pointsLost": 1.0, "visits": 300, "ownership": _own(x0_y0=1.0)},
+    ]
+    assert select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, gain_min_visit_ratio=0.5)["move"] == "A1"
+    assert select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, gain_min_visit_ratio=0.2)["move"] == "B1"
+    # 0 でゲート無効（従来動作）
+    assert select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, gain_min_visit_ratio=0.0)["move"] == "B1"
+
+
+def test_select_does_not_gate_when_no_visit_info():
+    # visits が無い解析結果（解析前・テスト等）ではゲートせず従来どおり gain で決める
+    cands = [
+        {"move": "A1", "pointsLost": 0.0, "ownership": ZERO},
+        {"move": "B1", "pointsLost": 1.0, "ownership": _own(x0_y0=1.0)},
+    ]
+    assert select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0)["move"] == "B1"
+
+
+def test_absolute_ownership_is_not_root_relative():
+    """同深さで測り直した子局面同士は root 差分ではなく絶対値で比べる。
+
+    別クエリの root ownership は「どの探索の平均か」が違うので差分の基準に使えない。
+    実測 case F（子局面を各1800visits で解析）: N8 -26.60 > N7 -26.91 で正解が残る
+    """
+    own = _own(x0_y0=-1.0, x1_y1=0.5)
+    assert tsumego_absolute_ownership(own, [(0, 0), (1, 1)], SIZE, +1) == pytest.approx(-0.5)
+    assert tsumego_absolute_ownership(own, [(0, 0), (1, 1)], SIZE, -1) == pytest.approx(0.5)
+
+
+def test_override_confirmed_only_when_better_beyond_margin():
+    # case F の実測差 -26.91 - (-26.60) = -0.31 は挑戦者が負けているので却下
+    assert not tsumego_override_confirmed(-26.91, -26.60, TSUMEGO_GAIN_VERIFY_MARGIN)
+    # 同深さでも本当に有利なら採用（case B / C の実信号は 1.16 / 3.20 でこちら側）
+    assert tsumego_override_confirmed(-25.0, -26.60, TSUMEGO_GAIN_VERIFY_MARGIN)
+    # margin 未満の差は同着扱い（同深さでも ±0.3 程度は動く。実測 N6 -26.84 / M7 -26.89）
+    assert not tsumego_override_confirmed(-26.45, -26.60, TSUMEGO_GAIN_VERIFY_MARGIN)
 
 
 # --- gain の集計範囲（リージョン外の枠石を除く） ---
@@ -207,11 +282,14 @@ def test_select_is_not_inverted_by_the_frame_counterweight():
     cands = [good, bad]
     all_stones = [(0, 0), (1, 1), (2, 2)]
 
-    # 枠外を混ぜると誤答手が勝ってしまう（修正前の挙動）
-    assert select_tsumego_move(cands, ZERO, all_stones, SIZE, +1, 2.0)["move"] == "C3"
+    # 枠外を混ぜると誤答手が勝ってしまう（修正前の挙動）。実測の visits 比 294/857 = 0.34 は
+    # 後から入れた深さゲートでも落ちるので、ここでは counterweight の反転だけを見るため無効化する
+    assert select_tsumego_move(cands, ZERO, all_stones, SIZE, +1, 2.0, gain_min_visit_ratio=0.0)["move"] == "C3"
     # リージョン内だけで集計すれば正解手が残る
     region_stones = tsumego_gain_stones(all_stones, REGION)
-    assert select_tsumego_move(cands, ZERO, region_stones, SIZE, +1, 2.0)["move"] == "A4"
+    assert select_tsumego_move(cands, ZERO, region_stones, SIZE, +1, 2.0, gain_min_visit_ratio=0.0)["move"] == "A4"
+    # 深さゲートも独立に誤答手を止める（多重防御）
+    assert select_tsumego_move(cands, ZERO, all_stones, SIZE, +1, 2.0)["move"] == "A4"
 
 
 # --- コウ勝ち前提の採用判定 ---
