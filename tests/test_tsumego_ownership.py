@@ -5,6 +5,7 @@ from katrain.core.ai import (
     TSUMEGO_GAIN_VERIFY_MARGIN,
     TSUMEGO_KO_MARGIN,
     select_tsumego_move,
+    tsumego_needs_score_best_verify,
     tsumego_absolute_ownership,
     tsumego_already_succeeded,
     tsumego_eligible_candidates,
@@ -160,6 +161,29 @@ def test_select_points_epsilon_is_configurable():
     # 0 で現行動作（目数最良のみ。同着バンドなし）
     assert select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, points_epsilon=0.0)["move"] == "N11"
     assert select_tsumego_move(cands, ZERO, [(0, 0)], SIZE, +1, 2.0, points_epsilon=0.25)["move"] == "N10"
+
+
+def test_no_verify_inside_the_points_tie_band():
+    """同着バンド内の選択（visits タイブレーク）は同深さ検証にかけない。
+
+    実測 case J 再発 (2026-07-30 GUI): select_tsumego_move は N10 を選んだが、
+    「選択手 ≠ 目数最善」の無条件検証が発動し、等価な2手は margin 0.3 で
+    分離できない（実測差 +0.05）ため必ず却下 → 目数最善 N11 に巻き戻り、
+    同着タイブレークが丸ごと無効化された。バンド内の選択は「gain が良いから
+    覆す」ではなく「等価なので PV に寄せる」なので検証の対象外とする。
+    """
+    score_best = {"move": "N11", "pointsLost": -0.03}
+    chosen = {"move": "N10", "pointsLost": 0.01}  # 差 0.04 <= 0.25: 同着バンド内
+    assert not tsumego_needs_score_best_verify(chosen, score_best, 0.25)
+
+
+def test_verify_still_required_for_real_gain_overrides():
+    # 目数を本当に犠牲にする gain 覆し（case B/C/F 系）は従来どおり検証必須
+    score_best = {"move": "A1", "pointsLost": 0.0}
+    chosen = {"move": "B1", "pointsLost": 1.5}
+    assert tsumego_needs_score_best_verify(chosen, score_best, 0.25)
+    # 境界: ちょうど points_epsilon は同着側（バンドの <= と揃える）
+    assert not tsumego_needs_score_best_verify({"move": "B1", "pointsLost": 0.25}, score_best, 0.25)
 
 
 def test_select_points_tie_without_visit_info_keeps_points_order():

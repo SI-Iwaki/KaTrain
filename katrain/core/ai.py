@@ -2025,6 +2025,19 @@ def select_tsumego_move(
     return max(band, key=lambda scored_move: (scored_move[2].get("visits", 0), scored_move[1], scored_move[0]))[2]
 
 
+def tsumego_needs_score_best_verify(chosen, score_best, points_epsilon=TSUMEGO_POINTS_EPSILON):
+    """目数最善でない選択手に同深さ検証（gain 覆しの裁定）が必要かを返す。
+
+    検証が要るのは「目数を本当に犠牲にして gain で覆す」選択だけ。目数差が
+    points_epsilon 以内の選択は同着バンドの visits タイブレークで、「gain が良いから
+    覆す」ではなく「等価なので PV に寄せる」判断なので検証の対象外。等価な2手は
+    検証でも margin(0.3) を超えて分離できず（実測 case J: N10 +43.97 vs N11 +43.92 の
+    差 +0.05）、無条件に検証にかけると必ず却下 → 目数最善へ巻き戻しになり、
+    同着タイブレークが丸ごと無効化される（2026-07-30 GUI 実測で再発）。
+    """
+    return chosen["pointsLost"] - score_best["pointsLost"] > points_epsilon
+
+
 @register_strategy(AI_TSUMEGO)
 class TsumegoOwnershipStrategy(AIStrategy):
     """詰碁用: 盤全体の目数ではなく対象石群の死活（ownership の変化量）で手を選ぶ"""
@@ -2071,7 +2084,11 @@ class TsumegoOwnershipStrategy(AIStrategy):
         else:
             eligible = tsumego_eligible_candidates(candidate_moves, max_points_behind, min_visits)
             score_best = tsumego_score_best(eligible)
-            if score_best is not None and chosen["move"] != score_best["move"]:
+            if (
+                score_best is not None
+                and chosen["move"] != score_best["move"]
+                and tsumego_needs_score_best_verify(chosen, score_best, points_epsilon)
+            ):
                 chosen = self._verified_choice(score_best, [chosen], stones, player_sign, fallback=chosen)
             if (self.settings or {}).get("gain_verify", True):
                 # 救済: gain 争いに参加できなかった候補（目数ガード外・深さゲート外）でも gain が
