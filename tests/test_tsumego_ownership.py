@@ -30,6 +30,11 @@ from katrain.core.ai import (
     tsumego_ownership_gain,
     tsumego_rescue_candidates,
     tsumego_region_stones_by_player,
+    tsumego_class_screen_applies,
+    tsumego_ko_escape_applies,
+    tsumego_role_stones,
+    tsumego_solver_attacks,
+    tsumego_wall_lines,
     tsumego_score_best,
     tsumego_success_ownership,
 )
@@ -954,3 +959,113 @@ def test_ko_escape_rejects_a_clean_move_that_fails_to_kill():
 def test_ko_escape_tolerance_boundary():
     assert tsumego_ko_escape_accepts(9.45, 9.95, tolerance=0.5)
     assert not tsumego_ko_escape_accepts(9.44, 9.95, tolerance=0.5)
+
+
+# --- 手番側の役割（攻め方 / 守り方）の判定 -------------------------------------------------
+# 詰碁の正解順序は役割で逆転する（攻め: 無条件死 > コウ > セキ / 守り: 無条件生き > セキ > コウ）。
+# 枠の壁は `tsumego_frame.put_border` が**攻め方の色**で敷き、リージョンは同じ frame_range なので、
+# リージョン境界線（盤端でない辺）の石列が役割を表す。実測（保存済み19ケース）は枠ありが全ケース
+# 単色100%・占有率100%、枠なしが石0〜1子（case R: 13点中1子）。
+BIG = (9, 9)
+
+
+def _wall_stones(region, color, size=BIG):
+    """リージョン境界の壁（盤端でない辺）を color で敷いた石リスト"""
+    points = {c for line in tsumego_wall_lines(region, size) for c in line}
+    return [SimpleNamespace(player=color, coords=c) for c in sorted(points)]
+
+
+def test_solver_attacks_reads_the_wall_colour():
+    region = [2, 6, 2, 6]  # 4辺とも盤端でない＝壁が4本
+    white_wall = _wall_stones(region, "W")
+    # 壁が白＝白が攻め方。黒番なら守り方（生きる詰碁）＝実測 case T / case M
+    assert tsumego_solver_attacks(white_wall, region, BIG, "B") is False
+    assert tsumego_solver_attacks(white_wall, region, BIG, "W") is True
+    # 壁が黒なら逆（実測 case E/J/K/L/O/P/Q）
+    black_wall = _wall_stones(region, "B")
+    assert tsumego_solver_attacks(black_wall, region, BIG, "B") is True
+
+
+def test_solver_attacks_ignores_board_edges():
+    """盤端に接する辺には壁が要らない（盤の縁が壁）。残りの辺だけで判定する。"""
+    region = [2, 8, 0, 6]  # xmax と ymin が盤端 → 壁は x=2 と y=6 の2本（実測 case T の形）
+    lines = tsumego_wall_lines(region, BIG)
+    assert [len(line) for line in lines] == [7, 7]
+    assert tsumego_solver_attacks(_wall_stones(region, "W"), region, BIG, "B") is False
+
+
+def test_solver_attacks_is_none_without_a_frame():
+    """枠なし盤は境界線に石がほとんど無い＝役割不明。従来の役割非依存の挙動に落とす。"""
+    region = [2, 6, 2, 6]
+    assert tsumego_solver_attacks([], region, BIG, "B") is None
+    # 実測 case R: 13点の境界線に1子だけ。壁と誤認すると詰碁と無関係な役割で判定してしまう
+    stray = [SimpleNamespace(player="B", coords=(2, 2))]
+    assert tsumego_solver_attacks(stray, region, BIG, "B") is None
+    # リージョン自体が無い（全盤解析）経路
+    assert tsumego_solver_attacks(_wall_stones(region, "W"), None, BIG, "B") is None
+
+
+def test_solver_attacks_is_none_when_edges_disagree():
+    """辺ごとに色が食い違う盤は枠として読めない（角を共有しない2辺で作る）。"""
+    region = [2, 6, 0, 8]  # 上下が盤端 → 壁は x=2 と x=6 の2本だけ＝互いに素
+    mixed = [SimpleNamespace(player="B", coords=(2, y)) for y in range(9)]
+    mixed += [SimpleNamespace(player="W", coords=(6, y)) for y in range(9)]
+    assert tsumego_solver_attacks(mixed, region, BIG, "B") is None
+
+
+def test_role_stones_pick_the_side_that_carries_the_verdict():
+    own, opp = [(0, 0)], [(1, 1)]
+    # 殺す詰碁は相手石が死んだかで決まる。自石は壁と連絡して自明に生きているので混ぜない
+    assert tsumego_role_stones(own, opp, True) == opp
+    # 生きる詰碁は自石が生きたかで決まる（セキでは相手も生きるのが正常）
+    assert tsumego_role_stones(own, opp, False) == own
+    # 役割不明なら従来どおり両方＝全リージョン石
+    assert sorted(tsumego_role_stones(own, opp, None)) == sorted(own + opp)
+
+
+def test_success_ownership_uses_the_role_when_known():
+    """守り方のセキ（自石は生き・相手も生き）を「失敗」と読ませない。"""
+    own = _own(x0_y0=1.0, x1_y1=-1.0)  # 自石 (0,0) は生き / 相手石 (1,1) も生き＝セキ
+    # 役割不明なら従来どおり厳しいほう＝-1.0（コウ機構が走る）
+    assert tsumego_success_ownership(own, [(0, 0)], [(1, 1)], SIZE, +1) == pytest.approx(-1.0)
+    # 守り方と分かれば自石だけ＝+1.0（成功。セキより下のコウを持ち上げない）
+    assert tsumego_success_ownership(
+        own, [(0, 0)], [(1, 1)], SIZE, +1, solver_attacks=False
+    ) == pytest.approx(1.0)
+    # 攻め方と分かれば相手石だけ＝-1.0（自明に生きている自石で薄めない）
+    assert tsumego_success_ownership(
+        own, [(0, 0)], [(1, 1)], SIZE, +1, solver_attacks=True
+    ) == pytest.approx(-1.0)
+
+
+# --- クラス裁定を走らせる条件 ---------------------------------------------------------------
+def test_class_screen_applies_only_inside_the_points_guard():
+    chosen = {"move": "A1", "pointsLost": 0.0, "visits": 100}
+    rival = {"move": "B1", "pointsLost": 0.1, "visits": 50}
+    # 対抗馬が居なくても、選択手がガード内なら検査する（実測 case T: eligible=[J2] のみでも
+    # J2 はコウ経路で、脱出が正解 L1 を拾う。旧実装は len(pool)>=2 でここを丸ごと落としていた）
+    assert tsumego_class_screen_applies(chosen, [chosen])
+    assert tsumego_class_screen_applies(chosen, [chosen, rival])
+    # ガード外（救済採用）の手は検査しない（実測 case F2）
+    assert not tsumego_class_screen_applies(chosen, [rival])
+    assert not tsumego_class_screen_applies(chosen, [])
+
+
+def test_ko_escape_applies_when_the_whole_pool_is_ko():
+    ko_move, clean_move = {"move": "A1"}, {"move": "B1"}
+    pool, ko_routes = [ko_move, clean_move], frozenset({"A1"})
+    # 全員コウなら役割に関係なく脱出（実測 case O）
+    assert tsumego_ko_escape_applies([ko_move], frozenset({"A1"}), None)
+    assert tsumego_ko_escape_applies([ko_move], frozenset({"A1"}), True)
+
+
+def test_ko_escape_needs_the_role_when_a_clean_rival_remains():
+    """clean な対抗馬が居るのに脱出してよいのは、役割ごとの石で検証できるときだけ。"""
+    ko_move, clean_move = {"move": "A1"}, {"move": "B1"}
+    pool, ko_routes = [ko_move, clean_move], frozenset({"A1"})
+    # 役割不明（枠なし）＝case R。全リージョン石では成否が分離できないので脱出しない
+    assert not tsumego_ko_escape_applies(pool, ko_routes, None)
+    # 役割が読めるなら脱出する。守り方のセキは clean のまま目数で必ず劣るので、
+    # 「clean な対抗馬が目数で優る」は「答えがコウ」の根拠にならない（実測 case T）
+    assert tsumego_ko_escape_applies(pool, ko_routes, False)
+    assert tsumego_ko_escape_applies(pool, ko_routes, True)

@@ -1785,19 +1785,118 @@ def tsumego_region_stones_by_player(stones, region_of_interest, player):
     return split(True), split(False)
 
 
-def tsumego_success_ownership(root_ownership, own_stones, opponent_stones, board_size, player_sign):
-    """手番側が詰碁として成功しているかの ownership 尺度（自石・相手石の 1子平均の**小さいほう**）。
+# 枠の壁の色＝攻め方の色。`tsumego_frame.put_border` は frame_range の4辺に**攻め方の色**の石を
+# 敷き、`mark_region_corners` が**同じ frame_range** をリージョンにするので、リージョン境界線
+# （盤端でない辺）に並ぶ石列がそのまま「どちらが攻め方か」を表している。
+#
+# 実測 2026-07-31（保存済み19ケースの SGF を境界線で数えた）: 枠ありは全ケースで境界線が
+# **単色100%・占有率100%**（case T: x=2 が W7/7 と y=6 が W11/11、case M: W9/9・W9/9、
+# case O: B10/10・B9/9）、枠なしは境界線に石が1つも無いか1子だけ（case R: 13点中 B1＝占有率0.08）。
+# 0.08 と 1.00 の間は桁で空いているので、占有率と純度の二重ゲートで安全に分離できる。
+#
+# 枠が壊れている（攻め方推定が反転した）キャプチャでは壁も反転色で敷かれるが、そのとき
+# 判定が壁に追随するのは**正しい**: 枠が反転していればスコアも ownership もその枠の役割に
+# 従って出るので、盤に書かれている役割こそがその局面の意味論になる（実測 case F/G/S の
+# 保存 SGF は反転枠のまま保存されており、この判定も反転側を返す）。役割そのものの是正は
+# `tsumego_frame.extremum_stones` 側の仕事。
+TSUMEGO_WALL_MIN_OCCUPANCY = 0.7
+TSUMEGO_WALL_MIN_PURITY = 0.9
+
+
+def tsumego_wall_lines(region_of_interest, board_size):
+    """枠の壁が乗りうる線＝リージョン境界のうち盤端でない辺の座標列。
+
+    盤端に接している辺には壁が要らない（盤の縁がそのまま壁になる）ので候補から外す。
+    """
+    if not region_of_interest:
+        return []
+    xmin, xmax, ymin, ymax = region_of_interest
+    size_x, size_y = board_size
+    lines = []
+    if xmin > 0:
+        lines.append([(xmin, y) for y in range(ymin, ymax + 1)])
+    if xmax < size_x - 1:
+        lines.append([(xmax, y) for y in range(ymin, ymax + 1)])
+    if ymin > 0:
+        lines.append([(x, ymin) for x in range(xmin, xmax + 1)])
+    if ymax < size_y - 1:
+        lines.append([(x, ymax) for x in range(xmin, xmax + 1)])
+    return lines
+
+
+def tsumego_solver_attacks(stones, region_of_interest, board_size, player):
+    """手番側（解く側）が攻め方かを枠の壁の色から判定する。判定できなければ None。
+
+    **詰碁の正解順序は役割で逆転する**:
+
+        攻め方（殺す）  無条件死 > コウ > セキ（相手が生きた＝失敗）
+        守り方（生きる） 無条件生き > **セキ > コウ**（コウダテ次第＝条件付き）
+
+    セキが守り方にとって「コウより上」なのは、盤全体のコウダテという外部条件に頼らず
+    無条件に石が助かるから。ところが選択則が使うスカラー（pointsLost・gain・同深さ検証値）は
+    どれも「どれだけ得したか」を測るので、守り方のセキ（地は0目・相手も生きる）は
+    コウ勝ち（相手を取り切る）より必ず下に出る。**目数ではクラスの順序を表現できない**。
+
+    実測 2026-07-31 case T（13路下辺・黒が守り。正解 L1＝セキ、AI は J2＝コウ生き）:
+
+        root 目数    J2 -0.34 / L1 +4.30   ← 目数ガード(best+2.0)が正解を落とす
+        gain         J2 +0.20 / L1 -3.83
+        同深さ検証値 J2 -16.66 / L1 -19.79（全リージョン石＝相手33子に支配される）
+        **自石だけ**  J2 +0.99/子 / L1 +1.00/子  ← 順序が正しく出る唯一の尺度
+
+    つまり役割が分かって初めて「何を見れば成否か」が決まる（攻め方＝相手石が死んだか、
+    守り方＝自石が生きたか）。両方測って厳しいほうを採る従来のヘッジは、守り方では
+    「相手が生きている＝失敗」と読んでしまい、セキを必ず失敗側に落とす。
+
+    判定できない（枠なし・壁が読めない）場合は None を返し、呼び出し側は従来の
+    役割非依存の挙動を維持する。枠なしケース（G2/F2/H/I/N/R）は全てこの経路。
+    """
+    lines = tsumego_wall_lines(region_of_interest, board_size)
+    if not lines:
+        return None
+    at = {s.coords: s.player for s in stones}
+    colors = set()
+    for line in lines:
+        placed = [at[c] for c in line if c in at]
+        if not line or len(placed) < TSUMEGO_WALL_MIN_OCCUPANCY * len(line):
+            continue  # 石がまばらな辺は壁ではない（枠なし盤の境界線）
+        top = max(set(placed), key=placed.count)
+        if placed.count(top) >= TSUMEGO_WALL_MIN_PURITY * len(placed):
+            colors.add(top)
+    if len(colors) != 1:
+        return None  # 壁が無い、または辺ごとに色が食い違う＝枠として読めない
+    return colors.pop() == player
+
+
+def tsumego_role_stones(own_stones, opponent_stones, solver_attacks):
+    """役割から「詰碁の成否を担っている石」を選ぶ。役割不明なら従来どおり両方。
+
+    殺す詰碁では手番側の石は壁と連絡して自明に生きており、生きる詰碁では相手側の石が
+    自明に生きている。**自明に生きている側を混ぜると成否の信号が薄まる/反転する**ので、
+    役割が分かるときは担っている側だけを見る（`tsumego_solver_attacks` の実測を参照）。
+    """
+    if solver_attacks is None:
+        return list(own_stones) + list(opponent_stones)
+    return list(opponent_stones if solver_attacks else own_stones)
+
+
+def tsumego_success_ownership(
+    root_ownership, own_stones, opponent_stones, board_size, player_sign, solver_attacks=None
+):
+    """手番側が詰碁として成功しているかの ownership 尺度（1子平均）。
 
     成功の中身は問題の種類で違う（殺す詰碁＝相手石が死ぬ／生きる詰碁＝自石が生きる）が、
     どちらも「手番側がその石を所有している」＝`player_sign * ownership` が正、で表せるので
-    符号は共通に取れる。**どちらの問題か**は戦略に渡ってきていない（枠生成側の
-    `black_to_attack_p` は選択則まで伝わらない）ので、両方を測って厳しいほうを採る。
+    符号は共通に取れる。役割が分かるなら**成否を担っている側の石だけ**を見る
+    （`tsumego_role_stones`）。
 
-    min を取ると生きる詰碁で相手（攻め方）の石が生きたまま＝負に出るので、成功していても
-    「成功していない」側に倒れる（実測 case M: 自石 +1.00 / 相手石 −0.93）。これは意図的な
-    非対称で、この尺度は**コウ機構をスキップしてよいか**の判定にしか使わない。誤って
-    スキップしないほうが安全側（スキップしない場合の保険は `ko_win_margin`＝コウ勝ち前提の
-    構造的な数目の下駄を超える 5.0 で、case E の誤答 +1.06目を確実に落とす）。
+    `solver_attacks=None`（枠なし等で役割が読めない）ときだけ従来どおり両方を測って
+    **小さいほう**を採る。min は生きる詰碁で相手（攻め方）の石が生きたまま＝負に出るので、
+    成功していても「成功していない」側に倒れる（実測 case M: 自石 +1.00 / 相手石 −0.93）。
+    誤ってスキップしないほうが安全側なので役割不明時のヘッジとしては妥当だが、**役割が
+    分かるなら使ってはいけない**: 守り方の正解がセキのとき（相手も生きるのが正常）
+    「失敗」と読まれ、コウ機構が走ってセキより下のコウを持ち上げてしまう
+    （詰碁の順序は守り方では 無条件生き > セキ > コウ。実測 case T）。
 
     ownership が取れない（`_enable_ownership=false` 等）／石が1つも無ければ None を返す
     ＝判定材料なしとして ownership 側の条件を課さない（従来どおり目数だけで振り分ける）。
@@ -1806,9 +1905,14 @@ def tsumego_success_ownership(root_ownership, own_stones, opponent_stones, board
     """
     if not root_ownership:
         return None
+    groups = (
+        [tsumego_role_stones(own_stones, opponent_stones, solver_attacks)]
+        if solver_attacks is not None
+        else [own_stones, opponent_stones]
+    )
     per_stone = [
         tsumego_absolute_ownership(root_ownership, stones, board_size, player_sign) / len(stones)
-        for stones in (own_stones, opponent_stones)
+        for stones in groups
         if stones
     ]
     return min(per_stone) if per_stone else None
@@ -2366,13 +2470,33 @@ def tsumego_class_screen_pool(chosen, eligible, max_candidates=TSUMEGO_TIE_KO_MA
     PV の偶発コウ形で格下げされ、ガード内の clean な J10 — 同深さ検証 -18.8 で N11 -17.0 に
     負けている**失敗手** — に差し替わった。検証の実測をスコアの嘘で上書きしてはならない。
     """
-    if not any(c["move"] == chosen["move"] for c in eligible):
+    if not tsumego_class_screen_applies(chosen, eligible):
         return [chosen]
     rivals = sorted(
         [c for c in eligible if c["move"] != chosen["move"]],
         key=lambda c: -c.get("visits", 0),
     )
     return [chosen] + rivals[: max(0, max_candidates - 1)]
+
+
+def tsumego_class_screen_applies(chosen, eligible):
+    """クラス裁定（コウ経路検査）を走らせてよいか＝選択手が目数ガード内か。
+
+    **「pool が2手以上か」を代わりに使ってはいけない**。それは2つの別々の状況を混同する:
+
+      (a) 選択手がガード外（救済採用）→ 検査しない。スコアが嘘をつく枠なし局面から
+          拾った手を、ガード内の「スコアだけ良い失敗手」で上書きしてはいけない
+          （実測 case F2。`tsumego_class_screen_pool` の docstring 参照）
+      (b) 選択手はガード内だが対抗馬が1手も居ない → **検査すべき**。むしろ
+          「到達できる手が全部コウ」が最も純粋に成立する形で、コウ脱出
+          （`_ko_escape_choice`）のトリガーそのもの
+
+    旧実装は両方を `len(pool) >= 2` で落としていたため、root が1手に visits を集中させて
+    eligible が1手に潰れた局面ではクラス裁定も脱出も丸ごと no-op になっていた
+    （実測 2026-07-31 case T: eligible=[J2] のみ。J2 はコウ経路で正解 L1（セキ＝clean）は
+    目数ガード外に居たので、脱出さえ走れば prior 2位で拾えた）。
+    """
+    return any(c["move"] == chosen["move"] for c in eligible)
 
 
 def tsumego_declass_choice(chosen, pool, ko_routes, points_epsilon=TSUMEGO_POINTS_EPSILON):
@@ -2418,6 +2542,30 @@ def tsumego_class_screen_all_ko(pool, ko_routes):
     上位を拾って的外れな手に飛ぶ。格下げを断った理由を区別するための述語。
     """
     return all(c["move"] in ko_routes for c in pool)
+
+
+def tsumego_ko_escape_applies(pool, ko_routes, solver_attacks=None):
+    """コウ脱出（`_ko_escape_choice`）を走らせてよいか。
+
+    素直な前提は `tsumego_class_screen_all_ko`＝「到達できる手が全部コウなら無条件の正解は
+    プールの外」。clean な対抗馬が居るのに格下げを断った場合（目数同着バンドの外＝case R）は
+    その前提が偽なので脱出しない、というのが従来の裁定だった。
+
+    **その「前提が偽」の推論は攻め方の話でしかない**。「clean なのに目数で劣る手は詰碁を
+    解いていない」が成り立つのは、成功＝相手を殺す＝目数が増える、のとき。守り方の正解が
+    セキだと clean のまま目数で必ず劣る（地は0目・相手も生きる）ので、この推論は正解を
+    「詰碁と無関係な手」と誤認する。実測 case T（黒が守り・正解 L1＝セキ）: 対抗馬 N4 が
+    ko 検出の揺れで clean と読まれた run だけこの分岐に落ち、脱出が走らず誤答 J2 が残った
+    （4run 中1回。他の3run は N4 もコウ経路と読まれて all_ko → 脱出 → 正解 L1）。
+
+    そこで**役割が分かっているなら脱出を走らせる**。誤爆しないのは、脱出の採否が役割ごとの
+    石（攻め方=相手石／守り方=自石）の同深さ ownership で決まるから: 答えが本当にコウの詰碁
+    では clean な候補は成功しないので検証で落ちる（実測 case T の同深さ800visits・自石12子:
+    正解 L1 +11.97 に対し失敗する clean 手は -11.93＝24 の空白）。case R がこの安全弁を
+    使えなかったのは**枠なしで役割が読めず**、全リージョン石の合計では成否が分離できなかった
+    ため（正解のコウ +0.86 < 誤答の clean +1.32）。役割不明の局面は従来どおり脱出しない。
+    """
+    return tsumego_class_screen_all_ko(pool, ko_routes) or solver_attacks is not None
 
 
 # コウ一色バンドからの脱出。選択手も目数ガード内の対抗馬も**全部**コウ経路だったとき、その事実
@@ -2507,7 +2655,17 @@ class TsumegoOwnershipStrategy(AIStrategy):
         points_epsilon = float((self.settings or {}).get("points_epsilon", TSUMEGO_POINTS_EPSILON))
         stones = tsumego_gain_stones([s.coords for s in self.game.stones], self.game.region_of_interest)
         player_sign = self.cn.player_sign(self.cn.next_player)
-        ko_move = self._pick_ko_win_move(candidate_moves, min_visits, player_sign)
+        # 手番側が攻め方か守り方か。詰碁の正解順序は役割で逆転する（攻め: 無条件死 > コウ > セキ /
+        # 守り: 無条件生き > セキ > コウ）ので、「成否を担っている石はどちらか」がこれで決まる。
+        # 枠が読めなければ None＝従来どおり役割非依存で動く（`tsumego_solver_attacks` 参照）
+        solver_attacks = tsumego_solver_attacks(
+            self.game.stones, self.game.region_of_interest, self.game.board_size, self.cn.next_player
+        )
+        role_text = {True: "攻め方（相手を殺す）", False: "守り方（自石を生かす）", None: "不明（役割非依存で判定）"}[
+            solver_attacks
+        ]
+        self.game.katrain.log(f"[{self.strategy_name}] 手番側の役割: {role_text}", OUTPUT_DEBUG)
+        ko_move = self._pick_ko_win_move(candidate_moves, min_visits, player_sign, solver_attacks)
         if ko_move is not None:
             return ko_move
         self._log_candidates(candidate_moves, stones, player_sign)
@@ -2603,7 +2761,9 @@ class TsumegoOwnershipStrategy(AIStrategy):
                 pool = tsumego_class_screen_pool(chosen, eligible)
                 # 選択手だけ敏感側の比で検査する（見逃すとクラス裁定が丸ごと no-op になるため）。
                 # 格下げ先候補（pool[1:]）は保守側のまま＝過検出は脱出の誤爆に化ける
-                if len(pool) >= 2 and self._ko_route_screen([chosen], ratio=TSUMEGO_KO_REPLY_RATIO_CHOSEN):
+                if tsumego_class_screen_applies(chosen, eligible) and self._ko_route_screen(
+                    [chosen], ratio=TSUMEGO_KO_REPLY_RATIO_CHOSEN
+                ):
                     ko_routes = frozenset({chosen["move"]}) | self._ko_route_screen(pool[1:])
                     declassed = tsumego_declass_choice(chosen, pool, ko_routes, points_epsilon)
                     if declassed["move"] != chosen["move"]:
@@ -2613,20 +2773,47 @@ class TsumegoOwnershipStrategy(AIStrategy):
                             OUTPUT_INFO,
                         )
                         chosen = declassed
-                    elif tsumego_class_screen_all_ko(pool, ko_routes):
+                    elif tsumego_ko_escape_applies(pool, ko_routes, solver_attacks):
                         # 目数ガード内が全部コウ＝正解（無条件）は候補プールの外にいる、という信号。
-                        # root policy の上位から探し直す（`_ko_escape_choice`）
+                        # root policy の上位から探し直す（`_ko_escape_choice`）。
+                        # clean な対抗馬が居ても役割が分かっていれば探す（`tsumego_ko_escape_applies`）
+                        clean_rivals = [c for c in pool if c["move"] not in ko_routes]
                         self.game.katrain.log(
-                            f"[{self.strategy_name}] コウ経路検査: 選択手 {chosen['move']} はコウ経路だが"
-                            f" clean な対抗馬が居ないため、プールの外を探します",
+                            f"[{self.strategy_name}] コウ経路検査: 選択手 {chosen['move']} はコウ経路で、"
+                            + (
+                                "clean な対抗馬 "
+                                + " ".join(f"{c['move']}(pt{c['pointsLost']:+.2f})" for c in clean_rivals)
+                                + " は目数同着バンドの外（守り方のセキは目数で必ず劣るので"
+                                "「答えがコウ」の根拠にはならない）"
+                                if clean_rivals
+                                else "clean な対抗馬が居ない"
+                            )
+                            + "ため、プールの外を探します",
                             OUTPUT_INFO,
                         )
+                        # 脱出の採否は「その手で詰碁が成立しているか」の判定なので、gain と違って
+                        # **成否を担っている石だけ**で測る。全リージョン石だと守り方のセキが
+                        # 相手33子に支配されてコウ生きより低く出て、正解が却下される
+                        # （実測 case T: 全石 J2 -16.66 > L1 -19.79 だが自石だけなら +0.99 < +1.00/子）。
+                        # 役割不明なら従来どおり全石（case O の校正はこの経路）
+                        own_stones, opponent_stones = tsumego_region_stones_by_player(
+                            self.game.stones, self.game.region_of_interest, self.cn.next_player
+                        )
+                        # 除外するのはコウ経路と分かった手だけ。pool に残った clean な対抗馬は
+                        # 「役割が分かっているから脱出する」経路で初めて出てくる候補なので、
+                        # policy 上位と同じ土俵（同深さ・役割ごとの石）で測って比べる。
+                        # 全員コウの経路（case O）では ko_routes ⊇ pool なので従来と同じ集合になる
                         chosen, escape_value = self._ko_escape_choice(
-                            chosen, candidate_moves, {c["move"] for c in pool}, stones, player_sign
+                            chosen,
+                            candidate_moves,
+                            {c["move"] for c in pool if c["move"] in ko_routes},
+                            tsumego_role_stones(own_stones, opponent_stones, solver_attacks),
+                            player_sign,
                         )
                     else:
-                        # clean な対抗馬は居るが同着バンドの外＝答えがコウの詰碁（case R）。
-                        # 脱出も前提が偽なので走らせない（`tsumego_class_screen_all_ko` 参照）
+                        # clean な対抗馬は居るが同着バンドの外で、**役割も読めない**＝答えがコウの
+                        # 詰碁とみなす（case R）。脱出も前提が偽なので走らせない
+                        # （`tsumego_ko_escape_applies` 参照）
                         self.game.katrain.log(
                             f"[{self.strategy_name}] コウ経路検査: 選択手 {chosen['move']} はコウ経路だが、"
                             f"clean な対抗馬 "
@@ -2636,7 +2823,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
                                 if c["move"] not in ko_routes
                             )
                             + f" は目数同着バンド（points_epsilon={points_epsilon}）の外なので格下げしません"
-                            f"（答えがコウの詰碁）",
+                            f"（役割が読めないので「答えがコウの詰碁」とみなす）",
                             OUTPUT_INFO,
                         )
             if escape_value is not None:
@@ -2977,13 +3164,18 @@ class TsumegoOwnershipStrategy(AIStrategy):
         )
         return best[1]
 
-    def _pick_ko_win_move(self, candidate_moves, min_visits, player_sign):
+    def _pick_ko_win_move(self, candidate_moves, min_visits, player_sign, solver_attacks=None):
         """コウに持ち込める手があり、コウに勝った局面が通常の最善手より良ければその手を返す。
 
         詰碁ではコウダテがあるものとして正解が決まる（コウにできればそれが最大の成果）。
         枠の中では攻め方のコウダテが乏しく KataGo は「コウは守り側が勝つ」と読むため、
         殺せないセキ等を選んでしまう（実測 2026-07-30: 正解のコウ手 -21.7目 / セキ -12.3目 /
         コウを勝った局面 +8.1目）。コウの手だけ取り返した後の局面で評価して慣習に合わせる。
+
+        **これは攻め方の話**（攻め: 無条件死 > コウ > セキ）。守り方の順序は 無条件生き >
+        セキ > コウ で、コウはセキの**下**なので持ち上げてはいけない。振り分けは
+        `tsumego_already_succeeded` の成功判定に委ねる: 役割が分かっていればセキも
+        「自石が生きている＝成功」と読まれ、この機構ごとスキップされる（`solver_attacks`）。
         """
         settings = self.settings or {}
         if not settings.get("ko_win_assumption", True):
@@ -3002,16 +3194,22 @@ class TsumegoOwnershipStrategy(AIStrategy):
             self.game.stones, self.game.region_of_interest, self.cn.next_player
         )
         success_own = tsumego_success_ownership(
-            self.cn.ownership, own_stones, opponent_stones, self.game.board_size, player_sign
+            self.cn.ownership, own_stones, opponent_stones, self.game.board_size, player_sign, solver_attacks
         )
-        own_text = "n/a" if success_own is None else f"{success_own:+.2f}/子"
+        measured = {True: "相手石", False: "自石", None: "自石・相手石の厳しいほう"}[solver_attacks]
+        order_text = {
+            True: "攻め方なので 無条件死 > コウ > セキ",
+            False: "守り方なので 無条件生き > セキ > コウ",
+            None: "役割不明（攻め方の順序 無条件 > コウ > セキ で動く）",
+        }[solver_attacks]
+        own_text = "n/a" if success_own is None else f"{measured} {success_own:+.2f}/子"
         success_own_threshold = float(settings.get("ko_success_ownership", TSUMEGO_SUCCESS_OWNERSHIP))
         if tsumego_already_succeeded(best_normal, success_lead, success_own, success_own_threshold):
             # 無条件に成功できるならコウは慣習上の格下げ。解析1本も節約できる
             self.game.katrain.log(
                 f"[{self.strategy_name}] コウ判定: 通常最善{best_normal:+.2f}目・関係石 ownership {own_text} で"
                 f"既に成功しているため省略（ko_success_lead={success_lead}、"
-                f"ko_success_ownership={success_own_threshold}。詰碁の順序は 無条件 > コウ > セキ）",
+                f"ko_success_ownership={success_own_threshold}。{order_text}）",
                 OUTPUT_INFO,
             )
             return None
