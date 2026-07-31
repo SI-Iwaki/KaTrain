@@ -3,6 +3,7 @@ import math
 import os
 import re
 import threading
+import time
 from datetime import datetime
 from typing import Dict, List, Optional, Union
 
@@ -26,6 +27,7 @@ from katrain.core.constants import (
     PRIORITY_ALTERNATIVES,
     PRIORITY_EQUALIZE,
     PRIORITY_DEFAULT,
+    PRIORITY_REGION_PREFETCH,
 )
 from katrain.core.engine import KataGoEngine
 from katrain.core.game_node import GameNode
@@ -465,6 +467,8 @@ class Game(BaseGame):
         self.region_of_interest = None
         self.region_analysis_visits = None  # 詰碁キャプチャ用: リージョン解析の専用visits（深掘り・時間無制限）
         self.region_analysis_wide_root_noise = REGION_ANALYSIS_WIDE_ROOT_NOISE  # 同上: root の探索の広げ方
+        self.region_prefetch_replies = 0  # 同上: 人間の応手 top-K の子局面を先読みする本数（0で無効）
+        self._region_prefetch_nodes = []  # 先読みクエリを発行した使い捨て子ノード（play 時の terminate 用）
 
         threading.Thread(
             target=lambda: self.analyze_all_nodes(analyze_fast=analyze_fast, even_if_present=False),
@@ -557,6 +561,9 @@ class Game(BaseGame):
     # Play a Move from the current position, raise IllegalMoveException if invalid.
     def play(self, move: Move, ignore_ko: bool = False, analyze=True):
         played_node = super().play(move, ignore_ko)
+        # 未消化の先読みを先に止める＝実クエリ（この着手の解析）が解析スロットを直ちに取れる。
+        # リージョンを解除した直後の着手でも残骸を掃除するため、region 分岐の外で呼ぶ
+        self._cancel_region_prefetch()
         if analyze:
             if self.region_of_interest:
                 played_node.analyze(self.engines[played_node.next_player], analyze_fast=True)
@@ -572,9 +579,126 @@ class Game(BaseGame):
                     # （region_analysis_visits あり）のときだけ要求する
                     ownership=True if self.region_analysis_visits else None,
                 )
+                self._maybe_region_prefetch(played_node)
             else:
                 played_node.analyze(self.engines[played_node.next_player])
         return played_node
+
+    def _cancel_region_prefetch(self):
+        """発行済みの先読みクエリを打ち切る（結果はもともと捨てるだけなので副作用なし）。
+
+        先読みクエリは使い捨ての複製ゲームの子ノードに紐づいているので、terminate は
+        先読みクエリ**だけ**に当たる（本譜ノードのクエリや GUI の追加解析は巻き込まない）
+        """
+        nodes = self._region_prefetch_nodes
+        self._region_prefetch_nodes = []
+        for node in nodes:
+            for engine in set(self.engines.values()):
+                engine.terminate_queries(only_for_node=node)
+
+    def _maybe_region_prefetch(self, node):
+        """詰碁キャプチャで次番が人間なら、リージョン解析完了後に有力応手の子局面を先読みする。
+
+        目的は NN キャッシュ温めだけ: 同一プロセスで一度探索した局面の再解析は 0.2 秒級で返る
+        （実測 2026-07-31 baseline: 1800visits のリージョン解析がコールド約 2.5 秒 → ウォーム
+        0.2 秒）。人間の考慮時間中はエンジンが遊んでいるので、応手 top-K の子局面を実クエリと
+        同条件（同 visits・同リージョン・同 wideRootNoise）・低優先度で先に探索しておくと、
+        実際にその手が打たれたときの解析がキャッシュヒットで大幅に縮む。**結果は使わず捨てる**
+        （本物のクエリが従来どおり走る）ので着手判定への影響はゼロ。外れてもコストは
+        遊んでいた GPU 時間だけで、次の play() 冒頭で terminate される。
+        """
+        replies = int(self.region_prefetch_replies or 0)
+        if replies <= 0 or not self.region_analysis_visits:
+            return
+        players_info = getattr(self.katrain, "players_info", None)
+        if not players_info:
+            return  # デバッグスタブ等、対局者情報が無い環境では先読みしない
+        try:
+            if players_info[node.next_player].player_type != PLAYER_HUMAN:
+                return
+        except (KeyError, AttributeError):
+            return
+        threading.Thread(target=self._region_prefetch_worker, args=(node, replies), daemon=True).start()
+
+    def _region_prefetch_sim(self, node):
+        """本譜のツリーを汚さずに応手を進めるための使い捨てゲーム。作れなければ None"""
+        try:
+            sim = BaseGame(katrain=self.katrain, move_tree=GameNode(properties=copy.deepcopy(self.root.properties)))
+            for path_node in node.nodes_from_root[1:]:
+                if path_node.move is None:
+                    return None  # 途中に着手以外のノード（追加配置等）がある局面は諦める
+                sim.play(path_node.move, ignore_ko=True)
+        except Exception:
+            return None
+        return sim
+
+    def _region_prefetch_worker(self, node, replies):
+        deadline = time.time() + 30.0
+        while not node.analysis.get("region_completed"):
+            if time.time() > deadline or self.current_node is not node or not self.region_of_interest:
+                return  # 人間が先に着手した・リージョンが外れた・解析が来ない → 先読みしない
+            time.sleep(0.05)
+        if self.current_node is not node or not self.region_of_interest:
+            return
+        top_replies = [
+            c["move"]
+            for c in sorted(node.candidate_moves, key=lambda c: -c.get("visits", 0))
+            if c.get("move") and c["move"] != "pass"
+        ][:replies]
+        if not top_replies:
+            return
+        # 実クエリと**完全に同条件**（ownership=True 含む）で撃つ。KataGo の NN キャッシュは
+        # ownerMap の有無を区別するため、ownership なしの先読みは実クエリを1秒も速くしない
+        # （実測 2026-08-01 prefetch_cache_probe: ownership なし先読み直後の実クエリ 2.70 秒
+        # ＝コールド 2.69 秒と同じ。ownership 付きで温めた対照は 0.28 秒）。request_analysis の
+        # next_move 指定は includeOwnership を強制 OFF にするので、使い捨ての複製ゲームで
+        # 応手を1手進めた子ノードを作ってそのまま解析する（この子ノードに紐づくクエリだけを
+        # `_cancel_region_prefetch` が terminate できる、という副次効果もある）
+        sim = self._region_prefetch_sim(node)
+        if sim is None:
+            return
+        base = sim.current_node
+        engine = self.engines[node.next_player]
+        # リージョンと visits は発行前にスナップショットする（発行ループ中に解除・変更されても
+        # 全クエリが同条件で揃う。stale でも結果は捨てるだけで、次の play() が terminate する）
+        region, visits = self.region_of_interest, self.region_analysis_visits
+        prefetch_nodes, fired = [], []
+        for reply_gtp in top_replies:
+            if self.current_node is not node:
+                break  # 人間が着手した＝以降の発行は打ち切る（発行済み分は下の後始末が拾う）
+            sim.set_current_node(base)
+            try:
+                child = sim.play(Move.from_gtp(reply_gtp, player=node.next_player), ignore_ko=True)
+            except IllegalMoveException:
+                continue
+            engine.request_analysis(
+                child,
+                callback=lambda _analysis, _partial: None,
+                error_callback=lambda _error: None,
+                visits=visits,
+                time_limit=False,
+                ownership=True,
+                region_of_interest=region,
+                extra_settings=region_analysis_extra_settings(visits, self.region_analysis_wide_root_noise),
+                priority=PRIORITY_REGION_PREFETCH,
+            )
+            prefetch_nodes.append(child)
+            fired.append(reply_gtp)
+        if not prefetch_nodes:
+            return
+        self._region_prefetch_nodes = prefetch_nodes
+        self.katrain.log(
+            f"tsumego prefetch: 応手 {fired} の子局面を先読み（{visits}visits・ownership付き）",
+            OUTPUT_DEBUG,
+        )
+        if self.current_node is not node:
+            # play() 側の cancel と交錯した可能性があるので、共有属性を経由せずローカルの
+            # リストを直接 terminate する（cancel が先に走って属性が空でも取り漏らさない。
+            # 二重 terminate は無害＝未登録 id への terminate は KataGo が無視する）
+            self._region_prefetch_nodes = []
+            for child in prefetch_nodes:
+                for child_engine in set(self.engines.values()):
+                    child_engine.terminate_queries(only_for_node=child)
 
     def set_region_of_interest(self, region_of_interest):
         x1, x2, y1, y2 = region_of_interest

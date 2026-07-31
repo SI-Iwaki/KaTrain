@@ -2817,7 +2817,21 @@ class TsumegoOwnershipStrategy(AIStrategy):
     """詰碁用: 盤全体の目数ではなく対象石群の死活（ownership の変化量）で手を選ぶ"""
 
     def generate_move(self) -> Tuple[Move, str]:
+        # 体感速度の調査用に所要時間を必ず出す（キャプチャ側の「枠の採否判定に X 秒」と同じ意図）
+        started = time.time()
+        try:
+            return self._generate_move()
+        finally:
+            self.game.katrain.log(
+                f"[{self.strategy_name}] 着手決定に {time.time() - started:.1f} 秒", OUTPUT_INFO
+            )
+
+    def _generate_move(self) -> Tuple[Move, str]:
         self.wait_for_analysis()
+        # 選択手のコウ経路検査（wRN=0・untilDepth=6・ownership 付き）の生解析を手番内で使い回す
+        # ための memo（`_region_child_verdict` が同条件のときだけ再利用＝クラス格上げの incumbent
+        # 検証で同じ子局面を撃ち直さない）。手番をまたいで持ち越さない
+        self._screen_root_memo = {}
         candidate_moves = self.cn.candidate_moves
         if not candidate_moves:
             self.game.katrain.log(f"[{self.strategy_name}] 候補手が無いためパスします", OUTPUT_INFO)
@@ -2937,7 +2951,9 @@ class TsumegoOwnershipStrategy(AIStrategy):
                 class_screen_applies = tsumego_class_screen_applies(chosen, eligible)
                 # 選択手だけ敏感側の比で検査する（見逃すとクラス裁定が丸ごと no-op になるため）。
                 # 格下げ先候補（pool[1:]）は保守側のまま＝過検出は脱出の誤爆に化ける
-                if class_screen_applies and self._ko_route_screen([chosen], ratio=TSUMEGO_KO_REPLY_RATIO_CHOSEN):
+                if class_screen_applies and self._ko_route_screen(
+                    [chosen], ratio=TSUMEGO_KO_REPLY_RATIO_CHOSEN, want_ownership=True
+                ):
                     ko_routes = frozenset({chosen["move"]}) | self._ko_route_screen(pool[1:])
                     declassed = tsumego_declass_choice(chosen, pool, ko_routes, points_epsilon)
                     # clean は「無条件に解いた」の証拠にならない（攻めないので何も起きない手も
@@ -3071,7 +3087,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
             OUTPUT_DEBUG,
         )
 
-    def _ko_route_screen(self, pool, ratio=TSUMEGO_KO_REPLY_RATIO):
+    def _ko_route_screen(self, pool, ratio=TSUMEGO_KO_REPLY_RATIO, want_ownership=False):
         """pool の各候補を1手進めてリージョン解析し、コウ経路の候補の手（GTP）を返す。
 
         詰碁の正解順序は 無条件 > コウ で、目数はクラス内のタイブレークにすぎない。
@@ -3091,17 +3107,23 @@ class TsumegoOwnershipStrategy(AIStrategy):
         wRN=0.04 で比 0.44〜0.88 とばらつき本番 3/6 で検出漏れ → wRN=0 で 0.15 が 4/4 不動）。
 
         `ratio` は「守り方が選べる競争力のある抵抗」の下限比。選択手には敏感側
-        （`TSUMEGO_KO_REPLY_RATIO_CHOSEN`）、格下げ先候補には保守側（既定）を渡す
+        （`TSUMEGO_KO_REPLY_RATIO_CHOSEN`）、格下げ先候補には保守側(既定)を渡す
         ＝検出漏れと過検出のコストが非対称だから（定数のコメント参照）。
 
         コストは候補1つあたり解析1本（gain_verify_visits）。呼び出し側は選択手を先に
         検査し、コウ経路だったときだけ対抗馬を検査する（通常の手番は1本で済む）。
+        候補が複数のときは解析を並列に発行する（内容・判定順は1本ずつと同一）。
+
+        `want_ownership` は選択手の検査用: ownership 付きで撃って生解析を memo し、同条件の
+        `_region_child_verdict`（クラス格上げの incumbent 検証）が同じ子局面を撃ち直さずに済む
+        ようにする。includeOwnership は探索に影響しない（探索木からの集計のみ）。
         """
         settings = self.settings or {}
         visits = int(settings.get("gain_verify_visits", TSUMEGO_GAIN_VERIFY_VISITS))
         player = self.cn.next_player
         region = self.game.region_of_interest
         routes = set()
+        pending = []
         for cand in sorted(pool, key=lambda c: -c.get("visits", 0))[:TSUMEGO_TIE_KO_MAX_CANDIDATES]:
             # 候補自身がコウを開始する形（実測 case L: L5 の1子取り）は解析クエリ不要で確定
             if tsumego_candidate_reaches_region_ko(self.game, self.cn, cand["move"], [], region):
@@ -3120,13 +3142,29 @@ class TsumegoOwnershipStrategy(AIStrategy):
                 node = sim.play(Move.from_gtp(cand["move"], player=player))
             except IllegalMoveException:
                 continue
-            root = self._analyze_region_root(
-                node,
-                visits,
-                ownership=False,
-                until_depth=TSUMEGO_KO_REGION_UNTIL_DEPTH,
-                wide_root_noise=TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE,
+            pending.append(
+                (
+                    cand,
+                    self._start_region_root(
+                        node,
+                        visits,
+                        ownership=want_ownership,
+                        until_depth=TSUMEGO_KO_REGION_UNTIL_DEPTH,
+                        wide_root_noise=TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE,
+                    ),
+                )
             )
+        self._wait_region_roots([handle for _, handle in pending])
+        for cand, handle in pending:
+            root = handle.get("root")
+            if want_ownership and root is not None and root.get("ownership") is not None:
+                memo = getattr(self, "_screen_root_memo", None)
+                if memo is not None:
+                    memo[cand["move"]] = {
+                        "visits": visits,
+                        "wide_root_noise": TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE,
+                        "root": root,
+                    }
             replies = (root or {}).get("moves") or []
             # 拮抗している応手は全部歩く。top 1本では応手ランキングの分散でコウを見逃す
             # （実測 case M: 白のコウ仕掛け K1 と穏健な M4 が拮抗し、M4 が top の run で素通り）
@@ -3211,9 +3249,15 @@ class TsumegoOwnershipStrategy(AIStrategy):
         渡す（root の Dirichlet ノイズが応手の visits 比を run ごとに揺らす＝case M。格上げ
         `_ko_promotion_choice` はクラスで決めるのでこちら側）。
 
+        選択手のコウ経路検査（`_ko_route_screen` want_ownership=True）が同条件で撃った生解析が
+        memo に残っていればそれを使う＝同じ子局面を同じ設定で撃ち直さない（サンプルを共有する
+        だけで判定ロジックは同一）。
+
         取れなければ None。
         """
-        region = self.game.region_of_interest
+        memo = (getattr(self, "_screen_root_memo", None) or {}).get(move_gtp)
+        if memo is not None and memo["visits"] == visits and memo["wide_root_noise"] == wide_root_noise:
+            return self._child_verdict_from_root(move_gtp, memo["root"], stones, player_sign)
         player = self.cn.next_player
         sim = tsumego_simulation_game(self.game, self.cn)
         if sim is None:
@@ -3231,6 +3275,11 @@ class TsumegoOwnershipStrategy(AIStrategy):
         )
         if root is None or root.get("ownership") is None:
             return None
+        return self._child_verdict_from_root(move_gtp, root, stones, player_sign)
+
+    def _child_verdict_from_root(self, move_gtp, root, stones, player_sign):
+        """子局面の生解析から {ko, ko_reply, value, lead} を組む（`_region_child_verdict` の判定部）"""
+        region = self.game.region_of_interest
         ko_reply = None
         if tsumego_candidate_reaches_region_ko(self.game, self.cn, move_gtp, [], region):
             ko_reply = "候補手自身"
@@ -3252,6 +3301,43 @@ class TsumegoOwnershipStrategy(AIStrategy):
             "value": tsumego_absolute_ownership(root["ownership"], stones, self.game.board_size, player_sign),
             "lead": player_sign * root["lead"],
         }
+
+    def _child_verdicts(self, moves, stones, player_sign, visits, wide_root_noise=None):
+        """複数候補の `_region_child_verdict` を並列解析でまとめて取る。{move: verdict} を返す。
+
+        sim の構築と PV 歩きは従来どおり直列・従来順で、解析クエリの発行→待ちだけを束ねる
+        （クエリ内容・判定は1本ずつ撃つのと同一。取れなかった手は dict に入らない＝None 相当）。
+        """
+        pending = {}
+        for move_gtp in moves:
+            if move_gtp in pending:
+                continue
+            memo = (getattr(self, "_screen_root_memo", None) or {}).get(move_gtp)
+            if memo is not None and memo["visits"] == visits and memo["wide_root_noise"] == wide_root_noise:
+                pending[move_gtp] = {"root": memo["root"]}
+                continue
+            sim = tsumego_simulation_game(self.game, self.cn)
+            if sim is None:
+                continue
+            try:
+                node = sim.play(Move.from_gtp(move_gtp, player=self.cn.next_player))
+            except IllegalMoveException:
+                continue
+            pending[move_gtp] = self._start_region_root(
+                node,
+                visits,
+                ownership=True,
+                until_depth=TSUMEGO_KO_REGION_UNTIL_DEPTH,
+                wide_root_noise=wide_root_noise,
+            )
+        self._wait_region_roots([h for h in pending.values() if "_visits" in h])
+        verdicts = {}
+        for move_gtp, handle in pending.items():
+            root = handle.get("root")
+            if root is None or root.get("ownership") is None:
+                continue
+            verdicts[move_gtp] = self._child_verdict_from_root(move_gtp, root, stones, player_sign)
+        return verdicts
 
     def _ko_promotion_choice(self, chosen, candidate_moves, solver_attacks, player_sign):
         """clean な選択手が詰碁を成立させていないとき、上位クラス（無条件 > コウ）へ格上げする。
@@ -3337,11 +3423,17 @@ class TsumegoOwnershipStrategy(AIStrategy):
             f"（成否は役割石{len(role_stones)}子の1子平均 >= {threshold}）",
             OUTPUT_INFO,
         )
+        # 独立な子局面なので全員分を並列で測る（評価順・採用規則・打ち切りログは従来どおり）
+        verdicts = self._child_verdicts(
+            [c["move"] for c in shortlist],
+            role_stones,
+            player_sign,
+            visits,
+            wide_root_noise=TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE,
+        )
         best = None
         for cand in shortlist:
-            verdict = self._region_child_verdict(
-                cand["move"], role_stones, player_sign, visits, wide_root_noise=TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE
-            )
+            verdict = verdicts.get(cand["move"])
             if verdict is None:
                 continue
             per_stone = verdict["value"] / len(role_stones)
@@ -3428,9 +3520,11 @@ class TsumegoOwnershipStrategy(AIStrategy):
             f"成否は役割石{len(stones)}子の1子平均 >= {success_ownership}、tolerance={tolerance}）",
             OUTPUT_INFO,
         )
+        # 独立な子局面なので全員分を並列で測る（評価順・採用規則は従来どおり）
+        shortlist_verdicts = self._child_verdicts([c["move"] for c in shortlist], stones, player_sign, visits)
         best = None
         for cand in shortlist:
-            verdict = self._region_child_verdict(cand["move"], stones, player_sign, visits)
+            verdict = shortlist_verdicts.get(cand["move"])
             if verdict is None:
                 continue
             # 相対条件（コウの incumbent に劣りすぎない）の前に、**その手で詰碁が成立して
@@ -3504,19 +3598,24 @@ class TsumegoOwnershipStrategy(AIStrategy):
             self.game.katrain.log(f"[{self.strategy_name}] 同深さ検証: 局面を再現できないため省略", OUTPUT_DEBUG)
             return fallback
         base = sim.current_node
-        values = {}
+        # 独立な子局面のクエリは全員分を発行してからまとめて待つ（内容不変で待ちは最長1本ぶん）
+        handles = {}
         for cand in [incumbent] + challengers:
-            if cand["move"] in values:
+            if cand["move"] in handles:
                 continue
             sim.set_current_node(base)
             try:
                 node = sim.play(Move.from_gtp(cand["move"], player=self.cn.next_player))
             except IllegalMoveException:
                 continue
-            root = self._analyze_region_root(node, visits, ownership=True)
+            handles[cand["move"]] = self._start_region_root(node, visits, ownership=True)
+        self._wait_region_roots(handles.values())
+        values = {}
+        for move_gtp, handle in handles.items():
+            root = handle.get("root")
             if root is None or root.get("ownership") is None:
                 continue
-            values[cand["move"]] = tsumego_absolute_ownership(
+            values[move_gtp] = tsumego_absolute_ownership(
                 root["ownership"], stones, self.game.board_size, player_sign
             )
         if incumbent["move"] not in values:
@@ -3610,7 +3709,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
         player = self.cn.next_player
         ko_visits = int(settings.get("ko_win_visits", 800))
         ko_margin = float(settings.get("ko_win_margin", TSUMEGO_KO_MARGIN))
-        best = None
+        pending = []
         checked = 0
         for cand in sorted(playable, key=lambda c: -c.get("visits", 0)):
             if checked >= _TSUMEGO_KO_MAX_CANDIDATES:
@@ -3620,10 +3719,15 @@ class TsumegoOwnershipStrategy(AIStrategy):
             if ko_node is None:
                 continue
             checked += 1
-            lead = self._analyze_score_lead(ko_node, ko_visits)
-            if lead is None:
+            # コウ形の候補は互いに独立なので解析を並列に発行する（評価順・採用は従来どおり）
+            pending.append((cand, move, self._start_region_root(ko_node, ko_visits, ownership=False)))
+        self._wait_region_roots([handle for _, _, handle in pending])
+        best = None
+        for cand, move, handle in pending:
+            root = handle.get("root")
+            if root is None:
                 continue
-            value = player_sign * lead
+            value = player_sign * root["lead"]
             self.game.katrain.log(
                 f"[{self.strategy_name}] コウ判定: {move.gtp()} 通常{player_sign * cand['scoreLead']:+.2f}目 → "
                 f"コウ勝ち前提{value:+.2f}目（通常の最善は{best_normal:+.2f}目）",
@@ -3658,21 +3762,18 @@ class TsumegoOwnershipStrategy(AIStrategy):
         root = self._analyze_region_root(node, visits, ownership=False, timeout=timeout)
         return None if root is None else root["lead"]
 
-    def _analyze_region_root(self, node, visits, ownership=False, timeout=60.0, until_depth=None, wide_root_noise=None):
-        """使い捨てノードをリージョン限定で解析し root の {lead(黒視点), ownership} を返す。
+    def _start_region_root(self, node, visits, ownership=False, until_depth=None, wide_root_noise=None):
+        """リージョン限定解析を**発行だけして待たない**。結果ハンドル（dict）を返す。
 
-        本譜の解析と同じリージョン・wideRootNoise で撃つ（条件を変えると本譜の候補評価と
-        比較できなくなる）。取れなければ None。
-
-        `until_depth` はリージョン外を禁じる深さ。既定（None=1）は本譜と同じで root の着手選択
-        だけを縛る。**PV の内容を証拠に使う呼び出しだけ** `TSUMEGO_KO_REGION_UNTIL_DEPTH` を渡す
-        （untilDepth=1 の PV は ply2 以降で枠へ手抜きし、コウが現れない）。
-
-        `wide_root_noise` も同じく**応手の並びを証拠に使う呼び出しだけ**が 0 を渡す
-        （`TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE`）。既定（None）は本譜と同じ設定。
+        KataGo は `numAnalysisThreads`(=4) 本のクエリを並列に処理できるのに、1本ずつ発行して
+        完了を待つと選択則の追加解析（同深さ検証・コウ経路検査・脱出・格上げ・コウ勝ち評価）が
+        全部直列になる。独立な子局面のクエリは全員分を発行してから `_wait_region_roots` で
+        まとめて待つ＝クエリ内容・判定順序は一切変えず wall time だけ縮める（並列実行が
+        クエリ結果に与える影響は GPU を分け合って遅くなることだけで、探索木・NN 評価値は
+        変わらない。E2E 回帰 2026-07-31 で全ケース不変を確認）。
         """
         engine = self.game.engines[self.cn.next_player]
-        result = {}
+        result = {"_visits": visits}
         engine.request_analysis(
             node,
             callback=lambda analysis, partial_result: (
@@ -3701,12 +3802,46 @@ class TsumegoOwnershipStrategy(AIStrategy):
             ),
             priority=PRIORITY_EXTRA_AI_QUERY,
         )
-        deadline = time.time() + timeout
-        while "root" not in result and "error" not in result and time.time() < deadline:
+        return result
+
+    def _wait_region_roots(self, handles, timeout=60.0):
+        """`_start_region_root` のハンドル群が全部返るまで待つ（並列に走るので待ちは最長1本ぶん）。
+
+        タイムアウト予算はバッチ本数でスケールする＝直列版（1本あたり timeout 秒）より先に
+        諦めない。通常は全ハンドルが数秒で揃って即抜けするので、この上限に意味が出るのは
+        エンジンが劣化した異常時だけ。
+        """
+        handles = list(handles)
+        deadline = time.time() + timeout * max(1, len(handles))
+        while time.time() < deadline and any("root" not in h and "error" not in h for h in handles):
             time.sleep(0.02)
-        if "root" not in result:
-            self.game.katrain.log(f"[{self.strategy_name}] 追加解析に失敗しました（{visits}visits）", OUTPUT_INFO)
-        return result.get("root")
+        for h in handles:
+            if "root" not in h:
+                self.game.katrain.log(
+                    f"[{self.strategy_name}] 追加解析に失敗しました（{h.get('_visits')}visits）", OUTPUT_INFO
+                )
+
+    def _analyze_region_root(self, node, visits, ownership=False, timeout=60.0, until_depth=None, wide_root_noise=None):
+        """使い捨てノードをリージョン限定で解析し root の {lead(黒視点), ownership} を返す。
+
+        本譜の解析と同じリージョン・wideRootNoise で撃つ（条件を変えると本譜の候補評価と
+        比較できなくなる）。取れなければ None。
+
+        `until_depth` はリージョン外を禁じる深さ。既定（None=1）は本譜と同じで root の着手選択
+        だけを縛る。**PV の内容を証拠に使う呼び出しだけ** `TSUMEGO_KO_REGION_UNTIL_DEPTH` を渡す
+        （untilDepth=1 の PV は ply2 以降で枠へ手抜きし、コウが現れない）。
+
+        `wide_root_noise` も同じく**応手の並びを証拠に使う呼び出しだけ**が 0 を渡す
+        （`TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE`）。既定（None）は本譜と同じ設定。
+
+        複数の独立な子局面を測るときはこれを1本ずつ呼ばず、`_start_region_root` +
+        `_wait_region_roots` で並列に撃つこと（内容は同一で待ちだけ縮む）。
+        """
+        handle = self._start_region_root(
+            node, visits, ownership=ownership, until_depth=until_depth, wide_root_noise=wide_root_noise
+        )
+        self._wait_region_roots([handle], timeout=timeout)
+        return handle.get("root")
 
 
 @register_strategy(AI_POLICY)

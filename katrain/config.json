@@ -63,7 +63,8 @@
         "analysis_visits": 1800,
         "region_wide_root_noise": 0.04,
         "use_frame": true,
-        "region_pad": 1
+        "region_pad": 1,
+        "ponder_replies": 3
     },
     "trainer": {
         "theme": "theme:normal",

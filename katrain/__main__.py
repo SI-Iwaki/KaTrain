@@ -812,8 +812,8 @@ class KaTrainGui(Screen, KaTrainBase):
         except (TypeError, ValueError):
             validity_visits = FRAME_VALIDITY_VISITS
 
-        def read(candidate, visits):
-            """枠候補の root スコアと手番側の本体石 ownership を測ってログに出す。
+        def read_start(candidate, visits):
+            """枠候補の裁定クエリを発行だけして待たない（結果とログは read_finish）。
 
             読み直し（visits != trial_visits）は wideRootNoise=0 で撃つ。wRN は着手選択で候補を
             広げるための設定で、「手番側が生きているか」の裁定では探索が critical line に
@@ -822,7 +822,7 @@ class KaTrainGui(Screen, KaTrainBase):
             ko_p, board, region = candidate
             retry = visits != trial_visits
             stones = solver_core_points(grid, board, region)
-            lead, solver_own = self._tsumego_frame_solver_reading(
+            return self._tsumego_frame_solver_reading_start(
                 board,
                 komi,
                 region,
@@ -833,10 +833,42 @@ class KaTrainGui(Screen, KaTrainBase):
                 retry=retry,
                 wide_root_noise=FRAME_VALIDITY_WIDE_ROOT_NOISE if retry else None,
             )
-            return lead, solver_own, len(stones)
+
+        def read_finish(started):
+            lead, solver_own = self._tsumego_frame_solver_reading_finish(started)
+            return lead, solver_own, started["stone_count"]
+
+        def read(candidate, visits):
+            return read_finish(read_start(candidate, visits))
+
+        def read_batch(jobs):
+            # 独立な裁定クエリを全部発行してから順に回収する（KataGo は numAnalysisThreads=4 で
+            # 並列処理できる）。クエリ内容・採否の意味論は1本ずつと同一（frame_validity_verdicts 側で保存）
+            started = [read_start(candidate, visits) for candidate, visits in jobs]
+            return [read_finish(s) for s in started]
+
+        speculative = {}
+
+        def on_reread_start():
+            # 全枠死のときだけ使う「枠なし比較読み」を、読み直しと並行して投機発行しておく
+            # （使わなければ捨てる。コストは遊んでいた GPU 時間だけ）
+            board_fl, region_fl = self._tsumego_frameless_board(grid, settings, quiet=True)
+            if region_fl is None:
+                return  # リージョン縮退盤は投機読みしない（本当に枠なし経路に落ちた時に通常経路が警告つきで読む）
+            stones_fl = solver_core_points(grid, board_fl, region_fl)
+            speculative["frameless"] = self._tsumego_frame_solver_reading_start(
+                board_fl, komi, region_fl, trial_visits, settings, stones_fl, "枠なし"
+            )
 
         scored, destroyed = [], []
-        verdicts = frame_validity_verdicts(candidates, read, trial_visits, validity_visits)
+        verdicts = frame_validity_verdicts(
+            candidates,
+            read,
+            trial_visits,
+            validity_visits,
+            read_batch=read_batch,
+            on_reread_start=on_reread_start,
+        )
         skipped_reread = any(not v.destroys for v in verdicts)
         for verdict in verdicts:
             if len(verdict.readings) > 1:  # 浅い読みで死と出て読み直した枠だけ結論を明示する
@@ -848,7 +880,8 @@ class KaTrainGui(Screen, KaTrainBase):
             elif verdict.destroys and skipped_reread:
                 self.log(
                     f"tsumego_capture: 枠(ko={verdict.ko_p})は浅い読みで死と出ましたが、"
-                    f"先に有効な枠が見つかったので読み直しは省略しました",
+                    f"先に有効な枠が見つかったので読み直しは省略しました"
+                    f"（並列で読み直しが走っていた場合、その結果は採否に使いません）",
                     OUTPUT_INFO,
                 )
             if verdict.destroys:
@@ -857,7 +890,9 @@ class KaTrainGui(Screen, KaTrainBase):
             scored.append((verdict.ko_p, verdict.board, verdict.region, verdict.lead))
         if not scored:
             # 枠なし側は深さにほぼ不感なので trial の浅い読みで比較する（`frame_over_frameless`）
-            rescued = self._tsumego_frame_beats_frameless(grid, komi, settings, verdicts, trial_visits)
+            rescued = self._tsumego_frame_beats_frameless(
+                grid, komi, settings, verdicts, trial_visits, started=speculative.get("frameless")
+            )
             if rescued is None:
                 self.log(
                     f"tsumego_capture: 枠(ko={'/'.join(str(k) for k in destroyed)})では手番側の石が開始時点で"
@@ -892,28 +927,55 @@ class KaTrainGui(Screen, KaTrainBase):
             )
         return best[1], best[2]
 
-    def _tsumego_frame_beats_frameless(self, grid, komi, settings, verdicts, visits):
+    def _tsumego_frame_beats_frameless(self, grid, komi, settings, verdicts, visits, started=None):
         """全枠が壊れ判定のとき、枠なし盤より手番側の本体石が生きている枠があれば返す。
 
         枠なしは安全側のフォールバックではない（リージョン外が丸ごと相手の地になる）ので、
         捨てる先を測ってから捨てる。実測 case N: 枠なし -0.75/子 に対し有効な枠は +0.42〜+0.95/子
+
+        `started` は読み直しフェーズと並行して投機発行しておいた枠なし読み（あれば回収するだけ）
         """
         from katrain.core.tsumego_frame import frame_over_frameless, solver_core_points
 
-        board, region = self._tsumego_frameless_board(grid, settings)
-        stones = solver_core_points(grid, board, region)
-        _lead, solver_own = self._tsumego_frame_solver_reading(
-            board, komi, region, visits, settings, stones, "枠なし"
-        )
-        return frame_over_frameless(verdicts, solver_own, len(stones))
+        if started is None:
+            board, region = self._tsumego_frameless_board(grid, settings)
+            stones = solver_core_points(grid, board, region)
+            started = self._tsumego_frame_solver_reading_start(
+                board, komi, region, visits, settings, stones, "枠なし"
+            )
+        _lead, solver_own = self._tsumego_frame_solver_reading_finish(started)
+        return frame_over_frameless(verdicts, solver_own, started["stone_count"])
 
-    def _tsumego_frame_solver_reading(
+    def _tsumego_frame_solver_reading_start(
         self, board, komi, region, visits, settings, stones, label, retry=False, wide_root_noise=None
     ):
-        """盤の root スコアと「手番側の本体石」ownership 合計を測ってログに出す。取れなければ None"""
+        """裁定クエリを発行だけして待たないコンテキストを返す（結果とログは finish 側）。
+
+        独立なクエリを全部発行してから回収すると、KataGo（numAnalysisThreads=4）が並列に
+        処理して待ちが最長1本ぶんに縮む。クエリ内容は1本ずつ撃つのと同一。
+        """
+        return {
+            "handle": self._tsumego_frame_trial_start(board, komi, region, visits, settings, wide_root_noise),
+            "board": board,
+            "stones": stones,
+            "stone_count": len(stones),
+            "visits": visits,
+            "retry": retry,
+            "label": label,
+        }
+
+    def _tsumego_frame_solver_reading_finish(self, started):
+        """start したクエリを回収し、root スコアと「手番側の本体石」ownership 合計をログに出す"""
         from katrain.core.utils import var_to_grid
 
-        lead, ownership = self._tsumego_frame_trial(board, komi, region, visits, settings, wide_root_noise)
+        board, stones, visits, retry, label = (
+            started["board"],
+            started["stones"],
+            started["visits"],
+            started["retry"],
+            started["label"],
+        )
+        lead, ownership = self._tsumego_frame_trial_wait(started["handle"])
         own_grid = var_to_grid(ownership, (len(board[0]), len(board))) if ownership else None
         solver_own = sum(own_grid[y][x] for x, y in stones) if own_grid else None
         self.log(
@@ -930,8 +992,23 @@ class KaTrainGui(Screen, KaTrainBase):
         )
         return lead, solver_own
 
-    def _tsumego_frameless_board(self, grid, settings):
-        """枠なしで出題する盤とリージョン。認識結果そのままで1子も書き換えない"""
+    def _tsumego_frame_solver_reading(
+        self, board, komi, region, visits, settings, stones, label, retry=False, wide_root_noise=None
+    ):
+        """盤の root スコアと「手番側の本体石」ownership 合計を測ってログに出す。取れなければ None"""
+        return self._tsumego_frame_solver_reading_finish(
+            self._tsumego_frame_solver_reading_start(
+                board, komi, region, visits, settings, stones, label, retry=retry, wide_root_noise=wide_root_noise
+            )
+        )
+
+    def _tsumego_frameless_board(self, grid, settings, quiet=False):
+        """枠なしで出題する盤とリージョン。認識結果そのままで1子も書き換えない。
+
+        `quiet` は投機的な比較読み（`on_reread_start`）用: 枠が採用されるキャプチャでは
+        枠なし盤は出題されないので、リージョン縮退の ERROR 警告を出さない（実際に枠なしで
+        出題する経路が改めて quiet なしで呼び、そのとき警告が出る）
+        """
         from katrain.core.tsumego_frame import frameless_region
 
         try:
@@ -939,7 +1016,7 @@ class KaTrainGui(Screen, KaTrainBase):
         except (TypeError, ValueError):
             pad = 1
         analysis_region = frameless_region(grid, pad)
-        if analysis_region is None:
+        if analysis_region is None and not quiet:
             # Noneのまま進めると解析リージョンが無い＝全盤解析になり、この機能が防ごうと
             # している状態そのものに陥る。A/Bテスト中はエンジンの誤判定と見分けがつかず
             # 気づけないため、ここで明示的に警告する（region_padが盤外まで広すぎる、
@@ -951,18 +1028,18 @@ class KaTrainGui(Screen, KaTrainBase):
             )
         return grid, analysis_region
 
-    def _tsumego_frame_trial(self, board, komi, analysis_region, visits, settings, wide_root_noise=None, timeout=30.0):
-        """枠の採否判定用に root の scoreLead と ownership を取る。取れなければ (None, None)"""
+    def _tsumego_frame_trial_start(self, board, komi, analysis_region, visits, settings, wide_root_noise=None):
+        """枠の採否判定用クエリを発行だけして待たない。ハンドル（dict）を返す。取れなければ None"""
         from katrain.core.tsumego_capture import grid_to_sgf
 
         engine = self.engine
         if engine is None:
-            return None, None
+            return None
         try:
             node = KaTrainSGF.parse_sgf(grid_to_sgf(board, komi=komi))
         except Exception as e:
             self.log(f"tsumego_capture: 枠バランス試算のSGF化に失敗しました: {e}", OUTPUT_INFO)
-            return None, None
+            return None
         # grid_to_sgf は RU を出さない。BaseGame は未指定なら設定のルールを入れるが、ここは
         # Game を作る前なので自分で入れる（未指定だと engine 既定の japanese になり、
         # 面積計算前提の枠のスコアが 25 目規模でずれる）
@@ -991,6 +1068,13 @@ class KaTrainGui(Screen, KaTrainBase):
                 self._tsumego_region_wide_root_noise(settings) if wide_root_noise is None else wide_root_noise,
             ),
         )
+        return result
+
+    def _tsumego_frame_trial_wait(self, result, timeout=30.0):
+        """start したクエリの完了を待って (scoreLead, ownership) を返す。取れなければ (None, None)"""
+        if result is None:
+            return None, None
+        engine = self.engine
         deadline = time.time() + timeout
         while "done" not in result and "error" not in result and time.time() < deadline:
             time.sleep(0.05)
@@ -1000,6 +1084,13 @@ class KaTrainGui(Screen, KaTrainBase):
                 self.log(f"tsumego_capture: 枠バランス試算中にエンジンが停止しました: {e}", OUTPUT_INFO)
                 return None, None
         return result.get("done", (None, None))
+
+    def _tsumego_frame_trial(self, board, komi, analysis_region, visits, settings, wide_root_noise=None, timeout=30.0):
+        """枠の採否判定用に root の scoreLead と ownership を取る。取れなければ (None, None)"""
+        return self._tsumego_frame_trial_wait(
+            self._tsumego_frame_trial_start(board, komi, analysis_region, visits, settings, wide_root_noise),
+            timeout=timeout,
+        )
 
     def _tsumego_capture_failed(self, message):
         """失敗をターミナルと GUI の両方に出す（作業スレッドから呼ばれるため GUI 更新は Clock 経由）"""
@@ -1058,6 +1149,12 @@ class KaTrainGui(Screen, KaTrainBase):
             )
         except (TypeError, ValueError):
             self.game.region_analysis_wide_root_noise = REGION_ANALYSIS_WIDE_ROOT_NOISE
+        try:
+            # 人間（白番）の考慮時間中に有力応手の子局面を先読みして NN キャッシュを温める本数。
+            # 結果は捨てるだけ（着手判定への影響ゼロ）で、的中時は次の1800visits解析が数倍速くなる
+            self.game.region_prefetch_replies = int(settings.get("ponder_replies", 3))
+        except (TypeError, ValueError):
+            self.game.region_prefetch_replies = 3
         self._apply_tsumego_region(analysis_region, board_size=len(grid))
         maximize = settings.get("maximize_on_capture", True)
         auto_ai = settings.get("auto_ai_black", True)

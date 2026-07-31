@@ -780,3 +780,93 @@ def test_solver_core_points_without_region_covers_the_board():
     recognized = _board(stones=[(0, 0, "B"), (12, 12, "B")])
     framed = _board(stones=[(0, 0, "B"), (12, 12, "B")])
     assert solver_core_points(recognized, framed, None) == [(0, 12), (12, 0)]
+
+
+def test_frame_validity_verdicts_read_batch_matches_serial_when_a_frame_is_rescued():
+    # 並列モード（read_batch）: 全枠死のときは読み直しを全部先に発行するが、採否は直列版と
+    # 同一でなければならない。ko=False の救済が成立したら ko=True の読み直し結果は**破棄**
+    # （直列版なら読まなかった読み）＝浅い判定のまま捨てる
+    from katrain.core.tsumego_frame import frame_validity_verdicts
+
+    serial_calls, batch_calls, hook = [], [], []
+    data = {
+        "boardF": {400: (-6.20, -8.01, 10), 1800: (-0.44, 9.70, 10)},
+        "boardT": {400: (2.77, -9.88, 10), 1800: (2.55, -9.92, 10)},
+    }
+    candidates = [(False, "boardF", "regF"), (True, "boardT", "regT")]
+
+    def make_read(calls):
+        def read(candidate, visits):
+            calls.append((candidate[0], visits))
+            return data[candidate[1]][visits]
+
+        return read
+
+    serial = frame_validity_verdicts(candidates, make_read(serial_calls), 400, 1800)
+    batch_read = make_read(batch_calls)
+    batched = frame_validity_verdicts(
+        candidates,
+        batch_read,
+        400,
+        1800,
+        read_batch=lambda jobs: [batch_read(c, v) for c, v in jobs],
+        on_reread_start=lambda: hook.append(True),
+    )
+    # 採否・採用visits・lead は直列版と完全一致（ko=True の深い読みは破棄され 400 のまま）
+    assert [(v.ko_p, v.destroys, v.visits, v.lead) for v in batched] == [
+        (v.ko_p, v.destroys, v.visits, v.lead) for v in serial
+    ]
+    assert serial_calls == [(False, 400), (True, 400), (False, 1800)]
+    assert batch_calls == [(False, 400), (True, 400), (False, 1800), (True, 1800)]  # 並列発行の上位集合
+    assert hook == [True]  # 読み直しフェーズ開始時に一度だけ呼ばれる（枠なし比較読みの投機発行用）
+
+
+def test_frame_validity_verdicts_read_batch_skips_deep_reads_beside_a_settled_frame():
+    # 健全枠＋死枠の混在では直列版は読み直しゼロ。並列モードも「この時点でスキップが確定して
+    # いる死枠」を発行しない（発行して待つと直列版より遅くなる）。hook も呼ばれない
+    from katrain.core.tsumego_frame import frame_validity_verdicts
+
+    calls, hook = [], []
+    data = {
+        "boardF": {400: (5.0, 9.9, 10), 1800: (5.0, 9.9, 10)},  # 自明に生き（confirm 以上）
+        "boardT": {400: (2.77, -9.88, 10), 1800: (2.55, -9.92, 10)},  # 死
+    }
+    candidates = [(False, "boardF", "regF"), (True, "boardT", "regT")]
+
+    def read(candidate, visits):
+        calls.append((candidate[0], visits))
+        return data[candidate[1]][visits]
+
+    verdicts = frame_validity_verdicts(
+        candidates,
+        read,
+        400,
+        1800,
+        read_batch=lambda jobs: [read(c, v) for c, v in jobs],
+        on_reread_start=lambda: hook.append(True),
+    )
+    assert [(v.ko_p, v.destroys, v.visits) for v in verdicts] == [(False, False, 400), (True, True, 400)]
+    assert calls == [(False, 400), (True, 400)]  # 深い読みは1本も発行しない
+    assert hook == []
+
+
+def test_frame_validity_verdicts_read_batch_confirms_a_borderline_frame_like_serial():
+    # 閾値近傍の「生」の確認読み（case S）は並列モードでも同じに走る
+    from katrain.core.tsumego_frame import frame_validity_verdicts
+
+    calls = []
+    data = {400: (24.64, 8.45, 13), 1800: (21.77, 6.01, 13)}
+
+    def read(candidate, visits):
+        calls.append((candidate[0], visits))
+        return data[visits]
+
+    verdicts = frame_validity_verdicts(
+        [(False, "board", "region")],
+        read,
+        400,
+        1800,
+        read_batch=lambda jobs: [read(c, v) for c, v in jobs],
+    )
+    assert (verdicts[0].destroys, verdicts[0].visits) == (True, 1800)
+    assert calls == [(False, 400), (False, 1800)]

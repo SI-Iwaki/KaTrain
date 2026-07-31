@@ -189,6 +189,8 @@ def frame_validity_verdicts(
     trial_visits,
     validity_visits=FRAME_VALIDITY_VISITS,
     confirm_ownership=FRAME_SOLVER_CONFIRM_OWNERSHIP,
+    read_batch=None,
+    on_reread_start=None,
 ):
     """枠候補 [(ko_p, board, region), ...] を「詰碁を壊していないか」で裁定して FrameVerdict を返す。
 
@@ -210,11 +212,23 @@ def frame_validity_verdicts(
     読み直しは**浅い読みが生きに近い枠から順に**行う。case N の実測では生き残る枠 ko=False の
     浅い読みは -0.69〜-0.98/子 で、落選する ko=True の -0.99/子 より 4/4 で上だった。
     同点・読めなかった枠は候補順（設定の frame_ko が先）。
+
+    `read_batch(jobs)`（jobs = [(candidate, visits), ...] → 結果リスト）を渡すと、独立な
+    解析を並列に発行できる（キャプチャの待ち時間短縮）。**採否の意味論は直列版と同一**:
+    読み直しは「読み直す可能性のある枠」全部を並列に読むが、結果の適用は従来の
+    aliveness 順・同じ動的打ち切り規則で行い、直列版なら読み直さなかった枠の結果は
+    **使わず破棄する**（＝どちらの経路でも採用される枠は同じ。捨てるのは遊んでいた GPU
+    時間だけ）。`on_reread_start` は読み直しフェーズが始まる直前に一度呼ばれるフック
+    （呼び出し側が枠なし比較読みを投機発行するのに使う）。
     """
+    batched = read_batch is not None
+    if not batched:
+        read_batch = lambda jobs: [read(candidate, visits) for candidate, visits in jobs]  # noqa: E731
     verdicts = [None] * len(candidates)
-    for i, candidate in enumerate(candidates):
+    for i, (candidate, (lead, own, n_stones)) in enumerate(
+        zip(candidates, read_batch([(candidate, trial_visits) for candidate in candidates]))
+    ):
         ko_p, board, region = candidate
-        lead, own, n_stones = read(candidate, trial_visits)
         readings = [(trial_visits, own)]
         destroys, visits, used_own = frame_solver_verdict(readings, n_stones)
         verdicts[i] = FrameVerdict(ko_p, board, region, lead, destroys, visits, used_own, n_stones, readings)
@@ -236,14 +250,33 @@ def frame_validity_verdicts(
         alive = per_stone(v)
         return alive is None or alive >= confirm_ownership  # 手番側の石が無い図は測りようがない
 
-    for i in sorted(range(len(verdicts)), key=aliveness, reverse=True):
+    order = sorted(range(len(verdicts)), key=aliveness, reverse=True)
+    deep = {}
+    if batched:
+        # 並列モード: 読み直しの可能性がある枠を先に全部発行しておく。ただし**この時点で
+        # スキップが確定している枠**（死と出ていて、使える枠が既にある＝直列版が読まなかった枠）
+        # は発行しない — 発行して待つと健全枠＋死枠の混在キャプチャで直列版より遅くなる。
+        # 読み直しの途中で生の枠が壊れに転じて死枠の救済が必要になる稀なカスケードは、
+        # 適用ループ内の直列フォールバック（read）で従来どおり読む
+        settled_initially = any(settled_usable(v) for v in verdicts)
+        plan = [
+            i
+            for i in order
+            if not settled_usable(verdicts[i]) and not (verdicts[i].destroys and settled_initially)
+        ]
+        if not plan:
+            return verdicts
+        if on_reread_start is not None:
+            on_reread_start()
+        deep = dict(zip(plan, read_batch([(candidates[i], validity_visits) for i in plan])))
+    for i in order:
         if settled_usable(verdicts[i]):
             continue  # 自明に生きている＝確かめる必要がない
         if verdicts[i].destroys and any(settled_usable(v) for v in verdicts):
-            continue  # 死と出た枠の**救済**は不要（使える枠が既にある）
+            continue  # 死と出た枠の**救済**は不要（使える枠が既にある）。並列で読んだ結果は破棄
         # 死と出た枠は捨てる前に、閾値近傍で生と出た枠は**採る前に**読み直す。後者を省くと
         # 確かめていない枠が pick_balanced_frame の候補に残り、バランス次第で出題されてしまう
-        deep_lead, deep_own, n_stones = read(candidates[i], validity_visits)
+        deep_lead, deep_own, n_stones = deep[i] if i in deep else read(candidates[i], validity_visits)
         readings = verdicts[i].readings + [(validity_visits, deep_own)]
         destroys, visits, used_own = frame_solver_verdict(readings, n_stones)
         lead = verdicts[i].lead if deep_lead is None else deep_lead  # バランス判定も深い読みの方が確か

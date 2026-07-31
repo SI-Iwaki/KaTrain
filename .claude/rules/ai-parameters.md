@@ -138,6 +138,18 @@ humanモードの悪手フィルタ閾値はHumanStyleStrategyと同じBAD_MOVE_
 | frame_ko_auto | true | ON でキャプチャ時に frame_ko の両方の枠を張り、root スコアが設計目標（攻め方成功=5目勝ち）に近い方を自動採用。正解がコウ止まりの問題は false 側だと守り側にコウダテが渡り白の無条件生きになる（実測 −23.0 vs +0.68）。バランス距離が `FRAME_BALANCE_TIE_MARGIN`(2.0目) 以内で拮抗する場合は攻め方コウダテ側(ko_p=True)を優先（僅差だとキャプチャごとに枠が入れ替わり誤答していた） |
 | frame_ko_trial_visits | 400 | 自動選択の試算 visits。400 で判別可能（実測 2本で約1.2秒）。この試算の ownership を枠採否判定にも流用する（下記） |
 | frame_validity_visits | 1800 | 上の試算で「詰碁を壊している」と出た枠を**捨てる前に読み直す** visits。読み直しは **`FRAME_VALIDITY_WIDE_ROOT_NOISE`=0** で撃つ（下記）。生き問題では手番側の石そのものが戦いの対象なので浅い・散らした読みでは死と出る（実測 case N の有効な枠: 400/wRN0.04 で −0.69〜−0.98/子、1800/wRN0.04 は +0.95〜−0.95 の二峰性、**1800/wRN0 で +0.96〜+0.97 に収束**）。壊れた枠はどの設定でも死のまま（case F −0.72、case G −0.98）。`frame_ko_trial_visits` 以下にすると読み直しを無効化 |
+| ponder_replies | 3 | **先読み（NN キャッシュ温め・2026-07-31）**: AI 黒番の着手後、そのノードのリージョン解析が完了したら人間（白）の有力応手 top-K の子局面を**実クエリと完全同条件**（同 visits・同リージョン・同 wRN・**同 ownership=True**）・低優先度（`PRIORITY_REGION_PREFETCH`=-50）で先読みする。**ownership を揃えるのは必須** — KataGo の NN キャッシュは ownerMap の有無を区別するため、ownership なしの先読みは実クエリを1秒も速くしない（実測 2026-08-01 `prefetch_cache_probe.py`: ownership なし先読み直後の実クエリ 2.70 秒＝コールド 2.69 秒と同一。ownership 付きで温めた後は **0.10〜0.28 秒**）。`request_analysis` は `next_move` 指定だと includeOwnership を強制 OFF にするので、**使い捨ての複製ゲームで応手を1手進めた子ノードを作って撃つ**（`_region_prefetch_sim`。この子ノードに紐づくクエリだけを terminate できる＝本譜ノードのクエリや GUI の追加解析を巻き込まない、という副次効果つき）。**結果は使わず捨てる**（本物のクエリが従来どおり走る）ので着手判定への影響はゼロ。未消化分は次の `Game.play()` 冒頭で terminate（リージョン解除後の着手でも掃除する）。次番が人間のときだけ発火（`players_info` が無いデバッグ環境では発火しない）。0 で無効 |
+
+**高速化（2026-07-31・精度不変）**: 選択則の独立な子局面クエリ（同深さ検証・コウ経路検査の
+pool・クラス格上げ／コウ脱出の shortlist・コウ勝ち評価）は `_start_region_root` +
+`_wait_region_roots` で**全員分を発行してからまとめて待つ**（KataGo は `numAnalysisThreads=4`
+で並列処理。クエリ内容・評価順序・タイブレークは直列版と同一、E2E 全ケース回帰で不変を確認）。
+選択手のコウ経路検査は ownership 付きで撃って生解析を memo し、同条件（同 visits・untilDepth・
+wRN=0）のクラス格上げ incumbent 検証だけが再利用する（wRN=0.04 の脱出・格下げ確認は対象外＝
+校正条件を混ぜない）。枠採否判定も `frame_validity_verdicts(read_batch=...)` で並列化（採否の
+意味論は直列版と同一: 直列版が読まなかった読み直しの結果は**破棄**、健全枠＋死枠の混在では
+余計な読み直しを発行しない）。実測: 重経路ケース（M/O/V2）の generate コールド 6.1〜6.5 秒 →
+4.7〜5.4 秒。`[TsumegoOwnershipStrategy] 着手決定に X 秒` ログで per-move 時間を常時確認可能。
 
 **枠の採否判定**（設定キーではなくコード定数。`tsumego_frame.py` / `__main__._choose_tsumego_frame`）:
 

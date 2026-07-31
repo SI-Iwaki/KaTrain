@@ -65,20 +65,31 @@ def main():
     settings = stub.config(f"ai/{AI_TSUMEGO}") or {}
     print("settings:", settings)
     tally = {}
+    timing = {}
     try:
         for rep in range(REPEATS):
             for move_n in MOVES:
+                t0 = time.time()
                 game, node = analyse(engine, stub, move_n)
+                t1 = time.time()
                 strategy = STRATEGY_REGISTRY[AI_TSUMEGO](game, settings)
                 move, thoughts = strategy.generate_move()
+                t2 = time.time()
                 gtp_move = move.gtp()
-                print(f"run{rep + 1} after {move_n:>2} moves: generate_move -> {gtp_move}  ({thoughts})")
+                print(
+                    f"run{rep + 1} after {move_n:>2} moves: generate_move -> {gtp_move}  ({thoughts})"
+                    f"  [analyse {t1 - t0:.1f}s / generate {t2 - t1:.1f}s]"
+                )
                 tally.setdefault(move_n, Counter())[gtp_move] += 1
+                timing.setdefault(move_n, []).append((t1 - t0, t2 - t1))
     finally:
         engine.shutdown(finish=False)
     print("\n=== tally (real generate_move) ===")
     for move_n in MOVES:
-        print(f"after {move_n:>2} moves: {dict(tally[move_n])}")
+        times = timing.get(move_n, [])
+        avg_a = sum(t[0] for t in times) / max(1, len(times))
+        avg_g = sum(t[1] for t in times) / max(1, len(times))
+        print(f"after {move_n:>2} moves: {dict(tally[move_n])}  [avg analyse {avg_a:.1f}s / generate {avg_g:.1f}s]")
 
 
 main()
