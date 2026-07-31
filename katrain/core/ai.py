@@ -2110,6 +2110,67 @@ TSUMEGO_KO_REPLY_RATIO_CHOSEN = 0.05
 # 歩く深さと同じだけ縛るのが自明な整合点（PV を見る範囲＝局所を強制した範囲）。
 TSUMEGO_KO_REGION_UNTIL_DEPTH = TSUMEGO_TIE_KO_PLIES
 
+# コウ「権利」の検出（`tsumego_defender_ko_points`）を歩く深さ。PV が実際にコウを打つことを
+# 要求する既存判定（`tsumego_pv_reaches_region_ko` の1子取り検査）より**短く**切る。
+#
+# なぜ第2の判定が要るか: リージョン解析は `untilDepth` で両者を枠内に縛るので、**守り方は
+# コウダテを打てない**。するとコウを仕掛けることは守り方にとって純粋な損になり、KataGo は
+# それを正しく「打つ価値なし」と読む。ところが詰碁の裁定は逆で、攻め方にとって
+# 「コウで殺す」は「無条件に殺す」より下のクラスに落ちる。**コウが問題になる局面ほど
+# エンジンはそのコウを打たない**ので、PV を証拠にする判定は肝心なときに黙る。
+#
+# 実測 case U（2026-07-31、13路左下・黒番初手。正解 C1 に対し AI は A3 を打ち、白 C1 →
+# 黒 D1 がアタリ → 白 E1 の1子取りでコウにされて不正解）: 白のコウ抵抗 C1 は
+# **visits比 0.01**（v7/617）で敏感側の 0.05 にも届かず、しかも C1 自身の PV
+# `C1,A4,D6,E6,D7` にコウ手 E1 が現れない（KataGo は C1 を黒+8.99＝白の損と評価）。
+# 応手を比 0.00 まで全部歩いても PV 由来の検出は 0/5 run だった。一方「白がコウ取りを
+# 打てる状態になったか」で見ると **5/5 run で ply5 に立つ**（正解 C1 は 5/5 clean）。
+#
+# 深さを 5 で切る理由は、この証拠が PV より弱いぶん偶発コウを拾いやすいから。実測の
+# 内訳（両側・19ケース）:
+#
+#   検出すべき   U ply5 ・ L ply3 ・ P ply3 ・ F ply3/5 ・ R(D8) ply5
+#   clean のまま **G2 の正解 C13 ply7** ・ **R の C8 ply7** ・ K(A10) ply7
+#
+# ply7 の3件はいずれも詰碁と無関係な偶発コウで、真陽性は ply5 までに収まる。
+TSUMEGO_KO_AVAIL_PLIES = 5
+
+
+def tsumego_defender_ko_points(sim, defender, region_of_interest):
+    """守り方が**今すぐ**打てるコウ取りの点（リージョン内）を集合で返す。
+
+    コウ取り＝その一手で相手の1子を取り、取った石自身が呼吸点1になり、相手の取り返しが
+    KaTrain の着手判定でコウとして禁じられる形（`tsumego_pv_reaches_region_ko` の判定と同じ）。
+    違いは「PV がその手を打つか」を問わないこと — 打たれなくても**打てる**なら、守り方は
+    いつでもコウにできるのでその局面はコウのクラスにいる。
+
+    sim は使い捨ての局面を渡すこと（試し打ちのぶんノードが増える。盤面は毎回戻す）。
+    """
+    attacker = "W" if defender == "B" else "B"
+    size_x, size_y = sim.board_size
+    xmin, xmax, ymin, ymax = (0, size_x - 1, 0, size_y - 1) if region_of_interest is None else region_of_interest
+    base = sim.current_node
+    points = set()
+    for x in range(max(0, xmin), min(xmax, size_x - 1) + 1):
+        for y in range(max(0, ymin), min(ymax, size_y - 1) + 1):
+            if sim.board[y][x] >= 0:
+                continue  # 空点だけ試す
+            try:
+                sim.play(Move(coords=(x, y), player=defender))
+            except IllegalMoveException:
+                sim.set_current_node(base)
+                continue
+            chain, liberties = _chain_and_liberties(sim, (x, y))
+            if chain is not None and len(chain) == 1 and len(liberties) == 1:
+                try:
+                    sim.play(Move(coords=liberties[0], player=attacker))
+                except IllegalMoveException as e:
+                    if "Ko" in str(e):
+                        points.add((x, y))
+                    # 自殺手等でそもそも取り返せない形はコウではない
+            sim.set_current_node(base)
+    return points
+
 
 def tsumego_competitive_replies(replies, ratio=TSUMEGO_KO_REPLY_RATIO, max_replies=TSUMEGO_KO_REPLY_MAX):
     """visits 降順で top と拮抗する応手（比 ratio 以上）を最大 max_replies 本返す"""
@@ -2121,7 +2182,20 @@ def tsumego_competitive_replies(replies, ratio=TSUMEGO_KO_REPLY_RATIO, max_repli
 
 
 def tsumego_pv_reaches_region_ko(sim, first_player, pv, region_of_interest, max_plies=TSUMEGO_TIE_KO_PLIES):
-    """PV を sim の現局面から並べ直し、リージョン内でコウ形の1子取りに到達するかを返す。
+    """PV を sim の現局面から並べ直し、リージョン内でコウのクラスに入るかを返す。
+
+    判定は2本立て（どちらか成立でコウ経路）:
+
+    1. **PV がコウ形の1子取りに到達する** — 取った石が単独・呼吸点1で、相手の取り返しが
+       KaTrain の着手判定でコウとして禁じられる形。
+    2. **守り方がコウ取りを打てる状態になる**（`tsumego_defender_ko_points`、深さ
+       `TSUMEGO_KO_AVAIL_PLIES` まで）— PV がそのコウを打たなくても数える。リージョン解析は
+       守り方からコウダテを取り上げるので、**コウが争点の局面ほど KataGo はそのコウを
+       打たない**（実測 case U: 白のコウ抵抗は visits比 0.01・白の損と評価され、比 0.00 まで
+       全応手を歩いても PV 由来では 0/5 run 検出できない）。
+       ただし**候補手より前から打てたコウは数えない** — 局面の性質であって候補の性質では
+       ないので、数えると全候補が一律コウ経路になりクラス裁定が候補を区別できなくなる
+       （実測 case T の L1 / case F2 の N9 / case Q の M13。それらは判定1が別途拾っている）。
 
     コウ形 = 取った石が単独・呼吸点1で、相手の取り返しが KaTrain の着手判定でコウとして
     禁じられる形。詰碁の正解順序（無条件 > コウ）を同着バンドで効かせるための構造判定で、
@@ -2145,10 +2219,13 @@ def tsumego_pv_reaches_region_ko(sim, first_player, pv, region_of_interest, max_
             and region_of_interest[2] <= coords[1] <= region_of_interest[3]
         )
 
+    defender = "W" if first_player == "B" else "B"
+    # 候補手より前から守り方が打てたコウ取り。これは局面の性質なので候補の判定から除く
+    already_available = tsumego_defender_ko_points(sim, defender, region_of_interest)
     for i, gtp in enumerate(pv[:max_plies]):
         if gtp == "pass":
             break
-        mover = first_player if i % 2 == 0 else ("W" if first_player == "B" else "B")
+        mover = first_player if i % 2 == 0 else defender
         opponent = "W" if mover == "B" else "B"
         move = Move.from_gtp(gtp, player=mover)
         try:
@@ -2165,6 +2242,10 @@ def tsumego_pv_reaches_region_ko(sim, first_player, pv, region_of_interest, max_
                 # 自殺手等でそもそも取り返せない形。盤面は変わっていないので PV を続ける
             else:
                 sim.set_current_node(played)  # 取り返せた＝コウではない。試した手を外して続行
+        # 攻め方が打ち終わって守り方の手番になったところで、新しく立ったコウ取りを見る
+        if mover == first_player and i + 1 <= TSUMEGO_KO_AVAIL_PLIES:
+            if tsumego_defender_ko_points(sim, defender, region_of_interest) - already_available:
+                return True
     return False
 
 

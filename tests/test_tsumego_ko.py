@@ -2,6 +2,7 @@ import pytest
 
 from katrain.core.ai import (
     tsumego_candidate_reaches_region_ko,
+    tsumego_defender_ko_points,
     tsumego_ko_win_node,
     tsumego_pv_reaches_region_ko,
 )
@@ -156,6 +157,67 @@ def test_candidate_ko_check_still_walks_the_reply_pv():
 def test_candidate_ko_check_is_false_for_a_clean_line():
     game = _game(CAPTURE_KO_SGF)
     assert not tsumego_candidate_reaches_region_ko(game, game.current_node, "E5", ["E4", "D5"], WHOLE_BOARD)
+
+
+# --- 守り方が「今すぐ打てるコウ取り」を得たかの検出（tsumego_defender_ko_points） ---
+# 実測 case U (2026-07-31): 白のコウ抵抗は「コウダテの打てないリージョン解析では守り方の損」と
+# 読まれるため、KataGo はどの応手 PV でもそのコウを**打たない**。PV がコウを打つことを要求する
+# 既存判定では証拠が出ないので、歩きの途中で「守り方がコウ取りを打てる状態になったか」を見る。
+#
+# 5路。黒 B1 は単独で呼吸点2（A1/C1）。白 A1 でアタリにし、次に白 C1 で B1 を1子取ると
+# C1 自身が呼吸点1（B1）になり黒の取り返しがコウで禁じられる＝白は2手でコウを作れる
+#    A B C D E
+#  2 . W B . .
+#  1 . B . B .
+AVAIL_KO_SGF = "(;GM[1]FF[4]SZ[5]KM[0]RU[chinese]PL[B]AB[be][cd][de]AW[bd])"
+
+
+def test_defender_ko_points_lists_immediately_playable_kos():
+    # 白は A1 で黒 B1 を1子取れ、取った A1 は呼吸点1で黒の取り返しがコウ禁止
+    game = _game(CAPTURE_KO_SGF)
+    assert Move.from_gtp("A1").coords in tsumego_defender_ko_points(game, "W", WHOLE_BOARD)
+
+
+def test_defender_ko_points_is_empty_when_no_ko_is_ready():
+    # AVAIL_KO_SGF の黒 B1 は呼吸点2なので、白は**まだ**コウ取りを打てない
+    game = _game(AVAIL_KO_SGF)
+    assert tsumego_defender_ko_points(game, "W", WHOLE_BOARD) == set()
+
+
+def test_pv_ko_detects_a_ko_the_defender_gains_but_the_pv_never_plays():
+    """PV がコウを打たなくても、守り方がコウ取りを打てる状態になったらコウ経路。
+
+    実測 case U: 黒 A3 の後、白 C1（visits比 0.01・KataGo は白の損と評価）で黒 D1 が
+    アタリになり、白 E1 の1子取りがコウになる。どの応手 PV もそのコウを打たないので
+    「PV がコウ形に到達するか」だけでは 0/5 run 検出できなかった。
+    """
+    game = _game(AVAIL_KO_SGF)
+    # 白 A1 の後、白は C1 で B1 をコウ取りできる状態になる（PV は C1 を打たない）
+    assert tsumego_pv_reaches_region_ko(game, "B", ["E5", "A1", "E4"], WHOLE_BOARD)
+
+
+def test_pv_ko_ignores_a_ko_the_defender_already_had():
+    """候補手より前から打てたコウは候補の性質ではないので数えない。
+
+    局面に元からあるコウ取りを数えると全候補が一律にコウ経路になり、クラス裁定
+    （無条件 > コウ）が候補を区別できなくなる（実測 case T の L1 / case F2 の N9 /
+    case Q の M13 は着手前から打てるコウで、既存判定が別途拾っている）。
+    """
+    game = _game(CAPTURE_KO_SGF)
+    assert tsumego_defender_ko_points(game, "W", WHOLE_BOARD)  # 元からコウ取りがある局面
+    assert not tsumego_pv_reaches_region_ko(game, "B", ["E5", "E4"], WHOLE_BOARD)
+
+
+def test_pv_ko_ignores_an_available_ko_too_deep_in_the_line():
+    """コウ取りの「権利」は PV が実際に打つより弱い証拠なので、歩く深さを短く切る。
+
+    実測 case G2 の正解 C13 / case R の C8 は ply7 でだけコウ取りが立ち（詰碁と無関係な
+    偶発コウ）、真陽性は case U ply5・case L/P/F ply3 に収まる（TSUMEGO_KO_AVAIL_PLIES=5）。
+    """
+    game = _game(AVAIL_KO_SGF)
+    assert not tsumego_pv_reaches_region_ko(
+        game, "B", ["E5", "E4", "D5", "D4", "C5", "A1", "C4"], WHOLE_BOARD, max_plies=7
+    )
 
 
 # 打った石とは「別の1子」が取られてコウになる形。生きる詰碁ではこちらが普通に出る。
