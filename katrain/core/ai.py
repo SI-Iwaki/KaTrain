@@ -2614,6 +2614,45 @@ def tsumego_declass_choice(chosen, pool, ko_routes, points_epsilon=TSUMEGO_POINT
     return max(clean, key=lambda c: (c.get("visits", 0), -c["pointsLost"]))
 
 
+def tsumego_declass_confirmed(value, stone_count, solver_attacks, threshold=TSUMEGO_SUCCESS_OWNERSHIP):
+    """格下げ先が本当に「無条件で解いた手」かを役割石の絶対 ownership で確かめる。
+
+    `tsumego_declass_choice` が要求するのは「clean であること」と「目数同着バンド内であること」
+    だけだが、**「無条件」は「攻めないので何も起きず自明に clean」でも成立する**。case R は
+    その非解が目数で劣ったので同着バンドで塞げた。**非解が目数でむしろ優る**局面は塞げない。
+
+    実測 case V（2026-07-31、13路右上・枠あり・黒は攻め方。正解 L12＝コウ/最終セキで白の
+    無条件生きを防ぐ形、旧実装は K10 へ格下げして白が無条件で生きた）:
+
+        目数        K10 -0.33 ＜ L12 -0.29（格下げ先のほうが 0.04 良い＝バンド 0.25 の内側）
+        役割石      L12 -0.99/-1.00 ・ K10 **-1.00/-1.00**（同深さ800visits・相手石7子・2run）
+
+    ＝格下げ先は白を殺していない。`select_tsumego_move` 単体は正解 L12 を選んでおり
+    （`frame_validity_probe.py` で確認）、差し替えていたのは格下げだけだった。
+
+    格下げが正しかった実測4ケースの格下げ先は、同じ尺度で例外なく成立している:
+
+        K C13 +0.99/子（攻め方・相手石8子）   L J6 +0.99/子（攻め方・15子）
+        M K1  +0.98/子（守り方・自石8子）     P J1 +0.99/子（攻め方・9子）
+
+    採るべき +0.98 と落とすべき -1.00 の間に約 2.0 の空白があり、閾値は成功判定と同じ
+    `TSUMEGO_SUCCESS_OWNERSHIP`（1子平均 0.5）がその中間に入る。
+
+    **答えがコウの詰碁では正解も ply1 では成立しない**（case V の L12 も -1.00）が、この判定は
+    格下げ**先**にしか課さないので、そのときは「格下げしない＝コウを維持する」に倒れる。
+    格下げ先の成否だけを見るのが肝で、両者を比べる相対判定にすると case R のように
+    **非解のほうが高く出る**（全リージョン石で 正解 +0.86 < 誤答 +1.32）。
+
+    役割が読めない（`solver_attacks is None`＝枠なし）／測れなかった（`value is None`）／
+    役割石が1つも無いときは確認手段が無いので従来動作（バンドのみ）を維持する。case R は
+    この経路で不変（全リージョン石の合計では成否が分離できないので、役割不明のまま絶対判定を
+    課すと逆効果になる）。
+    """
+    if solver_attacks is None or value is None or not stone_count:
+        return True
+    return tsumego_ko_escape_succeeds(value, stone_count, threshold)
+
+
 def tsumego_class_screen_all_ko(pool, ko_routes):
     """検査した pool が全員コウ経路か＝コウ脱出（`_ko_escape_choice`）のトリガー。
 
@@ -2877,6 +2916,13 @@ class TsumegoOwnershipStrategy(AIStrategy):
                 ):
                     ko_routes = frozenset({chosen["move"]}) | self._ko_route_screen(pool[1:])
                     declassed = tsumego_declass_choice(chosen, pool, ko_routes, points_epsilon)
+                    # clean は「無条件に解いた」の証拠にならない（攻めないので何も起きない手も
+                    # clean になる）。役割が読めるなら、格下げ先が本当に解いているかを
+                    # 同深さの役割石 ownership で確かめてから差し替える（`tsumego_declass_confirmed`）
+                    if declassed["move"] != chosen["move"] and not self._declass_target_confirmed(
+                        declassed, solver_attacks, player_sign
+                    ):
+                        declassed = chosen
                     if declassed["move"] != chosen["move"]:
                         self.game.katrain.log(
                             f"[{self.strategy_name}] コウ経路検査: 選択手 {chosen['move']} を格下げし、"
@@ -2894,8 +2940,9 @@ class TsumegoOwnershipStrategy(AIStrategy):
                             + (
                                 "clean な対抗馬 "
                                 + " ".join(f"{c['move']}(pt{c['pointsLost']:+.2f})" for c in clean_rivals)
-                                + " は目数同着バンドの外（守り方のセキは目数で必ず劣るので"
-                                "「答えがコウ」の根拠にはならない）"
+                                + " には格下げしていない（目数同着バンドの外＝守り方のセキは目数で"
+                                "必ず劣るので「答えがコウ」の根拠にはならない、または格下げ先が"
+                                "詰碁を解いていない）"
                                 if clean_rivals
                                 else "clean な対抗馬が居ない"
                             )
@@ -3076,6 +3123,44 @@ class TsumegoOwnershipStrategy(AIStrategy):
                 )
         return frozenset(routes)
 
+    def _declass_target_confirmed(self, target, solver_attacks, player_sign):
+        """格下げ先が本当に詰碁を解いているかを同深さで測る（役割が読めるときだけ・解析1本）。
+
+        判定の中身と実測は `tsumego_declass_confirmed` の docstring を参照。格下げが起きようと
+        している手番でしか走らないので、通常の手番のコストは増えない。
+        """
+        if solver_attacks is None:
+            return True
+        settings = self.settings or {}
+        visits = int(settings.get("gain_verify_visits", TSUMEGO_GAIN_VERIFY_VISITS))
+        threshold = float(settings.get("ko_success_ownership", TSUMEGO_SUCCESS_OWNERSHIP))
+        own_stones, opponent_stones = tsumego_region_stones_by_player(
+            self.game.stones, self.game.region_of_interest, self.cn.next_player
+        )
+        role_stones = tsumego_role_stones(own_stones, opponent_stones, solver_attacks)
+        verdict = self._region_child_verdict(target["move"], role_stones, player_sign, visits)
+        value = None if verdict is None else verdict["value"]
+        confirmed = tsumego_declass_confirmed(value, len(role_stones), solver_attacks, threshold)
+        if verdict is None or not role_stones:
+            self.game.katrain.log(
+                f"[{self.strategy_name}] コウ経路検査: 格下げ先 {target['move']} の成否を測れないため"
+                f"従来どおり格下げします",
+                OUTPUT_INFO,
+            )
+        else:
+            per_stone = value / len(role_stones)
+            self.game.katrain.log(
+                f"[{self.strategy_name}] コウ経路検査: 格下げ先 {target['move']} の同深さ{visits}visits・"
+                f"役割石{len(role_stones)}子は{per_stone:+.2f}/子"
+                + (
+                    f"（>= ko_success_ownership={threshold}）＝無条件で成立"
+                    if confirmed
+                    else f"（< ko_success_ownership={threshold}）＝詰碁を解いていないので格下げしません"
+                ),
+                OUTPUT_INFO,
+            )
+        return confirmed
+
     def _region_child_verdict(self, move_gtp, stones, player_sign, visits):
         """候補手を1手進め、リージョン解析**1本**で「コウ経路か」と「同深さ ownership」を同時に取る。
 
@@ -3167,7 +3252,10 @@ class TsumegoOwnershipStrategy(AIStrategy):
         listed = " ".join("{}(p{:.4f})".format(c["move"], c.get("prior", 0.0)) for c in shortlist)
         incumbent_per_stone = f"（{incumbent['value'] / len(stones):+.2f}/子）" if stones else ""
         self.game.katrain.log(
-            f"[{self.strategy_name}] コウ脱出: 目数ガード内が全てコウ経路のため、root が読まなかった "
+            # トリガーは「目数ガード内が全てコウ経路」だけではない（役割が読めるなら clean な
+            # 対抗馬が居ても走る＝case T、格下げ先が詰碁を解いていなくても走る＝case V）ので、
+            # 共通する事実（コウの選択手を格下げできなかった）を書く
+            f"[{self.strategy_name}] コウ脱出: コウの選択手を格下げできなかったため、root が読まなかった "
             f"policy 上位 {listed} を同深さ{visits}visits で測ります"
             f"（選択手 {chosen['move']} の検証値{incumbent['value']:+.2f}{incumbent_per_stone}、"
             f"成否は役割石{len(stones)}子の1子平均 >= {success_ownership}、tolerance={tolerance}）",

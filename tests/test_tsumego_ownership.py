@@ -16,6 +16,7 @@ from katrain.core.ai import (
     tsumego_class_screen_pool,
     tsumego_competitive_replies,
     tsumego_declass_choice,
+    tsumego_declass_confirmed,
     tsumego_needs_score_best_verify,
     tsumego_selection_band,
     tsumego_absolute_ownership,
@@ -265,6 +266,56 @@ def test_declass_points_tolerance_boundary():
     outside = {"move": "C1", "pointsLost": 0.26, "visits": 50, "ownership": ZERO}
     assert tsumego_declass_choice(ko, [ko, inside], frozenset({"A1"}), 0.25)["move"] == "B1"
     assert tsumego_declass_choice(ko, [ko, outside], frozenset({"A1"}), 0.25)["move"] == "A1"
+
+
+# --- 格下げ先が本当に詰碁を解いているかの確認（tsumego_declass_confirmed） -------------------
+# 「無条件」は「攻めないので何も起きず自明に clean」でも成立するので、clean であることは
+# 「無条件に解いた」の証拠にならない。case R はその非解が目数で劣ったので同着バンドで塞げたが、
+# **非解が目数でむしろ優る**局面ではバンドを素通りする。
+#
+# 実測 case V（2026-07-31、13路右上・枠あり・黒は攻め方。正解 L12＝コウ/最終セキで白の無条件生きを
+# 防ぐ形、旧実装は K10 へ格下げして白が無条件で生きた）。同深さ800visits・**役割石**（攻め方なので
+# 相手石7子）の1子平均は 2run とも:
+#
+#     L12（正解・コウ経路）  -0.99 / -1.00      K10（格下げ先・clean） -1.00 / -1.00
+#
+# ＝格下げ先は白を殺していない。目数は K10 -0.33 < L12 -0.29 と**格下げ先のほうが 0.04 良い**ので
+# 同着バンド 0.25 の内側で、case R の目数ガードでは止まらない（`select_tsumego_move` 単体は
+# 正解 L12 を選んでおり、差し替えているのは格下げだけ＝`frame_validity_probe.py` で確認済み）。
+#
+# 格下げが正しかった実測4ケースの格下げ先は、同じ尺度で例外なく成立している:
+#
+#     K C13 +0.99/子（攻め方・相手石8子）   L J6  +0.99/子（攻め方・15子）
+#     M K1  +0.98/子（守り方・自石8子）     P J1  +0.99/子（攻め方・9子）
+#
+# ＝採るべき +0.98 と落とすべき -1.00 の間に約 2.0 の空白があり、閾値 0.5（`ko_success_ownership`）
+# がその中間に入る。**答えがコウの詰碁では正解も ply1 では成立しない**（L12 も -1.00）が、この
+# 判定は格下げ**先**にしか課さないので、そのときは「格下げしない＝コウを維持する」に倒れる。
+
+
+def test_declass_requires_the_target_to_solve_the_problem():
+    # 実測 case V: 格下げ先 K10 は役割石（相手石7子）の合計 -7.00＝-1.00/子 で白は生きたまま
+    assert not tsumego_declass_confirmed(-7.00, 7, solver_attacks=True, threshold=0.5)
+    # 格下げが正しかった4ケースの格下げ先は同じ尺度で成立している（K/L/P=攻め方, M=守り方）
+    assert tsumego_declass_confirmed(7.94, 8, solver_attacks=True, threshold=0.5)
+    assert tsumego_declass_confirmed(14.85, 15, solver_attacks=True, threshold=0.5)
+    assert tsumego_declass_confirmed(7.84, 8, solver_attacks=False, threshold=0.5)
+    assert tsumego_declass_confirmed(8.91, 9, solver_attacks=True, threshold=0.5)
+
+
+def test_declass_confirmation_is_skipped_without_a_role():
+    """枠なしで役割が読めない盤（case R）では確認手段が無いので従来どおり目数バンドだけで裁定する。
+
+    全リージョン石の合計では成否が分離できない（実測 case R: 正解 G13 +0.86/+0.97 に対し
+    誤答 D8 +1.32/+2.34 と誤答のほうが高い）ので、役割不明のまま絶対判定を課すと逆効果になる。
+    """
+    assert tsumego_declass_confirmed(-7.00, 7, solver_attacks=None, threshold=0.5)
+
+
+def test_declass_confirmation_passes_when_the_verdict_is_unavailable():
+    # 子局面を測れなかった（局面を再現できない・解析が返らない）ときは従来動作の側に倒す
+    assert tsumego_declass_confirmed(None, 7, solver_attacks=True, threshold=0.5)
+    assert tsumego_declass_confirmed(-7.00, 0, solver_attacks=True, threshold=0.5)
 
 
 def test_class_screen_all_ko_is_the_escape_trigger():
