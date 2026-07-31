@@ -3,6 +3,9 @@ from types import SimpleNamespace
 import pytest
 
 from katrain.core.ai import (
+    TSUMEGO_CLASS_FAILED,
+    TSUMEGO_CLASS_KO,
+    TSUMEGO_CLASS_UNCONDITIONAL,
     TSUMEGO_GAIN_RESCUE_MARGIN,
     TSUMEGO_GAIN_VERIFY_MARGIN,
     TSUMEGO_KO_MARGIN,
@@ -32,6 +35,7 @@ from katrain.core.ai import (
     tsumego_ownership_gain,
     tsumego_rescue_candidates,
     tsumego_region_stones_by_player,
+    tsumego_result_class,
     tsumego_class_screen_applies,
     tsumego_ko_escape_applies,
     tsumego_role_stones,
@@ -316,6 +320,43 @@ def test_declass_confirmation_passes_when_the_verdict_is_unavailable():
     # 子局面を測れなかった（局面を再現できない・解析が返らない）ときは従来動作の側に倒す
     assert tsumego_declass_confirmed(None, 7, solver_attacks=True, threshold=0.5)
     assert tsumego_declass_confirmed(-7.00, 0, solver_attacks=True, threshold=0.5)
+
+
+# --- 到達局面のクラス（tsumego_result_class）と格上げ ------------------------------------------
+# クラス裁定は長く**格下げ方向（コウ → 無条件）しか持っていなかった**が、詰碁の順序で最下位なのは
+# 「相手が無条件で生きる／自石が無条件で死ぬ」＝**失敗**であって、成立していない clean 手はコウ手の
+# 下にいる。格下げ側だけだと、選択手が clean で失敗している局面で機構が丸ごと沈黙する。
+#
+# 実測 case V2（2026-07-31、case V の続き＝黒L12 白N10 まで進めた局面・黒は攻め方。正解 N13 で
+# コウ、旧実装は K10 を打って白の無条件生き）。同深さ800visits・役割石（相手石8子）:
+#
+#     K10（選択・clean）  pt+0.42 v1069 prior .196   -0.91/-1.00 /子
+#     L11（対抗馬・clean）pt+0.41 v676  prior .0172  -0.99/-0.99 /子
+#     N13（正解・**コウ**）pt+7.97 v17   prior .0133  -1.00/-1.00 /子
+#     L13（clean）        pt+7.71 v2    prior .0021  -1.00/-1.00 /子
+#
+# ＝どの手でも白は生きると読まれ、目数・gain・ownership のどれも正解を指さない（正解は目数ガード
+# best+2.0 の外で v17）。分離できるのはクラスだけで、N13 だけが「応手 L11 の PV がコウ形に到達」と
+# 2/2 run で出る。トリガーが誤爆しないことは枠あり8ケースの正解手で確認済み（全部 ply1・800visits
+# で成立: D A4 +0.99 / E K1 +1.00 / J N10 +1.00 / K C13 +0.99 / L J6 +0.99 / M K1 +0.98（守り方）/
+# P J1 +0.99 / T M1 +1.00（守り方））。
+
+
+def test_result_class_orders_unconditional_above_ko_above_failure():
+    assert tsumego_result_class(is_ko=False, succeeds=True) == TSUMEGO_CLASS_UNCONDITIONAL
+    assert tsumego_result_class(is_ko=True, succeeds=False) == TSUMEGO_CLASS_KO
+    assert tsumego_result_class(is_ko=False, succeeds=False) == TSUMEGO_CLASS_FAILED
+    assert TSUMEGO_CLASS_UNCONDITIONAL < TSUMEGO_CLASS_KO < TSUMEGO_CLASS_FAILED
+
+
+def test_result_class_does_not_promote_a_ko_route_that_reads_as_success():
+    """コウ経路は「成立している」と読めてもコウのまま。
+
+    コウ手のスコア・ownership は「コウに勝った前提」で無条件の正解より**むしろ高く**出る
+    （実測 case O の同深さ800visits: コウの B12 +41.95 > 正解 A11 +41.85）。読みでクラスを
+    繰り上げると、格下げ（無条件 > コウ）が意味を失う。
+    """
+    assert tsumego_result_class(is_ko=True, succeeds=True) == TSUMEGO_CLASS_KO
 
 
 def test_class_screen_all_ko_is_the_escape_trigger():

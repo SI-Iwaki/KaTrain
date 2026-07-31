@@ -2653,6 +2653,31 @@ def tsumego_declass_confirmed(value, stone_count, solver_attacks, threshold=TSUM
     return tsumego_ko_escape_succeeds(value, stone_count, threshold)
 
 
+# 到達局面のクラス（小さいほど上位）。**順序の中身は役割で読み替えるが、失敗が最下位なのは共通**:
+#
+#     攻め方  無条件に殺す > コウ > （セキ）> **相手が無条件で生きる＝失敗**
+#     守り方  無条件に生きる > セキ > コウ > **自石が無条件で死ぬ＝失敗**
+#
+# 成否は役割石（攻め方＝相手石／守り方＝自石）の1子平均 ownership で測るので、クラスの計算自体は
+# 役割に依存しない（`tsumego_role_stones` が役割を吸収している）。
+TSUMEGO_CLASS_UNCONDITIONAL = 0
+TSUMEGO_CLASS_KO = 1
+TSUMEGO_CLASS_FAILED = 2
+
+
+def tsumego_result_class(is_ko, succeeds):
+    """到達局面のクラスを返す（`TSUMEGO_CLASS_*`、小さいほど上位）。
+
+    コウ経路で**かつ**成立していると読めた手は「コウ」に置く（`TSUMEGO_CLASS_KO`）。
+    詰碁の順序で「無条件」を名乗れるのは構造的にコウが現れない手だけで、コウ手のスコアや
+    ownership は「コウに勝った前提」で高く出る（実測 case O: コウの B12 +41.95 > 正解 A11 +41.85）
+    ため、成立の読みでクラスを繰り上げてはいけない。
+    """
+    if is_ko:
+        return TSUMEGO_CLASS_KO
+    return TSUMEGO_CLASS_UNCONDITIONAL if succeeds else TSUMEGO_CLASS_FAILED
+
+
 def tsumego_class_screen_all_ko(pool, ko_routes):
     """検査した pool が全員コウ経路か＝コウ脱出（`_ko_escape_choice`）のトリガー。
 
@@ -2858,7 +2883,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
             chosen = candidate_moves[0]
             gain_text = "ownership なし"
         else:
-            escape_value = None
+            escape_value, escape_label = None, "コウ脱出"
             score_best = tsumego_score_best(eligible)
             if (
                 score_best is not None
@@ -2909,11 +2934,10 @@ class TsumegoOwnershipStrategy(AIStrategy):
                 # どの経路で選ばれてもスコア系メトリックではクラス混同を検出できない。
                 # 選択手が clean なら検査1本で終わる。対抗馬の検査は選択手がコウ経路のときだけ
                 pool = tsumego_class_screen_pool(chosen, eligible)
+                class_screen_applies = tsumego_class_screen_applies(chosen, eligible)
                 # 選択手だけ敏感側の比で検査する（見逃すとクラス裁定が丸ごと no-op になるため）。
                 # 格下げ先候補（pool[1:]）は保守側のまま＝過検出は脱出の誤爆に化ける
-                if tsumego_class_screen_applies(chosen, eligible) and self._ko_route_screen(
-                    [chosen], ratio=TSUMEGO_KO_REPLY_RATIO_CHOSEN
-                ):
+                if class_screen_applies and self._ko_route_screen([chosen], ratio=TSUMEGO_KO_REPLY_RATIO_CHOSEN):
                     ko_routes = frozenset({chosen["move"]}) | self._ko_route_screen(pool[1:])
                     declassed = tsumego_declass_choice(chosen, pool, ko_routes, points_epsilon)
                     # clean は「無条件に解いた」の証拠にならない（攻めないので何も起きない手も
@@ -2984,10 +3008,19 @@ class TsumegoOwnershipStrategy(AIStrategy):
                             f"（役割が読めないので「答えがコウの詰碁」とみなす）",
                             OUTPUT_INFO,
                         )
+                elif class_screen_applies:
+                    # 選択手は clean。詰碁の順序で最下位なのは「相手が無条件で生きる／自石が死ぬ」＝
+                    # 失敗なので、成立していない clean を採るくらいならコウ経路のほうが上位になる
+                    # （格下げの裏返し＝`_ko_promotion_choice`。実測 case V2）
+                    chosen, promoted_value = self._ko_promotion_choice(
+                        chosen, candidate_moves, solver_attacks, player_sign
+                    )
+                    if promoted_value is not None:
+                        escape_value, escape_label = promoted_value, "クラス格上げ"
             if escape_value is not None:
                 # 脱出で採った手の root ownership は 1visit の生評価なので gain を出しても意味がない
                 # （実測 case O: 正解 A11 の root gain は -16.99）。同深さ検証値のほうを見せる
-                gain_text = f"コウ脱出/同深さ検証{escape_value:+.2f}"
+                gain_text = f"{escape_label}/同深さ検証{escape_value:+.2f}"
             else:
                 gain = tsumego_ownership_gain(
                     self.cn.ownership, chosen["ownership"], stones, self.game.board_size, player_sign
@@ -3161,7 +3194,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
             )
         return confirmed
 
-    def _region_child_verdict(self, move_gtp, stones, player_sign, visits):
+    def _region_child_verdict(self, move_gtp, stones, player_sign, visits, wide_root_noise=None):
         """候補手を1手進め、リージョン解析**1本**で「コウ経路か」と「同深さ ownership」を同時に取る。
 
         コウ経路の判定は `_ko_route_screen` と同じ手順（候補手自身の1子取り＋守り方の拮抗応手の
@@ -3172,6 +3205,11 @@ class TsumegoOwnershipStrategy(AIStrategy):
         リージョンの拘束深さも `_ko_route_screen` と揃える（`TSUMEGO_KO_REGION_UNTIL_DEPTH`）。
         `value` は候補と incumbent を同条件で測った相対比較にしか使わないので、拘束を深くしても
         両者に同じだけ効く。
+
+        `wide_root_noise` の既定（None）は本譜と同じ設定＝**脱出の校正（case O/T/F）はこの条件**。
+        **`ko` フラグそのものを裁定に使う呼び出しだけ** `TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE`(0) を
+        渡す（root の Dirichlet ノイズが応手の visits 比を run ごとに揺らす＝case M。格上げ
+        `_ko_promotion_choice` はクラスで決めるのでこちら側）。
 
         取れなければ None。
         """
@@ -3184,7 +3222,13 @@ class TsumegoOwnershipStrategy(AIStrategy):
             node = sim.play(Move.from_gtp(move_gtp, player=player))
         except IllegalMoveException:
             return None
-        root = self._analyze_region_root(node, visits, ownership=True, until_depth=TSUMEGO_KO_REGION_UNTIL_DEPTH)
+        root = self._analyze_region_root(
+            node,
+            visits,
+            ownership=True,
+            until_depth=TSUMEGO_KO_REGION_UNTIL_DEPTH,
+            wide_root_noise=wide_root_noise,
+        )
         if root is None or root.get("ownership") is None:
             return None
         ko_reply = None
@@ -3208,6 +3252,129 @@ class TsumegoOwnershipStrategy(AIStrategy):
             "value": tsumego_absolute_ownership(root["ownership"], stones, self.game.board_size, player_sign),
             "lead": player_sign * root["lead"],
         }
+
+    def _ko_promotion_choice(self, chosen, candidate_moves, solver_attacks, player_sign):
+        """clean な選択手が詰碁を成立させていないとき、上位クラス（無条件 > コウ）へ格上げする。
+
+        クラス裁定はこれまで**格下げ方向（コウ → 無条件）しか持っていなかった**。ところが
+        詰碁の順序で最下位なのは「相手が無条件で生きる／自石が無条件で死ぬ」＝**失敗**であって、
+        成立していない clean 手はコウ手より下にいる。格下げ側だけだと、選択手が clean で失敗して
+        いる局面で機構が丸ごと沈黙する。
+
+        実測 case V2（2026-07-31、case V の続き＝黒L12 白N10 まで進めた局面・黒は攻め方。
+        正解 N13 でコウ、AI は K10 を打って白の無条件生き）:
+
+            K10（選択・clean） pt+0.42 v1069 prior1位   相手石 -0.91/-1.00 /子
+            L11（対抗馬・clean）pt+0.41 v676  prior2位   相手石 -0.99/-0.99 /子
+            N13（正解・**コウ**）pt+7.97 v17  prior3位   相手石 -1.00/-1.00 /子
+            L13（clean）        pt+7.71 v2   prior4位   相手石 -1.00/-1.00 /子
+
+        ＝**どの手でも白は生きる**と読まれており、目数・gain・同深さ ownership のどれも正解を
+        指さない（正解は目数ガード best+2.0 の外で v17、gain も同着）。分離できるのはクラスだけで、
+        N13 だけが「応手 L11 の PV がリージョン内のコウ形に到達」と 2/2 run で出る。
+
+        探す先が root policy なのは case O と同じ理由（value が壊れた手に visits は付かない）。
+        実測の prior は K10 .196 / L11 .0172 / **N13 .0133** / L13 .0021 で、残り全部が NN 下限
+        .00009＝正解は `ko_escape_min_prior`(0.001) の上、下限手との間に 20 倍の崖がある。
+
+        **トリガーは絶対判定（役割石の1子平均 < `ko_success_ownership`）で、相対比較ではない**。
+        枠あり8ケースの実測では、正解の clean 手は例外なく ply1・800visits で成立している
+        （D A4 +0.99 / E K1 +1.00 / J N10 +1.00 / K C13 +0.99 / L J6 +0.99 / M K1 +0.98（守り方）/
+        P J1 +0.99 / T M1 +1.00（守り方））ので、この機構はそれらの手番では**1本も解析せずに
+        素通りする**（root の movesOwnership で先に振るう）。
+
+        役割が読めない（枠なし）盤では走らない＝成否を測る尺度が無く、全リージョン石の合計では
+        成否が分離できないため（case R）。
+
+        (採用する候補, 検証値) を返す。格上げしなければ (chosen, None)。
+        """
+        settings = self.settings or {}
+        max_candidates = int(settings.get("ko_escape_candidates", TSUMEGO_KO_ESCAPE_MAX_CANDIDATES))
+        if solver_attacks is None or max_candidates <= 0:
+            return chosen, None
+        threshold = float(settings.get("ko_success_ownership", TSUMEGO_SUCCESS_OWNERSHIP))
+        visits = int(settings.get("gain_verify_visits", TSUMEGO_GAIN_VERIFY_VISITS))
+        min_prior = float(settings.get("ko_escape_min_prior", TSUMEGO_KO_ESCAPE_MIN_PRIOR))
+        own_stones, opponent_stones = tsumego_region_stones_by_player(
+            self.game.stones, self.game.region_of_interest, self.cn.next_player
+        )
+        role_stones = tsumego_role_stones(own_stones, opponent_stones, solver_attacks)
+        if not role_stones:
+            return chosen, None
+        # 解析を撃つ前に root の movesOwnership で振るう。成立していると読めているならクラス裁定は
+        # 不要で、通常の手番のコストは 0 本のまま（実測の正解手は +0.98〜+1.00 でここを通らない）
+        if chosen.get("ownership"):
+            root_per_stone = (
+                tsumego_absolute_ownership(chosen["ownership"], role_stones, self.game.board_size, player_sign)
+                / len(role_stones)
+            )
+            if root_per_stone >= threshold:
+                return chosen, None
+        incumbent = self._region_child_verdict(
+            chosen["move"],
+            role_stones,
+            player_sign,
+            visits,
+            wide_root_noise=TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE,
+        )
+        if incumbent is None:
+            return chosen, None
+        if tsumego_ko_escape_succeeds(incumbent["value"], len(role_stones), threshold):
+            self.game.katrain.log(
+                f"[{self.strategy_name}] クラス格上げ: 選択手 {chosen['move']} は同深さ{visits}visits・"
+                f"役割石{len(role_stones)}子で{incumbent['value'] / len(role_stones):+.2f}/子＝成立しているため不要",
+                OUTPUT_DEBUG,
+            )
+            return chosen, None
+        shortlist = tsumego_ko_escape_candidates(candidate_moves, {chosen["move"]}, min_prior, max_candidates)
+        if not shortlist:
+            return chosen, None
+        listed = " ".join("{}(p{:.4f})".format(c["move"], c.get("prior", 0.0)) for c in shortlist)
+        self.game.katrain.log(
+            f"[{self.strategy_name}] クラス格上げ: 選択手 {chosen['move']} は無条件だが"
+            f"{incumbent['value'] / len(role_stones):+.2f}/子＝詰碁が成立していない（最下位クラス）ため、"
+            f"policy 上位 {listed} を同深さ{visits}visits で測ります"
+            f"（成否は役割石{len(role_stones)}子の1子平均 >= {threshold}）",
+            OUTPUT_INFO,
+        )
+        best = None
+        for cand in shortlist:
+            verdict = self._region_child_verdict(
+                cand["move"], role_stones, player_sign, visits, wide_root_noise=TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE
+            )
+            if verdict is None:
+                continue
+            per_stone = verdict["value"] / len(role_stones)
+            succeeds = tsumego_ko_escape_succeeds(verdict["value"], len(role_stones), threshold)
+            result_class = tsumego_result_class(verdict["ko"], succeeds)
+            label = {
+                TSUMEGO_CLASS_UNCONDITIONAL: "無条件で成立",
+                TSUMEGO_CLASS_KO: f"コウ経路（{verdict['ko_reply']}）",
+                TSUMEGO_CLASS_FAILED: "成立していない（選択手と同じ最下位クラス）",
+            }[result_class]
+            self.game.katrain.log(
+                f"[{self.strategy_name}] クラス格上げ: {cand['move']} 検証値{verdict['value']:+.2f}"
+                f"（{per_stone:+.2f}/子） 目数{verdict['lead']:+.2f} → {label}",
+                OUTPUT_INFO,
+            )
+            if result_class < TSUMEGO_CLASS_FAILED and (best is None or result_class < best[0]):
+                best = (result_class, cand, verdict)
+            if best is not None and best[0] == TSUMEGO_CLASS_UNCONDITIONAL:
+                break  # 無条件はクラスの最上位なので、これ以上測る必要が無い
+        if best is None:
+            self.game.katrain.log(
+                f"[{self.strategy_name}] クラス格上げ: 上位クラスの手が無いため選択手 {chosen['move']} を維持します",
+                OUTPUT_INFO,
+            )
+            return chosen, None
+        promoted = "無条件" if best[0] == TSUMEGO_CLASS_UNCONDITIONAL else "コウ"
+        self.game.katrain.log(
+            f"[{self.strategy_name}] クラス格上げ: 成立していない {chosen['move']} より上位の "
+            f"{promoted}の {best[1]['move']} を採用します"
+            f"（詰碁の順序: 無条件 > コウ > 相手が無条件で生きる/自石が死ぬ）",
+            OUTPUT_INFO,
+        )
+        return best[1], best[2]["value"]
 
     def _ko_escape_choice(self, chosen, candidate_moves, screened_moves, stones, player_sign):
         """選択手も対抗馬も全部コウ経路のとき、root が読まなかった policy 上位手から無条件手を探す。
