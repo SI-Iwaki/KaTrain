@@ -318,6 +318,41 @@ def test_correct_attacker_for_real_capture_fixture():
     assert white_out > black_out, f"枠外の代償地帯は守り側の白が多いはず: black={black_out} white={white_out}"
 
 
+def _case_s_core():
+    # 実キャプチャ 2026-07-31 case S の認識盤（13路右上。黒が M10 から白を無条件に殺す詰碁で、
+    # 黒＝攻め方）。左端の列 H に H11(白) と H10(黒) が縦に並んでおり、「左辺の極値」を
+    # どちらの石で代表させるかで guess_black_to_attack の符号が反転する:
+    #   H11(白) を採る … -1  → black_to_attack=False（誤。実キャプチャはこちらを引いた）
+    #   H10(黒) を採る … +42 → black_to_attack=True （正）
+    # 極値線の石を全部足せば +21 で、タイの崩し方に依存しなくなる
+    gtp = lambda p: (13 - int(p[1:]), "ABCDEFGHJKLMN".index(p[0]))  # noqa: E731
+    black = "M13 K12 L12 K11 H10 K10 J9 J8 J7 K7 L7 M6 L5".split()
+    white = "M12 N12 H11 L11 L10 K8 L8 M8 M7".split()
+    return _board(stones=[(*gtp(p), "B") for p in black] + [(*gtp(p), "W") for p in white])
+
+
+def test_extremum_tie_does_not_decide_the_attacker():
+    # 回帰テスト（case S）: 極値線に同座標の石が複数あるとき、min_by は「その時点の配列順
+    # ＝row-major 順で最初の1子」を代表にする。case S の左辺は H11(白) が H10(黒) より先に
+    # 来るため白が代表になり、判定が -1 という紙一重の差で反転していた。
+    # 反転した枠は攻め方(黒)に代償地帯を渡すので黒が +21目リードし、死活がスコアから
+    # 切り離されて詰碁と無関係な H12 が選ばれた（枠なし盤なら正解 M10 を選べていた）
+    board = _case_s_core()
+    out, region = tsumego_frame_board(board, komi=7.0, black_to_play_p=True, ko_p=False, margin=4)
+    (i0, i1), (j0, j1) = region
+
+    wall = {out[i][j0] for i in range(i0, i1 + 1)}
+    assert wall == {"B"}, f"壁は攻め側の黒であるべき: {wall}"
+
+    isize, jsize = len(out), len(out[0])
+    outside = [
+        out[i][j] for i in range(isize) for j in range(jsize) if not (i0 <= i <= i1 and j0 <= j <= j1)
+    ]
+    assert outside.count("W") > outside.count("B"), (
+        f"枠外の代償地帯は守り側の白が多いはず: black={outside.count('B')} white={outside.count('W')}"
+    )
+
+
 def test_wall_colour_invariant_under_transpose():
     # 不変条件テスト: guess_black_to_attack が height2（転置・反転不変）で重み付けされる以上、
     # 「どちらが攻め側か」は盤の向き（転置）に依存してはいけない。バグ修正前は
@@ -573,6 +608,78 @@ def test_frame_validity_verdicts_does_not_reread_a_living_frame():
 
     calls = []
     read = _reader({400: (5.0, 8.0, 8), 1800: (5.0, 8.0, 8)}, calls)
+    verdicts = frame_validity_verdicts([(False, "board", "region")], read, 400, 1800)
+    assert (verdicts[0].destroys, verdicts[0].visits) == (False, 400)
+    assert calls == [(False, 400)]
+
+
+def test_frame_validity_verdicts_confirms_a_borderline_living_frame():
+    # 回帰テスト（case S）: 読み直しは「浅い読みで死と出た枠」にしか課しておらず、浅い読みの
+    # 「生」はそのまま採用していた。ところが浅い読みは死側にも生側にも振れる。case S の実測は
+    # 同じ枠・同じ 400visits で +0.4977/子（死と出て読み直し→枠なし→正解）と +0.65/子
+    # （生と出てそのまま出題→誤答）の両方を引いており、1800visits では +0.46/子 で壊れ判定。
+    # 閾値近傍の「生」は採用する前に確かめる（＝安全網を両側で対称にする）
+    from katrain.core.tsumego_frame import frame_validity_verdicts
+
+    calls = []
+    read = _reader({400: (24.64, 8.45, 13), 1800: (21.77, 6.01, 13)}, calls)
+    verdicts = frame_validity_verdicts([(False, "board", "region")], read, 400, 1800)
+    assert (verdicts[0].destroys, verdicts[0].visits) == (True, 1800)
+    assert calls == [(False, 400), (False, 1800)]
+
+
+def test_frame_validity_verdicts_keeps_a_confirmed_borderline_frame():
+    # 生きる詰碁では手番側の石そのものが戦いの対象なので、正しい枠でも +1.00/子 にはならない
+    # （実測 case M の正しい役割の枠: 400/1800visits とも +0.72/子）。帯に入るので確認の
+    # 読み直しは走るが、確認できたら従来どおり枠を使う
+    from katrain.core.tsumego_frame import frame_validity_verdicts
+
+    calls = []
+    read = _reader({400: (-19.64, 5.04, 7), 1800: (-19.46, 5.05, 7)}, calls)
+    verdicts = frame_validity_verdicts([(False, "board", "region")], read, 400, 1800)
+    assert (verdicts[0].destroys, verdicts[0].visits) == (False, 1800)
+    assert calls == [(False, 400), (False, 1800)]
+
+
+def test_frame_validity_verdicts_confirms_a_borderline_frame_even_beside_a_living_one():
+    # 打ち切りは「死と出た枠の**救済**は要らない」という意味しか持たせない。閾値近傍で生と
+    # 出た枠を確かめずに残すと、それが pick_balanced_frame の候補として残り、バランス次第で
+    # **確かめていない枠が出題される**（case S で誤答したのと同じ状態）
+    from katrain.core.tsumego_frame import frame_validity_verdicts
+
+    calls = []
+    candidates = [(False, "boardF", "regF"), (True, "boardT", "regT")]
+    readers = {
+        "boardF": _reader({400: (5.0, 9.5, 10), 1800: (5.0, 9.5, 10)}, calls),  # +0.95/子 = 自明に生き
+        "boardT": _reader({400: (4.0, 6.0, 10), 1800: (4.0, 4.2, 10)}, calls),  # +0.60 → +0.42 で壊れ
+    }
+    verdicts = frame_validity_verdicts(candidates, lambda c, v: readers[c[1]](c, v), 400, 1800)
+    assert [(v.ko_p, v.destroys, v.visits) for v in verdicts] == [(False, False, 400), (True, True, 1800)]
+    assert calls == [(False, 400), (True, 400), (True, 1800)]
+
+
+def test_frame_validity_verdicts_skips_the_rescue_of_a_dead_frame():
+    # 逆に「死と出た枠」は、使える枠が確定していれば読み直さない（救済の必要が無い）
+    from katrain.core.tsumego_frame import frame_validity_verdicts
+
+    calls = []
+    candidates = [(False, "boardF", "regF"), (True, "boardT", "regT")]
+    readers = {
+        "boardF": _reader({400: (5.0, 9.5, 10), 1800: (5.0, 9.5, 10)}, calls),
+        "boardT": _reader({400: (-9.0, -8.0, 10), 1800: (-9.0, -8.0, 10)}, calls),
+    }
+    verdicts = frame_validity_verdicts(candidates, lambda c, v: readers[c[1]](c, v), 400, 1800)
+    assert [(v.ko_p, v.destroys, v.visits) for v in verdicts] == [(False, False, 400), (True, True, 400)]
+    assert calls == [(False, 400), (True, 400)]
+
+
+def test_frame_validity_verdicts_does_not_reread_what_it_cannot_measure():
+    # 手番側の本体石が無い図（相手の石だけ）は 1子平均が計算できない。確認の読み直しは
+    # 「閾値近傍かどうか」で決めるので、測れない枠に読み直しを課しても結論は変わらない
+    from katrain.core.tsumego_frame import frame_validity_verdicts
+
+    calls = []
+    read = _reader({400: (5.0, 0.0, 0), 1800: (5.0, 0.0, 0)}, calls)
     verdicts = frame_validity_verdicts([(False, "board", "region")], read, 400, 1800)
     assert (verdicts[0].destroys, verdicts[0].visits) == (False, 400)
     assert calls == [(False, 400)]

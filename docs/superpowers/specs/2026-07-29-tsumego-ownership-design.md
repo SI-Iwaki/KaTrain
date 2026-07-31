@@ -1776,6 +1776,130 @@ J13 が選ばれた run では G13 が pt で 0.25 超え劣位に出ており�
 **case R は case I / case Q と同じ「エンジン側の限界」枠**に置く。実装済みの2つの防壁
 （格下げバンド・救済の床）は、root が正しく G13 を最善と読んだ run を確実に守るためのもの。
 
+## 追記27（2026-07-31）: 枠の攻め方推定が極値のタイで反転した（case S）
+
+13路右上の詰碁（正解は黒 M10 → 白 M11 → 黒 N10 → 白 K9 → 黒 M9 → 白 N7 → 黒 N9 で
+白を無条件に殺す。**黒＝攻め方**）で、AI が初手から詰碁とまったく無関係な H12 を打った。
+
+```
+コウ判定: 通常最善+23.03目は成功と言っているが関係石 ownership -0.80/子 が
+          ko_success_ownership=0.5 に届かないため省略しません
+gain順: L13(v11/0.01 pt+6.08 g+2.70) H12(v962/1.00 pt-0.52 g+0.58) M10(v679/0.71 pt+0.15 g-1.01)
+Final decision: H12 (gain=+0.58, pointsLost=-0.52, visits=962, 候補16手（うち対抗馬2手）)
+```
+
+**選択則は無実**。対抗馬（M10）はちゃんと居て機構は全部動いており、それでも H12 が
+目数（-0.52 vs +0.15）でも gain（+0.58 vs -1.01）でも勝っている＝KataGo が H12 を最善と
+読んでいる。原因は選択則ではなく**出題した盤**のほうだった。
+
+### 原因: `guess_black_to_attack` が -1 で反転した
+
+保存 SGF の壁は白＝枠は「白が攻め方」として張られていた。実際は黒が攻め方なので、
+`put_outside` の代償地帯（defense_area 85.5目）が**攻め方であるはずの黒に渡り**、黒はどう
+打っても +21目リードする。死活がスコアから切り離され（追記21 case Q と同じ形）、目数も
+gain も詰碁を測らなくなる。加えて役割反転時の defense_area(85.5) は外側面積(81)を超えており
+（`fit_margin` は `abs(komi)` で見積もるので黒攻めの 78.5 しかチェックしない）、白の壁は
+自分の地に接続しない浮き石になる。
+
+判定を分けたのは**左辺の極値のタイ**だった。コアの最左列は H で、そこに H11(白) と H10(黒)
+が縦に並ぶ。`min_by` は row-major 順の最初の1子を代表にするので H11(白) が採られる:
+
+```
+代表が H11(白)      -1  → black_to_attack=False（誤。実キャプチャはこれを引いた）
+代表が H10(黒)     +42  → black_to_attack=True （正）
+極値線を全部足す   +21  → True（正。タイの崩し方に依存しない）
+```
+
+`tsumego_frame_stones` は「反転・転置でタイの崩れ方が変わる」ことを既に知っていて、元の
+向きで一度だけ判定する形にしてあった。しかしそれは**元の向きでの崩し方を固定しただけ**で、
+崩し方そのものの恣意性は残っていた。
+
+### 安全網が効かなかった理由（case G との違い）
+
+役割反転は case G（追記9）で一度踏んでおり、`frame_destroys_problem`（手番側の本体石が
+開始時点で死と読まれる枠は捨てる）で検出・回避している。ところがこの判定は**手番側が
+守り方のときにしか効かない**。case S は手番側（黒）が攻め方なので、役割が反転しても黒の
+本体石は壁と連絡して生きたままになる（1子平均、`frame_validity_probe.py` / `frame_role_ab.py`）:
+
+```
+枠 role=False（誤）  v400 +0.4977 / +0.65    v1800 +0.46 / +0.46   ← 閾値 0.5 をまたぐ
+枠 role=True （正）  v400 +1.00              v1800 +1.00
+枠なし               v400 +0.97              v1800 +0.97
+```
+
+しかも**浅い読みで「生」と出た枠はそのまま採用**していたので、同じ盤で run ごとに採否が
+入れ替わっていた（実測: +0.4977 を引いた run は読み直し → 全枠壊れ → 枠なし → 正解 M10、
++0.65 を引いた run はそのまま出題 → 誤答 H12）。
+
+### 役割は実測では選べない（`frame_role_ab.py`）
+
+「ko と同じように両方の役割で枠を張って測って選ぶ」案は**使える判定基準が無い**ので採らない。
+4通り（役割×コウダテ）の実測（solver_core は v400/v1800 の1子平均、dist はバランス距離）:
+
+```
+case S（殺す詰碁・黒が攻め方。正解 M10）
+  role=False ko=False  +0.65/+0.46   dist 19.6/16.8   select H12 NG
+  role=False ko=True   +0.08/-0.11   dist  2.5/ 4.7   select H12 NG
+  role=True  ko=False  +1.00/+1.00   dist  5.9/ 5.6   select M10 OK
+  role=True  ko=True   +1.00/+1.00   dist  7.2/ 7.1   select M10 OK
+case M（生きる詰碁・黒が守り方。正解 K1。正しい役割は role=False）
+  role=False ko=False  +0.72/+0.72   dist 14.6/14.5   select K1 OK   ← 正しい役割
+  role=False ko=True   +0.73/+0.72   dist  7.3/ 7.0   select K1 OK   ← 正しい役割
+  role=True  ko=False  +0.96/+0.97   dist  4.2/ 2.7   select K1 OK
+  role=True  ko=True   +0.99/+0.99   dist 25.9/26.5   select K1 OK
+```
+
+`frame_destroys_problem` は**役割の判別には使えない**: 反転した枠では手番側が「攻め方」に
+なって壁と連絡するので、case M では**誤った役割のほうが高く出る**（+0.99 vs +0.72）。
+「solver_core が最大の枠を採る」は生きる詰碁で必ず反転側を選ぶことになる。
+バランス距離も同じで、S・M とも**誤った役割の枠が最良距離**を出す（2.5 / 2.7）。
+追記9 の「枠バランスでは役割反転を検出できない」がここでも成立している。
+
+### 修正
+
+1. **`extremum_stones`** — 攻め方判定の材料を「各辺の代表点1つ」から「極値線に乗る石全部」に
+   変える。タイが消えるので判定はリスト順にも盤の向きにも依存しなくなる。既存17ケース＋S で
+   判定が変わるのは case S（-1 → +21、誤 → 正）と case H（-31 → +12）だけ。case H は枠なしで
+   出題されたキャプチャなので保存 SGF も回帰も枠の張り直しを通らない。
+2. **`FRAME_SOLVER_CONFIRM_OWNERSHIP`(0.9)** — 浅い読みの「生」も、閾値近傍（0.5〜0.9）なら
+   `frame_validity_visits` で確かめてから採用する。「死と出たら読み直す／生と出たら即採用」は
+   安全網として非対称で、浅い読みは**生側にも振れる**（case S の実測がまさにそれ）。
+   自明に生きている枠（+0.96〜+1.00）は従来どおり読み直さないので、殺す詰碁の健全な枠には
+   追加コストが乗らない。生きる詰碁の正しい枠（case M +0.72）は帯に入るので +1本（1.5〜1.9秒）。
+
+`guess_black_to_attack` はあくまでヒューリスティックで、case F / case G は 1 の修正後も反転
+したまま（-61 / -94）。そちらは従来どおり「壊れた枠」として検出され枠なしに落ちる。2 は
+その安全網を、**手番側が攻め方で閾値近傍を滑り込む枠**にも効かせるためのもの。
+
+### 回帰
+
+**case S**: 修正後の枠（`black_attacks=True` / ko=True、壁は黒）で `generate_move_e2e.py`
+（後段の同深さ検証・救済・コウ経路検査込み）が **M10 3/3**。`frame_validity_probe.py` は
+`decision: frame ko=True`（両枠 +1.00/子で確認読み不要）、`[frame] M10 OK` / `[frameless] M10 OK`。
+保存 SGF の `archived` は旧コードが張った反転枠そのものなので **H12 NG のままが正しい**。
+
+**既存12ケースの枠採否**（`frame_validity_probe.py`。1子平均と採用枠。すべて修正前と同じ結論）:
+
+```
+D +1.00/+1.00 → frame ko=False      J +1.00/+1.00 → frame ko=True     O +1.00/+0.98 → frame ko=False
+E +1.00/+1.00 → frame ko=False      K +1.00/+1.00 → frame ko=False    P +1.00/+1.00 → frame ko=True
+F 両枠 destroy → FRAMELESS          L +1.00/+1.00 → frame ko=False    Q +0.81/+0.81 → frame ko=True  ←帯
+G 両枠 destroy → FRAMELESS          M +0.72/+0.73 → frame ko=True ←帯 N 浅い読み両枠 destroy
+                                                                        → ko=False 読み直し +0.93
+                                                                        → frame ko=False
+```
+
+確認読みが増えるのは帯に入った case M / Q（生きる詰碁と大型詰碁＝手番側の本体石が壁と連絡
+しない形）だけで、そこでも両枠とも 1800visits で +0.72 / +0.81 と**浅い読みのまま**＝有効。
+**採用する枠は全12ケースで不変**（+2本＝約3.4秒。健全な殺し問題の枠は +0.96〜+1.00 で
+帯に入らないので追加コスト 0）。`pytest --ignore=tests/test_ai.py` 431 passed。
+
+### 打ち切りの意味を狭めた
+
+読み直しの打ち切りは「**死と出た枠の救済**は要らない（使える枠が既にある）」だけに限る。
+閾値近傍で生と出た枠まで打ち切ると、確かめていない枠が `pick_balanced_frame` の候補に残り、
+バランス次第でそれが出題される＝case S で誤答したのと同じ状態になる。
+
 ## 影響範囲
 
 - `katrain/core/constants.py` — `AI_TSUMEGO` の定義と各リストへの登録
@@ -1785,7 +1909,8 @@ J13 が選ばれた run では G13 が pt で 0.25 超え劣位に出ており�
   （既定は従来どおり 1。追記20）
 - `katrain/__main__.py` — キャプチャ時の黒番プレイヤー種別、枠の採否判定と枠なしフォールバック
 - `katrain/core/tsumego_frame.py` — 枠バランス距離、枠の採否判定（`frame_destroys_problem` /
-  `frame_solver_verdict` / `frame_validity_verdicts` / `frame_over_frameless`）
+  `frame_solver_verdict` / `frame_validity_verdicts` / `frame_over_frameless`）、攻め方判定の
+  材料（`extremum_stones`。追記27）
 - `katrain/config.json` および `C:\Users\iwaki\.katrain\config.json` — 戦略設定と `_enable_ownership`
 - `tests/` — 戦略のユニットテスト
 

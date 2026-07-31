@@ -117,6 +117,22 @@ FRAME_BALANCE_WARN_DISTANCE = 8.0
 # 来たため（case F の ko=False 枠）。0 だと run ごとに符号が反転して枠採否が入れ替わる
 FRAME_SOLVER_ALIVE_OWNERSHIP = 0.5
 
+# 浅い読みの「生」をそのまま信じてよい下限（1子平均）。これ未満で閾値以上＝**閾値近傍の生**は
+# 採用する前に `FRAME_VALIDITY_VISITS` で確かめる。浅い読みは死側だけでなく生側にも振れるので、
+# 「死と出た枠は読み直す／生と出た枠は即採用」は安全網として非対称だった。
+# 実測 2026-07-31 case S（攻め方推定が反転した枠。手番側が攻め方なので反転しても本体石は
+# 壁と連絡して生きたままで、この判定に掛かりにくい）:
+#
+#   壊れている枠 role反転  400visits +0.4977 / +0.65   → 1800visits +0.46 / +0.46   ← 閾値をまたぐ
+#   正しい枠     role正    400visits +1.00            → 1800visits +1.00
+#   case M の正しい枠（生き問題＝手番側が守り方）    +0.72 → +0.72                  ← 帯に入るが有効
+#   case D / E の正常枠                              +1.00
+#
+# 手番側が攻め方の健全な枠は壁と連絡して +0.96〜+1.00 に張り付き、確かめる必要がない。
+# 0.9 は「自明に生きている（+0.96以上）」と「戦いの対象として生きている（+0.72）／閾値近傍の
+# 偽陽性（+0.65）」の間。帯に入った枠は読み直しが1本増える（実測 1.5〜1.9秒）
+FRAME_SOLVER_CONFIRM_OWNERSHIP = 0.9
+
 # 上の判定で「死」と出た枠を捨てる前に読み直すときの visits と wideRootNoise。生き問題では
 # 手番側の石そのものが戦いの対象なので、浅い読み・散らした読みでは有効な枠も死と出る。
 # 実測 2026-07-30 case N（黒番の生き・有効な枠）の1子平均、**プロセスを分けた独立サンプル**
@@ -167,21 +183,33 @@ def frame_solver_verdict(readings, stone_count, threshold=FRAME_SOLVER_ALIVE_OWN
 FrameVerdict = namedtuple("FrameVerdict", "ko_p board region lead destroys visits ownership stone_count readings")
 
 
-def frame_validity_verdicts(candidates, read, trial_visits, validity_visits=FRAME_VALIDITY_VISITS):
+def frame_validity_verdicts(
+    candidates,
+    read,
+    trial_visits,
+    validity_visits=FRAME_VALIDITY_VISITS,
+    confirm_ownership=FRAME_SOLVER_CONFIRM_OWNERSHIP,
+):
     """枠候補 [(ko_p, board, region), ...] を「詰碁を壊していないか」で裁定して FrameVerdict を返す。
 
     read(candidate, visits) -> (root_score_lead, solver_ownership, stone_count) は呼び出し側が
     与える（解析とログは呼び出し側の仕事。この関数は解析の深さの使い分けだけを決める）。
 
-    浅い読み（trial_visits）で死と出た枠は**捨てる前に validity_visits で読み直す**。捨てた先の
-    枠なしは安全側ではないので、浅いノイズで枠を手放してはいけない（`FRAME_VALIDITY_VISITS`）。
+    浅い読み（trial_visits）の結論は**どちら側にも**確定させない。捨てる前に読み直すのは
+    枠なしが安全側のフォールバックではないから（`FRAME_VALIDITY_VISITS`）、採る前に読み直すのは
+    浅い読みが生側にも振れるから（`FRAME_SOLVER_CONFIRM_OWNERSHIP`。実測 case S: 同じ枠・同じ
+    400visits が +0.4977/子 と +0.65/子 の両方を出し、1800visits では +0.46/子 で壊れ）。
+    確かめずに済むのは浅い読みが `confirm_ownership` 以上＝自明に生きている枠だけ。
     lead は判定に使った読みの値（深い読みが取れなければ浅い方）。
 
-    読み直しはキャプチャの待ち時間に直接乗る（実測 1本 1.5〜1.9秒）ので本数を絞る:
-    生きている枠は読み直さない、読み直しは**浅い読みが生きに近い枠から順に**行い、**有効な枠が
-    1つ出た時点で打ち切る**（残りは浅い判定のまま捨てる＝この修正前の動作）。case N の実測では
-    生き残る枠 ko=False の浅い読みは -0.69〜-0.98/子 で、落選する ko=True の -0.99/子 より 4/4 で
-    上だった。同点・読めなかった枠は候補順（設定の frame_ko が先）。
+    読み直しはキャプチャの待ち時間に直接乗る（実測 1本 1.5〜1.9秒）ので本数を絞る。
+    自明に生きている枠（`confirm_ownership` 以上）は読み直さない。**打ち切れるのは「死と出た枠の
+    救済」だけ**で、使える枠が確定していれば残りの死んだ枠は浅い判定のまま捨てる（この修正前の
+    動作）。閾値近傍で生と出た枠は打ち切らない — 確かめずに残すと `pick_balanced_frame` の候補に
+    入り、バランス次第で**確かめていない枠が出題される**（case S の誤答がその状態）。
+    読み直しは**浅い読みが生きに近い枠から順に**行う。case N の実測では生き残る枠 ko=False の
+    浅い読みは -0.69〜-0.98/子 で、落選する ko=True の -0.99/子 より 4/4 で上だった。
+    同点・読めなかった枠は候補順（設定の frame_ko が先）。
     """
     verdicts = [None] * len(candidates)
     for i, candidate in enumerate(candidates):
@@ -193,13 +221,28 @@ def frame_validity_verdicts(candidates, read, trial_visits, validity_visits=FRAM
     if validity_visits <= trial_visits:
         return verdicts
 
-    def aliveness(i):  # 生きに近い順。読めなかった枠は最後（順位付けできない）
-        v = verdicts[i]
-        return (0, 0.0) if v.ownership is None or not v.stone_count else (1, v.ownership / v.stone_count)
+    def per_stone(v):
+        return None if v.ownership is None or not v.stone_count else v.ownership / v.stone_count
 
-    for i in sorted((i for i, v in enumerate(verdicts) if v.destroys), key=aliveness, reverse=True):
-        if any(not v.destroys for v in verdicts):
-            break  # 有効な枠が既にある＝残りを深く読んでも出題する枠は変わらない
+    def aliveness(i):  # 生きに近い順。読めなかった枠は最後（順位付けできない）
+        return (0, 0.0) if per_stone(verdicts[i]) is None else (1, per_stone(verdicts[i]))
+
+    def settled_usable(v):
+        """出題してよいと確定した枠か（深い読みで裁定済み、または自明に生きている）"""
+        if v.destroys or v.visits is None:
+            return False  # 読めていない枠は確定扱いにしない（深く読み直す価値がある）
+        if v.visits >= validity_visits:
+            return True
+        alive = per_stone(v)
+        return alive is None or alive >= confirm_ownership  # 手番側の石が無い図は測りようがない
+
+    for i in sorted(range(len(verdicts)), key=aliveness, reverse=True):
+        if settled_usable(verdicts[i]):
+            continue  # 自明に生きている＝確かめる必要がない
+        if verdicts[i].destroys and any(settled_usable(v) for v in verdicts):
+            continue  # 死と出た枠の**救済**は不要（使える枠が既にある）
+        # 死と出た枠は捨てる前に、閾値近傍で生と出た枠は**採る前に**読み直す。後者を省くと
+        # 確かめていない枠が pick_balanced_frame の候補に残り、バランス次第で出題されてしまう
         deep_lead, deep_own, n_stones = read(candidates[i], validity_visits)
         readings = verdicts[i].readings + [(validity_visits, deep_own)]
         destroys, visits, used_own = frame_solver_verdict(readings, n_stones)
@@ -550,30 +593,26 @@ def tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin, drop_non_c
     ijs = [z for z in all_ijs if z["core"]] or all_ijs
 
     def problem_range(zs):
-        top = min_by(zs, "i", +1)
-        left = min_by(zs, "j", +1)
-        bottom = min_by(zs, "i", -1)
-        right = min_by(zs, "j", -1)
         return (
-            [top, bottom, left, right],
-            snap0(top["i"]),
-            snap0(left["j"]),
-            snapS(bottom["i"], isize),
-            snapS(right["j"], jsize),
+            snap0(min_by(zs, "i", +1)["i"]),
+            snap0(min_by(zs, "j", +1)["j"]),
+            snapS(min_by(zs, "i", -1)["i"], isize),
+            snapS(min_by(zs, "j", -1)["j"], jsize),
         )
 
     # find range of problem
-    extrema, imin, jmin, imax, jmax = problem_range(ijs)
-    top, bottom, left, right = extrema
+    imin, jmin, imax, jmax = problem_range(ijs)
     # 攻め方判定はこの局面固有の性質であり、盤の向き（反転・転置）に依存してはならない。
     # しかし min_by は同座標のタイをこの時点のリスト順（＝現在の向きでの row-major 順）で
     # 崩すため、反転・転置後は同じ石でも extrema の代表点が変わり得て判定が反転しうる
     # （height2 自体は反転・転置不変だが、タイ崩れで extrema の中身が変わるため結果が変わる）。
     # そのためコア石マークと同じパターンで、再帰の最初の呼び出し（black_to_attack_p が
     # 未指定＝元の向き）でのみ一度だけ判定し、以降の反転・転置後の再帰にはその値を
-    # そのまま持ち回す（recompute しない）
+    # そのまま持ち回す（recompute しない）。
+    # 判定の材料は代表点4つではなく極値線の石全部（`extremum_stones`）。代表点にすると
+    # 同座標のタイをリスト順で崩すことになり、両色が並ぶ辺では判定が反転しうる（case S）
     if black_to_attack_p is None:
-        black_to_attack_p = guess_black_to_attack([top, bottom, left, right], sizes)
+        black_to_attack_p = guess_black_to_attack(extremum_stones(ijs), sizes)
     # 適応margin: bbox+margin で外側（守り側の代償地帯）が必要面積を下回る大型詰碁では、
     # 枠ゲームが一方的（±100点級）になり勝率が飽和し、死活より空き地・小さい得が優先される。
     # 外側が確保できるまで margin を縮める。どの margin でも確保できない盤（9路など）は
@@ -630,6 +669,41 @@ def need_flip_p(kmin, kmax, size):
 
 def guess_black_to_attack(extrema, sizes):
     return sum([sign_of_color(z) * height2(z, sizes) for z in extrema]) > 0
+
+
+def extremum_stones(zs):
+    """4辺それぞれの極値線に乗る石を全部集める（攻め方判定の材料）。
+
+    `min_by` は同座標のタイを「その時点の配列順＝row-major 順の最初の1子」で崩すので、
+    極値線に両色の石が並ぶと**どちらを代表にするかで攻め方判定が反転する**。実測 2026-07-31
+    case S（13路右上・黒が攻め方の詰碁。左辺の列 H に H11(白) と H10(黒)）:
+
+        代表が H11(白) … -1  → black_to_attack=False（誤。実キャプチャはこれを引いた）
+        代表が H10(黒) … +42 → black_to_attack=True （正）
+        極値線を全部足す … +21 → True（正。タイの崩し方に依存しない）
+
+    反転した枠は攻め方に代償地帯を渡すので手番側が二十数目リードし、死活がスコアから
+    切り離される（＝どう打っても勝ちなので詰碁と無関係な手が最善になる）。しかも
+    `frame_destroys_problem` は手番側の本体石しか見ないため、**手番側が攻め方のときは
+    反転しても石が壁と連絡して生きたまま**で安全網に掛からない（case S の実測は
+    +0.46〜+0.65/子 と閾値 0.5 をまたぎ、run ごとに採否が入れ替わった）。
+
+    向きへの不変性は既に `tsumego_frame_stones` が「元の向きで一度だけ判定する」ことで
+    担保しているが、それは**元の向きでのタイの崩し方を固定しているだけ**で、崩し方自体の
+    恣意性は残っていた。極値線の石を全部足せばタイが消え、判定は向きにもリスト順にも
+    依存しなくなる。
+    """
+    return [
+        z
+        for key, value in (
+            ("i", min(z["i"] for z in zs)),
+            ("i", max(z["i"] for z in zs)),
+            ("j", min(z["j"] for z in zs)),
+            ("j", max(z["j"] for z in zs)),
+        )
+        for z in zs
+        if z[key] == value
+    ]
 
 
 def sign_of_color(z):
