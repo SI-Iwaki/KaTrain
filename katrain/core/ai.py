@@ -2714,8 +2714,38 @@ def tsumego_ko_escape_accepts(value, incumbent_value, tolerance=TSUMEGO_KO_ESCAP
 
     不等号の向きに注意（`TSUMEGO_KO_ESCAPE_TOLERANCE` のコメント参照）。コウ手のほうが
     スコアは高く出るのが正常で、それでも無条件を採るのが詰碁の順序。
+
+    **これは相対比較なので単独では使えない**。incumbent 自身が失敗している局面では全候補が
+    横並びになって退化する（`tsumego_ko_escape_succeeds` 参照）。
     """
     return value >= incumbent_value - tolerance
+
+
+def tsumego_ko_escape_succeeds(value, stone_count, threshold=TSUMEGO_SUCCESS_OWNERSHIP):
+    """脱出候補が**実際に詰碁を解いているか**（役割石の1子平均 ownership の絶対判定）。
+
+    脱出の採否を `tsumego_ko_escape_accepts` の相対比較だけに任せると、**incumbent 自身が
+    失敗している局面で退化する**。相対条件は「incumbent に tolerance 超えて劣らないこと」
+    なので、全員が同じくらい失敗していれば全員が合格になり、ノイズ幅の差で1手が「最良」に
+    選ばれてしまう。
+
+    実測 case F（2026-07-31、`frame_destroys_problem` 導入前の壊れた枠の盤・黒は守り方で
+    自石10子）: 選択手 N8 −9.72 に対し policy 上位の J11 −9.82 / J10 −9.86 / N11 −9.90 /
+    M12 −9.89 が**全部 tolerance 0.5 の内側**に並び、0.08 差で J11 が採用されて N8 が
+    捨てられた（2/2 run。同深さ800visits で全候補が **1子平均 −0.97〜−0.99＝どれも詰碁を
+    解いていない**、目数も −30目）。脱出は「無条件で成立する手を探す」機構なので、成立して
+    いない手は相対値がどうであれ採ってはいけない。
+
+    閾値は成功判定と同じ `TSUMEGO_SUCCESS_OWNERSHIP`（1子平均 0.5）。実測の分離幅は桁違いで、
+    採るべき手（case O の正解 A11 +0.99/子 ・ case T の正解 L1＝セキ +1.00/子 ・ コウの
+    incumbent B12/C10 +0.99〜+1.00）と落とすべき手（case O の失敗する clean 手 C13/B13
+    −1.00/子 ・ case F の全候補 −0.97〜−0.99）の間に約 1.9 の空白がある。
+
+    役割石が取れない（stone_count=0）ときは判定できない＝採用しない（incumbent 維持側に倒す）。
+    """
+    if not stone_count:
+        return False
+    return value / stone_count >= threshold
 
 
 @register_strategy(AI_TSUMEGO)
@@ -3102,9 +3132,14 @@ class TsumegoOwnershipStrategy(AIStrategy):
         root 12000visits でも 1visit のままで、その 1visit の評価（+28.74目損）で選択則の全ゲートから
         締め出されていた（詳細は `TSUMEGO_KO_ESCAPE_MAX_CANDIDATES` のコメント）。
 
-        採用は「clean かつ、同深さ ownership がコウの選択手に tolerance 超えて劣らない」ときだけ。
-        スコアで上回ることは要求しない（コウ手のほうが高く出るのが正常）。答えが本当にコウの詰碁
-        では clean な候補が ownership 検査を通らないので、この機構は何もしない。
+        採用は「clean かつ、**その手で詰碁が成立していて**（`tsumego_ko_escape_succeeds`）、
+        同深さ ownership がコウの選択手に tolerance 超えて劣らない」ときだけ。スコアで上回る
+        ことは要求しない（コウ手のほうが高く出るのが正常）。答えが本当にコウの詰碁では clean な
+        候補が成立判定を通らないので、この機構は何もしない。
+
+        **成立判定を相対比較（tolerance）で代用してはいけない** — incumbent 自身が失敗して
+        いると全候補が横並びになって退化する（実測 case F: 全員 −0.97〜−0.99/子 なのに
+        0.08 差で1手が「最良」に選ばれ、選択手が捨てられた）。
 
         (採用する候補, 検証値) を返す。脱出しなかったときは (chosen, None)。
         """
@@ -3114,6 +3149,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
             return chosen, None
         min_prior = float(settings.get("ko_escape_min_prior", TSUMEGO_KO_ESCAPE_MIN_PRIOR))
         tolerance = float(settings.get("ko_escape_tolerance", TSUMEGO_KO_ESCAPE_TOLERANCE))
+        success_ownership = float(settings.get("ko_success_ownership", TSUMEGO_SUCCESS_OWNERSHIP))
         visits = int(settings.get("gain_verify_visits", TSUMEGO_GAIN_VERIFY_VISITS))
         shortlist = tsumego_ko_escape_candidates(candidate_moves, screened_moves, min_prior, max_candidates)
         if not shortlist:
@@ -3129,10 +3165,12 @@ class TsumegoOwnershipStrategy(AIStrategy):
             )
             return chosen, None
         listed = " ".join("{}(p{:.4f})".format(c["move"], c.get("prior", 0.0)) for c in shortlist)
+        incumbent_per_stone = f"（{incumbent['value'] / len(stones):+.2f}/子）" if stones else ""
         self.game.katrain.log(
             f"[{self.strategy_name}] コウ脱出: 目数ガード内が全てコウ経路のため、root が読まなかった "
             f"policy 上位 {listed} を同深さ{visits}visits で測ります"
-            f"（選択手 {chosen['move']} の検証値{incumbent['value']:+.2f}、tolerance={tolerance}）",
+            f"（選択手 {chosen['move']} の検証値{incumbent['value']:+.2f}{incumbent_per_stone}、"
+            f"成否は役割石{len(stones)}子の1子平均 >= {success_ownership}、tolerance={tolerance}）",
             OUTPUT_INFO,
         )
         best = None
@@ -3140,16 +3178,26 @@ class TsumegoOwnershipStrategy(AIStrategy):
             verdict = self._region_child_verdict(cand["move"], stones, player_sign, visits)
             if verdict is None:
                 continue
-            accepted = not verdict["ko"] and tsumego_ko_escape_accepts(
-                verdict["value"], incumbent["value"], tolerance
+            # 相対条件（コウの incumbent に劣りすぎない）の前に、**その手で詰碁が成立して
+            # いるか**を絶対値で見る。incumbent 自身が失敗していると相対条件は退化して
+            # ノイズ幅で1手を選んでしまう（`tsumego_ko_escape_succeeds` 参照＝case F）
+            succeeds = tsumego_ko_escape_succeeds(verdict["value"], len(stones), success_ownership)
+            accepted = (
+                not verdict["ko"]
+                and succeeds
+                and tsumego_ko_escape_accepts(verdict["value"], incumbent["value"], tolerance)
             )
-            reason = (
-                f"コウ経路（{verdict['ko_reply']}）"
-                if verdict["ko"]
-                else ("採用候補" if accepted else "詰碁が成立していない")
-            )
+            if verdict["ko"]:
+                reason = f"コウ経路（{verdict['ko_reply']}）"
+            elif not succeeds:
+                reason = f"詰碁が成立していない（ko_success_ownership={success_ownership}）"
+            elif accepted:
+                reason = "採用候補"
+            else:
+                reason = f"コウの選択手に tolerance={tolerance} 超えて劣る"
+            per_stone = f"（{verdict['value'] / len(stones):+.2f}/子）" if stones else ""
             self.game.katrain.log(
-                f"[{self.strategy_name}] コウ脱出: {cand['move']} 検証値{verdict['value']:+.2f} "
+                f"[{self.strategy_name}] コウ脱出: {cand['move']} 検証値{verdict['value']:+.2f}{per_stone} "
                 f"目数{verdict['lead']:+.2f} → {reason}",
                 OUTPUT_INFO,
             )

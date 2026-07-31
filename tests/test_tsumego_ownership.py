@@ -25,6 +25,7 @@ from katrain.core.ai import (
     tsumego_gain_stones,
     tsumego_ko_escape_accepts,
     tsumego_ko_escape_candidates,
+    tsumego_ko_escape_succeeds,
     tsumego_ko_beats_normal,
     tsumego_override_confirmed,
     tsumego_ownership_gain,
@@ -959,6 +960,37 @@ def test_ko_escape_rejects_a_clean_move_that_fails_to_kill():
 def test_ko_escape_tolerance_boundary():
     assert tsumego_ko_escape_accepts(9.45, 9.95, tolerance=0.5)
     assert not tsumego_ko_escape_accepts(9.44, 9.95, tolerance=0.5)
+
+
+# --- 脱出候補の絶対的な成功判定（tsumego_ko_escape_succeeds） ---
+# `tsumego_ko_escape_accepts` は incumbent との**相対**比較しかしないので、**incumbent 自身が
+# 失敗している局面では退化する**（全候補が横並びになり、ノイズ幅の差で1手が「最良」に選ばれる）。
+# 実測 case F（2026-07-31、壊れた枠の盤・黒は守り方10子）: 選択手 N8 -9.72 に対し policy 上位の
+# J11 -9.82 / J10 -9.86 / N11 -9.90 / M12 -9.89 が**全部 tolerance 0.5 の内側**に並び、
+# 0.08 の差で J11 が採用されて N8 が捨てられた。1子平均で見れば全員 -0.97〜-0.99＝**どれも
+# 詰碁を解いていない**。脱出は「無条件で成立する手を探す」機構なので、成立していない手は
+# 相対値がどうであれ採ってはいけない。
+
+
+def test_ko_escape_succeeds_uses_the_per_stone_average():
+    # 実測 case O（攻め方・相手石10子）: 正解 A11 は +0.99/子
+    assert tsumego_ko_escape_succeeds(9.91, 10, threshold=0.5)
+    # 実測 case T（守り方・自石12子）: 正解 L1＝セキ は +1.00/子
+    assert tsumego_ko_escape_succeeds(11.97, 12, threshold=0.5)
+
+
+def test_ko_escape_succeeds_rejects_when_nothing_solves_the_problem():
+    # 実測 case F: 自石10子で -9.72〜-9.90（-0.97〜-0.99/子）。incumbent も候補も全部失敗なので
+    # 相対比較では分離できない。1子平均の絶対判定なら全員落ちて incumbent が維持される
+    for value in (-9.72, -9.82, -9.86, -9.90):
+        assert not tsumego_ko_escape_succeeds(value, 10, threshold=0.5)
+    # 実測 case O の失敗する clean 手（相手石10子で -1.00/子）
+    assert not tsumego_ko_escape_succeeds(-9.98, 10, threshold=0.5)
+
+
+def test_ko_escape_succeeds_is_false_without_role_stones():
+    # 成否を担う石が取れない局面では判定できない＝採用しない（incumbent を維持する側に倒す）
+    assert not tsumego_ko_escape_succeeds(9.91, 0, threshold=0.5)
 
 
 # --- 手番側の役割（攻め方 / 守り方）の判定 -------------------------------------------------
