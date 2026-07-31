@@ -2128,6 +2128,25 @@ TSUMEGO_GAIN_RESCUE_MARGIN = 1.0
 # J11 -19.4）ので、複数候補を検証に渡せば最良の本物が残る
 TSUMEGO_GAIN_RESCUE_MAX_CANDIDATES = 3
 
+# 救済候補に課す visits の**床**（root で最も探索された手に対する比）。順位づけではなく桁の切り捨て。
+#
+# 救済は「深さゲートで足切りされた本物」を拾うために visit比条件を課さない設計だが、その根拠は
+# 「本物 0.21〜0.49 と偽 0.24〜0.36 は**重なるので順位づけには使えない**」であって、その帯の
+# **1桁下**まで拾えという意味ではない。実測の救済候補の比:
+#
+#   G2 C13(正解) 0.90 ・ H N4(正解) 0.52 ・ F2 N11/M12(正解) 0.33/0.30
+#   **R J13(誤答) 0.036〜0.05**  ← v48/最多 v1337
+#
+# 実測 case R（2026-07-31、答えがコウの詰碁）: J13 の gain は救済トリガーを超えるが、同深さ検証の
+# 差が margin=1.0 をまたいで揺れ（-1.05〜+1.31）、採用された run では J13 自身がコウ経路なので
+# D8/C8 へ格下げされて誤答した。**この揺れは wideRootNoise 由来ではない**（wRN=0 でも J13 の
+# 子局面だけばらつき 0.63 が残る＝追記25）。答えがコウの詰碁では ply1 の ownership が成否を
+# 運ばないので、検証の側では止められない。止められるのは入口の桁だけ。
+#
+# 0.15 は本物の最小 0.30 と case R の最大 0.05 の中間（両側に 2倍の余裕）。case F の
+# 「比 0.31 の gain は既に片側ノイズ」という実測とも整合する（0.15 はさらにその半分）。
+TSUMEGO_GAIN_RESCUE_MIN_VISIT_RATIO = 0.15
+
 
 def tsumego_rescue_candidates(
     candidates,
@@ -2140,14 +2159,19 @@ def tsumego_rescue_candidates(
     min_visits,
     rescue_margin=TSUMEGO_GAIN_RESCUE_MARGIN,
     max_candidates=TSUMEGO_GAIN_RESCUE_MAX_CANDIDATES,
+    min_visit_ratio=TSUMEGO_GAIN_RESCUE_MIN_VISIT_RATIO,
 ):
     """gain 争いに参加できなかった候補のうち、同深さ検証にかける価値のある手を gain 降順で返す。
 
     対象は contenders（目数ガード＋深さゲートを通った候補）に居ない手すべて。条件:
-    (1) ownership があり min_visits 以上 (2) gain が選択手を rescue_margin 超えて上回る。
-    visit比は課さない — 浅い候補の gain は片側ノイズだが、採用前に必ず同深さ検証（子局面を
-    測り直す）を通るので、ここで深さを理由に落とすと本物まで失う（実測 case H: 本物 N4 の比
-    0.46 と case F の偽 N7 の比 0.24〜0.36 は比では分離できない）。
+    (1) ownership があり min_visits 以上 (2) gain が選択手を rescue_margin 超えて上回る
+    (3) visits が root 最多手の `min_visit_ratio` 以上。
+
+    (3) は**順位づけではなく桁の切り捨て**。visit比で「本物か偽か」を決めることはできない
+    （実測 case H: 本物 N4 の比 0.46 と case F の偽 N7 の比 0.24〜0.36 は重なる）ので、
+    その帯の判定は従来どおり同深さ検証に委ねる。落とすのは**1桁下**だけ
+    （`TSUMEGO_GAIN_RESCUE_MIN_VISIT_RATIO` のコメント参照。実測 case R の誤答 J13 は 0.036）。
+    visits 情報が無い解析結果では床をかけない。
 
     トップ1でなく複数返すのは、ノイズ手が gain 1位に立って本物を影に隠すため
     （`TSUMEGO_GAIN_RESCUE_MAX_CANDIDATES` のコメント参照）。ここで返した手を**そのまま
@@ -2158,11 +2182,15 @@ def tsumego_rescue_candidates(
         return []
     contender_moves = {c["move"] for c in contenders}
     chosen_gain = tsumego_ownership_gain(root_ownership, chosen["ownership"], stones, board_size, player_sign)
+    top_visits = max((c.get("visits", 0) for c in candidates), default=0)
+    visit_floor = min_visit_ratio * top_visits if top_visits and min_visit_ratio > 0 else 0
     scored = []
     for cand in candidates:
         if cand["move"] in contender_moves or not cand.get("ownership"):
             continue
         if cand.get("visits", 0) < min_visits:
+            continue
+        if cand.get("visits", 0) < visit_floor:
             continue
         gain = tsumego_ownership_gain(root_ownership, cand["ownership"], stones, board_size, player_sign)
         if gain <= chosen_gain + rescue_margin:

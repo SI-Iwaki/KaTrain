@@ -806,6 +806,31 @@ def test_rescue_does_not_require_comparable_visits():
     assert [c["move"] for c in rescue] == ["C1"]
 
 
+def test_rescue_drops_candidates_an_order_of_magnitude_below_the_top_search():
+    """救済候補にも visits の**床**は要る（順位づけではなく桁の切り捨て）。
+
+    実測 case R (2026-07-31): 誤答 J13 は v48/最多 v1337 = **比 0.036** で救済に入り、
+    同深さ検証の差が margin=1.0 をまたいで揺れる（-1.05〜+1.31）ため run によって採用され、
+    J13 自身がコウ経路なので D8/C8 へ格下げされて誤答した。**この揺れは wRN 由来ではない**
+    （wRN=0 でも J13 の子局面だけばらつき 0.63 が残る＝追記25 の実測）。答えがコウの詰碁では
+    ply1 の ownership が成否を運ばないので、検証の側では止められない。
+
+    本物の救済候補の比は G2 C13 **0.90** / H N4 **0.52** / F2 N11・M12 **0.33・0.30** で1桁上。
+    既存の「visit 比は課さない」判断は「本物 0.21〜0.49 と偽 0.24〜0.36 が重なるので**順位づけ
+    には使えない**」という意味で、その帯の1桁下を捨てることまでは否定していない（case F の
+    実測でも比 0.31 の gain は既に片側ノイズ）。
+    """
+    cands = [
+        {"move": "G13", "pointsLost": 0.0, "visits": 1337, "ownership": _own(x0_y0=-0.5)},
+        # 目数ガード内・深さゲート外で gain 断トツだが、比 48/1337 = 0.036
+        {"move": "J13", "pointsLost": 1.06, "visits": 48, "ownership": _own(x0_y0=0.7, x1_y1=0.6)},
+    ]
+    assert _rescue(cands, chosen=cands[0]) == []
+    # F2 の本物と同じ比 0.33 なら従来どおり検証行き
+    cands[1]["visits"] = 441
+    assert [c["move"] for c in _rescue(cands, chosen=cands[0])] == ["J13"]
+
+
 def test_rescue_requires_min_visits():
     cands = _rescue_cands()
     cands[1]["visits"] = 5
