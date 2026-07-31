@@ -7,6 +7,9 @@ from katrain.core.ai import (
     TSUMEGO_GAIN_VERIFY_MARGIN,
     TSUMEGO_KO_MARGIN,
     TSUMEGO_KO_REGION_UNTIL_DEPTH,
+    TSUMEGO_KO_REPLY_RATIO,
+    TSUMEGO_KO_REPLY_RATIO_CHOSEN,
+    TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE,
     TSUMEGO_TIE_KO_PLIES,
     select_tsumego_move,
     tsumego_class_screen_all_ko,
@@ -31,6 +34,7 @@ from katrain.core.ai import (
     tsumego_success_ownership,
 )
 from katrain.core.engine import REGION_AVOID_UNTIL_DEPTH, region_avoid_moves
+from katrain.core.game import REGION_ANALYSIS_WIDE_ROOT_NOISE
 
 # var_to_grid は grid[y][x] を返し、配列は上の行(y降順)から詰まる。
 # 3x3 なら array[0:3]=grid[2], array[3:6]=grid[1], array[6:9]=grid[0]
@@ -319,6 +323,42 @@ def test_competitive_replies_walks_all_contested_defenses():
     replies = [{"move": f"A{i}", "visits": 100 + i} for i in range(5)]
     assert [r["move"] for r in tsumego_competitive_replies(replies)] == ["A4", "A3", "A2"]
     assert tsumego_competitive_replies([]) == []
+
+
+def test_ko_screen_reply_gate_is_asymmetric_between_choice_and_rivals():
+    """選択手は敏感側の比、格下げ先候補は保守側の比で検査する。
+
+    実測 case M（wRN=0・800visits・4 trial で不動）: M2 の子局面の応手は
+    `M4 v663 / K1 v100 / 残り全部 v1` で、コウを仕掛ける K1 の比は **0.15**。
+    保守側 0.5 では K1 が落ちて M2 が clean と読まれ、クラス裁定が丸ごと no-op になる
+    （＝コウ手 M2 がそのまま打たれる。本番フロー 3/6 の誤答）。敏感側 0.05 なら拾える。
+
+    逆に格下げ先まで 0.05 で検査すると case R の J13(0.10〜0.16)・D8(0.04〜0.05) が
+    全部コウになり、全員コウ→脱出の誤爆になる（脱出の前提が偽）。単一の閾値では
+    分離できない — 検出すべき最小比 0.09（case K A12）と、clean のままにすべき
+    最大比 0.16（case R J13）が逆転しているため。
+    """
+    assert TSUMEGO_KO_REPLY_RATIO_CHOSEN < TSUMEGO_KO_REPLY_RATIO
+    m4 = {"move": "M4", "visits": 663, "pv": ["M4", "K1"]}
+    k1 = {"move": "K1", "visits": 100, "pv": ["K1", "M4", "M3"]}
+    noise = [{"move": f"X{i}", "visits": 1, "pv": [f"X{i}"]} for i in range(3)]
+    replies = noise + [k1, m4]
+    assert [r["move"] for r in tsumego_competitive_replies(replies, TSUMEGO_KO_REPLY_RATIO)] == ["M4"]
+    assert [r["move"] for r in tsumego_competitive_replies(replies, TSUMEGO_KO_REPLY_RATIO_CHOSEN)] == ["M4", "K1"]
+    # 敏感側でも v1 のノイズ応手（比 0.0015）は拾わない
+    assert all(r["visits"] > 1 for r in tsumego_competitive_replies(replies, TSUMEGO_KO_REPLY_RATIO_CHOSEN))
+
+
+def test_ko_screen_turns_off_wide_root_noise():
+    """応手の並びを証拠に使う検査では root ノイズを切る（比が run ごとに揺れるため）。
+
+    wRN は着手選択で候補を広げるための設定で、1回の探索の間ずっと同じノイズが root policy に
+    乗るので **visits を増やしても消えない**種類の揺れを作る。実測 case M（M2 の子局面）:
+    wRN=0.04 で K1 の比が 0.44〜0.88 とばらつき本番フローで 3/6 検出漏れ、wRN=0 で 0.15 が
+    4/4 不動。既存の `FRAME_VALIDITY_WIDE_ROOT_NOISE`（枠の生死裁定）と同じ判断。
+    """
+    assert TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE == 0.0
+    assert REGION_ANALYSIS_WIDE_ROOT_NOISE > TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE  # 本譜の解析は従来どおり
 
 
 def test_ko_screen_constrains_the_region_for_every_ply_it_walks():

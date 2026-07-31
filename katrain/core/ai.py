@@ -1957,6 +1957,38 @@ TSUMEGO_TIE_KO_MAX_CANDIDATES = 4
 TSUMEGO_KO_REPLY_RATIO = 0.5
 TSUMEGO_KO_REPLY_MAX = 3
 
+# コウ経路検査の子局面解析だけ wideRootNoise を切る。**応手の visits 比を揺らしていた正体はこれ**。
+# wRN は root の policy に Dirichlet ノイズを足して候補リストを広げる設定で、run ごとにノイズを
+# 引き直すため「守り方の応手にどう visits が配られるか」が毎回変わる。visits を増やしても消えない
+# 種類の揺れ（1回の探索の間ずっと同じノイズが乗る）。既存の「死活の裁定クエリに wRN を効かせない」
+# （`FRAME_VALIDITY_WIDE_ROOT_NOISE`）と同じ話で、着手選択の設定を裁定に流用してはいけない。
+#
+# 実測 case M（2026-07-31、M2 の子局面 800visits・プロセスを分けて4 trial）:
+#
+#   wRN=0.04  M4 v90〜117 / K1 v58〜75  = 比 0.44〜0.88（**本番フローでは 3/6 で 0.5 を割った**）
+#   wRN=0     M4 v663〜666 / K1 v98〜101 = 比 **0.15 が 4/4 で不動**、残りの応手は全部 v1
+#
+# つまり現行の 0.5 ゲートは「ノイズが本物のコウ応手の取り分を水増ししてくれた時だけ当たる」
+# 偶然の産物で、visits を増やすほど真値 0.15 に収束して**外れやすくなる**。
+TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE = 0.0
+
+# 選択手を検査するときだけ使う敏感側の比。**検出漏れと誤検出のコストが非対称**なので閾値を分ける:
+#
+# - 選択手のコウを**見逃す**と、クラス裁定（無条件 > コウ）がそもそも走らず、コウ手がそのまま
+#   打たれる（case M の誤答そのもの）。この機構が黙って no-op になる唯一の経路。
+# - 対抗馬を**過検出**すると clean な格下げ先が消え、`tsumego_class_screen_all_ko` が真になって
+#   前提が偽のままコウ脱出が走る（case R）。対抗馬側は保守的な `TSUMEGO_KO_REPLY_RATIO` のまま。
+#
+# 値は wRN=0 の実測（同 800visits、コウに到達する応手の最小比）から:
+#
+#   検出すべき  M A12 0.09/0.13 ・ M M2 0.15(×4) ・ O B12 0.42/0.78 ・ P H1 1.00 ・ R G13 1.00
+#   clean のまま K C13 **0.02**(×2) ・ M K1 なし ・ P J1 なし ・ O A11 なし
+#
+# 0.05 は K C13 の 0.02 と case K A12 の 0.09 の間（両側 2.5倍/1.8倍）。**単一の閾値では分離
+# できない**ことも実測済みで、格下げ先まで同じ敏感さで検査すると case R の J13(0.10〜0.16)・
+# D8(0.04〜0.05) が全部コウになり、全員コウ→脱出の誤爆に化ける。
+TSUMEGO_KO_REPLY_RATIO_CHOSEN = 0.05
+
 # コウ経路検査の子局面解析で、リージョン外の着手を禁じる深さ（avoidMoves の untilDepth）。
 # 既定のリージョン解析は untilDepth=1 で root の着手選択だけを枠内に縛るが、**PV は ply2 以降
 # 枠へ自由に出ていける**。詰碁を読み切った KataGo にとって負けている側の局所の抵抗は枠の一点と
@@ -2541,7 +2573,9 @@ class TsumegoOwnershipStrategy(AIStrategy):
                 # どの経路で選ばれてもスコア系メトリックではクラス混同を検出できない。
                 # 選択手が clean なら検査1本で終わる。対抗馬の検査は選択手がコウ経路のときだけ
                 pool = tsumego_class_screen_pool(chosen, eligible)
-                if len(pool) >= 2 and self._ko_route_screen([chosen]):
+                # 選択手だけ敏感側の比で検査する（見逃すとクラス裁定が丸ごと no-op になるため）。
+                # 格下げ先候補（pool[1:]）は保守側のまま＝過検出は脱出の誤爆に化ける
+                if len(pool) >= 2 and self._ko_route_screen([chosen], ratio=TSUMEGO_KO_REPLY_RATIO_CHOSEN):
                     ko_routes = frozenset({chosen["move"]}) | self._ko_route_screen(pool[1:])
                     declassed = tsumego_declass_choice(chosen, pool, ko_routes, points_epsilon)
                     if declassed["move"] != chosen["move"]:
@@ -2631,7 +2665,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
             OUTPUT_DEBUG,
         )
 
-    def _ko_route_screen(self, pool):
+    def _ko_route_screen(self, pool, ratio=TSUMEGO_KO_REPLY_RATIO):
         """pool の各候補を1手進めてリージョン解析し、コウ経路の候補の手（GTP）を返す。
 
         詰碁の正解順序は 無条件 > コウ で、目数はクラス内のタイブレークにすぎない。
@@ -2645,7 +2679,14 @@ class TsumegoOwnershipStrategy(AIStrategy):
 
         子局面の解析は **PV の内容そのものが証拠**なので、歩く深さぶんリージョン外を禁じて
         撃つ（`TSUMEGO_KO_REGION_UNTIL_DEPTH`）。既定の untilDepth=1 では ply2 以降の PV が
-        枠へ手抜きしてコウが現れない（実測 case P: 検出 1/4 → 4/4）。
+        枠へ手抜きしてコウが現れない（実測 case P: 検出 1/4 → 4/4）。同じ理由で
+        **wideRootNoise も切る**（`TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE`）— 応手の並び自体が証拠
+        なのに、root ノイズが run ごとに visits の配り方を変えて比を揺らす（実測 case M:
+        wRN=0.04 で比 0.44〜0.88 とばらつき本番 3/6 で検出漏れ → wRN=0 で 0.15 が 4/4 不動）。
+
+        `ratio` は「守り方が選べる競争力のある抵抗」の下限比。選択手には敏感側
+        （`TSUMEGO_KO_REPLY_RATIO_CHOSEN`）、格下げ先候補には保守側（既定）を渡す
+        ＝検出漏れと過検出のコストが非対称だから（定数のコメント参照）。
 
         コストは候補1つあたり解析1本（gain_verify_visits）。呼び出し側は選択手を先に
         検査し、コウ経路だったときだけ対抗馬を検査する（通常の手番は1本で済む）。
@@ -2673,11 +2714,17 @@ class TsumegoOwnershipStrategy(AIStrategy):
                 node = sim.play(Move.from_gtp(cand["move"], player=player))
             except IllegalMoveException:
                 continue
-            root = self._analyze_region_root(node, visits, ownership=False, until_depth=TSUMEGO_KO_REGION_UNTIL_DEPTH)
+            root = self._analyze_region_root(
+                node,
+                visits,
+                ownership=False,
+                until_depth=TSUMEGO_KO_REGION_UNTIL_DEPTH,
+                wide_root_noise=TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE,
+            )
             replies = (root or {}).get("moves") or []
             # 拮抗している応手は全部歩く。top 1本では応手ランキングの分散でコウを見逃す
             # （実測 case M: 白のコウ仕掛け K1 と穏健な M4 が拮抗し、M4 が top の run で素通り）
-            walk = tsumego_competitive_replies(replies)
+            walk = tsumego_competitive_replies(replies, ratio)
             if not walk:
                 continue
             ko_reply = next(
@@ -3001,7 +3048,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
         root = self._analyze_region_root(node, visits, ownership=False, timeout=timeout)
         return None if root is None else root["lead"]
 
-    def _analyze_region_root(self, node, visits, ownership=False, timeout=60.0, until_depth=None):
+    def _analyze_region_root(self, node, visits, ownership=False, timeout=60.0, until_depth=None, wide_root_noise=None):
         """使い捨てノードをリージョン限定で解析し root の {lead(黒視点), ownership} を返す。
 
         本譜の解析と同じリージョン・wideRootNoise で撃つ（条件を変えると本譜の候補評価と
@@ -3010,6 +3057,9 @@ class TsumegoOwnershipStrategy(AIStrategy):
         `until_depth` はリージョン外を禁じる深さ。既定（None=1）は本譜と同じで root の着手選択
         だけを縛る。**PV の内容を証拠に使う呼び出しだけ** `TSUMEGO_KO_REGION_UNTIL_DEPTH` を渡す
         （untilDepth=1 の PV は ply2 以降で枠へ手抜きし、コウが現れない）。
+
+        `wide_root_noise` も同じく**応手の並びを証拠に使う呼び出しだけ**が 0 を渡す
+        （`TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE`）。既定（None）は本譜と同じ設定。
         """
         engine = self.game.engines[self.cn.next_player]
         result = {}
@@ -3034,7 +3084,10 @@ class TsumegoOwnershipStrategy(AIStrategy):
             region_of_interest=self.game.region_of_interest,
             region_until_depth=until_depth,
             extra_settings=region_analysis_extra_settings(
-                visits, getattr(self.game, "region_analysis_wide_root_noise", REGION_ANALYSIS_WIDE_ROOT_NOISE)
+                visits,
+                getattr(self.game, "region_analysis_wide_root_noise", REGION_ANALYSIS_WIDE_ROOT_NOISE)
+                if wide_root_noise is None
+                else wide_root_noise,
             ),
             priority=PRIORITY_EXTRA_AI_QUERY,
         )
