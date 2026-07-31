@@ -21,6 +21,8 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 - **winrate は常に黒視点**: `engine.py:108` で `reportAnalysisWinratesAs = "BLACK"` ハードコード。打つ側視点にするには `wr if player=="B" else (1-wr)` で変換
 - **`parent_node.winrate` と `cands[0]["winrate"]` は別物**: 前者は `analysis["root"]["winrate"]`（手を打つ前の勝率）、後者は最善手を打った後の勝率。「現在の局面の勝率」を取るなら前者
 - **`pointsLost` は符号あり**: 負値 = KataGo 予想より良い手。ユーザー向けには `max(0, pointsLost)` でクランプ、メトリック計算には生の値を使う
+- **`request_analysis` に `next_move` を渡すと ownership が強制 OFF になる**: `engine.py` の `ownership = ... and not next_move` / `"includeOwnership": ownership and not next_move` で、呼び出し側が明示的に `ownership=True` を渡しても無効化される。ownership が要る子局面は、使い捨ての複製ゲームで実ノードを作って撃つ（`ai.tsumego_simulation_game` / `Game._region_prefetch_sim`）
+- **KataGo の NN キャッシュは ownerMap の有無を区別する**: ownership なしで温めたエントリは ownership 付きクエリで全ミスになる（実測 2026-08-01: ownership なしで先読みした直後の実クエリ 2.70秒＝コールド 2.69秒と同一、ownership を揃えると 0.10秒）。キャッシュ温め目的のクエリは実クエリと ownership を必ず揃えること
 
 ## ディレクトリ構造
 
@@ -109,7 +111,7 @@ python -m katrain_debug --sgf FILE --strategy hunt --batch --settings hunt_max_l
 - **i18nの`.po`ファイルだけ編集して終わらない** — `python tools/compile_mo.py` で`.mo`にコンパイルしないと翻訳が反映されない
 - **詰碁の ownership 集計にリージョン外の石を混ぜない** — 枠は `put_outside` で枠外を「守り側の代償地帯＋攻め方の地」に配る設計なので、枠外の石の ownership は詰碁の成否と**逆相関する**。全石で合計すると符号が反転し、守り側が生きる手が選ばれる（実測: 枠内 −9.65 vs 枠外 +11.6）
 - **枠バランス（`frame_balance_distance`）で枠の妥当性を判定しない** — 枠は「想定した攻め方が成功したら5目勝ち」に代償地帯を調整するので、攻め方の推定が反転していても想定攻め方が実際に成功する＝バランスは完璧に見える（実測 2026-07-30 case G: 距離 2.06 で過去最良なのに黒の攻め石は全滅、19路に置き直しても 5.42）。枠が生きているかは**手番側の本体石が生きているか**で見る（`frame_destroys_problem`）
-- **KataGo の run 間分散を同一プロセスの再クエリで測らない** — 探索木が再利用されて 0.2 秒で返るため独立サンプルにならない（実測 2026-07-30 case N: 1プロセス内では +0.57/+0.76/+0.71 と安定して見えるが、engine 起動を挟むと同一局面・同一 visits で −0.95〜+0.95 の二峰性だった）。分散を根拠に閾値を決めるなら必ずプロセスを分けて測る
+- **KataGo の run 間分散を同一プロセスの再クエリで測らない** — 探索木が再利用されて 0.2 秒で返るため独立サンプルにならない（実測 2026-07-30 case N: 1プロセス内では +0.57/+0.76/+0.71 と安定して見えるが、engine 起動を挟むと同一局面・同一 visits で −0.95〜+0.95 の二峰性だった）。分散を根拠に閾値を決めるなら必ずプロセスを分けて測る。**所要時間の A/B も同じ**（E2E の run1 はエンジン起動〜37秒込み、run2 以降は NN キャッシュが効いて 0.2 秒級なので、run1 と run2/3 を並べて比べない）
 - **詰碁で「root に読まれなかった手」を visits で救おうとしない** — root の value 推定が壊れている手は PUCT が二度と訪れないので、深さを積んでも visit 配分は変わらない（実測 2026-07-31 case O: 正解 A11 は root 1800visits でも **12000visits でも v1 のまま**。1visit の評価は「+28.74目損・相手は生き」だが、同じ子局面を独立に 1800visits で解析すると「+11.53目・相手10子すべて全滅」で **value が約29目ずれている**）。value が壊れていても **policy は候補を正しく挙げている**（A11 は prior 5位で 2/2 run 固定、下限手との間に10倍の崖）ので、漏れた正解を探す先は visits ではなく policy。**候補の pointsLost・gain・ownership が「その手が悪い」根拠になるのは、その手に visits が付いているときだけ**（切り分けは `child_depth_probe.py`）
 - **詰碁で「成功しているか」をスコアだけで判定しない** — 枠は「攻め方が成功したら5目勝ち」に代償地帯を調整する設計だが、その代償地帯が未確定のまま残るとスコアが詰碁の成否から切り離される（実測 2026-07-31 case Q: 相手石12子すべて生存＝−0.99/子 なのに手番側 +10.45目。**全盤 20000visits の最善手が詰碁と無関係な枠の充填部 B9 v17448** だった）。枠なし盤ではさらに露骨で case H は +27.69目・相手石 −0.15/子、スコアの絶対値は ±60〜80 まで暴れる。既存16ケース横断では成功局面が +0.94〜+1.00・失敗局面が −0.15〜−1.00 で、**ownership なら 1.09 の空白で分離できる**（`ko_success_ownership`）。なお**どちらの詰碁か（殺す/生きる）は選択則に渡ってきていない**ので、自石・相手石の両方を測って厳しいほうを採る
 - **詰碁のクラス裁定（無条件 > コウ）に目数差を覆させない** — 「無条件」は「攻めないので何も起きず自明に clean」でも成立するので、**答えがコウの詰碁では格下げが正解を無関係な手に差し替える**（実測 2026-07-31 case R・13路上辺枠なし: 正解 G13=コウ pt+0.03 v1345 を、詰碁と無関係な D8=clean pt+0.55 v288 に格下げして誤答。コウ経路の**検出自体は正しかった**）。`_ko_escape_choice` と同じ ownership 検算を格下げにも課す案は**効かない** — 答えがコウなら ply1 で成否が決着しないので、同深さ800visits の全リージョン石で正解 G13 +0.86/+0.97 < 誤答 D8 +1.32/+2.34 と**誤答のほうが高く**出る（相手石は全候補 −0.55〜−0.72＝どの手でも相手は生きている）。符号が一貫していたのは目数だけで、格下げが正しい4ケースは格下げ先が必ず優る（K −0.05 / L −0.11 / M −0.57 / P −0.03）のに case R は +0.52 劣る（切り分けは `class_screen_probe.py`）
@@ -150,6 +152,7 @@ python -m katrain_debug --sgf FILE --strategy hunt --batch --settings hunt_max_l
   - `**/*.log` 分析時 → `log-analysis.md`（Grepパターン、サブエージェントテンプレート）
 - **i18n変更時は `.po` 編集後に `python tools/compile_mo.py` で `.mo` を再コンパイルすること**
 - **パラメータ変更時は `.claude/rules/ai-parameters.md` のテーブルも同時に更新すること**
+- **独立した追加解析クエリは1本ずつ待たない**: KataGo は `analysis_config.cfg` の `numAnalysisThreads=4` で4クエリを並列処理できる。詰碁の子局面解析は `_start_region_root` / `_wait_region_roots`（`ai.py`）で全部発行してからまとめて待つ形になっているので、解析を追加するときもこの形に合わせる（1本ずつ `_analyze_region_root` を呼ぶループに戻さない）
 - **`.claude/rules/` 配下のファイル編集時の注意**: `settings.local.json` で `Edit(.claude/rules/*)` を許可していても、`dontAsk` モードでEditが拒否されることがある（既知の問題）。拒否された場合は **サブエージェント（Agent tool）経由で編集・コミット** すること
 
 ## 変更の検証方法
@@ -177,6 +180,12 @@ python -m katrain_debug --sgf tests/data/ogs.sgf --move 30 --strategy hunt --out
 ```bash
 python -m katrain_debug --sgf tests/data/panda1.sgf --strategy hunt --batch --player W
 ```
+
+**詰碁の回帰（E2E）**: 選択則・枠判定・解析まわりを触ったら必ず回す（`select_tsumego_move` 単体の A/B では後段の検証・救済・クラス裁定を通らない）:
+```bash
+python docs/superpowers/specs/calibration-data/tsumego/generate_move_e2e.py <sgf> <moves_csv> <xmin,xmax,ymin,ymax> 3
+```
+ケース一覧・対象手数・期待手は `docs/superpowers/specs/calibration-data/tsumego/README.md`（対象手数の導出済みリストは冒頭 `D=4 / E=6 / ...`）。1ケースあたり KataGo 起動込みで約40〜60秒、**全17ケースで約13分**なのでバックグラウンド実行してその間に他の作業を進める。per-move の `[analyse Xs / generate Ys]` も出るので速度の A/B にも使える
 
 ## 現在のパラメータ値
 
