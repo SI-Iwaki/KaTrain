@@ -680,6 +680,12 @@ class ReferenceSolver:
                 result=info["result"], ko_level=info["ko_level"], plies=0, material=0, sub_demotion=info["sub"]
             )
         beneficiary_won = best_info["want"] is True and best_info["pred"] in (PRED_ALIVE, PRED_SEKI)
+        gate = None
+        if best_info["pred"] is not None:
+            gate_budget = best_info["ko_level"] if best_info["result"] == ResultClass.KO else None
+            if gate_budget is not None and gate_budget > self.limits.ko_budget_max:
+                gate_budget = None
+            gate = (best_info["pred"], best_info["komaster"], gate_budget, best_info["want"])
         return Solution(
             value=best_value,
             komaster=best_info["komaster"],
@@ -691,6 +697,7 @@ class ReferenceSolver:
             elapsed_ms=(time.time() - t0) * 1000.0,
             problem_type=self.problem.problem_type,
             move_values=move_values,
+            gate=gate,
         )
 
 

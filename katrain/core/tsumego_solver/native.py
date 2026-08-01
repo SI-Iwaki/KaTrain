@@ -101,6 +101,17 @@ class NativeKernel:
         result = self.call(dict(op="play", first_move="pass" if coords is None else list(coords), color=player))
         return bool(result.get("ok"))
 
+    def probe(self, gate):
+        """証明ストア照会（§6.6 応答フロー）。ミスは None、ヒットは ("hit", 座標|None=パス)。"""
+        pred, komaster, budget, want = gate
+        result = self.call(
+            dict(op="probe", pred=pred, komaster=komaster, budget=-1 if budget is None else budget, want=want)
+        )
+        if not result.get("hit"):
+            return None
+        move = result.get("move")
+        return ("hit", None if move in (None, "pass") else tuple(move))
+
     def close(self):
         if self.handle:
             self.lib.ts_drop(self.handle)
@@ -117,7 +128,15 @@ class NativeSolver(ReferenceSolver):
     """solve_after / optimize_after をネイティブに差し替えた ReferenceSolver。"""
 
     OPT_NODE_LIMIT_NATIVE = 4_000_000
-    OPT_TIME_MS = 3000.0  # 第2段階（plies/material 最適化）の時間上限。超えたら第1段階の解のまま（§4.2.2）
+    # 第2段階（plies/material 最適化）の時間上限。超えたら第1段階の解のまま（§4.2.2）。
+    # 全体予算の10%（3〜30秒）: GUI の短い予算では早々に諦め、長予算の校正ランでは
+    # 同格タイ（別解の順位づけ）まで解き切る
+    OPT_TIME_MIN_MS = 3000.0
+    OPT_TIME_MAX_MS = 30000.0
+
+    @property
+    def OPT_TIME_MS(self):
+        return min(self.OPT_TIME_MAX_MS, max(self.OPT_TIME_MIN_MS, self.limits.time_limit_ms * 0.1))
 
     def __init__(self, problem: Problem, limits: Optional[SolverLimits] = None, kernel: Optional[NativeKernel] = None):
         super().__init__(problem, limits)

@@ -141,8 +141,22 @@ pub extern "C" fn ts_new(problem_json: *const c_char) -> u64 {
 
 #[no_mangle]
 pub extern "C" fn ts_call(handle: u64, request_json: *const c_char) -> *mut c_char {
+    // 呼び出し元（Python メインスレッド）のスタックは 1MB 程度しかなく、df-pn の深い再帰で
+    // あふれるとプロセスごと即死する（トレースバックも出ない）。大スタックの専用スレッドで実行する
+    let raw_owned = unsafe { CStr::from_ptr(request_json) }.to_owned();
+    let result = std::thread::Builder::new()
+        .stack_size(512 * 1024 * 1024)
+        .spawn(move || ts_call_inner(handle, raw_owned))
+        .map(|h| h.join());
+    match result {
+        Ok(Ok(s)) => to_cstring(s),
+        _ => to_cstring("{\"error\":\"panic\"}".to_string()),
+    }
+}
+
+fn ts_call_inner(handle: u64, raw_owned: std::ffi::CString) -> String {
     let result = catch_unwind(AssertUnwindSafe(|| {
-        let raw = unsafe { CStr::from_ptr(request_json) }.to_str().unwrap_or("");
+        let raw = raw_owned.to_str().unwrap_or("");
         let req: RequestIn = match serde_json::from_str(raw) {
             Ok(r) => r,
             Err(e) => return format!("{{\"error\":\"bad request: {}\"}}", e),
@@ -212,6 +226,21 @@ pub extern "C" fn ts_call(handle: u64, request_json: *const c_char) -> *mut c_ch
                     Err(_) => "{\"timeout\":true}".to_string(),
                 }
             }
+            "probe" => {
+                let pred = pred_of(req.pred.as_deref().unwrap_or("alive"));
+                let want = req.want.unwrap_or(true);
+                match solver.probe_store(pred, komaster, budget, want) {
+                    Some(mv) => {
+                        let mv_json = if mv == -1 {
+                            "\"pass\"".to_string()
+                        } else {
+                            format!("[{},{}]", mv as usize % solver.board.w, mv as usize / solver.board.w)
+                        };
+                        format!("{{\"hit\":true,\"move\":{}}}", mv_json)
+                    }
+                    None => "{\"hit\":false}".to_string(),
+                }
+            }
             "play" => {
                 // root を1手進める（相手/自分の実着手の反映。TT 温存）
                 let color = color_of(req.color.as_deref().unwrap_or("B"));
@@ -231,8 +260,8 @@ pub extern "C" fn ts_call(handle: u64, request_json: *const c_char) -> *mut c_ch
         }
     }));
     match result {
-        Ok(s) => to_cstring(s),
-        Err(_) => to_cstring("{\"error\":\"panic\"}".to_string()),
+        Ok(s) => s,
+        Err(_) => "{\"error\":\"panic\"}".to_string(),
     }
 }
 

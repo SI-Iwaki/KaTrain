@@ -141,6 +141,9 @@ class Solution:
     problem_type: ProblemType = ProblemType.DEFEND
     # 参考情報: root 全手の分類（gtp 座標 -> SolutionValue）。デバッグ・別解確認用
     move_values: dict = field(default_factory=dict)
+    # クラスを成立させた solve のコンテキスト (pred, komaster, budget, want)。
+    # 証明ストア照会（§6.6 / §9.1 照会プロトコル）のキーになる。FAILED では None
+    gate: Optional[tuple] = None
 
 
 def result_sort_key(value: SolutionValue, problem_type: ProblemType):

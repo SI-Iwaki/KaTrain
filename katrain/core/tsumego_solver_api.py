@@ -90,6 +90,7 @@ class TsumegoSolverSession:
         self._root_black = frozenset(problem.black - problem.fill_black)
         self._root_white = frozenset(problem.white - problem.fill_white)
         self._baked_moves = 0
+        self.last_gate = None  # 前回 solve の証明コンテキスト（証明ストア即答のキー。§6.6）
         import threading
 
         self._lock = threading.Lock()  # 投機 solve（キャプチャ直後）と手番の solve の直列化
@@ -133,6 +134,7 @@ class TsumegoSolverSession:
             self.ban_point = None
             self._baked_moves = 0
             self._needs_reextract = False
+            self.last_gate = None
             self._drop_kernel()
         for coords, player in moves[len(self.applied_moves) :]:
             self._apply(coords, player)
@@ -218,6 +220,23 @@ class TsumegoSolverSession:
                     return coords, f"キャッシュ: {data.get('summary', '')}"
             except Exception:
                 pass  # 壊れたキャッシュは無視して解き直す
+        # 証明ストア即答（§6.6 応答フロー / G4）: 前回の solve が確定させたコンテキストで
+        # 現局面が証明済みなら、解析ゼロで決め手を返す（< 10ms）。ミスなら通常の solve へ
+        last_gate = getattr(self, "last_gate", None)
+        if last_gate is not None and not self._needs_reextract and self.kernel is not None:
+            try:
+                hit = self.kernel.probe(last_gate)
+            except Exception:
+                hit = None  # 旧 DLL 等で probe 未対応でも通常経路で動く
+            if hit is not None:
+                coords = hit[1]
+                if coords is None:
+                    self.log("tsumego_solver: 証明ストア即答（パスが本手）", "info")
+                    return None, "証明ストア即答: パスが本手"
+                if coords != self.ban_point:
+                    self.log(f"tsumego_solver: 証明ストア即答 {gtp_coord(coords)}（解析ゼロ）", "info")
+                    return coords, f"証明ストア即答: {gtp_coord(coords)}"
+                # コウ禁止に当たる場合は通常の solve で別手を探す
         blk, wht = self.current_stones()
         if self._needs_reextract:
             try:
@@ -239,6 +258,7 @@ class TsumegoSolverSession:
                 self._baked_moves = len(self.applied_moves)  # 現局面の石は problem に焼き込み済み
                 self._drop_kernel()  # region/target が変わったので証明ストアは作り直し
                 self._needs_reextract = False
+                self.last_gate = None
             except ProblemError as e:
                 self.log(f"tsumego_solver: 再抽出に失敗（{e}）。フォールバックします", "info")
                 return None, f"FALLBACK: 再抽出失敗 {e}"
@@ -261,6 +281,7 @@ class TsumegoSolverSession:
             self.log(f"tsumego_solver: ソルバ実行エラー {e}。フォールバックします", "error")
             return None, f"FALLBACK: ソルバ実行エラー {e}"
         self.last_solution = solution
+        self.last_gate = solution.gate if solution.value.result != ResultClass.FAILED else None
         elapsed = time.time() - t0
         backend = "native" if kernel is not None else "reference"
         summary = (

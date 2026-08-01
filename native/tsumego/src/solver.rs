@@ -83,7 +83,7 @@ pub struct Solver {
     cl_libs: Vec<u16>,
     cl_size: Vec<u16>,
     cl_gen: u32,
-    pn_tt: FxMap<(u64, u64, u8, u8, i8), (u64, u64, bool)>,
+    pn_tt: FxMap<(u64, u64, u8, u8, i8), (u64, u64, bool, i32)>,
     pub use_dfpn: bool,
     pub root_ban: i32, // 直前に root へ適用した着手が作ったコウ禁止点（-1 = なし）
 }
@@ -488,6 +488,8 @@ impl Solver {
         }
     }
 
+    const MAX_PLY: u32 = 1024; // 再帰の深さ上限（スタック保護。超過は打ち切り=安全側）
+
     fn check_limits(&self) -> Result<(), Timeout> {
         if self.nodes > self.node_limit {
             return Err(Timeout);
@@ -593,6 +595,9 @@ impl Solver {
     ) -> Result<(bool, bool, u32), Timeout> {
         self.nodes += 1;
         self.check_limits()?;
+        if ply > Self::MAX_PLY {
+            return Err(Timeout);
+        }
         if pass_count >= 2 {
             let v = self.two_pass_eval(pred);
             return Ok((v, false, INF_DEP));
@@ -730,7 +735,7 @@ impl Solver {
             } else {
                 (Self::PN_INF, 0, true, seen_ply)
             }
-        } else if let Some(&(pn, dn, t)) = self.pn_tt.get(&(key.0, key.1, pred, komaster, child_budget)) {
+        } else if let Some(&(pn, dn, t, _bm)) = self.pn_tt.get(&(key.0, key.1, pred, komaster, child_budget)) {
             (pn, dn, t, INF_DEP)
         } else if let Some(v) = self.dfpn_terminal(pred, child_pass) {
             if v {
@@ -760,13 +765,16 @@ impl Solver {
     ) -> Result<(u64, u64, bool, u32), Timeout> {
         self.nodes += 1;
         self.check_limits()?;
+        if ply > Self::MAX_PLY {
+            return Err(Timeout);
+        }
         let key = self.position_key(to_play, ban, pass_count);
         if let Some(&seen_ply) = self.history.get(&key) {
             let v = self.adjudicate_cycle(pred, seen_ply as usize);
             return Ok(if v { (0, Self::PN_INF, true, seen_ply) } else { (Self::PN_INF, 0, true, seen_ply) });
         }
         let tt_key = (key.0, key.1, pred, komaster, budget);
-        if let Some(&(pn, dn, taint)) = self.pn_tt.get(&tt_key) {
+        if let Some(&(pn, dn, taint, _bm)) = self.pn_tt.get(&tt_key) {
             if pn == 0 || dn == 0 || pn >= pn_th || dn >= dn_th {
                 return Ok((pn, dn, taint, INF_DEP));
             }
@@ -790,7 +798,7 @@ impl Solver {
             children.push((p as i32, child_budget));
         }
         children.push((PASS, budget));
-        let result = (|| -> Result<(u64, u64, bool, u32), Timeout> {
+        let result = (|| -> Result<(u64, u64, bool, u32, i32), Timeout> {
             // 子の状態は最初に1回だけ probe し、以後は再帰の戻り値で更新する。
             // GHI 抑制で TT に載らなかった証明も戻り値経由で親に見える（probe 依存だと
             // 「解けているのに TT ミスで (1,1) のまま」の子を無限に選び直すライブロックになる）。
@@ -819,17 +827,18 @@ impl Solver {
                     dn_min = dn_min.min(cdn);
                 }
                 if pn_min == u64::MAX {
-                    return Ok((Self::PN_INF, 0, false, INF_DEP)); // 子が無い（起きないはず）
+                    return Ok((Self::PN_INF, 0, false, INF_DEP, -2)); // 子が無い（起きないはず）
                 }
                 let (pn, dn) = if maximizer { (pn_min, dn_sum) } else { (pn_sum, dn_min) };
                 if pn == 0 || dn == 0 {
-                    // 値を決めた子から taint / dep を取る:
+                    // 値を決めた子から taint / dep / best_move を取る:
                     //   OR の証明 / AND の反証 = 決め手の子1つ。OR の反証 / AND の証明 = 全子
                     let proved_true = pn == 0;
                     let single = (maximizer && proved_true) || (!maximizer && !proved_true);
                     let mut taint = false;
                     let mut dep = INF_DEP;
-                    for &(cpn, cdn, ct, cd) in &states {
+                    let mut best_mv: i32 = -2;
+                    for (i2, &(cpn, cdn, ct, cd)) in states.iter().enumerate() {
                         if cpn == u64::MAX && cdn == u64::MAX {
                             continue;
                         }
@@ -838,6 +847,7 @@ impl Solver {
                             if decisive {
                                 taint = ct;
                                 dep = cd;
+                                best_mv = children[i2].0; // 決め手の子 = 証明ストアの即答手（§6.6）
                                 break;
                             }
                         } else {
@@ -845,10 +855,10 @@ impl Solver {
                             dep = dep.min(cd);
                         }
                     }
-                    return Ok((pn, dn, taint, dep));
+                    return Ok((pn, dn, taint, dep, best_mv));
                 }
                 if pn >= pn_th || dn >= dn_th {
-                    return Ok((pn, dn, false, INF_DEP)); // バウンドは値でないので依存も無し
+                    return Ok((pn, dn, false, INF_DEP, -2)); // バウンドは値でないので依存も無し
                 }
                 // 最良の子（OR: pn 最小 / AND: dn 最小）と次点
                 let mut bi = usize::MAX;
@@ -899,15 +909,28 @@ impl Solver {
             }
         })();
         self.history.remove(&key);
-        let (pn, dn, taint, dep) = result?;
+        let (pn, dn, taint, dep, best_mv) = result?;
         if pn == 0 || dn == 0 {
             if dep >= ply {
-                self.pn_tt.insert(tt_key, (pn, dn, taint)); // 証明/反証は経路非依存のときだけ保存
+                self.pn_tt.insert(tt_key, (pn, dn, taint, best_mv)); // 証明/反証は経路非依存のときだけ保存
             }
         } else {
-            self.pn_tt.insert(tt_key, (pn, dn, taint)); // バウンドは順序にしか効かないので常に保存
+            self.pn_tt.insert(tt_key, (pn, dn, taint, -2)); // バウンドは順序にしか効かないので常に保存
         }
         Ok((pn, dn, taint, dep))
+    }
+
+    /// 証明ストア照会（§6.6 応答フロー）: 現 root の (pred, komaster, budget) が
+    /// want どおりに証明済みなら決め手の手を返す（解析ゼロ）。
+    pub fn probe_store(&mut self, pred: u8, komaster: u8, budget: i8, want: bool) -> Option<i32> {
+        let key = self.position_key(self.root_to_play, self.root_ban, 0);
+        let &(pn, dn, _t, best_mv) = self.pn_tt.get(&(key.0, key.1, pred, komaster, budget))?;
+        let proven = if want { pn == 0 } else { dn == 0 };
+        if proven && best_mv != -2 {
+            Some(best_mv)
+        } else {
+            None
+        }
     }
 
     /// df-pn のエントリ: 述語の真偽が確定するまで回す
@@ -1003,6 +1026,9 @@ impl Solver {
     ) -> Result<(u32, u32, Vec<i32>, bool), Timeout> {
         self.opt_nodes += 1;
         if self.opt_nodes > self.opt_node_limit {
+            return Err(Timeout);
+        }
+        if history.len() as u32 > Self::MAX_PLY {
             return Err(Timeout);
         }
         self.check_limits()?;
