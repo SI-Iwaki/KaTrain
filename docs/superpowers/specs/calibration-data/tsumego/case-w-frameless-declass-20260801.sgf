@@ -1,0 +1,2 @@
+(;GM[1]FF[4]CA[UTF-8]SZ[13]KM[7.0]PL[B]RU[chinese]AB[jh][kj][jk][kk][lk][il][kl]AW[ii][ji][ki][li][jj][hk][ik][fl][hl][lm]C[case W (2026-08-01, 13路右下・枠なし・初手): 黒は守り方で、正解は B H1 → W G1 → B K1 でコウにして黒生き。旧実装は選択パイプラインが正解 H1 を選んだ後、コウ経路検査が「無条件」の J1 に格下げして不正解（J1 は黒が無条件で死ぬ＝失敗クラスなのに clean）。region = 6,12,0,6]
+;B[hm];W[gm];B[jm])
