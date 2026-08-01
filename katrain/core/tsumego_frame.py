@@ -41,8 +41,15 @@ def katrain_sgf_from_ijs(ijs, isize, jsize, player):
     return [Move((j, i)).sgf((jsize, isize)) for i, j in ijs]
 
 
-def build_frame(bw_board, komi, black_to_play_p, ko_p, margin, drop_non_core):
-    """枠を張って (完成した石配列, region) を返す。tsumego_frame / tsumego_frame_board の共通部"""
+def build_frame(bw_board, komi, black_to_play_p, ko_p, margin, drop_non_core, black_to_attack_p=None):
+    """枠を張って (完成した石配列, region) を返す。tsumego_frame / tsumego_frame_board の共通部
+
+    black_to_attack_p は攻め方の明示指定（None なら従来どおり guess_black_to_attack の推定）。
+    極値票は「外側の色＝攻め方」を前提にするため、殺される側が盤端の極値線を占める辺の詰碁
+    （実測 2026-08-01 case X: 4辺中3辺の極値石が守り方の白で票 -68）では構造的に反転する。
+    反転は測って直せない（生盤 ownership・枠バランス・手番フリップの3測定族すべて実測で
+    分離不能＝spec 追記37）ので、役割はキャプチャ時にホットキーで明示してもらう。
+    """
     sizes = ij_sizes(bw_board)
     # 9路以下では margin=4（13/19路向け）だと枠矩形が盤外にはみ出して壁・充填が置けず、
     # 解析リージョンも全盤（→None正規化→全盤解析）に退化するため、収まる値にクランプする
@@ -57,7 +64,9 @@ def build_frame(bw_board, komi, black_to_play_p, ko_p, margin, drop_non_core):
         drop_non_core = False
     stones = stones_from_bw_board(bw_board)
     core_bbox = mark_core_stones(stones, komi, margin)
-    filled_stones = tsumego_frame_stones(stones, komi, black_to_play_p, ko_p, margin, drop_non_core)
+    filled_stones = tsumego_frame_stones(
+        stones, komi, black_to_play_p, ko_p, margin, drop_non_core, black_to_attack_p=black_to_attack_p
+    )
     region = get_analysis_region(pick_all(filled_stones, "tsumego_frame_region_mark"))
     if not region or covers_board_p(region, sizes):
         region = fallback_region(core_bbox, sizes) or region
@@ -72,14 +81,17 @@ def tsumego_frame(bw_board, komi, black_to_play_p, ko_p, margin):
     return (blacks, whites, region)
 
 
-def tsumego_frame_board(bw_board, komi, black_to_play_p, ko_p, margin, drop_non_core=True):
+def tsumego_frame_board(bw_board, komi, black_to_play_p, ko_p, margin, drop_non_core=True, black_to_attack_p=None):
     """枠適用後の完成した盤グリッド ("B"/"W"/"-") と region を返す。
 
     キャプチャ経路はこれを単一の AB/AW として SGF 化し新規局にする。既存局面に枠ノードを
     足す方式と違い、非コア石の除去ができ（SGF の AE は engine.py が解析を拒否するため使えない）、
     占有点への重複配置も構造的に起きない。
+    black_to_attack_p はキャプチャ時の役割指定ホットキー由来の明示指定（build_frame 参照）。
     """
-    filled_stones, region = build_frame(bw_board, komi, black_to_play_p, ko_p, margin, drop_non_core)
+    filled_stones, region = build_frame(
+        bw_board, komi, black_to_play_p, ko_p, margin, drop_non_core, black_to_attack_p=black_to_attack_p
+    )
     board = [
         [(BLACK if h.get("black") else WHITE) if h.get("stone") else "-" for h in row] for row in filled_stones
     ]
@@ -702,6 +714,30 @@ def need_flip_p(kmin, kmax, size):
 
 def guess_black_to_attack(extrema, sizes):
     return sum([sign_of_color(z) * height2(z, sizes) for z in extrema]) > 0
+
+
+def guess_black_to_attack_for_board(bw_board, komi, margin):
+    """認識盤に対する攻め方推定を tsumego_frame_stones と同じ材料（コア石の極値線）で返す。
+
+    キャプチャ経路が「これから張る枠の役割」をログに出すための読み出し口。build_frame の
+    margin クランプと tsumego_frame_stones の ijs 選択（コア石があればコアだけ）を写し、
+    判定式そのもの（guess_black_to_attack）を共有する。石が無い盤は None。
+    """
+    sizes = ij_sizes(bw_board)
+    if min(sizes) <= 9:
+        margin = min(margin, 2)
+    stones = stones_from_bw_board(bw_board)
+    mark_core_stones(stones, komi, margin)
+    all_ijs = [
+        {"i": i, "j": j, "black": h.get("black"), "core": h.get("tsumego_core")}
+        for i, row in enumerate(stones)
+        for j, h in enumerate(row)
+        if h.get("stone")
+    ]
+    if not all_ijs:
+        return None
+    ijs = [z for z in all_ijs if z["core"]] or all_ijs
+    return guess_black_to_attack(extremum_stones(ijs), sizes)
 
 
 def extremum_stones(zs):

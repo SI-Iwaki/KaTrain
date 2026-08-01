@@ -691,16 +691,31 @@ class KaTrainGui(Screen, KaTrainBase):
         from katrain.core.tsumego_capture import ensure_dpi_awareness
 
         ensure_dpi_awareness()
-        spec = settings.get("hotkey", "f4")
-        try:
-            mods, vk = self._parse_hotkey(spec)
-        except ValueError as e:
-            self.log(f"tsumego_capture: ホットキー設定が不正です: {e}", OUTPUT_ERROR)
+        # 役割指定ホットキー: 枠の攻め方推定（極値票）は殺される側が盤端の極値線を占める辺の
+        # 詰碁で構造的に反転し、測って直すことはできない（生盤 ownership・枠バランス・手番
+        # フリップの3測定族すべて実測で分離不能＝spec 追記37）。アプリの問題文（黒先白死/
+        # 黒先活）を見ているユーザーだけが役割を知っているので、押し分けで明示してもらう
+        hotkeys = []
+        for key, default, role, label in (
+            ("hotkey", "f4", None, "自動推定"),
+            ("hotkey_attack", "shift+f4", True, "黒が攻め方(殺す問題)"),
+            ("hotkey_defend", "ctrl+f4", False, "黒が守り方(生きる問題)"),
+        ):
+            spec = settings.get(key, default)
+            if not spec:
+                continue  # 空文字でそのキーだけ無効化できる
+            try:
+                mods, vk = self._parse_hotkey(spec)
+            except ValueError as e:
+                self.log(f"tsumego_capture: ホットキー設定({key})が不正です: {e}", OUTPUT_ERROR)
+                continue
+            hotkeys.append((self._TSUMEGO_HOTKEY_ID + len(hotkeys), spec, mods, vk, role, label))
+        if not hotkeys:
             return
         self._tsumego_capture_busy = False
-        threading.Thread(target=self._tsumego_hotkey_loop, args=(spec, mods, vk), daemon=True).start()
+        threading.Thread(target=self._tsumego_hotkey_loop, args=(hotkeys,), daemon=True).start()
 
-    def _tsumego_hotkey_loop(self, spec, mods, vk):
+    def _tsumego_hotkey_loop(self, hotkeys):
         """RegisterHotKey で登録し、専用スレッドのメッセージループで WM_HOTKEY を待つ。
 
         以前は keyboard パッケージの WH_KEYBOARD_LL フックを使っていたが、フックのコールバックが
@@ -709,28 +724,44 @@ class KaTrainGui(Screen, KaTrainBase):
         あり、それに巻き込まれてホットキーが突然無反応になっていた（listen スレッドは GetMessage
         ループのまま生き続けるので、プロセスを外から見ても異常に見えないのが厄介だった）。
         RegisterHotKey なら WM_HOTKEY がこのスレッドのメッセージキューに積まれるため取りこぼさない。
+        役割指定ホットキー（黒が攻め方/守り方）も同じループで待ち、msg.wParam（ホットキーID）で
+        どのキーが押されたかを見分けて役割をキャプチャに渡す。
         """
         from ctypes import wintypes
 
         user32 = ctypes.windll.user32
-        if not user32.RegisterHotKey(None, self._TSUMEGO_HOTKEY_ID, mods | self._MOD_NOREPEAT, vk):
-            self.log(
-                f"tsumego_capture: ホットキー {spec} の登録に失敗しました"
-                f"（他のアプリが同じキーを使用している可能性があります）",
-                OUTPUT_ERROR,
-            )
+        registered = []
+        for hotkey_id, spec, mods, vk, role, label in hotkeys:
+            if not user32.RegisterHotKey(None, hotkey_id, mods | self._MOD_NOREPEAT, vk):
+                self.log(
+                    f"tsumego_capture: ホットキー {spec}（{label}）の登録に失敗しました"
+                    f"（他のアプリが同じキーを使用している可能性があります）",
+                    OUTPUT_ERROR,
+                )
+                continue
+            registered.append((hotkey_id, spec, role, label))
+        if not registered:
             return
-        self.log(f"tsumego_capture: ホットキー {spec} を登録しました", OUTPUT_INFO)
+        roles = {hotkey_id: role for hotkey_id, _spec, role, _label in registered}
+        self.log(
+            "tsumego_capture: ホットキー "
+            + " / ".join(f"{spec}={label}" for _id, spec, _role, label in registered)
+            + " を登録しました",
+            OUTPUT_INFO,
+        )
         msg = wintypes.MSG()
         try:
             while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
-                if msg.message == self._WM_HOTKEY:
+                if msg.message == self._WM_HOTKEY and msg.wParam in roles:
                     # キャプチャ中もメッセージループを止めないよう、実処理は作業スレッドに投げる
-                    threading.Thread(target=self._tsumego_capture_trigger, daemon=True).start()
+                    threading.Thread(
+                        target=self._tsumego_capture_trigger, args=(roles[msg.wParam],), daemon=True
+                    ).start()
         finally:
-            user32.UnregisterHotKey(None, self._TSUMEGO_HOTKEY_ID)
+            for hotkey_id, _spec, _role, _label in registered:
+                user32.UnregisterHotKey(None, hotkey_id)
 
-    def _tsumego_capture_trigger(self):
+    def _tsumego_capture_trigger(self, black_to_attack=None):
         # ホットキースレッドが起こした作業スレッドで実行される。
         # 認識までここで行い、盤面への反映はメッセージループに投げる
         from katrain.core.tsumego_capture import CaptureError, capture_tsumego_grid
@@ -754,7 +785,7 @@ class KaTrainGui(Screen, KaTrainBase):
             except Exception as e:
                 self._tsumego_capture_failed(f"詰碁キャプチャで予期しないエラー: {e}")
                 return
-            self("tsumego-capture-apply", grid, ko, margin)
+            self("tsumego-capture-apply", grid, ko, margin, black_to_attack)
         finally:
             self._tsumego_capture_busy = False
 
@@ -764,8 +795,11 @@ class KaTrainGui(Screen, KaTrainBase):
         except (TypeError, ValueError):
             return REGION_ANALYSIS_WIDE_ROOT_NOISE
 
-    def _choose_tsumego_frame(self, grid, komi, ko, margin, settings):
+    def _choose_tsumego_frame(self, grid, komi, ko, margin, settings, black_to_attack_p=None):
         """設定の frame_ko とその反転で枠を張り、root スコアがバランスの取れた方を採用する。
+
+        black_to_attack_p は役割指定ホットキー由来の明示指定。None なら従来どおり
+        tsumego_frame_stones 内の guess_black_to_attack に委ねる（自動推定の経路は不変）。
 
         ko_p は「攻め方と守り方のどちらにコウダテ形を与えるか」の切り替えで、正解がコウ止まりの
         問題では攻め方に渡さないと守り側の無条件生きになる（＝正解手が価値を失う）。どちらが
@@ -784,16 +818,35 @@ class KaTrainGui(Screen, KaTrainBase):
             FRAME_VALIDITY_WIDE_ROOT_NOISE,
             frame_balance_distance,
             frame_validity_verdicts,
+            guess_black_to_attack_for_board,
             offence_to_win,
             pick_balanced_frame,
             solver_core_points,
             tsumego_frame_board,
         )
 
+        # 役割は問題の性質そのものなのに、盤面から確実には読めない（極値票は辺の詰碁で反転し、
+        # 測定でも選べない）。どちらの役割で枠を張ったかを必ずログに残し、誤答調査で最初に
+        # 疑えるようにする
+        guessed_role = guess_black_to_attack_for_board(grid, komi, margin)
+        if black_to_attack_p is None:
+            self.log(
+                f"tsumego_capture: 枠の役割推定: 黒が攻め方={guessed_role}"
+                f"（誤りなら役割指定ホットキー hotkey_attack / hotkey_defend で撮り直せます）",
+                OUTPUT_INFO,
+            )
+        else:
+            note = "推定と一致" if guessed_role == black_to_attack_p else f"推定 {guessed_role} を上書き"
+            self.log(
+                f"tsumego_capture: 役割指定: 黒が攻め方={black_to_attack_p}（ホットキー、{note}）", OUTPUT_INFO
+            )
+
         candidates = []
         for ko_p in (bool(ko), not ko):
             try:
-                board, region = tsumego_frame_board(grid, komi, True, ko_p=ko_p, margin=margin)
+                board, region = tsumego_frame_board(
+                    grid, komi, True, ko_p=ko_p, margin=margin, black_to_attack_p=black_to_attack_p
+                )
             except Exception as e:  # 枠が張れない盤（コアが大きすぎる等）は候補から外すだけ
                 self.log(f"tsumego_capture: 枠(ko={ko_p})を作れませんでした: {e}", OUTPUT_INFO)
                 continue
@@ -801,7 +854,9 @@ class KaTrainGui(Screen, KaTrainBase):
                 continue  # コウダテ形が置けない盤では両者が同一になる
             candidates.append((ko_p, board, region))
         if not candidates:
-            return tsumego_frame_board(grid, komi, True, ko_p=ko, margin=margin)  # 例外は呼び出し側へ
+            return tsumego_frame_board(
+                grid, komi, True, ko_p=ko, margin=margin, black_to_attack_p=black_to_attack_p
+            )  # 例外は呼び出し側へ
         if not settings.get("frame_ko_auto", True):
             candidates = candidates[:1]  # コウダテの自動選択はしないが、本体石の死活は確かめる
         try:
@@ -898,7 +953,12 @@ class KaTrainGui(Screen, KaTrainBase):
                 self.log(
                     f"tsumego_capture: 枠(ko={'/'.join(str(k) for k in destroyed)})では手番側の石が開始時点で"
                     f"死と読まれます。必ず正解手がある詰碁でこれは起こり得ないので、枠が問題を壊していると"
-                    f"判断して枠なしで出題します",
+                    f"判断して枠なしで出題します"
+                    + (
+                        "（役割推定の反転でも同じ症状になります。役割指定ホットキーでの撮り直しを検討してください）"
+                        if black_to_attack_p is None
+                        else ""
+                    ),
                     OUTPUT_INFO,
                 )
                 return None
@@ -923,7 +983,13 @@ class KaTrainGui(Screen, KaTrainBase):
                 f"tsumego_capture: 警告 枠バランスが設計目標から離れています"
                 f"（root={best[3]:+.2f}目 / 目標±{offence_to_win}目, 距離{distance:.1f}）。"
                 f"絶対スコアに依る判定は信頼できません。frame_margin を変えて再キャプチャすると"
-                f"改善する場合があります",
+                f"改善する場合があります"
+                + (
+                    "。役割推定の反転でも同じ症状になります（実測 case X: 距離47）。アプリの問題文と"
+                    "推定役割が食い違うなら役割指定ホットキーで撮り直してください"
+                    if black_to_attack_p is None
+                    else ""
+                ),
                 OUTPUT_INFO,
             )
         return best[1], best[2]
@@ -1098,7 +1164,7 @@ class KaTrainGui(Screen, KaTrainBase):
         self.log(message, OUTPUT_ERROR)
         Clock.schedule_once(lambda _dt: self.controls.set_status(message, STATUS_ERROR, check_level=False), 0)
 
-    def _do_tsumego_capture_apply(self, grid, ko, margin):
+    def _do_tsumego_capture_apply(self, grid, ko, margin, black_to_attack=None):
         # メッセージループスレッドで実行。既定は枠あり（use_frame: false で枠なし運用も選択可能）。
         # 枠なしを既定にしなかった理由: 実機検証で二律背反が判明したため。空いた盤面を放置すると
         # 地合いが支配し詰碁を読む動機が消える（実測: ある局面で-53目/勝率0%、別の局面で+37目/勝率100%）。
@@ -1167,7 +1233,7 @@ class KaTrainGui(Screen, KaTrainBase):
                 )
         if board is None and settings.get("use_frame", False):
             started = time.time()
-            chosen = self._choose_tsumego_frame(grid, komi, ko, margin, settings)
+            chosen = self._choose_tsumego_frame(grid, komi, ko, margin, settings, black_to_attack_p=black_to_attack)
             # 枠の採否は解析を数本回すのでキャプチャの待ち時間に直接乗る。遅いと感じたときに
             # どこが効いているか分かるように必ず出す（読み直しは1本 3〜4 秒）
             self.log(f"tsumego_capture: 枠の採否判定に {time.time() - started:.1f} 秒", OUTPUT_INFO)

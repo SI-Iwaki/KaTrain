@@ -353,6 +353,69 @@ def test_extremum_tie_does_not_decide_the_attacker():
     )
 
 
+def _case_x_core():
+    # 実キャプチャ 2026-08-01 case X の原問題（13路左辺。黒が A4 から白の左辺群を無条件に殺す
+    # 詰碁で、黒＝攻め方）。殺される側の白群が2線（B列）を這って左辺の極値線を占め、さらに
+    # 上端 C10・右端 F3 の白い外郭石が残る2辺の極値も取るため、極値票は -68 で決定的に反転する
+    # （タイ崩れの case S と違い、集計の改良では救えない構造的な反転）。
+    # 反転は測って直せない: 生盤 ownership は「外側は攻め方の勢力圏」という詰碁の約束事を
+    # 表現せず（白 +0.47＝死と読まれない）、枠を張った後の盤は約80子の書き換えで死活自体が
+    # 変わる（守り方とされた群はどの枠でも手番依存になり手番フリップも分離不能）。
+    # そのため役割はキャプチャ時のホットキーで明示指定できるようにした（black_to_attack_p）
+    gtp = lambda p: (13 - int(p[1:]), "ABCDEFGHJKLMN".index(p[0]))  # noqa: E731
+    black = "B9 C9 D9 C8 C7 D6 C5 D5 D4 D3 B2 D2".split()
+    white = "C10 B8 B7 B6 C6 B5 C4 B3 C3 F3".split()
+    return _board(stones=[(*gtp(p), "B") for p in black] + [(*gtp(p), "W") for p in white])
+
+
+def _wall_stones(board_in, out, region):
+    # 枠の壁＝region の4辺上に「枠が追加した」石。盤端にスナップした辺には元の問題石が
+    # 乗っていることがある（case S の右上）ので、入力盤に無かった石だけを数える
+    (i0, i1), (j0, j1) = region
+    cells = [(i0, j) for j in range(j0, j1 + 1)] + [(i1, j) for j in range(j0, j1 + 1)]
+    cells += [(i, j0) for i in range(i0, i1 + 1)] + [(i, j1) for i in range(i0, i1 + 1)]
+    return {out[i][j] for i, j in cells if out[i][j] != "-" and board_in[i][j] == "-"}
+
+
+def test_role_override_forces_the_wall_colour():
+    # 回帰テスト（case X）: 自動推定はこの盤で反転し、守り方(白)の色の壁を張って黒に
+    # 代償地帯を渡してしまう（黒+52目リードで死活がスコアから切り離され C2 で誤答）。
+    # 役割指定ホットキー（black_to_attack_p=True）なら壁=攻め方(黒)・代償地帯=守り方(白)の
+    # 正しい枠になり、select_tsumego_move は正解 A4 を選ぶ（frame_role_ab.py 実測 2/2）
+    board = _case_x_core()
+    auto, auto_region = tsumego_frame_board(board, komi=7.0, black_to_play_p=True, ko_p=False, margin=4)
+    assert _wall_stones(board, auto, auto_region) == {"W"}, (
+        "前提: 自動推定はこの盤で反転する（変わったら本体の推定が改善された）"
+    )
+
+    out, region = tsumego_frame_board(
+        board, komi=7.0, black_to_play_p=True, ko_p=False, margin=4, black_to_attack_p=True
+    )
+    assert _wall_stones(board, out, region) == {"B"}, "役割指定で壁は攻め方の黒になるべき"
+
+    (i0, i1), (j0, j1) = region
+    isize, jsize = len(out), len(out[0])
+    outside = [
+        out[i][j] for i in range(isize) for j in range(jsize) if not (i0 <= i <= i1 and j0 <= j <= j1)
+    ]
+    assert outside.count("W") > outside.count("B"), (
+        f"枠外の代償地帯は守り側の白が多いはず: black={outside.count('B')} white={outside.count('W')}"
+    )
+
+
+def test_guess_for_board_matches_the_walls_the_frame_builds():
+    # guess_black_to_attack_for_board はキャプチャ経路が「これから張る枠の役割」をログに出す
+    # ための読み出し口。実際に張った壁の色（壁=攻め方）と食い違ったらログが嘘になる
+    from katrain.core.tsumego_frame import guess_black_to_attack_for_board
+
+    for fixture in (_case_s_core, _case_x_core, _scattered_outlier_board):
+        board = fixture()
+        guessed = guess_black_to_attack_for_board(board, komi=7.0, margin=4)
+        out, region = tsumego_frame_board(board, komi=7.0, black_to_play_p=True, ko_p=False, margin=4)
+        wall = _wall_stones(board, out, region)
+        assert wall == ({"B"} if guessed else {"W"}), f"{fixture.__name__}: guess={guessed} wall={wall}"
+
+
 def test_wall_colour_invariant_under_transpose():
     # 不変条件テスト: guess_black_to_attack が height2（転置・反転不変）で重み付けされる以上、
     # 「どちらが攻め側か」は盤の向き（転置）に依存してはいけない。バグ修正前は

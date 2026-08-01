@@ -51,6 +51,8 @@
     "tsumego_capture": {
         "enabled": true,
         "hotkey": "f4",
+        "hotkey_attack": "shift+f4",
+        "hotkey_defend": "ctrl+f4",
         "window_title": "BlueStacks",
         "board_sizes": [
             9,

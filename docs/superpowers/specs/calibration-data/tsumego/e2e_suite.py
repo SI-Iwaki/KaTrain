@@ -158,6 +158,14 @@ CASES = {
         expect={0: ("H1",), 2: ("K1",)},
         note="初手の残り 1/3 は救済が N4 を拾う分散（spec 追記33/35）",
     ),
+    "X": dict(
+        sgf="case-x-attacker-role-edge-20260801.sgf",
+        region="0,6,0,10",
+        line=["A4", "A3", "A8", "A7", "A5", "C2", "C1"],
+        expect={0: ("A4",)},
+        note="役割指定（black_to_attack_p=True）で張り直した枠。実キャプチャは極値票 -68 の役割反転"
+        "で壁が白になり C2 で誤答（-inverted.sgf、spec 追記37）",
+    ),
 }
 # 既知限界（エンジン側の value/探索の問題で選択則では救えない。spec 追記13/21）
 KNOWN_LIMITS = {
