@@ -165,3 +165,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Rust build artifacts (tsumego solver)
+native/tsumego/target/
