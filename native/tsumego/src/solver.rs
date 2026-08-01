@@ -319,12 +319,27 @@ impl Solver {
         found
     }
 
-    fn early_eval(&mut self, pred: u8) -> Option<bool> {
+    /// 生存の早期確定: 一点眼2つ（安価）→ ダメなら Benson（キャッシュ付き）。
+    /// Benson は大きな眼空間の pass-alive を「埋め尽くす前に」確定できる唯一の
+    /// 打ち切りで、これが無いと広い地の生き証明が深い充填の探索に爆発する（§6.3-2）
+    fn alive_now(&mut self, own_side: bool, deep: bool) -> bool {
+        if self.cheap_two_eyes(own_side) {
+            return true;
+        }
+        if !deep {
+            return false; // probe（子見積もり）では Benson を呼ばない（1ノード×子数で爆発する）
+        }
+        let color = if own_side { self.own_color } else { self.target_color };
+        self.any_live_pass_alive(color, own_side)
+    }
+
+    /// deep=false は probe 用の安価判定のみ（見逃した終端は展開先ノードの入口で捕まる＝健全）
+    fn early_eval_at(&mut self, pred: u8, deep: bool) -> Option<bool> {
         if pred == PRED_ALIVE || pred == PRED_SEKI {
             if self.live_t == 0 {
                 return Some(false);
             }
-            if self.cheap_two_eyes(false) {
+            if self.alive_now(false, deep) {
                 return Some(true);
             }
             return None;
@@ -334,20 +349,24 @@ impl Solver {
         }
         if pred == PRED_SEM_WIN {
             if self.live_t != 0 {
-                if self.cheap_two_eyes(false) {
+                if self.alive_now(false, deep) {
                     return Some(false); // 相手 target が両眼＝もう殺せない
                 }
                 return None;
             }
-            if self.cheap_two_eyes(true) {
+            if self.alive_now(true, deep) {
                 return Some(true);
             }
             return None;
         }
-        if self.cheap_two_eyes(true) {
+        if self.alive_now(true, deep) {
             return Some(true);
         }
         None
+    }
+
+    fn early_eval(&mut self, pred: u8) -> Option<bool> {
+        self.early_eval_at(pred, true)
     }
 
     fn two_pass_eval(&mut self, pred: u8) -> bool {
@@ -686,11 +705,11 @@ impl Solver {
 
     const PN_INF: u64 = 1 << 40;
 
-    fn dfpn_terminal(&mut self, pred: u8, pass_count: u8) -> Option<bool> {
+    fn dfpn_terminal(&mut self, pred: u8, pass_count: u8, deep: bool) -> Option<bool> {
         if pass_count >= 2 {
-            return Some(self.two_pass_eval(pred));
+            return Some(self.two_pass_eval(pred)); // 連続パス終端の裁定は常に厳密（Benson 込み）
         }
-        self.early_eval(pred)
+        self.early_eval_at(pred, deep)
     }
 
     /// mv（PASS 含む）を適用して path_moves を積む。非合法手は None
@@ -737,7 +756,7 @@ impl Solver {
             }
         } else if let Some(&(pn, dn, t, _bm)) = self.pn_tt.get(&(key.0, key.1, pred, komaster, child_budget)) {
             (pn, dn, t, INF_DEP)
-        } else if let Some(v) = self.dfpn_terminal(pred, child_pass) {
+        } else if let Some(v) = self.dfpn_terminal(pred, child_pass, false) {
             if v {
                 (0, Self::PN_INF, false, INF_DEP)
             } else {
@@ -779,7 +798,7 @@ impl Solver {
                 return Ok((pn, dn, taint, INF_DEP));
             }
         }
-        if let Some(v) = self.dfpn_terminal(pred, pass_count) {
+        if let Some(v) = self.dfpn_terminal(pred, pass_count, true) {
             return Ok(if v { (0, Self::PN_INF, false, INF_DEP) } else { (Self::PN_INF, 0, false, INF_DEP) });
         }
         let maximizer = to_play == self.beneficiary(pred);
@@ -945,7 +964,7 @@ impl Solver {
         pass_count: u8,
         ply: u32,
     ) -> Result<(bool, bool), Timeout> {
-        if let Some(v) = self.dfpn_terminal(pred, pass_count) {
+        if let Some(v) = self.dfpn_terminal(pred, pass_count, true) {
             return Ok((v, false));
         }
         loop {

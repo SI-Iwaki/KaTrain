@@ -91,6 +91,7 @@ class TsumegoSolverSession:
         self._root_white = frozenset(problem.white - problem.fill_white)
         self._baked_moves = 0
         self.last_gate = None  # 前回 solve の証明コンテキスト（証明ストア即答のキー。§6.6）
+        self._gave_up = False  # 予算内に解けないと判明した問題（以後は即フォールバック）
         import threading
 
         self._lock = threading.Lock()  # 投機 solve（キャプチャ直後）と手番の solve の直列化
@@ -220,6 +221,10 @@ class TsumegoSolverSession:
                     return coords, f"キャッシュ: {data.get('summary', '')}"
             except Exception:
                 pass  # 壊れたキャッシュは無視して解き直す
+        # 一度「この問題は予算内に解けない」と分かったら以後は即フォールバック
+        # （毎手 solver_time_limit_ms を燃やしてからフォールバックすると現行より遅くなる）
+        if getattr(self, "_gave_up", False):
+            return None, "FALLBACK: この問題は予算内に解けない（既知）"
         # 証明ストア即答（§6.6 応答フロー / G4）: 前回の solve が確定させたコンテキストで
         # 現局面が証明済みなら、解析ゼロで決め手を返す（< 10ms）。ミスなら通常の solve へ
         last_gate = getattr(self, "last_gate", None)
@@ -259,6 +264,7 @@ class TsumegoSolverSession:
                 self._drop_kernel()  # region/target が変わったので証明ストアは作り直し
                 self._needs_reextract = False
                 self.last_gate = None
+                self._gave_up = False  # 問題が変わった（小さくなったかもしれない）ので解き直す
             except ProblemError as e:
                 self.log(f"tsumego_solver: 再抽出に失敗（{e}）。フォールバックします", "info")
                 return None, f"FALLBACK: 再抽出失敗 {e}"
@@ -271,8 +277,9 @@ class TsumegoSolverSession:
             else:
                 solution = ReferenceSolver(problem_now, self.limits).solve()
         except SolverTimeout:
+            self._gave_up = True  # 以後の手番は即フォールバック（局面が進んでも region 規模は同じ）
             self.log(
-                f"tsumego_solver: 未解決（時間/ノード制限）。現行経路へフォールバックします "
+                f"tsumego_solver: 未解決（時間/ノード制限）。以後この問題は現行経路へフォールバックします "
                 f"[{time.time() - t0:.1f}s]",
                 "info",
             )
@@ -299,8 +306,25 @@ class TsumegoSolverSession:
             # この詰碁は（この型・target では）解けない ＝ 詰碁側/認識側の問題（§9.2）
             self.log("tsumego_solver: ソルバは FAILED（解無し）と裁定。現行経路へフォールバックします", "info")
             return None, "FALLBACK: ソルバ裁定 FAILED"
+        # 同格の別解が複数あり optimize でも順位が付かなかったときの最終タイブレーク:
+        # KataGo policy（§6.5.1-3 / §12。呼び出し側が move_ranker を渡したときだけ。
+        # アプリの解答樹の本線は KataGo の本命と一致しやすい＝現行 points_epsilon の知見）
+        root_moves = list(solution.root_moves)
+        ranker = getattr(self, "move_ranker", None)
+        if ranker is not None and len(root_moves) > 1 and solution.value.plies == 0:
+            try:
+                ranked = sorted(root_moves, key=lambda m: ranker(m))
+                if ranked != root_moves:
+                    self.log(
+                        f"tsumego_solver: 同格の別解 {[gtp_coord(m) for m in root_moves]} を"
+                        f" KataGo policy で並べ替え → {[gtp_coord(m) for m in ranked]}",
+                        "info",
+                    )
+                root_moves = ranked
+            except Exception:
+                pass
         # 実対局のコウ禁止に当たる手は打たない（§9.1）
-        for move in solution.root_moves:
+        for move in root_moves:
             if move is None:
                 self._cache_store(cache_path, None, summary)
                 return None, f"パスが本手（{summary}）"

@@ -2921,6 +2921,15 @@ class TsumegoSolverStrategy(AIStrategy):
             self.game.tsumego_solver_session = session if session is not None else False
         if session:
             session.sync_moves(solver_api.moves_from_game(self.game))
+            # 同格の別解のタイブレーク用に KataGo の本命順を渡す（§6.5.1-3。解析が
+            # まだ無ければ渡さない＝ソルバの着手を解析待ちでブロックしない）
+            session.move_ranker = None
+            try:
+                if self.cn.analysis.get("root") is not None:
+                    order = {c["move"]: i for i, c in enumerate(self.cn.candidate_moves)}
+                    session.move_ranker = lambda coords: order.get(Move(coords).gtp(), 10**6)
+            except Exception:
+                pass
             coords, thoughts = session.generate()
             if coords is not None:
                 return Move(coords, player=self.cn.next_player), thoughts
