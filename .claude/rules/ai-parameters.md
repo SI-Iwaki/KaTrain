@@ -305,5 +305,5 @@ Spec: `docs/superpowers/specs/2026-07-29-tsumego-ownership-design.md`（誤答�
 | solver_max_region_points | 72 | region 上限（超えたら門前払い→フォールバック。§8.4） |
 | solver_cache | true | root Solution の永続キャッシュ（~/.katrain/tsumego_cache/） |
 | solver_fallback | true | フォールバックの有効化（false だと未解決時パス） |
-| solver_capture_max_region | 26 | キャプチャ時のソルバモード採用ゲート（region 点数）。P1 実測で解けたのは region<=23。超過は最初から現行経路（枠張り）＝挙動が完全に従来のまま |
-| solver_capture_max_empties | 14 | 同・空点数ゲート（解けたのは空点<=12、空点23+は1800秒でも未達） |
+| solver_capture_max_region | 23 | キャプチャ時のソルバモード採用ゲート（region 点数）。P1 実測で**速く**解けたのは region<=23（最大 Q@0 の 11.1 秒）。旧値 26 のマージン帯（24〜26）は実測 29〜59 秒で、初手が df-pn の求解をそのまま待つ＝1問20秒の予算をこの1手で壊す（実測 2026-08-02: region24/空点12 が 29.0s native・着手決定 26.2 秒。spec 追記4）。超過は最初から現行経路（枠張り。1〜3秒/手）＝挙動が完全に従来のまま |
+| solver_capture_max_empties | 12 | 同・空点数ゲート（解けたのは空点<=12、空点23+は1800秒でも未達）。旧値 14 は封筒外のマージンだった |

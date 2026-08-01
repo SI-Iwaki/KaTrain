@@ -1200,16 +1200,19 @@ class KaTrainGui(Screen, KaTrainBase):
                 )
                 solver_problem = None
             if solver_problem is not None:
-                # ソルバで解ける規模のときだけソルバモードにする（P1 実測: 解けたのは
-                # region<=23・空点<=12、空点23以上は1800秒でも未達）。規模超過を枠なしで
-                # 出題してからフォールバックすると、従来の枠あり経路より弱くなるため、
-                # ここで従来経路（枠張り）に譲る＝挙動は完全に現行のまま（G5）
+                # ソルバで**速く**解ける規模のときだけソルバモードにする（P1 実測: 解けたのは
+                # region<=23・空点<=12 で最大 11.1 秒、空点23以上は1800秒でも未達）。ゲートを
+                # 実測封筒より広く（26/14）取っていたときは、マージン帯に入った問題の初手が
+                # df-pn の求解をそのまま待たされた（実測 2026-08-02: region24/空点12 が
+                # 29.0s native・着手決定 26.2 秒＝1問20秒の予算をこの1手で壊す。spec 追記4）。
+                # 規模超過を枠なしで出題してからフォールバックすると従来の枠あり経路より
+                # 弱くなるため、ここで従来経路（枠張り）に譲る＝挙動は完全に現行のまま（G5）
                 n_stones = sum(
                     1 for p in solver_problem.region if p in solver_problem.black or p in solver_problem.white
                 )
                 n_empties = len(solver_problem.region) - n_stones
-                max_region = int(settings.get("solver_capture_max_region", 26))
-                max_empties = int(settings.get("solver_capture_max_empties", 14))
+                max_region = int(settings.get("solver_capture_max_region", 23))
+                max_empties = int(settings.get("solver_capture_max_empties", 12))
                 if len(solver_problem.region) > max_region or n_empties > max_empties:
                     self.log(
                         f"tsumego_capture: region {len(solver_problem.region)}点/空点{n_empties} は"
