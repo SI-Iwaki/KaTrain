@@ -295,31 +295,40 @@ def test_declass_points_tolerance_boundary():
 # ＝採るべき +0.98 と落とすべき -1.00 の間に約 2.0 の空白があり、閾値 0.5（`ko_success_ownership`）
 # がその中間に入る。**答えがコウの詰碁では正解も ply1 では成立しない**（L12 も -1.00）が、この
 # 判定は格下げ**先**にしか課さないので、そのときは「格下げしない＝コウを維持する」に倒れる。
+#
+# **枠なし（役割不明）でもこの確認は要る**。旧実装は役割が読めないとき確認ごとスキップしていたが、
+# それは case R が「非解は目数で劣る」形でバンドが塞いでいたから成立していただけだった。
+# 実測 case W（2026-08-01、13路右下・枠なし・黒は守り方。正解 H1＝白 G1 → 黒 K1 のコウで黒生き、
+# 旧実装は J1 へ格下げして黒が無条件死。E2E 3/3）:
+#
+#     目数     J1 +1.94 ＜ H1 +2.20（格下げ先が目数最善＝バンド内なので case R の裁定では止まらない）
+#     自石7子  H1 +0.51/+0.35 ・ J1 **-0.22/-0.21**   相手石9子 H1 -0.83 ・ J1 -0.92
+#
+# 役割が読めないので尺度は `tsumego_success_ownership` の役割不明ヘッジ（自石・相手石の1子平均の
+# 小さいほう）＝ J1 は -0.92。外し方が「格下げしない＝コウを維持」に倒れるので枠なしでは妥当。
 
 
 def test_declass_requires_the_target_to_solve_the_problem():
-    # 実測 case V: 格下げ先 K10 は役割石（相手石7子）の合計 -7.00＝-1.00/子 で白は生きたまま
-    assert not tsumego_declass_confirmed(-7.00, 7, solver_attacks=True, threshold=0.5)
+    # 実測 case V: 格下げ先 K10 は役割石（相手石7子）の 1子平均 -1.00 で白は生きたまま
+    assert not tsumego_declass_confirmed(-1.00, threshold=0.5)
     # 格下げが正しかった4ケースの格下げ先は同じ尺度で成立している（K/L/P=攻め方, M=守り方）
-    assert tsumego_declass_confirmed(7.94, 8, solver_attacks=True, threshold=0.5)
-    assert tsumego_declass_confirmed(14.85, 15, solver_attacks=True, threshold=0.5)
-    assert tsumego_declass_confirmed(7.84, 8, solver_attacks=False, threshold=0.5)
-    assert tsumego_declass_confirmed(8.91, 9, solver_attacks=True, threshold=0.5)
+    for per_stone in (0.99, 0.99, 0.98, 0.99):
+        assert tsumego_declass_confirmed(per_stone, threshold=0.5)
 
 
-def test_declass_confirmation_is_skipped_without_a_role():
-    """枠なしで役割が読めない盤（case R）では確認手段が無いので従来どおり目数バンドだけで裁定する。
+def test_declass_confirmation_runs_without_a_role():
+    """枠なしで役割が読めなくても格下げ先の成否は確かめる（実測 case W）。
 
-    全リージョン石の合計では成否が分離できない（実測 case R: 正解 G13 +0.86/+0.97 に対し
-    誤答 D8 +1.32/+2.34 と誤答のほうが高い）ので、役割不明のまま絶対判定を課すと逆効果になる。
+    役割不明時の尺度は自石・相手石の1子平均の**小さいほう**（`tsumego_success_ownership`）。
+    case W の格下げ先 J1 は自石 -0.22 / 相手石 -0.92 で、ヘッジ値 -0.92 が閾値に届かない
+    ＝格下げしない＝コウの正解 H1 が残る。
     """
-    assert tsumego_declass_confirmed(-7.00, 7, solver_attacks=None, threshold=0.5)
+    assert not tsumego_declass_confirmed(-0.92, threshold=0.5)
 
 
 def test_declass_confirmation_passes_when_the_verdict_is_unavailable():
-    # 子局面を測れなかった（局面を再現できない・解析が返らない）ときは従来動作の側に倒す
-    assert tsumego_declass_confirmed(None, 7, solver_attacks=True, threshold=0.5)
-    assert tsumego_declass_confirmed(-7.00, 0, solver_attacks=True, threshold=0.5)
+    # 子局面を測れなかった（局面を再現できない・解析が返らない・石が1つも無い）ときは従来動作の側に倒す
+    assert tsumego_declass_confirmed(None, threshold=0.5)
 
 
 # --- 到達局面のクラス（tsumego_result_class）と格上げ ------------------------------------------

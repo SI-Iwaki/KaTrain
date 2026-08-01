@@ -2533,6 +2533,54 @@ def tsumego_needs_score_best_verify(chosen, score_best, points_epsilon=TSUMEGO_P
     return chosen["pointsLost"] - score_best["pointsLost"] > points_epsilon
 
 
+# gain 覆しの同深さ検証にかける挑戦者の上限。**救済の `TSUMEGO_GAIN_RESCUE_MAX_CANDIDATES` と
+# まったく同じ理由**（gain 1位のノイズ手が本物を影に隠す）で、こちらもトップ1指名にしてはいけない。
+TSUMEGO_SCORE_BEST_MAX_CHALLENGERS = 3
+
+
+def tsumego_score_best_challengers(
+    chosen,
+    eligible,
+    score_best,
+    root_ownership,
+    stones,
+    board_size,
+    player_sign,
+    min_visit_ratio,
+    max_candidates=TSUMEGO_SCORE_BEST_MAX_CHALLENGERS,
+):
+    """gain 覆しの同深さ検証にかける挑戦者列（選択手を先頭に、残りは gain 降順の contenders）。
+
+    選択手（＝gain 争いの勝者）だけを挑戦者にすると、**gain 1位がノイズ手だった run で
+    2位以下の本物が検証の機会を失い、incumbent の目数最善に巻き戻る**。救済側は case F2 で
+    同じ失敗を踏んで複数候補に直してある（`TSUMEGO_GAIN_RESCUE_MAX_CANDIDATES`）のに、
+    こちらは1手のままだった。
+
+    実測 case W（2026-08-01・13路右下・枠なし・黒は守り方。正解 H1＝コウで黒生き）:
+
+        当たり run  L1 の visit比 0.43〜0.48 → 深さゲート外 → gain 首位は正解 H1 → 検証 → H1
+        外れ run    L1 の visit比 **0.53〜0.58** → 深さゲート内 → gain 首位が L1(g+4.63) に
+                    入れ替わる（H1 は g+0.66 で2位）→ 検証 L1 -13.85 vs 目数最善 J1 -12.54 で
+                    却下 → **incumbent の J1 に巻き戻り、H1 は一度も測られない** → 誤答 J1
+
+    L1 は v95 前後の浅い候補で、gain の片側ノイズ（`TSUMEGO_GAIN_MIN_VISIT_RATIO` のコメント
+    参照）が乗ったまま深さゲートの境界をまたぐ。閾値では分離できない（root 解析の visit 配分の
+    分散そのもの）が、**同深さ検証は毎回正しく序列化する**（H1 -10.4〜-11.2 > J1 -12.5 > L1 -13.9）
+    ので、2位以下も測れば本物が残る。これは case F2 で救済側が学んだのと同じ構図。
+
+    ownership が無い候補（movesOwnership に載っていない）は gain を出せないので除く。
+    """
+    if score_best is None:
+        return [chosen]
+    contenders = tsumego_gain_contenders(eligible, score_best, min_visit_ratio)
+    ranked = sorted(
+        (c for c in contenders if c["move"] != score_best["move"] and c.get("ownership")),
+        key=lambda c: -tsumego_ownership_gain(root_ownership, c["ownership"], stones, board_size, player_sign),
+    )
+    ordered = [chosen] + [c for c in ranked if c["move"] != chosen["move"]]
+    return ordered[: max(1, max_candidates)]
+
+
 def tsumego_class_screen_pool(chosen, eligible, max_candidates=TSUMEGO_TIE_KO_MAX_CANDIDATES):
     """コウ経路検査（クラスの裁定）にかける候補列: 選択手＋目数ガード内の対抗馬（visits 降順）。
 
@@ -2614,8 +2662,8 @@ def tsumego_declass_choice(chosen, pool, ko_routes, points_epsilon=TSUMEGO_POINT
     return max(clean, key=lambda c: (c.get("visits", 0), -c["pointsLost"]))
 
 
-def tsumego_declass_confirmed(value, stone_count, solver_attacks, threshold=TSUMEGO_SUCCESS_OWNERSHIP):
-    """格下げ先が本当に「無条件で解いた手」かを役割石の絶対 ownership で確かめる。
+def tsumego_declass_confirmed(per_stone, threshold=TSUMEGO_SUCCESS_OWNERSHIP):
+    """格下げ先が本当に「無条件で解いた手」かを成否の絶対 ownership（1子平均）で確かめる。
 
     `tsumego_declass_choice` が要求するのは「clean であること」と「目数同着バンド内であること」
     だけだが、**「無条件」は「攻めないので何も起きず自明に clean」でも成立する**。case R は
@@ -2643,14 +2691,32 @@ def tsumego_declass_confirmed(value, stone_count, solver_attacks, threshold=TSUM
     格下げ先の成否だけを見るのが肝で、両者を比べる相対判定にすると case R のように
     **非解のほうが高く出る**（全リージョン石で 正解 +0.86 < 誤答 +1.32）。
 
-    役割が読めない（`solver_attacks is None`＝枠なし）／測れなかった（`value is None`）／
-    役割石が1つも無いときは確認手段が無いので従来動作（バンドのみ）を維持する。case R は
-    この経路で不変（全リージョン石の合計では成否が分離できないので、役割不明のまま絶対判定を
-    課すと逆効果になる）。
+    **役割が読めない枠なし盤でもこの確認は要る**。旧実装は `solver_attacks is None` で確認を
+    丸ごとスキップしていた（＝バンドだけで格下げしていた）が、それは case R が「非解は目数で
+    劣る」形だったから成立していただけで、**枠なしでも非解が目数で優る**局面がある。
+
+    実測 case W（2026-08-01、13路右下・**枠なし**・黒は守り方。正解 H1＝白 G1 → 黒 K1 のコウで
+    黒生き、旧実装は J1 へ格下げして黒が無条件死。E2E 3/3 で決定的）:
+
+        目数        J1 +1.94 ＜ H1 +2.20（格下げ先のほうが 0.26 良い＝目数最善なのでバンド内）
+        自石(7子)   H1 **+0.51/+0.35** ・ J1 **-0.22/-0.21**（同深さ800visits・2run）
+        相手石(9子) H1 -0.83/-0.85 ・ J1 -0.92（守り方なので相手が生きるのは正常）
+
+    ＝格下げ先 J1 は「clean だが黒が死ぬ」＝詰碁の順序で**最下位の失敗クラス**で、コウの H1 の
+    下にいる。役割が読めないので測る尺度は `tsumego_success_ownership` の役割不明ヘッジ
+    （自石・相手石の1子平均の**小さいほう**）＝ J1 は -0.92 で閾値 0.5 に遠く届かない。
+
+    ヘッジが枠なしで妥当なのは、外し方が「格下げしない＝コウを維持」に倒れるから（守り方の
+    正解が無条件生きなら相手も生きているので min は負に振れ、確認が通らず格下げを見送る）。
+    格下げが正しかった実測4ケースは**全部枠あり**（役割が読めるので min ではなく役割石で測る）
+    なので、この保守側への倒れが既存の正解を壊さないことは E2E 全ケースで確認する。
+
+    測れなかった（`per_stone is None`＝ownership が無い／石が1つも無い）ときだけ確認手段が
+    無いので従来動作（バンドのみ）を維持する。
     """
-    if solver_attacks is None or value is None or not stone_count:
+    if per_stone is None:
         return True
-    return tsumego_ko_escape_succeeds(value, stone_count, threshold)
+    return per_stone >= threshold
 
 
 # 到達局面のクラス（小さいほど上位）。**順序の中身は役割で読み替えるが、失敗が最下位なのは共通**:
@@ -2904,7 +2970,27 @@ class TsumegoOwnershipStrategy(AIStrategy):
                 and chosen["move"] != score_best["move"]
                 and tsumego_needs_score_best_verify(chosen, score_best, points_epsilon)
             ):
-                chosen = self._verified_choice(score_best, [chosen], stones, player_sign, fallback=chosen)
+                # 挑戦者は選択手だけでなく gain 降順の contenders も渡す。gain 1位がノイズ手
+                # だった run で2位以下の本物が機会を失い目数最善へ巻き戻る（実測 case W）＝
+                # 救済側が case F2 で学んだのと同じ構図（`tsumego_score_best_challengers`）
+                challengers = tsumego_score_best_challengers(
+                    chosen,
+                    eligible,
+                    score_best,
+                    self.cn.ownership,
+                    stones,
+                    self.game.board_size,
+                    player_sign,
+                    min_visit_ratio,
+                )
+                if len(challengers) > 1:
+                    self.game.katrain.log(
+                        f"[{self.strategy_name}] 同深さ検証: 挑戦者は gain 降順で "
+                        + " ".join(c["move"] for c in challengers)
+                        + f"（目数最善 {score_best['move']} が incumbent）",
+                        OUTPUT_DEBUG,
+                    )
+                chosen = self._verified_choice(score_best, challengers, stones, player_sign, fallback=chosen)
             if (self.settings or {}).get("gain_verify", True):
                 # 救済: gain 争いに参加できなかった候補（目数ガード外・深さゲート外）でも gain が
                 # 明確に上回る手は同深さ検証にかける。検証なしでは絶対に採用しない（ガード外の
@@ -2925,9 +3011,16 @@ class TsumegoOwnershipStrategy(AIStrategy):
                     rescue_margin,
                 )
                 if rescues:
+                    # visit比も出す＝救済の床（`TSUMEGO_GAIN_RESCUE_MIN_VISIT_RATIO`）の両側を
+                    # ログだけで測れるようにするため（実測で本物と偽の帯が近い）
+                    top_visits = max((c.get("visits", 0) for c in candidate_moves), default=0) or 1
                     self.game.katrain.log(
                         f"[{self.strategy_name}] 救済: "
-                        + " ".join(f"{c['move']}(pt{c['pointsLost']:+.2f}/v{c.get('visits', 0)})" for c in rescues)
+                        + " ".join(
+                            f"{c['move']}(pt{c['pointsLost']:+.2f}/v{c.get('visits', 0)}"
+                            f"/{c.get('visits', 0) / top_visits:.2f})"
+                            for c in rescues
+                        )
                         + f" の gain が選択手 {chosen['move']} を gain_rescue_margin={rescue_margin} 超えて"
                         f"上回るため同深さ検証にかけます",
                         OUTPUT_INFO,
@@ -2957,8 +3050,9 @@ class TsumegoOwnershipStrategy(AIStrategy):
                     ko_routes = frozenset({chosen["move"]}) | self._ko_route_screen(pool[1:])
                     declassed = tsumego_declass_choice(chosen, pool, ko_routes, points_epsilon)
                     # clean は「無条件に解いた」の証拠にならない（攻めないので何も起きない手も
-                    # clean になる）。役割が読めるなら、格下げ先が本当に解いているかを
-                    # 同深さの役割石 ownership で確かめてから差し替える（`tsumego_declass_confirmed`）
+                    # clean になる）。格下げ先が本当に解いているかを同深さの ownership で
+                    # 確かめてから差し替える（`tsumego_declass_confirmed`。役割が読めれば役割石、
+                    # 読めなければ自石・相手石の厳しいほう＝枠なしの case W）
                     if declassed["move"] != chosen["move"] and not self._declass_target_confirmed(
                         declassed, solver_attacks, player_sign
                     ):
@@ -3195,13 +3289,15 @@ class TsumegoOwnershipStrategy(AIStrategy):
         return frozenset(routes)
 
     def _declass_target_confirmed(self, target, solver_attacks, player_sign):
-        """格下げ先が本当に詰碁を解いているかを同深さで測る（役割が読めるときだけ・解析1本）。
+        """格下げ先が本当に詰碁を解いているかを同深さで測る（解析1本）。
 
         判定の中身と実測は `tsumego_declass_confirmed` の docstring を参照。格下げが起きようと
         している手番でしか走らないので、通常の手番のコストは増えない。
+
+        **役割が読めない枠なし盤でも走らせる**（旧実装はここで即 True を返していた＝case W）。
+        尺度は成功判定と同じ `tsumego_success_ownership` で、役割が読めれば役割石だけ・読めなければ
+        自石と相手石の1子平均の小さいほう。どちらも**同じ子局面解析1本**から取る。
         """
-        if solver_attacks is None:
-            return True
         settings = self.settings or {}
         visits = int(settings.get("gain_verify_visits", TSUMEGO_GAIN_VERIFY_VISITS))
         threshold = float(settings.get("ko_success_ownership", TSUMEGO_SUCCESS_OWNERSHIP))
@@ -3210,19 +3306,34 @@ class TsumegoOwnershipStrategy(AIStrategy):
         )
         role_stones = tsumego_role_stones(own_stones, opponent_stones, solver_attacks)
         verdict = self._region_child_verdict(target["move"], role_stones, player_sign, visits)
-        value = None if verdict is None else verdict["value"]
-        confirmed = tsumego_declass_confirmed(value, len(role_stones), solver_attacks, threshold)
-        if verdict is None or not role_stones:
+        per_stone = (
+            None
+            if verdict is None
+            else tsumego_success_ownership(
+                verdict["ownership"],
+                own_stones,
+                opponent_stones,
+                self.game.board_size,
+                player_sign,
+                solver_attacks,
+            )
+        )
+        confirmed = tsumego_declass_confirmed(per_stone, threshold)
+        if per_stone is None:
             self.game.katrain.log(
                 f"[{self.strategy_name}] コウ経路検査: 格下げ先 {target['move']} の成否を測れないため"
                 f"従来どおり格下げします",
                 OUTPUT_INFO,
             )
         else:
-            per_stone = value / len(role_stones)
+            scope = (
+                f"役割石{len(role_stones)}子"
+                if solver_attacks is not None
+                else f"自石{len(own_stones)}子・相手石{len(opponent_stones)}子の厳しいほう"
+            )
             self.game.katrain.log(
                 f"[{self.strategy_name}] コウ経路検査: 格下げ先 {target['move']} の同深さ{visits}visits・"
-                f"役割石{len(role_stones)}子は{per_stone:+.2f}/子"
+                f"{scope}は{per_stone:+.2f}/子"
                 + (
                     f"（>= ko_success_ownership={threshold}）＝無条件で成立"
                     if confirmed
@@ -3278,7 +3389,13 @@ class TsumegoOwnershipStrategy(AIStrategy):
         return self._child_verdict_from_root(move_gtp, root, stones, player_sign)
 
     def _child_verdict_from_root(self, move_gtp, root, stones, player_sign):
-        """子局面の生解析から {ko, ko_reply, value, lead} を組む（`_region_child_verdict` の判定部）"""
+        """子局面の生解析から {ko, ko_reply, value, lead, ownership} を組む（`_region_child_verdict` の判定部）
+
+        `ownership` は生の盤グリッドをそのまま返す。`value` は呼び出し側が渡した1グループぶんの
+        合計しか持たないので、**同じ解析から別の石グループも測りたい**呼び出し（役割が読めない
+        ときの格下げ確認＝自石と相手石の両方を見る `_declass_target_confirmed`）が
+        子局面をもう1本撃たずに済むようにするため。
+        """
         region = self.game.region_of_interest
         ko_reply = None
         if tsumego_candidate_reaches_region_ko(self.game, self.cn, move_gtp, [], region):
@@ -3300,6 +3417,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
             "ko_reply": ko_reply,
             "value": tsumego_absolute_ownership(root["ownership"], stones, self.game.board_size, player_sign),
             "lead": player_sign * root["lead"],
+            "ownership": root["ownership"],
         }
 
     def _child_verdicts(self, moves, stones, player_sign, visits, wide_root_noise=None):
