@@ -116,6 +116,47 @@ def test_ko_ban_is_respected():
     assert not str(thoughts).startswith("FALLBACK")
 
 
+def test_presolve_uses_policy_hint_provider():
+    """投機実行は provider の順序ヒントを使い、答えは変わらない（ソルバ設計スペック追記5）。"""
+    game = make_game()
+    session = solver_api.build_session_from_game(game, {"solver_time_limit_ms": 60000, "solver_cache": False})
+    assert session is not None
+    session.policy_hint_provider = lambda: [(2, 0), (3, 0)]  # KataGo 候補の代わり
+    session.presolve()
+    assert session._policy_hint == [(2, 0), (3, 0)]
+    sol = session.last_solution
+    assert sol is not None and sol.value.result.name == "UNCONDITIONAL"
+
+
+def test_presolve_survives_broken_hint_provider():
+    """provider が例外を投げてもヒント無しで従来どおり解く。"""
+    game = make_game()
+    session = solver_api.build_session_from_game(game, {"solver_time_limit_ms": 60000, "solver_cache": False})
+    assert session is not None
+
+    def broken():
+        raise RuntimeError("boom")
+
+    session.policy_hint_provider = broken
+    session.presolve()
+    assert session.last_solution is not None
+
+
+def test_root_order_hint_prefers_move_visits_over_capture_hint():
+    """手番の solve は戦略が渡す move_visits（現局面）を優先し、capture 時のヒントは
+    root 局面（applied_moves が空）でしか使わない（途中局面では盤が違うため）。"""
+    game = make_game()
+    session = solver_api.build_session_from_game(game, {"solver_time_limit_ms": 60000, "solver_cache": False})
+    assert session is not None
+    session._policy_hint = [(2, 0)]
+    assert session._root_order_hint() == [(2, 0)]  # root 局面では capture ヒントを使う
+    session.move_visits = {(3, 0): 100, (2, 0): 10}
+    assert session._root_order_hint() == [(3, 0), (2, 0)]  # visits 降順が優先
+    session.move_visits = None
+    session.sync_moves([((3, 0), "B")])
+    assert session._root_order_hint() is None  # 途中局面では capture ヒントを流用しない
+
+
 if __name__ == "__main__":
     import sys
 

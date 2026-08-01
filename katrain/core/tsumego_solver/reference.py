@@ -57,6 +57,7 @@ class SolverLimits:
         ko_refine: bool = True,
         ko_budget_max: int = 2,
         max_alternatives: int = 8,
+        opt_skip_after_ms: float = 5000.0,
     ):
         self.node_limit = node_limit
         self.time_limit_ms = time_limit_ms
@@ -64,6 +65,13 @@ class SolverLimits:
         self.ko_refine = ko_refine
         self.ko_budget_max = ko_budget_max
         self.max_alternatives = max_alternatives
+        # 第1段階（分類）がこの時間を超えたら第2段階（plies/material 最適化）を省く。
+        # 難問では opt が予算いっぱい（native 3秒）燃やしてタイムアウトし成果ゼロになる
+        # （実測 2026-08-02: region22/KO と region24/SEKI の実戦2件とも plies=0 mat=0）。
+        # plies==0 の同格タイは GUI 側の KataGo タイブレーク（§6.5.1-3）が並べ替えるので、
+        # 遅い solve では省いて着手までの時間を縮める（クラス・本手は不変。§4.2.2 の
+        # 「opt はクラス正のまま劣化してよい」の適用）。負値や 0 で常にスキップ
+        self.opt_skip_after_ms = opt_skip_after_ms
 
 
 class _Worse:
@@ -632,8 +640,28 @@ class ReferenceSolver:
         self.deadline = t0 + self.limits.time_limit_ms / 1000.0
         to_play = self.problem.to_play
         order = RESULT_ORDER[self.problem.problem_type]
+        scan_order = self._ordered_moves(to_play)
+        # root スキャンの順序ヒント（座標タプルの列。§6.2: 順序は厳密性に影響しない）。
+        # 呼び出し側が KataGo policy の上位を渡すと、正解が早く incumbent になり floor 刈りが
+        # 効いて後続候補のラダー後段が省ける（実測 2026-08-02・region22 のコウ詰碁: 静的順序は
+        # 急所 C11 の前に A9/B12/B9 のフルラダーで約8.5秒を浪費、C11 先頭で 17.3 → 12.1 秒・
+        # nodes 1.6M → 1.0M）。全候補を評価し切る点は不変なので、クラス・本手は変わらない。
+        # 石の上・盤外・重複が混ざっていても黙って捨てる（提供側は KataGo 候補をそのまま渡せる）
+        hint = getattr(self, "root_order_hint", None)
+        if hint:
+            b = self.board
+            hint_idx = []
+            for pt in hint:
+                try:
+                    p = b.index(tuple(pt))
+                except Exception:
+                    continue
+                if p in self.region and b.stones[p] == EMPTY and p not in hint_idx:
+                    hint_idx.append(p)
+            hinted = set(hint_idx)
+            scan_order = hint_idx + [p for p in scan_order if p not in hinted]
         candidates: List[Optional[int]] = []
-        for p in self._ordered_moves(to_play):
+        for p in scan_order:
             played = self._play(p, to_play)
             if played is None:
                 continue
@@ -651,11 +679,16 @@ class ReferenceSolver:
             if best_key is None or key < best_key:
                 best_key = key
         tie = [(m, info) for m, (key, info) in classified.items() if key == best_key]
+        # 第1段階が遅かったら opt（plies/material 最小化）を省く。難問では opt が予算いっぱい
+        # 燃やしてタイムアウトし成果ゼロ（実測 2026-08-02: 実戦2件とも plies=0 mat=0 で3秒浪費）。
+        # クラス・本手は第1段階で確定済みなので正しさは不変（SolverLimits.opt_skip_after_ms 参照）
+        stage1_ms = (time.time() - t0) * 1000.0
+        allow_opt = self.limits.optimize_line and stage1_ms <= self.limits.opt_skip_after_ms
         final: List[Tuple[tuple, Optional[int], SolutionValue, dict, List[Optional[int]]]] = []
         for m, info in tie:
             plies, mat = 0, 0
             line: List[Optional[int]] = [m]
-            if self.limits.optimize_line and info["result"] != ResultClass.FAILED:
+            if allow_opt and info["result"] != ResultClass.FAILED:
                 try:
                     o_plies, o_mat, sub_line = self._optimize_after(m, info)
                     if o_plies < self._BIG:

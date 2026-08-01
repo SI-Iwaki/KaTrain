@@ -1271,6 +1271,27 @@ class KaTrainGui(Screen, KaTrainBase):
                     game_ref, settings, lambda msg, level=None: self.log(msg, OUTPUT_INFO)
                 )
                 if session is not None:
+
+                    def _policy_hint():
+                        # root スキャンの順序ヒント: クイック解析（300visits・実測 0.4〜1.0 秒で
+                        # 到着）の候補を visits 降順で返す。まだ無ければ None（presolve が
+                        # HINT_WAIT_S を上限に待つ）。順序ヒントは評価順だけを変え答えを変えない
+                        # （ソルバ設計スペック追記5）
+                        try:
+                            node = game_ref.current_node
+                            if node.analysis.get("root") is None:
+                                return None
+                            cands = sorted(node.candidate_moves, key=lambda c: -c.get("visits", 0))
+                            pts = [
+                                Move.from_gtp(c["move"]).coords
+                                for c in cands
+                                if c.get("move") and c["move"].lower() != "pass"
+                            ]
+                            return pts or None
+                        except Exception:
+                            return None
+
+                    session.policy_hint_provider = _policy_hint
                     game_ref.tsumego_solver_session = session
                     session.presolve()
 

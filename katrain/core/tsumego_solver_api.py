@@ -49,6 +49,9 @@ DEFAULT_SETTINGS = {
     "solver_max_region_points": 72,
     "solver_cache": True,
     "solver_fallback": True,
+    # 第1段階（分類）がこれより遅かったら第2段階（plies/material 最適化）を省く
+    # （SolverLimits.opt_skip_after_ms 参照。難問では opt が予算3秒を燃やして成果ゼロだった）
+    "solver_opt_skip_after_ms": 5000,
 }
 
 
@@ -61,6 +64,7 @@ def solver_limits_from_settings(settings: dict) -> SolverLimits:
         ko_refine=bool(get("solver_ko_refine")),
         ko_budget_max=int(get("solver_ko_budget_max")),
         max_alternatives=int(get("solver_max_alternatives")),
+        opt_skip_after_ms=float(get("solver_opt_skip_after_ms")),
     )
 
 
@@ -97,6 +101,11 @@ class TsumegoSolverSession:
         self._baked_moves = 0
         self.last_gate = None  # 前回 solve の証明コンテキスト（証明ストア即答のキー。§6.6）
         self._gave_up = False  # 予算内に解けないと判明した問題（以後は即フォールバック）
+        # root スキャンの順序ヒント（§6.2・ソルバ設計スペック追記5）: KataGo policy の上位から
+        # 評価すると正解が早く incumbent になり floor 刈りが効く。provider はキャプチャ経路が
+        # 渡す「今すぐ取れる候補列を返す/まだ無ければ None」の非ブロッキング関数
+        self.policy_hint_provider: Optional[Callable[[], Optional[List[Point]]]] = None
+        self._policy_hint: Optional[List[Point]] = None
         import threading
 
         self._lock = threading.Lock()  # 投機 solve（キャプチャ直後）と手番の solve の直列化
@@ -185,10 +194,28 @@ class TsumegoSolverSession:
 
     # ---- 着手生成 ----
 
+    # 投機実行が KataGo の順序ヒント（クイック解析 300visits・実測 0.4〜1.0 秒で到着）を
+    # 待つ上限。ヒント無しの solve を始めてしまうと静的順序で急所を後回しにしたぶんが
+    # 丸ごと無駄になる（実測 2026-08-02: region22 のコウ詰碁で 17.3 vs 12.1 秒）ので、
+    # 短い待ちのほうが期待値で得。上限を超えたら従来どおりヒント無しで解き始める
+    HINT_WAIT_S = 1.5
+
     def presolve(self):
         """キャプチャ直後の投機実行（§8.3-7）: GUI 描画と並行して root を解き、
         証明ストア（カーネルの TT）を温めておく。結果は捨ててよい（手番の solve が速くなる）。"""
         try:
+            provider = self.policy_hint_provider
+            if provider is not None:
+                deadline = time.time() + self.HINT_WAIT_S
+                while time.time() < deadline:
+                    try:
+                        hint = provider()
+                    except Exception:
+                        break
+                    if hint:
+                        self._policy_hint = list(hint)
+                        break
+                    time.sleep(0.05)
             with self._lock:
                 self._generate_locked()
         except Exception as e:
@@ -197,6 +224,26 @@ class TsumegoSolverSession:
     def generate(self) -> Tuple[Optional[Point], str]:
         with self._lock:
             return self._generate_locked()
+
+    def _root_order_hint(self) -> Optional[List[Point]]:
+        """root スキャンの順序ヒント（KataGo の読み順。無ければ None＝従来の静的順序）。
+
+        手番の solve では戦略が渡す move_visits（現局面のリージョン解析の visits）を降順で使う。
+        投機実行（キャプチャ直後＝着手ゼロの root 局面）だけは capture 側 provider のクイック
+        解析候補を使う（途中局面では盤が違うので流用しない）。ヒントは順序だけを変え、
+        候補の集合・評価・採否は変えない（reference.solve() の root_order_hint 参照）。
+        """
+        visits_map = getattr(self, "move_visits", None)
+        if visits_map:
+            try:
+                pts = [pt for pt, _v in sorted(visits_map.items(), key=lambda kv: -kv[1])]
+                if pts:
+                    return pts
+            except Exception:
+                pass
+        if self._policy_hint and not self.applied_moves:
+            return list(self._policy_hint)
+        return None
 
     def _cache_path(self):
         import hashlib
@@ -312,9 +359,13 @@ class TsumegoSolverSession:
         t0 = time.time()
         try:
             if kernel is not None:
-                solution = NativeSolver(problem_now, self.limits, kernel=kernel).solve()
+                solver = NativeSolver(problem_now, self.limits, kernel=kernel)
             else:
-                solution = ReferenceSolver(problem_now, self.limits).solve()
+                solver = ReferenceSolver(problem_now, self.limits)
+            hint = self._root_order_hint()
+            if hint:
+                solver.root_order_hint = hint
+            solution = solver.solve()
         except SolverTimeout:
             self._gave_up = True  # 以後の手番は即フォールバック（局面が進んでも region 規模は同じ）
             self.log(

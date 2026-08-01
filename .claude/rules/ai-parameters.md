@@ -286,6 +286,15 @@ Spec: `docs/superpowers/specs/2026-07-29-tsumego-ownership-design.md`（誤答�
 
 **セッション側の挙動（2026-08-01 追記3 の修正。設定キーではなくコード定数）**:
 
+- **root 順序ヒント**（`root_order_hint`、追記5・2026-08-02）: root 候補のスキャン順を KataGo の
+  読み順に並べ替える（§6.2「順序は厳密性に影響しない」＝候補の集合・評価・採否は不変で、
+  正解が早く incumbent になり floor 刈りが効く）。手番の solve は戦略が渡す `move_visits`
+  （現局面）、投機実行はキャプチャ側 provider のクイック解析候補（`HINT_WAIT_S`=1.5 秒まで
+  到着を待つ。実測 0.4〜1.0 秒で届く）。実測 2026-08-02（region22 のコウ詰碁・ゲート内なのに
+  19.0s native）: 静的順序が急所 C11 を A9/B12/B9 の後に回しフルラダー約 8.5 秒を浪費して
+  いた → C11 先頭で 14.3 → **9.5 秒**（2番手 11.6 / 3番手 12.9 と劣化は緩やか、答えは全変種
+  KO/ko0・C11 で不変）。P1 スイートはヒント無し＝従来の静的順序のまま
+
 - **証明ストア即答の同格差し替え**（`_prefer_ranked_gate_move`）: 即答の決め手は df-pn が「最初に証明できた手」で、同格別解が複数ある局面では本手と限らない。KataGo の本命が同じ gate を証明し、かつ visits が決め手の `RANK_OVERRIDE_MIN_VISITS_RATIO`(3.0) 倍以上（決定性ゲート）のときだけ差し替える。拮抗別解（実測 1.1 倍）を入れ替えると正解が別解に化けるので比で守る（発火すべき実測は 57 倍）。戦略は `move_ranker` に加え `move_visits` を渡す。検証予算は `RANK_OVERRIDE_MAX_CANDIDATES`(3) × `RANK_OVERRIDE_TIME_MS`(5000)
 - **途中再抽出の hint**: `region_hint` は出題時 region の外接矩形を既定にし、GUI は `game.region_of_interest` で上書き。hint なし再抽出は乱れた盤で「デタラメな小問題」に成功しうる（実測: target={K2,K4,K5}/region10点 → SEKI/L1 誤答）
 - **再抽出のサニティガード**: 元問題の生存 target 石を新 region が覆わない再抽出は捨ててフォールバック
@@ -304,6 +313,7 @@ Spec: `docs/superpowers/specs/2026-07-29-tsumego-ownership-design.md`（誤答�
 | solver_max_alternatives | 8 | 別解リストの上限（§6.5.1） |
 | solver_max_region_points | 72 | region 上限（超えたら門前払い→フォールバック。§8.4） |
 | solver_cache | true | root Solution の永続キャッシュ（~/.katrain/tsumego_cache/） |
+| solver_opt_skip_after_ms | 5000 | 第1段階（分類）がこれより遅かったら第2段階（plies/material 最適化）を省く（追記5）。難問では opt が予算3秒を燃やしてタイムアウトし成果ゼロだった（実測 2026-08-02: 実戦2件とも plies=0 mat=0）。plies==0 の同格タイは既存の KataGo タイブレーク（§6.5.1-3）が GUI で並べ替えるので実害なし。0 以下で常にスキップ |
 | solver_fallback | true | フォールバックの有効化（false だと未解決時パス） |
 | solver_capture_max_region | 23 | キャプチャ時のソルバモード採用ゲート（region 点数）。P1 実測で**速く**解けたのは region<=23（最大 Q@0 の 11.1 秒）。旧値 26 のマージン帯（24〜26）は実測 29〜59 秒で、初手が df-pn の求解をそのまま待つ＝1問20秒の予算をこの1手で壊す（実測 2026-08-02: region24/空点12 が 29.0s native・着手決定 26.2 秒。spec 追記4）。超過は最初から現行経路（枠張り。1〜3秒/手）＝挙動が完全に従来のまま |
 | solver_capture_max_empties | 12 | 同・空点数ゲート（解けたのは空点<=12、空点23+は1800秒でも未達）。旧値 14 は封筒外のマージンだった |

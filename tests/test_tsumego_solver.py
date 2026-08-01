@@ -427,6 +427,70 @@ def test_non_double_ko_cycle_uses_basic_rule():
     assert solver._adjudicate_cycle(PRED_SEKI, 0) is True
 
 
+# ---------- root 候補の順序ヒントと opt スキップ（2026-08-02 の高速化。ソルバ設計スペック追記5）----------
+
+
+def _straight_three_problem():
+    target = {(1, 1), (2, 1), (3, 1), (4, 1), (5, 1), (1, 0), (5, 0)}
+    return make_problem(
+        [". . . . . . .", "O O O O O O O", "O X X X X X O", "O X . . . X O"],
+        region=target | {(2, 0), (3, 0), (4, 0)},
+        target=target,
+        problem_type=ProblemType.DEFEND,
+    )
+
+
+@pytest.mark.parametrize("solver_cls", SOLVERS)
+def test_root_order_hint_controls_scan_order_but_not_the_answer(solver_cls):
+    """順序ヒントは root スキャンの評価順だけを変える（§6.2: 順序は厳密性に影響しない）。
+
+    KataGo policy を先頭に置くと、正解が早く incumbent になり floor 刈りが効いて速くなる
+    （実測 2026-08-02: region22 のコウ詰碁で 17.3 → 12.1 秒）。答え・クラスは不変であること。
+    """
+    baseline = solve(_straight_three_problem(), solver_cls)
+    solver = solver_cls(_straight_three_problem(), SolverLimits(time_limit_ms=60000))
+    solver.root_order_hint = [(4, 0)]  # わざと静的順序で最後の E1（不正解）を先頭に指定
+    seen = []
+    orig = solver._classify_after
+
+    def recording(move, floor_key=None):
+        seen.append(move)
+        return orig(move, floor_key=floor_key)
+
+    solver._classify_after = recording
+    sol = solver.solve()
+    assert seen[0] == solver.board.index((4, 0))  # ヒント先頭から評価する
+    assert sol.value.result == baseline.value.result
+    assert moves_gtp(sol) == moves_gtp(baseline)  # 答えは D1 のまま
+
+
+@pytest.mark.parametrize("solver_cls", SOLVERS)
+def test_root_order_hint_ignores_bogus_points(solver_cls):
+    """ヒントに石の上・盤外・重複が混ざっても落ちない（提供側は KataGo 候補をそのまま渡せる）。"""
+    solver = solver_cls(_straight_three_problem(), SolverLimits(time_limit_ms=60000))
+    solver.root_order_hint = [(1, 1), (99, 99), (3, 0), (3, 0), None]
+    sol = solver.solve()
+    assert sol.value.result == ResultClass.UNCONDITIONAL
+    assert moves_gtp(sol) == ["D1"]
+
+
+@pytest.mark.parametrize("solver_cls", SOLVERS)
+def test_opt_skip_after_slow_stage1_keeps_class_and_moves(solver_cls):
+    """第1段階が opt_skip_after_ms を超えたら手順最適化を省く（クラス・本手は不変で plies だけ 0）。
+
+    実測 2026-08-02: 難しいコウ詰碁では opt が予算3秒を燃やして毎回タイムアウトしていた
+    （plies=0 mat=0 で成果ゼロ）。plies==0 の同格タイは GUI 側の KataGo タイブレーク
+    （§6.5.1-3）が並べ替えるので、遅い solve では opt を省いて着手までの時間を縮める。
+    """
+    with_opt = solve(_straight_three_problem(), solver_cls)
+    assert with_opt.value.plies == 1  # 速い solve は従来どおり opt が走る（既定閾値の内側）
+    limits = SolverLimits(time_limit_ms=60000, opt_skip_after_ms=0)  # 常にスキップ
+    skipped = solver_cls(_straight_three_problem(), limits).solve()
+    assert skipped.value.result == with_opt.value.result
+    assert moves_gtp(skipped) == moves_gtp(with_opt)
+    assert skipped.value.plies == 0  # opt が走っていない
+
+
 if __name__ == "__main__":
     import sys
 
