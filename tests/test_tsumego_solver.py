@@ -319,6 +319,114 @@ def test_alternatives_both_vital_points(solver_cls):
     assert len(sol.root_moves) >= 2
 
 
+# ---------- 同形反復の裁定（§4.6 / §4.6.1）----------
+#
+# 両コウの「実盤面」をテンプレート探索で得るのは構造要件が狭く未達（スペック追記1参照）。
+# ここでは裁定ロジックそのものを機構レベルで固定する: 盤とサイクル手順を構成して
+# _adjudicate_cycle の3分岐（生き/死/セキ）と基本則・taint を直接検証する。
+# 探索がサイクルに正しく到達すること自体は、コウを含む実ケース（曲がり四目・E2E の
+# V/F2/K 等で cycle_tainted=True）が担保している。
+
+
+def _cycle_solver(rows, target, extra_white=()):
+    black, white, size = diagram(rows)
+    white = set(white) | set(extra_white)
+    prob = Problem(
+        size=size,
+        black=frozenset(black),
+        white=frozenset(white),
+        region=frozenset(target | {p for p in [(x, y) for x in range(size[0]) for y in range(size[1])] if p not in black and p not in white}),
+        to_play=BLACK,
+        target=frozenset(target),
+        goal=Goal.LIVE,
+        problem_type=ProblemType.DEFEND,
+        target_color=BLACK,
+    )
+    return ReferenceSolver(prob, SolverLimits(time_limit_ms=10000))
+
+
+def _set_cycle(solver, pairs):
+    """2つのコウ点ペアでの取り合い4手をパスに積む（両コウのサイクル形）。"""
+    b = solver.board
+    solver.path_moves = [
+        (b.index(pairs[0][0]), (b.index(pairs[0][1]),)),
+        (b.index(pairs[1][0]), (b.index(pairs[1][1]),)),
+        (b.index(pairs[0][1]), (b.index(pairs[0][0]),)),
+        (b.index(pairs[1][1]), (b.index(pairs[1][0]),)),
+    ]
+
+
+def test_double_ko_alive_closed_form():
+    """両コウ生き: target に実眼1つ + 2つのコウ点ペアのサイクル → 閉形式で ALIVE。"""
+    rows = [
+        "O O O O O O O",
+        "O X X X X . O",
+        "X X . X X . O",
+    ]
+    black, white, size = diagram(rows)
+    target = set(black)
+    solver = _cycle_solver(rows, target)
+    # 実眼 (2,0) あり。2つの異なるコウ点ペアの取り合い4手 = 両コウの閉形式が適用される
+    _set_cycle(solver, [((5, 1), (5, 0)), ((4, 2), (5, 2))])
+    assert solver._adjudicate_cycle(PRED_ALIVE, 0) is True
+    assert solver._adjudicate_cycle(PRED_SEKI, 0) is True
+    assert solver.taint_any is True
+
+
+def test_double_ko_seki_closed_form():
+    """両コウゼキ: 双方が実眼1つずつ + 両コウ → SEKI（ALIVE 述語は False / SEKI 述語は True）。"""
+    rows = [
+        "O O O O O O O O",
+        "O X X X X . O O",
+        "X X . X X . O .",
+    ]
+    black, white, size = diagram(rows)
+    solver = _cycle_solver(rows, set(black))
+    # 白（攻め方）にコウ点近くの実眼を作る: (7,0) は隣接 (6,0)O/(7,1)O のみ = 白の実眼
+    _set_cycle(solver, [((5, 1), (5, 0)), ((6, 2), (7, 2))])
+    assert solver._adjudicate_cycle(PRED_ALIVE, 0) is False  # 生きではない
+    assert solver._adjudicate_cycle(PRED_SEKI, 0) is True  # セキとして残る
+
+
+def test_double_ko_dead_closed_form():
+    """両コウ死: target に実眼0 → 閉形式裁定で DEAD（基本則「生かす側の勝ち」では誤る回帰点）。"""
+    rows = [
+        "O O O O O O O",
+        "O X X X X . O",
+        "O X . X X . O",  # (2,0) は欠け眼にする（下段左端が白＝斜め条件で偽眼）
+    ]
+    black, white, size = diagram(rows)
+    target = set(black)
+    solver = _cycle_solver(rows, target)
+    # (2,0) の隣接に白を置いて実眼を消す: (2,0) の左 (1,0) を白に
+    solver.board.set_stone(solver.board.index((1, 0)), "W")
+    _set_cycle(solver, [((5, 1), (5, 0)), ((4, 2), (5, 2))])
+    # 眼なし + 両コウサイクル → DEAD（ALIVE 述語は False）
+    assert solver._adjudicate_cycle(PRED_ALIVE, 0) is False
+    assert solver._adjudicate_cycle(PRED_SEKI, 0) is False
+
+
+def test_non_double_ko_cycle_uses_basic_rule():
+    """両コウでないサイクル（三コウ・長生相当）は基本則＝生かす側の勝ち（§4.6）。"""
+    rows = [
+        "O O O O O O O",
+        "O X X X X . O",
+        "O X . X X . O",
+    ]
+    black, white, size = diagram(rows)
+    solver = _cycle_solver(rows, set(black))
+    b = solver.board
+    # 3点での取り合い（コウ点ペアが3つ）= 両コウの閉形式は適用されない
+    solver.path_moves = [
+        (b.index((5, 1)), (b.index((5, 0)),)),
+        (b.index((5, 0)), (b.index((5, 1)),)),
+        (b.index((2, 0)), (b.index((5, 0)),)),
+        (b.index((5, 0)), (b.index((2, 0)),)),
+    ]
+    assert solver._adjudicate_cycle(PRED_ALIVE, 0) is True  # 生かす側の勝ち
+    assert solver._adjudicate_cycle(PRED_SEKI, 0) is True
+
+
 if __name__ == "__main__":
     import sys
 
