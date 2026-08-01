@@ -174,6 +174,15 @@ CASES = {
         note="役割指定（black_to_attack_p=True）で張り直した枠。実キャプチャは極値票 -68 の役割反転"
         "で壁が白になり C2 で誤答（-inverted.sgf、spec 追記37）",
     ),
+    "Z": dict(
+        sgf="case-z-ko-line-perf-20260802.sgf",
+        region="1,12,0,12",
+        line=["N11", "M7", "M9", "M8", "N10", "N7", "M9"],
+        expect={0: ("N11",), 4: ("N10",), 6: ("M9",)},
+        note="高速化（tsumego_defender_ko_points の候補点フィルタ、spec 追記39）の実測ケース。"
+        "2手目は root 分散で M9 6/9・N4 3/9（N4 もコウ経路と検出された上での、コウ同士の"
+        "root 目数タイブレーク）のため expect に含めない",
+    ),
 }
 # 既知限界（エンジン側の value/探索の問題で選択則では救えない。spec 追記13/21）
 KNOWN_LIMITS = {

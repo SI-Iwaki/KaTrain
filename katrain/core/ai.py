@@ -2173,31 +2173,49 @@ def tsumego_defender_ko_points(sim, defender, region_of_interest):
     違いは「PV がその手を打つか」を問わないこと — 打たれなくても**打てる**なら、守り方は
     いつでもコウにできるのでその局面はコウのクラスにいる。
 
+    試し打ちする点は先に chains から絞る: KaTrain の Ko 例外は「直前の手がちょうど1子取り」の
+    ときしか発火しない（`_validate_move_and_update_chains` の ko_or_snapback）ので、コウ取り点は
+    必ず**攻め方の1子連で呼吸点がちょうど1つ**の、その唯一の呼吸点。これは必要条件のフィルタで、
+    成立の判定そのものは従来どおり実打ち（KaTrain の着手判定）に委ねる＝返る集合は総当たりと
+    同一（等価性は test_tsumego_ko の総当たり参照実装との比較で担保）。
+    リージョン内の全空点を試し打ちする総当たりは、`play`/`set_current_node` が盤面全体を
+    ゼロから再計算するため1回あたり約0.13秒かかり、コウ詰碁の着手決定の約8割を占めていた
+    （実測 2026-08-02: 13路・空点約100点 × 最大3回の全盤再計算 × 87呼び出し ＝ 11.7秒）。
+
     sim は使い捨ての局面を渡すこと（試し打ちのぶんノードが増える。盤面は毎回戻す）。
     """
     attacker = "W" if defender == "B" else "B"
     size_x, size_y = sim.board_size
     xmin, xmax, ymin, ymax = (0, size_x - 1, 0, size_y - 1) if region_of_interest is None else region_of_interest
+    xlo, xhi = max(0, xmin), min(xmax, size_x - 1)
+    ylo, yhi = max(0, ymin), min(ymax, size_y - 1)
+    candidates = set()
+    for chain in sim.chains:
+        if len(chain) != 1 or chain[0].player != attacker:
+            continue
+        _, liberties = _chain_and_liberties(sim, chain[0].coords)
+        if len(liberties) != 1:
+            continue
+        x, y = liberties[0]  # 呼吸点は空点なので「空点だけ試す」条件も自動的に満たす
+        if xlo <= x <= xhi and ylo <= y <= yhi:
+            candidates.add((x, y))
     base = sim.current_node
     points = set()
-    for x in range(max(0, xmin), min(xmax, size_x - 1) + 1):
-        for y in range(max(0, ymin), min(ymax, size_y - 1) + 1):
-            if sim.board[y][x] >= 0:
-                continue  # 空点だけ試す
-            try:
-                sim.play(Move(coords=(x, y), player=defender))
-            except IllegalMoveException:
-                sim.set_current_node(base)
-                continue
-            chain, liberties = _chain_and_liberties(sim, (x, y))
-            if chain is not None and len(chain) == 1 and len(liberties) == 1:
-                try:
-                    sim.play(Move(coords=liberties[0], player=attacker))
-                except IllegalMoveException as e:
-                    if "Ko" in str(e):
-                        points.add((x, y))
-                    # 自殺手等でそもそも取り返せない形はコウではない
+    for x, y in sorted(candidates):
+        try:
+            sim.play(Move(coords=(x, y), player=defender))
+        except IllegalMoveException:
             sim.set_current_node(base)
+            continue
+        chain, liberties = _chain_and_liberties(sim, (x, y))
+        if chain is not None and len(chain) == 1 and len(liberties) == 1:
+            try:
+                sim.play(Move(coords=liberties[0], player=attacker))
+            except IllegalMoveException as e:
+                if "Ko" in str(e):
+                    points.add((x, y))
+                # 自殺手等でそもそも取り返せない形はコウではない
+        sim.set_current_node(base)
     return points
 
 

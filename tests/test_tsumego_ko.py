@@ -220,6 +220,99 @@ def test_pv_ko_ignores_an_available_ko_too_deep_in_the_line():
     )
 
 
+# 実測 2026-08-02 の遅かったコウ詰碁（13路・枠あり・正解 黒N11 白M7 黒M9 白M8 黒N10 白N7 黒M9）。
+# リージョン [1,12,0,12] の空点は約100点あり、全空点を試し打ちする旧実装は
+# tsumego_defender_ko_points 1回あたり約0.13秒 × 87回 ＝ 1手の着手決定の 8 割を占めた
+SLOW_KO_SGF = (
+    "(;GM[1]FF[4]SZ[13]KM[7.0]PL[B]RU[chinese]"
+    "AB[ba][bb][kb][bc][lc][bd][fd][gd][hd][id][jd][kd][be][bf][gf][if][jf][bg][gg][bh][gh][kh][lh]"
+    "[bi][gi][hi][ji][li][bj][jj][bk][kk][al][bl][bm]"
+    "AW[ab][hc][kc][ad][ld][he][ie][je][ke][me][hf][kf][hg][jg][kg][hh][jh][ai][ki][aj][kj][ak])"
+)
+SLOW_KO_LINE = ["N11", "M7", "M9", "M8", "N10", "N7", "M9"]
+SLOW_KO_REGION = [1, 12, 0, 12]
+
+
+def _bruteforce_defender_ko_points(sim, defender, region_of_interest):
+    """最適化前の総当たり参照実装（リージョン内の全空点を試し打ちする）。等価性テスト専用"""
+    from katrain.core.ai import _chain_and_liberties
+    from katrain.core.game import IllegalMoveException
+
+    attacker = "W" if defender == "B" else "B"
+    size_x, size_y = sim.board_size
+    xmin, xmax, ymin, ymax = (0, size_x - 1, 0, size_y - 1) if region_of_interest is None else region_of_interest
+    base = sim.current_node
+    points = set()
+    for x in range(max(0, xmin), min(xmax, size_x - 1) + 1):
+        for y in range(max(0, ymin), min(ymax, size_y - 1) + 1):
+            if sim.board[y][x] >= 0:
+                continue
+            try:
+                sim.play(Move(coords=(x, y), player=defender))
+            except IllegalMoveException:
+                sim.set_current_node(base)
+                continue
+            chain, liberties = _chain_and_liberties(sim, (x, y))
+            if chain is not None and len(chain) == 1 and len(liberties) == 1:
+                try:
+                    sim.play(Move(coords=liberties[0], player=attacker))
+                except IllegalMoveException as e:
+                    if "Ko" in str(e):
+                        points.add((x, y))
+            sim.set_current_node(base)
+    return points
+
+
+def _slow_ko_game(plies):
+    game = _game(SLOW_KO_SGF)
+    for i, gtp in enumerate(SLOW_KO_LINE[:plies]):
+        game.play(Move.from_gtp(gtp, player="B" if i % 2 == 0 else "W"), ignore_ko=True)
+    return game
+
+
+def test_defender_ko_points_matches_the_bruteforce_reference():
+    """候補点の絞り込み（攻め方のアタリ1子の唯一の呼吸点）は結果を変えない必要条件フィルタ。
+
+    KaTrain の Ko 例外は「直前の手がちょうど1子取り」のときしか発火しないので、コウ取り点は
+    必ず『攻め方の1子連で呼吸点がちょうどその点』に隣接する。全空点の総当たりと同じ集合を
+    返すことを、5路の校正局面と実測 13路コウ詰碁（正解手順の各局面・両方の守り方）で確認する。
+    """
+    for sgf in [KO_SGF, CAPTURE_KO_SGF, AVAIL_KO_SGF, OTHER_STONE_KO_SGF]:
+        for defender in "BW":
+            for region in [WHOLE_BOARD, None, [3, 4, 3, 4]]:
+                game = _game(sgf)
+                expected = _bruteforce_defender_ko_points(game, defender, region)
+                assert tsumego_defender_ko_points(game, defender, region) == expected, (sgf, defender, region)
+    for plies in range(len(SLOW_KO_LINE) + 1):
+        for defender in "BW":
+            game = _slow_ko_game(plies)
+            expected = _bruteforce_defender_ko_points(game, defender, SLOW_KO_REGION)
+            assert tsumego_defender_ko_points(game, defender, SLOW_KO_REGION) == expected, (plies, defender)
+
+
+def test_defender_ko_points_probes_only_candidate_points():
+    """全空点の試し打ちをしない（プローブは候補点あたり高々2手）。
+
+    実測 2026-08-02: 13路のコウ詰碁でリージョン内の空点約100点を毎回試し打ちし、
+    1点ごとの play/set_current_node が盤面全体をゼロから再計算（約1.2ms）するため、
+    この関数だけで着手決定の 8 割（1手あたり最大 11.7 秒中）を占めていた。
+    """
+    game = _slow_ko_game(4)  # 空点が約100点あるリージョン
+    plays = 0
+    original_play = game.play
+
+    def counting_play(*args, **kwargs):
+        nonlocal plays
+        plays += 1
+        return original_play(*args, **kwargs)
+
+    game.play = counting_play
+    points = tsumego_defender_ko_points(game, "W", SLOW_KO_REGION)
+    # 候補点（攻め方のアタリ1子の唯一の呼吸点）1つにつき試し打ちは最大2手。
+    # 総当たり（空点約100点 × 1〜2手）に戻っていないことを桁で確認する
+    assert plays <= 2 * max(1, len(points) + 3), f"plays={plays} points={points}"
+
+
 # 打った石とは「別の1子」が取られてコウになる形。生きる詰碁ではこちらが普通に出る。
 # 黒 E5 は自身は安全だが、既にアタリの黒 C3 を白 B3 が取ると、黒の C3 取り返しがコウになる
 #    A B C D E
