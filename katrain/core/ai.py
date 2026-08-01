@@ -2921,13 +2921,21 @@ class TsumegoSolverStrategy(AIStrategy):
             self.game.tsumego_solver_session = session if session is not None else False
         if session:
             session.sync_moves(solver_api.moves_from_game(self.game))
-            # 同格の別解のタイブレーク用に KataGo の本命順を渡す（§6.5.1-3。解析が
-            # まだ無ければ渡さない＝ソルバの着手を解析待ちでブロックしない）
+            # 同格の別解のタイブレーク用に KataGo の本命順と visits を渡す（§6.5.1-3。
+            # 解析がまだ無ければ渡さない＝ソルバの着手を解析待ちでブロックしない）。
+            # visits は証明ストア即答の同格差し替え（_prefer_ranked_gate_move）の決定性
+            # ゲートに使う（拮抗した別解の入れ替えを防ぐ）
             session.move_ranker = None
+            session.move_visits = None
             try:
                 if self.cn.analysis.get("root") is not None:
                     order = {c["move"]: i for i, c in enumerate(self.cn.candidate_moves)}
                     session.move_ranker = lambda coords: order.get(Move(coords).gtp(), 10**6)
+                    session.move_visits = {
+                        Move.from_gtp(c["move"]).coords: c.get("visits", 0)
+                        for c in self.cn.candidate_moves
+                        if c.get("move") and c["move"].lower() != "pass"
+                    }
             except Exception:
                 pass
             coords, thoughts = session.generate()

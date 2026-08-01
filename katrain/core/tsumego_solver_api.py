@@ -82,7 +82,12 @@ class TsumegoSolverSession:
         self.last_solution: Optional[Solution] = None
         self.kernel = None  # ネイティブの証明ストア（TT）を手番をまたいで温存する（§6.6 / G4）
         self._kernel_failed = False
-        self.region_hint = None  # 再抽出用（build_session_from_game が設定）
+        # 再抽出用の関心領域。出題時の region の外接矩形を既定にする（GUI 経路は
+        # build_session_from_game が game.region_of_interest で上書きする）。
+        # None のまま再抽出すると「石で閉じない盤」の矩形 region モード（追記1-9）が使えず、
+        # 途中局面では閉包がデタラメな小領域に「成功」して別の問題を解いてしまう（実測 2026-08-01
+        # case 1: ply8 の hint なし再抽出が target={K2,K4,K5}/region10点 を作り SEKI/L1 と誤答）
+        self.region_hint = self._problem_hint(problem)
         self._needs_reextract = False  # 着手が region の外に出た（§9.1 → 問題を再抽出）
         # 再抽出後の problem は現局面の石を含む（=applied_moves の一部が焼き込まれる）。
         # カーネル再生成時の二重適用と巻き戻し時の盤復元のために基点を持つ
@@ -95,6 +100,15 @@ class TsumegoSolverSession:
         import threading
 
         self._lock = threading.Lock()  # 投機 solve（キャプチャ直後）と手番の solve の直列化
+
+    @staticmethod
+    def _problem_hint(problem):
+        """problem.region の外接矩形 [xmin, xmax, ymin, ymax]（再抽出のフォールバック用）。"""
+        if not problem.region:
+            return None
+        xs = [p[0] for p in problem.region]
+        ys = [p[1] for p in problem.region]
+        return [min(xs), max(xs), min(ys), max(ys)]
 
     def _get_kernel(self):
         if self._kernel_failed or NativeSolver is None or not native_available():
@@ -210,6 +224,51 @@ class TsumegoSolverSession:
         import json
         import os
 
+        blk, wht = self.current_stones()
+        # 再抽出（§9.1）はキャッシュ照会より先に済ませる。キャッシュのキーは「実際に解く問題」で
+        # 引かないと、再抽出後の解が元問題のキーで保存され、以後のセッションが別問題の答えを
+        # 即答してしまう（実測 2026-08-01 case 1: SEKI/L1 の汚染エントリ）
+        if self._needs_reextract:
+            try:
+                new_problem = extract_problem(
+                    stones=(blk, wht),
+                    board_size=self.problem.size,
+                    to_play=self.problem.to_play,
+                    region_hint=self.region_hint,
+                    max_region_points=int(
+                        self.settings.get("solver_max_region_points", DEFAULT_SETTINGS["solver_max_region_points"])
+                    ),
+                )
+                # サニティガード: 元問題の target のうち今も盤上に生きている石を、再抽出後の
+                # region が全て覆っていること。途中局面の閉包は乱れた盤で「別の小さな問題」に
+                # 成功しうる（実測 case 1 ply8: target={K2,K4,K5}/region10点 → SEKI/L1 と誤答）。
+                # 覆えていない再抽出は信用せずフォールバックする
+                orig = self._original_problem
+                alive_targets = {
+                    pt for pt in orig.target if self.board.stones[self.board.index(pt)] == orig.target_color
+                }
+                missing = alive_targets - set(new_problem.region)
+                if missing:
+                    self.log(
+                        f"tsumego_solver: 再抽出の region が生存 target を覆っていません"
+                        f"（{[gtp_coord(p) for p in sorted(missing)][:5]}）。フォールバックします",
+                        "info",
+                    )
+                    return None, "FALLBACK: 再抽出が対象を見失った"
+                self.log(
+                    f"tsumego_solver: 再抽出 type={new_problem.problem_type.value}"
+                    f" target={len(new_problem.target)}子 region={len(new_problem.region)}点",
+                    "info",
+                )
+                self.problem = new_problem
+                self._baked_moves = len(self.applied_moves)  # 現局面の石は problem に焼き込み済み
+                self._drop_kernel()  # region/target が変わったので証明ストアは作り直し
+                self._needs_reextract = False
+                self.last_gate = None
+                self._gave_up = False  # 問題が変わった（小さくなったかもしれない）ので解き直す
+            except ProblemError as e:
+                self.log(f"tsumego_solver: 再抽出に失敗（{e}）。フォールバックします", "info")
+                return None, f"FALLBACK: 再抽出失敗 {e}"
         use_cache = bool(self.settings.get("solver_cache", DEFAULT_SETTINGS["solver_cache"]))
         cache_path = self._cache_path() if use_cache else None
         if cache_path and os.path.exists(cache_path):
@@ -228,7 +287,7 @@ class TsumegoSolverSession:
         # 証明ストア即答（§6.6 応答フロー / G4）: 前回の solve が確定させたコンテキストで
         # 現局面が証明済みなら、解析ゼロで決め手を返す（< 10ms）。ミスなら通常の solve へ
         last_gate = getattr(self, "last_gate", None)
-        if last_gate is not None and not self._needs_reextract and self.kernel is not None:
+        if last_gate is not None and self.kernel is not None:
             try:
                 hit = self.kernel.probe(last_gate)
             except Exception:
@@ -239,35 +298,15 @@ class TsumegoSolverSession:
                     self.log("tsumego_solver: 証明ストア即答（パスが本手）", "info")
                     return None, "証明ストア即答: パスが本手"
                 if coords != self.ban_point:
+                    # 証明ストアの決め手は df-pn が「最初に証明できた手」で、同格の別解が
+                    # 複数ある局面ではアプリの解答樹の本手と限らない（実測 2026-08-01 case 2:
+                    # J13/K13/M13 が全部同格で J13 を即答 → アプリは K13 のみ正解）。
+                    # KataGo の本命が同じ gate を証明するならそちらを採る（§6.5.1-3 の深いノード版）
+                    coords = self._prefer_ranked_gate_move(coords, last_gate)
                     self.log(f"tsumego_solver: 証明ストア即答 {gtp_coord(coords)}（解析ゼロ）", "info")
+                    self._cache_store(cache_path, coords, f"証明ストア即答 {gtp_coord(coords)}")
                     return coords, f"証明ストア即答: {gtp_coord(coords)}"
                 # コウ禁止に当たる場合は通常の solve で別手を探す
-        blk, wht = self.current_stones()
-        if self._needs_reextract:
-            try:
-                new_problem = extract_problem(
-                    stones=(blk, wht),
-                    board_size=self.problem.size,
-                    to_play=self.problem.to_play,
-                    region_hint=self.region_hint,
-                    max_region_points=int(
-                        self.settings.get("solver_max_region_points", DEFAULT_SETTINGS["solver_max_region_points"])
-                    ),
-                )
-                self.log(
-                    f"tsumego_solver: 再抽出 type={new_problem.problem_type.value}"
-                    f" target={len(new_problem.target)}子 region={len(new_problem.region)}点",
-                    "info",
-                )
-                self.problem = new_problem
-                self._baked_moves = len(self.applied_moves)  # 現局面の石は problem に焼き込み済み
-                self._drop_kernel()  # region/target が変わったので証明ストアは作り直し
-                self._needs_reextract = False
-                self.last_gate = None
-                self._gave_up = False  # 問題が変わった（小さくなったかもしれない）ので解き直す
-            except ProblemError as e:
-                self.log(f"tsumego_solver: 再抽出に失敗（{e}）。フォールバックします", "info")
-                return None, f"FALLBACK: 再抽出失敗 {e}"
         problem_now = problem_with_stones(self.problem, blk, wht)
         kernel = self._get_kernel()
         t0 = time.time()
@@ -337,6 +376,74 @@ class TsumegoSolverSession:
         self.log("tsumego_solver: 同格の本手が全てコウ禁止のためパスします（コウ待ち）", "info")
         return None, f"コウ待ちのパス（{summary}）"
 
+    # KataGo 本命の同格差し替えで検証する候補数と1手あたりの予算。検証は温まった証明ストア上の
+    # solve なので実測ミリ秒級（case 2 の K13 はコールドでも 1461 ノード）。タイムアウトは
+    # 「証明できなかった」と同じ扱い＝差し替えず決め手を維持（安全側）
+    RANK_OVERRIDE_MAX_CANDIDATES = 3
+    RANK_OVERRIDE_TIME_MS = 5000
+    RANK_OVERRIDE_NODE_LIMIT = 2_000_000
+    # 差し替えの決定性ゲート: KataGo 本命の visits が決め手の visits のこの倍以上のときだけ
+    # 差し替える。拮抗（実測 case 2 ply4: K13 v874 vs 正解 M13 v779 = 1.1倍）で差し替えると
+    # 同格の別解間で手順が入れ替わりアプリの解答樹から外れうる。発火すべき実測は 57 倍
+    # （case 2 P6: K13 v1670 vs J13 v29）で、3.0 は両側から十分に離れた位置
+    RANK_OVERRIDE_MIN_VISITS_RATIO = 3.0
+
+    def _prefer_ranked_gate_move(self, chosen: Point, gate) -> Point:
+        """同格の別解から KataGo の本命を選び直す（§6.5.1-3 の深いノード版）。
+
+        証明ストアの決め手（df-pn が最初に証明した手）より KataGo が**決定的に**上位に読む
+        region 内の合法手（visits 比 >= RANK_OVERRIDE_MIN_VISITS_RATIO）が、同じ gate
+        （クラスを成立させた solve のコンテキスト）を証明するなら差し替える。
+        アプリの解答樹の本線は KataGo の本命と一致しやすい（現行 points_epsilon の知見）。
+        move_ranker / move_visits / kernel が無ければ何もしない。
+        """
+        ranker = getattr(self, "move_ranker", None)
+        visits_map = getattr(self, "move_visits", None)
+        if ranker is None or visits_map is None or self.kernel is None or gate is None:
+            return chosen
+        try:
+            chosen_rank = ranker(chosen)
+            chosen_visits = max(1, int(visits_map.get(chosen, 0)))
+            cands = []
+            for pt in self.problem.region:
+                if pt == chosen or pt == self.ban_point:
+                    continue
+                if self.board.stones[self.board.index(pt)] != EMPTY:
+                    continue
+                rank = ranker(pt)
+                if rank >= chosen_rank:
+                    continue
+                if int(visits_map.get(pt, 0)) < chosen_visits * self.RANK_OVERRIDE_MIN_VISITS_RATIO:
+                    continue  # 拮抗している別解は入れ替えない（決定的な本命だけ）
+                cands.append((rank, pt))
+            cands.sort()
+            pred, komaster, budget, want = gate
+            for _rank, pt in cands[: self.RANK_OVERRIDE_MAX_CANDIDATES]:
+                result = self.kernel.call(
+                    dict(
+                        op="solve",
+                        pred=pred,
+                        komaster=komaster,
+                        budget=-1 if budget is None else budget,
+                        first_move=[pt[0], pt[1]],
+                        node_limit=self.RANK_OVERRIDE_NODE_LIMIT,
+                        time_limit_ms=self.RANK_OVERRIDE_TIME_MS,
+                    )
+                )
+                if result.get("timeout"):
+                    continue
+                if bool(result.get("value")) == want:
+                    self.log(
+                        f"tsumego_solver: 決め手 {gtp_coord(chosen)}(v{visits_map.get(chosen, 0)}) より"
+                        f" KataGo 本命 {gtp_coord(pt)}(v{visits_map.get(pt, 0)}) が同格に成立するため"
+                        f" 差し替えます（gate={gate}）",
+                        "info",
+                    )
+                    return pt
+        except Exception:
+            pass  # 差し替えは最適化であって正しさの条件ではない。失敗したら決め手のまま
+        return chosen
+
     def _cache_store(self, cache_path, move, summary):
         """root Solution の永続キャッシュ（§6.6。同じ詰碁の再出題で 0 秒）。"""
         if not cache_path:
@@ -379,6 +486,11 @@ def build_session_from_game(game, settings: dict, logger=None) -> Optional[Tsume
                 logger(f"tsumego_solver: 問題を抽出できません（{e}）。現行経路へフォールバックします", "info")
             return None
     session = TsumegoSolverSession(problem, settings, logger)
+    # 再抽出用の関心領域は GUI の region_of_interest を優先（無ければ __init__ の
+    # region 外接矩形のまま）。ここを配線しないと途中の再抽出が hint なしで走る
+    roi = getattr(game, "region_of_interest", None)
+    if roi:
+        session.region_hint = list(roi)
     if logger:
         logger(
             f"tsumego_solver: 問題を抽出 type={problem.problem_type.value} target={len(problem.target)}子"

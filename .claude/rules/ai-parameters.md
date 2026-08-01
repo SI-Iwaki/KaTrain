@@ -270,7 +270,16 @@ Spec: `docs/superpowers/specs/2026-07-29-tsumego-ownership-design.md`（誤答�
 
 ## 詰碁ソルバ戦略（TsumegoSolverStrategy / ai:tsumego_solver）
 
-死活を KataGo なしで厳密に解く戦略（スペック `2026-08-01-tsumego-solver-design.md`）。キャプチャで問題抽出に成功すると枠を張らずこの戦略が設定され、解けない盤・打ち切り・FAILED 裁定は `ai:tsumego` に自動フォールバックする。設定はすべて `tsumego_capture` セクション（§9.3）:
+死活を KataGo なしで厳密に解く戦略（スペック `2026-08-01-tsumego-solver-design.md`）。キャプチャで問題抽出に成功すると枠を張らずこの戦略が設定され、解けない盤・打ち切り・FAILED 裁定は `ai:tsumego` に自動フォールバックする。
+
+**セッション側の挙動（2026-08-01 追記3 の修正。設定キーではなくコード定数）**:
+
+- **証明ストア即答の同格差し替え**（`_prefer_ranked_gate_move`）: 即答の決め手は df-pn が「最初に証明できた手」で、同格別解が複数ある局面では本手と限らない。KataGo の本命が同じ gate を証明し、かつ visits が決め手の `RANK_OVERRIDE_MIN_VISITS_RATIO`(3.0) 倍以上（決定性ゲート）のときだけ差し替える。拮抗別解（実測 1.1 倍）を入れ替えると正解が別解に化けるので比で守る（発火すべき実測は 57 倍）。戦略は `move_ranker` に加え `move_visits` を渡す。検証予算は `RANK_OVERRIDE_MAX_CANDIDATES`(3) × `RANK_OVERRIDE_TIME_MS`(5000)
+- **途中再抽出の hint**: `region_hint` は出題時 region の外接矩形を既定にし、GUI は `game.region_of_interest` で上書き。hint なし再抽出は乱れた盤で「デタラメな小問題」に成功しうる（実測: target={K2,K4,K5}/region10点 → SEKI/L1 誤答）
+- **再抽出のサニティガード**: 元問題の生存 target 石を新 region が覆わない再抽出は捨ててフォールバック
+- **永続キャッシュ**: 再抽出を照会より先に行い、キーを「実際に解いた問題」に揃えた（旧キャッシュは `~/.katrain/tsumego_cache_backup_20260801/` に退避済み）。証明ストア即答もキャッシュに書く
+
+設定はすべて `tsumego_capture` セクション（§9.3）:
 
 | パラメータ | デフォルト | 備考 |
 |---|---|---|
