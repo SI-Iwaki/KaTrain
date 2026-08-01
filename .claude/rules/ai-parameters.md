@@ -266,3 +266,21 @@ Spec: `docs/superpowers/specs/2026-07-29-tsumego-ownership-design.md`（誤答�
 | jigo9_phase2_target | -0.5 | -0.5/-1.0/-1.5 | 同上 |
 
 検証は GUI 実戦のみ（deception は trajectory 形成型で batch 評価不可）。CLI: `python -m katrain_debug --sgf <9路SGF> --move N --strategy jigo9`。Spec: `docs/superpowers/specs/2026-06-04-jigo-9x9-dedicated-mode-design.md`
+
+
+## 詰碁ソルバ戦略（TsumegoSolverStrategy / ai:tsumego_solver）
+
+死活を KataGo なしで厳密に解く戦略（スペック `2026-08-01-tsumego-solver-design.md`）。キャプチャで問題抽出に成功すると枠を張らずこの戦略が設定され、解けない盤・打ち切り・FAILED 裁定は `ai:tsumego` に自動フォールバックする。設定はすべて `tsumego_capture` セクション（§9.3）:
+
+| パラメータ | デフォルト | 備考 |
+|---|---|---|
+| solver_enabled | true | ソルバモードの有効化（false で常に現行経路） |
+| solver_time_limit_ms | 30000 | 1手の solve 時間上限。超過は現行経路へフォールバック（スペック §9.3 の 3000 は P4 完了後に再検討） |
+| solver_node_limit | 20000000 | ノード上限 |
+| solver_ko_refine | true | コウの細分 n*（§4.4） |
+| solver_ko_budget_max | 2 | n* の探索上限（超えたら ko_level=3=ヨセコウ深い扱い） |
+| solver_optimize_line | true | 第2段階（plies/material 最小化）。native は1手あたり 3 秒であきらめて第1段階の解を使う |
+| solver_max_alternatives | 8 | 別解リストの上限（§6.5.1） |
+| solver_max_region_points | 72 | region 上限（超えたら門前払い→フォールバック。§8.4） |
+| solver_cache | true | root Solution の永続キャッシュ（~/.katrain/tsumego_cache/） |
+| solver_fallback | true | フォールバックの有効化（false だと未解決時パス） |

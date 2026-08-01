@@ -52,7 +52,11 @@
         "enabled": true,
         "hotkey": "f4",
         "window_title": "BlueStacks",
-        "board_sizes": [9, 13, 19],
+        "board_sizes": [
+            9,
+            13,
+            19
+        ],
         "frame_margin": 4,
         "frame_ko": false,
         "frame_ko_auto": true,
@@ -64,7 +68,17 @@
         "region_wide_root_noise": 0.04,
         "use_frame": true,
         "region_pad": 1,
-        "ponder_replies": 3
+        "ponder_replies": 3,
+        "solver_enabled": true,
+        "solver_time_limit_ms": 30000,
+        "solver_node_limit": 20000000,
+        "solver_ko_refine": true,
+        "solver_ko_budget_max": 2,
+        "solver_optimize_line": true,
+        "solver_max_alternatives": 8,
+        "solver_max_region_points": 72,
+        "solver_cache": true,
+        "solver_fallback": true
     },
     "trainer": {
         "theme": "theme:normal",
@@ -300,7 +314,8 @@
             "siege_max_loss": 5.0,
             "siege_proximity_stddev": 3.0,
             "siege_instability_min": 0.3
-        }
+        },
+        "ai:tsumego_solver": {}
     },
     "ui_state": {
         "restoresize": true,

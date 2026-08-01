@@ -1063,6 +1063,16 @@ msgstr ""
 "Heavily down-weights candidate moves on or adjacent to the player's own stones "
 "that ownership confirms as dead, mimicking how strong human players ignore dead stones."
 
+msgid "ai:tsumego_solver"
+msgstr "Tsumego solver"
+
+msgid "aihelp:tsumego_solver"
+msgstr ""
+"Tsumego solver: solves life-and-death exactly (result classes: unconditional > "
+"ko > seki) without KataGo and plays from the solution. Falls back to the "
+"Tsumego strategy when the position cannot be solved. Configured via the "
+"solver_* keys in the tsumego_capture section."
+
 msgid "ai:tsumego"
 msgstr "Tsumego"
 

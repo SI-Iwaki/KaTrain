@@ -84,6 +84,7 @@ from katrain.core.constants import (
     DATA_FOLDER,
     AI_DEFAULT,
     AI_TSUMEGO,
+    AI_TSUMEGO_SOLVER,
 )
 from katrain.gui.popups import (
     ConfigTeacherPopup,
@@ -1113,7 +1114,39 @@ class KaTrainGui(Screen, KaTrainBase):
         settings = self._config.get("tsumego_capture") or {}
         komi = self.config("game/komi", 6.5)
         board, analysis_region = None, None
-        if settings.get("use_frame", False):
+        # 死活ソルバモード（スペック 2026-08-01-tsumego-solver-design.md）: KataGo を使わず問題を
+        # 静的に抽出できたら、枠を張らず盤面をそのまま出題する（§3。枠の採否判定 KataGo 最大5本が消える）。
+        # 抽出できない盤は従来どおり枠張り経路へ（§9.2 フォールバック）
+        solver_problem = None
+        if settings.get("solver_enabled", True):
+            started = time.time()
+            try:
+                from katrain.core.tsumego_problem import extract_problem, DEFAULT_MAX_REGION_POINTS
+
+                solver_problem = extract_problem(
+                    grid=grid,
+                    to_play="B",
+                    max_region_points=int(settings.get("solver_max_region_points", DEFAULT_MAX_REGION_POINTS)),
+                )
+            except Exception as e:  # ProblemError 含む。抽出失敗は現行経路へ
+                self.log(
+                    f"tsumego_capture: ソルバ用の問題抽出に失敗（{e}）。現行経路で出題します", OUTPUT_INFO
+                )
+                solver_problem = None
+            if solver_problem is not None:
+                board = grid  # 盤面をそのまま出す（枠を張らない）
+                size = len(grid)
+                xs = [p[0] for p in solver_problem.region]
+                ys = [p[1] for p in solver_problem.region]
+                # analysis_region は上origin ((imin, imax), (jmin, jmax))。y（下origin）から変換
+                analysis_region = ((size - 1 - max(ys), size - 1 - min(ys)), (min(xs), max(xs)))
+                self.log(
+                    f"tsumego_capture: ソルバモードで出題します type={solver_problem.problem_type.value}"
+                    f" target={len(solver_problem.target)}子 region={len(solver_problem.region)}点"
+                    f" [抽出 {time.time() - started:.2f} 秒]",
+                    OUTPUT_INFO,
+                )
+        if board is None and settings.get("use_frame", False):
             started = time.time()
             chosen = self._choose_tsumego_frame(grid, komi, ko, margin, settings)
             # 枠の採否は解析を数本回すのでキャプチャの待ち時間に直接乗る。遅いと感じたときに
@@ -1135,6 +1168,25 @@ class KaTrainGui(Screen, KaTrainBase):
             self.log(f"詰碁キャプチャ失敗: {e}", OUTPUT_ERROR)
             return
         self._do_new_game(move_tree=move_tree)
+        # ソルバモード: 抽出済みの問題コンテキストを新しいゲームに引き渡す（§9.1 照会プロトコル。
+        # 戦略はこれを使ってセッションを作り、以後の手番で再抽出しない）
+        self.game.tsumego_solver_problem = solver_problem
+        if solver_problem is not None:
+            # 投機実行（§8.3-7）: GUI 描画と並行して root を解き、証明ストアを温めておく。
+            # 結果は捨ててもよい（着手時の solve がキャッシュ/温TTで速くなる）
+            game_ref = self.game
+
+            def _solver_presolve():
+                from katrain.core import tsumego_solver_api as solver_api
+
+                session = solver_api.build_session_from_game(
+                    game_ref, settings, lambda msg, level=None: self.log(msg, OUTPUT_INFO)
+                )
+                if session is not None:
+                    game_ref.tsumego_solver_session = session
+                    session.presolve()
+
+            threading.Thread(target=_solver_presolve, daemon=True).start()
         try:
             # 詰碁の正解手判定用に、初期解析＋以降の毎手のリージョン解析を深掘り専用クエリ
             # （visits指定・時間無制限）にする。0以下で既定解析にフォールバック
@@ -1165,8 +1217,10 @@ class KaTrainGui(Screen, KaTrainBase):
             #  トグルだと mode の読み値がクリック発火前になり競合する。Kivy Clock は同一timeoutの
             #  イベントをスケジュール順に発火するため、後からの直接指定で必ずプレイモードに収束）
             # 詰碁の正解判定は対象石群の死活で決まるため、盤全体の目数で選ぶ ai:default ではなく
-            # ownership の変化量で選ぶ ai:tsumego を使う
-            self.update_player("B", player_type=PLAYER_AI, player_subtype=AI_TSUMEGO)
+            # ownership の変化量で選ぶ ai:tsumego を使う。ソルバモードで問題を抽出できたときは
+            # 死活を厳密に解く ai:tsumego_solver（解けない盤は戦略内で ai:tsumego へフォールバック）
+            tsumego_subtype = AI_TSUMEGO_SOLVER if solver_problem is not None else AI_TSUMEGO
+            self.update_player("B", player_type=PLAYER_AI, player_subtype=tsumego_subtype)
             self.update_player("W", player_type=PLAYER_HUMAN, player_subtype=PLAYING_NORMAL)
             Clock.schedule_once(lambda _dt: self.play_mode.play.trigger_action(duration=0))
             self.controls.set_status("詰碁盤面を取り込みました（黒:AIが正解手を打ちます）", STATUS_INFO)
@@ -1181,13 +1235,13 @@ class KaTrainGui(Screen, KaTrainBase):
                 # ドロップダウンの現在値で上書きされることがある（実測 2026-07-30: 起動後1回目の
                 # キャプチャだけ ai:default に戻り、詰碁戦略が丸ごと無効化されていた）。
                 # ここは round-trip の後なので、実効値を検証して必要なら入れ直す
-                if self.players_info["B"].player_subtype != AI_TSUMEGO:
+                if self.players_info["B"].player_subtype != tsumego_subtype:
                     self.log(
                         f"tsumego_capture: 黒番が {self.players_info['B'].player_subtype} に戻されたため "
-                        f"{AI_TSUMEGO} を再設定します",
+                        f"{tsumego_subtype} を再設定します",
                         OUTPUT_INFO,
                     )
-                    self.update_player("B", player_type=PLAYER_AI, player_subtype=AI_TSUMEGO)
+                    self.update_player("B", player_type=PLAYER_AI, player_subtype=tsumego_subtype)
             if maximize:
                 self.tsumego_view = True  # 盤面拡大（下部ナビは残る。F12/`で通常表示に復帰）
             try:

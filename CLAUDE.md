@@ -37,8 +37,12 @@ katrain/
     sgf_parser.py     -- SGFパーサ
     base_katrain.py   -- 設定管理・アプリベース
     tsumego_capture.py   -- 詰碁アプリ画面キャプチャ→盤面認識→SGF化（Kivy非依存、CLI: python -m katrain.core.tsumego_capture）
+    tsumego_problem.py   -- 死活ソルバの問題抽出（region閉包・型判定。KataGo/Kivy非依存）
+    tsumego_solver/      -- 死活ソルバ本体（model/board/reference=Python参照実装、native=Rustカーネルctypesラッパ+DLL）
+    tsumego_solver_api.py -- ソルバセッション（§9.1照会プロトコル・コウ禁回避・再抽出・投機・永続キャッシュ）
     ...               -- utils.py, lang.py, contribute_engine.py, tsumego_frame.py 等
   gui/                -- Kivy GUIウィジェット
+native/tsumego/       -- 死活ソルバの Rust カーネル（DFS+df-pn。ビルド: cargo build --release --target x86_64-pc-windows-gnu → katrain/core/tsumego_solver/katrain_tsumego.dll へコピー）
   config.json         -- パッケージ同梱のデフォルト設定
   i18n/               -- 多言語リソース
 tests/                -- テスト
@@ -185,6 +189,13 @@ python -m katrain_debug --sgf tests/data/ogs.sgf --move 30 --strategy hunt --out
 ```bash
 python -m katrain_debug --sgf tests/data/panda1.sgf --strategy hunt --batch --player W
 ```
+
+**詰碁ソルバの回帰（KataGo 不要・数分）**: ソルバ・問題抽出を触ったら回す。単体は `pytest tests/test_tsumego_solver.py tests/test_tsumego_solver_strategy.py`、実ケースは
+```bash
+python docs/superpowers/specs/calibration-data/tsumego/solver_p1_suite.py --native            # 全ケース
+python docs/superpowers/specs/calibration-data/tsumego/e2e_suite.py --solver W I Q            # 同じ入口から
+```
+Rust カーネルを触ったらビルド→DLLコピー→`diff_native`系の差分（Reference と同一結果）を確認。設計と実装の記録は `docs/superpowers/specs/2026-08-01-tsumego-solver-design.md`（追記1）。
 
 **詰碁の回帰（E2E）**: 選択則・枠判定・解析まわりを触ったら必ず回す（`select_tsumego_move` 単体の A/B では後段の検証・救済・クラス裁定を通らない）:
 ```bash

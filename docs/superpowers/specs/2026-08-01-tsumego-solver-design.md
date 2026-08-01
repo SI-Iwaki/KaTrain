@@ -1186,3 +1186,88 @@ python docs/superpowers/specs/calibration-data/tsumego/e2e_suite.py --full --sol
   **そのまま新方式の受入テストになる**。作り直しても検証手段は失われない
 - 実装に着手する際は、まず P0/P1 を回して **case I / Q / R / W が解けるか**を確かめること。
   そこが方式の是非を決める唯一の判断材料になる
+
+
+---
+
+## 追記1（2026-08-01）実装の記録 — P0〜P4 の実装と、スペックからの具体化・乖離
+
+実装一式:
+
+```
+katrain/core/tsumego_problem.py          問題抽出（§5）
+katrain/core/tsumego_solver/model.py     データモデル（Problem / ResultClass / SolutionValue / Solution）
+katrain/core/tsumego_solver/board.py     盤・連・Benson（Python 参照実装）
+katrain/core/tsumego_solver/reference.py 参照ソルバ（boolean AND/OR + TT。分類ラダー・細分・最適化・root全手評価）
+katrain/core/tsumego_solver/native.py    ctypes ラッパ + NativeSolver（solve/optimize だけ Rust に差し替え）
+katrain/core/tsumego_solver_api.py       セッション（§9.1 照会プロトコル・コウ禁回避・再抽出・投機・永続キャッシュ）
+katrain/core/ai.py                       ai:tsumego_solver 戦略（フォールバック込み。§9.2）
+katrain/__main__.py                      キャプチャ経路: ソルバ抽出成功時は枠を張らず出題 + 投機実行
+native/tsumego/                          Rust カーネル（board / solver = DFS と df-pn の両方）
+tests/test_tsumego_solver.py             §10.1 受入テスト群
+tests/test_tsumego_solver_strategy.py    戦略配線テスト
+docs/.../tsumego/solver_p1_suite.py      P1 スイート（e2e_suite.py --solver からも呼ばれる）
+```
+
+### 設計から実装への具体化（スペックの記述を上書きするもの）
+
+1. **反復検出キーは（盤 + 手番 + コウ禁止点 + パス数）**。§4.6 の「（盤 + 手番）のみ」に
+   コウ禁止点を足した。含めないと **komaster がコウ禁止を無視して取り返した直後に
+   偽の同形反復が発生**し（盤と手番が2手前と一致する）、単劫が基本則「生かす側の勝ち」で
+   誤裁定される。komaster / budget 残量を含めない点は設計どおり（サイクル検出を保つ）。
+2. **ネイティブは PyO3 でなく C ABI（cdylib + ctypes）**。ビルド・配布が単純で
+   Python 側のバージョン非依存になる。ツールチェーンは MSVC が無い環境のため
+   **stable-x86_64-pc-windows-gnu**（rustup で導入済み、`rustup default` 設定済み）。
+   ビルド: `cd native/tsumego && cargo build --release --target x86_64-pc-windows-gnu`
+   → `katrain/core/tsumego_solver/katrain_tsumego.dll` へコピー。DLL が無い環境は
+   自動的に Python 参照実装で動く（§12 の想定どおり）。
+3. **役割分担: 分類ラダー・コウ細分・root 全手評価は Python（ReferenceSolver）に一本化**し、
+   ネイティブは solve_after / optimize_after の2カーネルだけを差し替える（NativeSolver は
+   ReferenceSolver のサブクラス）。繊細な裁定ロジックが一箇所になり、差分テストも自然に成立する。
+4. **df-pn の GHI 対応**は DFS と同じ「経路依存の証明/反証は TT に書かない」方式。
+   実装上の要点3つ（どれを落としても壊れる）:
+   - **子の状態は初回 probe 後、再帰の戻り値で更新する**。probe（TT 照会）だけに頼ると
+     GHI 抑制で TT に載らなかった証明が親から見えず、同じ子を無限に選び直すライブロックになる。
+   - **taint / dep は「値を決めた子」だけから取る**（OR の証明 / AND の反証 = 決め手の子1つ、
+     OR の反証 / AND の証明 = 全子）。全子から min すると、コウ近傍の証明が軒並み TT 抑制になり
+     再展開の連鎖で爆発する（実測 case D: 3M ノードでも終わらず → 修正後 60k）。
+   - しきい値は 1+ε（ε=1/4）で渡す（再降下の抑制。実測 case D の S'(C2) 反証: 3M 超 → 60k）。
+5. **毎ノードの Benson をやめ、「同一連の完全眼2つ」の安価な生存確定**を早期打ち切りに使う
+   （両眼への打ち込みは常に自殺手なので健全）。Benson は連続パス終端（§4.7 の裁定）でだけ走る。
+   大きな眼空間の pass-alive は見えなくなるが、探索が数手先で眼を確定させるので値は変わらない。
+6. **§5.1 の空点連結の閉包は「全部入れる」と枠のチャンバーで爆発する**（実測 case E:
+   壁内の空点 50+）。吸収連からの空点 BFS を深さ2（呼吸点 + 眼空間内部点）+
+   12点以下の小成分は丸ごと、に制限し、**残る遠地帯は境界が単色のときだけその色の石で埋めて
+   region から外す**（fill。壁の生存仮定〈§5.1〉と同種の「地の仮定」。Problem.fill_black/white
+   に保持し、GUI 表示には使わない）。
+7. **種（§5.1 の R の初期値）は「単独で閉じ、かつその閉包の中で自色の壁/地へ到達できない連」**
+   （anchor）。全候補を種にすると壁側の連（地に裏打ちされた囲い）が region を膨張させる
+   （実測 case D: 16点 → 43点）。「到達できる」には呼吸点 7 以上（SAFE_LIBERTIES）も含む。
+8. **チャンバー内に散在する複数連の fight**（実測 case T/U/J: 遠地帯の境界に未吸収の fight 連が
+   混在して閉包が失敗）は、遠地帯境界の hint 内非壁連を発見的に吸収して繰り返す。
+9. **石で閉じない枠なし盤（実測 case W/I/G2/R）は「矩形 region モード」**: hint 矩形そのものを
+   region にする（現行パイプラインの region_of_interest と同じ意味論）。開いた境界
+   （盤端でない辺）に呼吸点を持つ連は「外の石」として target から除外し、両色が内部に残る
+   場合は極値線の石の多数決（現行 `extremum_stones` の移植 + 総石数タイブレーク）で攻め方を
+   推定する。§5.2 の「KataGo を使わず静的に決める」は維持。
+10. **攻め合い判定に共有呼吸点テスト**を追加（§5.2.2 の具体化）: 両者が「内包」または
+    「非内包」で対称なときは、危険な連同士が呼吸点を共有する（=ダメを争う）ときだけ攻め合い。
+    共有が無ければ内外の関係で、呼吸点の少ない側が target。
+11. **§9.1 の「着手が region の外だった場合は問題を再抽出」を実装**（セッションと P1 スイートの
+    両方）。再抽出後の problem には現局面の石が焼き込まれるので、カーネル再生成時の二重適用を
+    `_baked_moves` で防ぐ。実測 F2@4: ply0 の region のままだと SEKI に化ける（正解の
+    コウ手 N11 の周辺が region 外）→ 再抽出で KO/N11 に戻る。
+12. **SolutionValue の順序は (class, sub_demotion, ko_level, plies, material)**。§4.3.2.1 の
+    「下位細目は ko_level の後」と「同クラス末尾に置く」の2記述が衝突するため、後者
+    （細目は常にクラス末尾）を採用。
+13. **root 候補としてのパスに二重パス終端のアーティファクト**がある: 攻め方の問題で
+    「攻め方が root でパス → 守り方もパス → §4.7 評価で SEKI」となり、パス候補が実際より
+    良く（SEKI に）分類される。攻め方の順序では KO > SEKI なので実手を差し置いて選ばれる
+    ことはなく、方向は安全（パスの過小評価は起きない。守り方のセキでパスが本手になるのは正しい）。
+14. `solver_time_limit_ms` の既定は当面 **30000**（§9.3 の 3000 は P4 最適化完了後の値として
+    再検討）。時間切れは現行経路へのフォールバックなので安全側だが、3000 だと現状は
+    難しめの問題が軒並みフォールバックしてソルバの意味がなくなる。
+15. **証明ストアの手番またぎ**は Rust 側の `advance_root`（op="play"）で実現（§6.6 / G4）。
+    盤を root ごと進めて TT（位置キー）を温存する。実対局のコウ禁止点は root_ban として
+    カーネルにも伝わる。永続キャッシュは root Solution の本手だけを
+    `~/.katrain/tsumego_cache/<sha1>.json` に保存（§6.6 の設計どおり）。

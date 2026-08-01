@@ -211,6 +211,22 @@ def run_case(case, plies, repeats):
 
 def main():
     argv = list(sys.argv[1:])
+    if "--solver" in argv:
+        # 死活ソルバモード（スペック §10.2 G6）: 同じケース表を KataGo 不要のソルバで回す。
+        # 実装は solver_p1_suite.py（同じ CASES/KNOWN_LIMITS を import している）。
+        # ソルバは決定的なので --repeats は落とす
+        import runpy
+
+        if "--repeats" in argv:
+            i = argv.index("--repeats")
+            del argv[i : i + 2]
+        sys.argv = (
+            [os.path.join(HERE, "solver_p1_suite.py")]
+            + [a for a in argv if a not in ("--solver", "--all")]
+            + ["--native"]
+        )
+        runpy.run_path(sys.argv[0], run_name="__main__")
+        return
     repeats = 3
     if "--repeats" in argv:
         i = argv.index("--repeats")

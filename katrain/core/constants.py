@@ -62,6 +62,9 @@ AI_SETTLE_STONES = "ai:settle"
 # 瞬間にドロップダウンの現在値（ai:default）を KaTrain 側へ書き戻して上書きしてしまうため
 # （実測 2026-07-30: 起動後1回目のキャプチャだけ ai:default で着手＝詰碁戦略が丸ごと無効化）
 AI_TSUMEGO = "ai:tsumego"
+# 詰碁専用 死活ソルバ戦略（スペック 2026-08-01-tsumego-solver-design.md）。ai:tsumego 同様
+# GUI 一覧には出さず、キャプチャ経路がプログラムから設定する
+AI_TSUMEGO_SOLVER = "ai:tsumego_solver"
 AI_HUMAN = "ai:human"
 AI_PRO = "ai:pro"
 AI_DIVERGE = "ai:diverge_move"
@@ -74,7 +77,7 @@ AI_CONFIG_DEFAULT = AI_RANK
 AI_STRATEGIES_ENGINE = [AI_DEFAULT, AI_HANDICAP, AI_SCORELOSS, AI_SIMPLE_OWNERSHIP, AI_JIGO, AI_JIGO_9, AI_ANTIMIRROR]
 AI_STRATEGIES_PICK = [AI_PICK, AI_LOCAL, AI_TENUKI, AI_INFLUENCE, AI_TERRITORY, AI_FIGHTING, AI_RANK]
 AI_STRATEGIES_POLICY = [AI_WEIGHTED, AI_POLICY] + AI_STRATEGIES_PICK
-AI_STRATEGIES = AI_STRATEGIES_ENGINE + AI_STRATEGIES_POLICY + [AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE, AI_TSUMEGO]
+AI_STRATEGIES = AI_STRATEGIES_ENGINE + AI_STRATEGIES_POLICY + [AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE, AI_TSUMEGO, AI_TSUMEGO_SOLVER]
 AI_STRATEGIES_RECOMMENDED_ORDER = [
     AI_DEFAULT,
     AI_HUMAN,
@@ -99,6 +102,7 @@ AI_STRATEGIES_RECOMMENDED_ORDER = [
     AI_HUNT,
     AI_HUNT_DIVERGE,
     AI_TSUMEGO,
+    AI_TSUMEGO_SOLVER,
 ]
 
 AI_STRENGTH = {  # dan ranks, backup if model is missing. TODO: remove some?
@@ -119,6 +123,7 @@ AI_STRENGTH = {  # dan ranks, backup if model is missing. TODO: remove some?
     AI_SIMPLE_OWNERSHIP: 2,
     AI_SETTLE_STONES: 2,
     AI_TSUMEGO: float("nan"),
+    AI_TSUMEGO_SOLVER: float("nan"),
     AI_HUMAN: float("nan"),
     AI_PRO: float("nan"),
     AI_DIVERGE: float("nan"),

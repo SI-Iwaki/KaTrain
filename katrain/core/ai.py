@@ -10,7 +10,7 @@ from katrain.core.constants import (
     AI_DEFAULT, AI_HANDICAP, AI_INFLUENCE, AI_INFLUENCE_ELO_GRID, AI_JIGO, AI_JIGO_9,
     AI_ANTIMIRROR, AI_LOCAL, AI_LOCAL_ELO_GRID, AI_PICK, AI_PICK_ELO_GRID,
     AI_POLICY, AI_RANK, AI_SCORELOSS, AI_SCORELOSS_ELO, AI_SETTLE_STONES,
-    AI_SIMPLE_OWNERSHIP, AI_STRENGTH, AI_TSUMEGO,
+    AI_SIMPLE_OWNERSHIP, AI_STRENGTH, AI_TSUMEGO, AI_TSUMEGO_SOLVER,
     AI_TENUKI, AI_TENUKI_ELO_GRID, AI_TERRITORY, AI_TERRITORY_ELO_GRID,
     AI_FIGHTING, AI_FIGHTING_SCORELOSS_ELO,
     AI_WEIGHTED, AI_WEIGHTED_ELO, CALIBRATED_RANK_ELO, OUTPUT_DEBUG,
@@ -2876,6 +2876,61 @@ def tsumego_ko_escape_succeeds(value, stone_count, threshold=TSUMEGO_SUCCESS_OWN
     if not stone_count:
         return False
     return value / stone_count >= threshold
+
+
+@register_strategy(AI_TSUMEGO_SOLVER)
+class TsumegoSolverStrategy(AIStrategy):
+    """詰碁専用 死活ソルバ戦略（スペック 2026-08-01-tsumego-solver-design.md §9.1）。
+
+    KataGo を使わず死活を厳密に解いて着手する。問題コンテキスト（Problem・型・region）は
+    出題時に確定してセッションに保持し、以後の手番は局面だけ差し替えて解く。
+    解けない盤・打ち切り・FAILED 裁定は現行 ai:tsumego へフォールバックする（G5）。
+    """
+
+    def generate_move(self) -> Tuple[Move, str]:
+        started = time.time()
+        try:
+            return self._generate_move()
+        finally:
+            self.game.katrain.log(
+                f"[{self.strategy_name}] 着手決定に {time.time() - started:.1f} 秒", OUTPUT_INFO
+            )
+
+    def _solver_settings(self) -> Dict:
+        katrain = self.game.katrain
+        try:
+            settings = dict(katrain.config("tsumego_capture") or {})
+        except Exception:
+            settings = {}
+        settings.update(self.settings or {})
+        return settings
+
+    def _generate_move(self) -> Tuple[Move, str]:
+        from katrain.core import tsumego_solver_api as solver_api
+
+        katrain = self.game.katrain
+
+        def logger(msg, level=None):
+            katrain.log(msg, OUTPUT_ERROR if level == "error" else OUTPUT_INFO)
+
+        settings = self._solver_settings()
+        session = getattr(self.game, "tsumego_solver_session", None)
+        if session is None and settings.get("solver_enabled", True):
+            session = solver_api.build_session_from_game(self.game, settings, logger)
+            # 抽出失敗は False で記憶し、毎手の再抽出を避ける（局面は同じ問題のまま進むため）
+            self.game.tsumego_solver_session = session if session is not None else False
+        if session:
+            session.sync_moves(solver_api.moves_from_game(self.game))
+            coords, thoughts = session.generate()
+            if coords is not None:
+                return Move(coords, player=self.cn.next_player), thoughts
+            if not thoughts.startswith("FALLBACK"):
+                return Move(coords=None, player=self.cn.next_player), thoughts  # パスが本手 / コウ待ち
+        if not settings.get("solver_fallback", True):
+            return Move(coords=None, player=self.cn.next_player), "ソルバ未解決（フォールバック無効のためパス）"
+        katrain.log(f"[{self.strategy_name}] 現行 {AI_TSUMEGO} へフォールバックします", OUTPUT_INFO)
+        fallback_settings = dict(katrain.config(f"ai/{AI_TSUMEGO}") or {})
+        return TsumegoOwnershipStrategy(self.game, fallback_settings).generate_move()
 
 
 @register_strategy(AI_TSUMEGO)

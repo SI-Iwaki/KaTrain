@@ -1156,6 +1156,15 @@ msgstr ""
 "ownership でほぼ確実に死んでいると判定された自石の周辺で、"
 "損失が発生する手の重みを大きく減衰し、人間高段者のように無駄手を避けます。"
 
+msgid "ai:tsumego_solver"
+msgstr "詰碁ソルバ"
+
+msgid "aihelp:tsumego_solver"
+msgstr ""
+"詰碁ソルバ: 死活を KataGo なしで厳密に解いて着手します（結果クラス: 無条件 > "
+"コウ > セキ を直接判定）。解けない盤・打ち切りは自動的に「詰碁」戦略へ"
+"フォールバックします。設定は tsumego_capture セクションの solver_* キー。"
+
 msgid "ai:tsumego"
 msgstr "詰碁"
 
