@@ -1134,6 +1134,25 @@ class KaTrainGui(Screen, KaTrainBase):
                 )
                 solver_problem = None
             if solver_problem is not None:
+                # ソルバで解ける規模のときだけソルバモードにする（P1 実測: 解けたのは
+                # region<=23・空点<=12、空点23以上は1800秒でも未達）。規模超過を枠なしで
+                # 出題してからフォールバックすると、従来の枠あり経路より弱くなるため、
+                # ここで従来経路（枠張り）に譲る＝挙動は完全に現行のまま（G5）
+                n_stones = sum(
+                    1 for p in solver_problem.region if p in solver_problem.black or p in solver_problem.white
+                )
+                n_empties = len(solver_problem.region) - n_stones
+                max_region = int(settings.get("solver_capture_max_region", 26))
+                max_empties = int(settings.get("solver_capture_max_empties", 14))
+                if len(solver_problem.region) > max_region or n_empties > max_empties:
+                    self.log(
+                        f"tsumego_capture: region {len(solver_problem.region)}点/空点{n_empties} は"
+                        f"ソルバで解ける規模（{max_region}点/空点{max_empties}）を超えるため、"
+                        f"現行経路（枠張り）で出題します",
+                        OUTPUT_INFO,
+                    )
+                    solver_problem = None
+            if solver_problem is not None:
                 board = grid  # 盤面をそのまま出す（枠を張らない）
                 size = len(grid)
                 xs = [p[0] for p in solver_problem.region]

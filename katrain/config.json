@@ -78,7 +78,9 @@
         "solver_max_alternatives": 8,
         "solver_max_region_points": 72,
         "solver_cache": true,
-        "solver_fallback": true
+        "solver_fallback": true,
+        "solver_capture_max_region": 26,
+        "solver_capture_max_empties": 14
     },
     "trainer": {
         "theme": "theme:normal",

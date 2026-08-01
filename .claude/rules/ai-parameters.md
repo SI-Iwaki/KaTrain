@@ -284,3 +284,5 @@ Spec: `docs/superpowers/specs/2026-07-29-tsumego-ownership-design.md`（誤答�
 | solver_max_region_points | 72 | region 上限（超えたら門前払い→フォールバック。§8.4） |
 | solver_cache | true | root Solution の永続キャッシュ（~/.katrain/tsumego_cache/） |
 | solver_fallback | true | フォールバックの有効化（false だと未解決時パス） |
+| solver_capture_max_region | 26 | キャプチャ時のソルバモード採用ゲート（region 点数）。P1 実測で解けたのは region<=23。超過は最初から現行経路（枠張り）＝挙動が完全に従来のまま |
+| solver_capture_max_empties | 14 | 同・空点数ゲート（解けたのは空点<=12、空点23+は1800秒でも未達） |
