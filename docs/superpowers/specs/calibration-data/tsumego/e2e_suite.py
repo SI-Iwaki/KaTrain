@@ -158,6 +158,14 @@ CASES = {
         expect={0: ("H1",), 2: ("K1",)},
         note="初手の残り 1/3 は救済が N4 を拾う分散（spec 追記33/35）",
     ),
+    "Y": dict(
+        sgf="case-y-declass-ko-answer-20260802.sgf",
+        region="0,8,0,9",
+        line=["B1", "C1", "A2"],  # 正解＝コウ
+        expect={0: ("B1",)},
+        note="同深さ判定の拘束深さ（TSUMEGO_VERDICT_UNTIL_DEPTH）。ud6 では A4 が +0.78＝「白は死んだ」と"
+        "読まれ、格下げ（run3）とコウ脱出（run1/2）の両方が A4 を採って誤答した（spec 追記38）",
+    ),
     "X": dict(
         sgf="case-x-attacker-role-edge-20260801.sgf",
         region="0,6,0,10",

@@ -2110,6 +2110,35 @@ TSUMEGO_KO_REPLY_RATIO_CHOSEN = 0.05
 # 歩く深さと同じだけ縛るのが自明な整合点（PV を見る範囲＝局所を強制した範囲）。
 TSUMEGO_KO_REGION_UNTIL_DEPTH = TSUMEGO_TIE_KO_PLIES
 
+# 同深さ ownership 判定（`_region_child_verdict` / `_child_verdicts`）でリージョン外を禁じる深さ。
+# **コウ検出の PV 歩き（`TSUMEGO_TIE_KO_PLIES`）と同じ数字を使ってはいけない** — 上の 6 は
+# 「PV を何手ぶん証拠に使うか」で決めた数字で、「その死活が何手で決着するか」とは無関係。
+# 判定が「その手で相手が死ぬか」を聞くものである以上、拘束は**局所の攻防が終わるまで**要る。
+# 拘束が切れた ply で守り方は枠外へ逃げられ、逃げた＝その群を捨てた局面が評価されるので、
+# **失敗手が「相手は死んだ」と読まれる**（詰碁の成否と逆の答えが返る）。
+#
+# 実測 case Y（2026-08-02、13路左下・枠あり・黒は攻め方。正解 B1＝白 C1・黒 A2 のコウ。
+# 実戦は A4 で白の無条件生き＝詰碁アプリも A4 の時点で不正解判定）。A4 の子局面の白6子:
+#
+#   untilDepth=6    +0.71 / +0.78（800visits）・+0.96（6000visits）  ＝「白は死んだ」で**誤り**
+#   untilDepth=10   -0.93 / -0.95     untilDepth=12  -0.95 / -0.97    ＝「白は生きた」で正しい
+#
+# ud6 の PV は `W A2,B A3,W C3,B A5,W D1,B C1` と進んだあと **ply7 で白が M5（枠外）へ手抜き**し、
+# 次の黒 C2 で全部取られている。この詰碁は白が ply7 の A1（コウ取り）で2眼を作って生きる形なので、
+# 拘束が ply6 で切れると白の正着がちょうど地平線の外に落ちる。**深さでも visits でも直らない**
+# （6000visits にすると +0.96 とむしろ確信が強まる＝探索を増やすほど「逃げる」読みに収束する）。
+#
+# 12 を採るのは ud10/12/16 が case Y で同じ答え（-0.93〜-0.97）に収束し、かつ校正済みの判定を
+# 1つも動かさないから（800visits・各 ud で実測。発火すべき側と発火してはいけない側の両方を測った）:
+#
+#   発火すべき   K C13 +0.99 / L J6 +0.99〜+0.98 / M K1 +0.99 / P J1 +0.99（格下げ先）
+#                O A11 +0.99 / T L1 +1.00〜+0.97（脱出の採用手）
+#   発火不可     V K10 -1.00→-0.93 / W J1 -0.24→-0.60（ヘッジ、深いほど安全側）/ Y A4 +0.78→**-0.97**
+#
+# ＝ ud6 で唯一閾値 0.5 の反対側に居たのが case Y。コウ検出（`_ko_route_screen`）の拘束は 6 の
+# ままにする（あちらは PV を 6 手しか歩かないので、深くすると偶発コウを拾う側のリスクだけ増える）。
+TSUMEGO_VERDICT_UNTIL_DEPTH = 12
+
 # コウ「権利」の検出（`tsumego_defender_ko_points`）を歩く深さ。PV が実際にコウを打つことを
 # 要求する既存判定（`tsumego_pv_reaches_region_ko` の1子取り検査）より**短く**切る。
 #
@@ -2967,8 +2996,11 @@ class TsumegoOwnershipStrategy(AIStrategy):
     def _generate_move(self) -> Tuple[Move, str]:
         self.wait_for_analysis()
         # 選択手のコウ経路検査（wRN=0・untilDepth=6・ownership 付き）の生解析を手番内で使い回す
-        # ための memo（`_region_child_verdict` が同条件のときだけ再利用＝クラス格上げの incumbent
-        # 検証で同じ子局面を撃ち直さない）。手番をまたいで持ち越さない
+        # ための memo（`_region_child_verdict` が **visits・wRN・untilDepth の3つとも同条件のとき
+        # だけ** 再利用する）。判定側は case Y 以降 `TSUMEGO_VERDICT_UNTIL_DEPTH`(12) で撃つので
+        # 現状この共有は成立せず、クラス格上げの incumbent 検証は解析1本を撃ち直す（深さの違う
+        # 解析を混ぜると失敗手を「相手は死んだ」と読む地平線バグが戻るので、共有より正しさを取る）。
+        # 手番をまたいで持ち越さない
         self._screen_root_memo = {}
         candidate_moves = self.cn.candidate_moves
         if not candidate_moves:
@@ -3329,6 +3361,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
                     memo[cand["move"]] = {
                         "visits": visits,
                         "wide_root_noise": TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE,
+                        "until_depth": TSUMEGO_KO_REGION_UNTIL_DEPTH,
                         "root": root,
                     }
             replies = (root or {}).get("moves") or []
@@ -3423,7 +3456,9 @@ class TsumegoOwnershipStrategy(AIStrategy):
         こちらを別に用意する（選択手だけは両方で1本ずつ撃つことになるが、脱出はコウ一色のときに
         しか走らないので実害はない。既に回帰の取れている `_ko_route_screen` を触らずに済むほうを取る）。
 
-        リージョンの拘束深さも `_ko_route_screen` と揃える（`TSUMEGO_KO_REGION_UNTIL_DEPTH`）。
+        リージョンの拘束深さは**コウ検出より深い** `TSUMEGO_VERDICT_UNTIL_DEPTH`。ここは
+        「その手で相手が死ぬか」を聞く判定なので、拘束が局所の攻防より先に切れると守り方が枠外へ
+        逃げ、その群を捨てた局面が評価されて**失敗手が「相手は死んだ」と読まれる**（実測 case Y）。
         `value` は候補と incumbent を同条件で測った相対比較にしか使わないので、拘束を深くしても
         両者に同じだけ効く。
 
@@ -3434,12 +3469,18 @@ class TsumegoOwnershipStrategy(AIStrategy):
 
         選択手のコウ経路検査（`_ko_route_screen` want_ownership=True）が同条件で撃った生解析が
         memo に残っていればそれを使う＝同じ子局面を同じ設定で撃ち直さない（サンプルを共有する
-        だけで判定ロジックは同一）。
+        だけで判定ロジックは同一）。**拘束深さも一致を要求する**（あちらは 6、こちらは 12 なので
+        現状は一致しない＝共有しない。深さの違う解析を混ぜると case Y の誤答がそのまま戻る）。
 
         取れなければ None。
         """
         memo = (getattr(self, "_screen_root_memo", None) or {}).get(move_gtp)
-        if memo is not None and memo["visits"] == visits and memo["wide_root_noise"] == wide_root_noise:
+        if (
+            memo is not None
+            and memo["visits"] == visits
+            and memo["wide_root_noise"] == wide_root_noise
+            and memo["until_depth"] == TSUMEGO_VERDICT_UNTIL_DEPTH
+        ):
             return self._child_verdict_from_root(move_gtp, memo["root"], stones, player_sign)
         player = self.cn.next_player
         sim = tsumego_simulation_game(self.game, self.cn)
@@ -3453,7 +3494,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
             node,
             visits,
             ownership=True,
-            until_depth=TSUMEGO_KO_REGION_UNTIL_DEPTH,
+            until_depth=TSUMEGO_VERDICT_UNTIL_DEPTH,
             wide_root_noise=wide_root_noise,
         )
         if root is None or root.get("ownership") is None:
@@ -3503,7 +3544,12 @@ class TsumegoOwnershipStrategy(AIStrategy):
             if move_gtp in pending:
                 continue
             memo = (getattr(self, "_screen_root_memo", None) or {}).get(move_gtp)
-            if memo is not None and memo["visits"] == visits and memo["wide_root_noise"] == wide_root_noise:
+            if (
+                memo is not None
+                and memo["visits"] == visits
+                and memo["wide_root_noise"] == wide_root_noise
+                and memo["until_depth"] == TSUMEGO_VERDICT_UNTIL_DEPTH
+            ):
                 pending[move_gtp] = {"root": memo["root"]}
                 continue
             sim = tsumego_simulation_game(self.game, self.cn)
@@ -3517,7 +3563,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
                 node,
                 visits,
                 ownership=True,
-                until_depth=TSUMEGO_KO_REGION_UNTIL_DEPTH,
+                until_depth=TSUMEGO_VERDICT_UNTIL_DEPTH,
                 wide_root_noise=wide_root_noise,
             )
         self._wait_region_roots([h for h in pending.values() if "_visits" in h])

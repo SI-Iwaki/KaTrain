@@ -14,6 +14,7 @@ from katrain.core.ai import (
     TSUMEGO_KO_REPLY_RATIO_CHOSEN,
     TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE,
     TSUMEGO_TIE_KO_PLIES,
+    TSUMEGO_VERDICT_UNTIL_DEPTH,
     select_tsumego_move,
     tsumego_class_screen_all_ko,
     tsumego_class_screen_pool,
@@ -489,6 +490,29 @@ def test_ko_screen_constrains_the_region_for_every_ply_it_walks():
         assert "pass" not in entry["moves"]  # 局所で打つ手が無い側は pass できる（着手強制はしない）
     # 既定は upstream どおり untilDepth=1（本譜の候補評価の条件を変えない）
     assert all(entry["untilDepth"] == 1 for entry in region_avoid_moves(SIZE, region))
+
+
+def test_verdict_depth_is_deeper_than_the_ko_screen_walk():
+    """同深さ ownership 判定の拘束は、コウ検出の PV 歩きより**深い**（別の数字である）。
+
+    `TSUMEGO_TIE_KO_PLIES`(6) は「PV を何手ぶん証拠に使うか」で決めた数字で、**その死活が
+    何手で決着するか**とは無関係。判定が「その手で相手が死ぬか」を聞くものである以上、拘束は
+    局所の攻防が終わるまで要る。拘束が切れた ply で守り方は枠外へ逃げられ、その群を捨てた
+    局面が評価されるので**失敗手が「相手は死んだ」と読まれる**。
+
+    実測 case Y (2026-08-02、13路左下・枠あり・黒は攻め方。正解 B1＝コウ、失敗手 A4＝白の
+    無条件生き): A4 の子局面の白6子 ownership は untilDepth=6 で +0.71〜+0.78（6000visits に
+    増やすと +0.96 とむしろ確信が強まる）、untilDepth=10/12/16 で -0.93〜-0.97。ud6 の PV は
+    ply7 で白が枠外へ手抜きしており、この白は ply7 の A1＝コウ取りで2眼を作って生きる形だった。
+    校正済み8判定（K/L/M/P/O/T の発火側・V/W の非発火側）は ud6/10/12/16 で不変。
+
+    コウ検出側を深くしてはいけない（PV を 6 手しか歩かないので偶発コウを拾う側のリスクだけ増える）
+    ので、**2つは同じ定数であってはならない**。
+    """
+    assert TSUMEGO_VERDICT_UNTIL_DEPTH > TSUMEGO_KO_REGION_UNTIL_DEPTH
+    assert TSUMEGO_KO_REGION_UNTIL_DEPTH == TSUMEGO_TIE_KO_PLIES  # コウ検出は歩く深さのまま
+    # ud10 以上なら case Y は直る（実測の収束域）。12 はその中で校正済み判定を動かさない値
+    assert TSUMEGO_VERDICT_UNTIL_DEPTH >= 10
 
 
 def test_class_screen_pool_caps_rivals():
