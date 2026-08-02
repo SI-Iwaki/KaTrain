@@ -2949,7 +2949,11 @@ def tsumego_book_next_move(game):
         if coords is not None and any(m.coords == coords for m in game.stones):
             return False, None  # 認識ずれ等で占有点になっている＝記録が現盤に合わない
         return True, coords
-    except Exception:
+    except Exception as e:
+        try:
+            game.katrain.log(f"tsumego_answer_book: 再生照合でエラー（{e}）", OUTPUT_DEBUG)
+        except Exception:
+            pass
         return False, None
 
 

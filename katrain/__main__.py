@@ -462,10 +462,11 @@ class KaTrainGui(Screen, KaTrainBase):
             return
         if not self.tsumego_recording:
             # 記録モード開始: root に巻き戻し、黒を人間にして黒白両方を手入力できるようにする
-            self._tsumego_record_prev_black = (
-                self.players_info["B"].player_type,
-                self.players_info["B"].player_subtype,
-            )
+            if getattr(self, "_tsumego_record_prev_black", None) is None:
+                self._tsumego_record_prev_black = (
+                    self.players_info["B"].player_type,
+                    self.players_info["B"].player_subtype,
+                )
             self.board_gui.animating_pv = None
             game.undo(9999)
             self.update_player("B", player_type=PLAYER_HUMAN, player_subtype=PLAYING_NORMAL)
@@ -498,7 +499,7 @@ class KaTrainGui(Screen, KaTrainBase):
         added = book.add_line(key, bk_size, "B", canonical_black, canonical_white, line)
         game.tsumego_book_entry = book.lookup(key)  # 保存直後から再生可能（root に戻して検証できる）
         self.controls.set_status(
-            f"正解手順を記録しました（{len(line)}手）" if added else "同じ手順が記録済みです",
+            f"正解手順を記録しました（{len(line)}手）。rootに戻しAI着手で検証できます" if added else "同じ手順が記録済みです",
             STATUS_INFO,
         )
 
