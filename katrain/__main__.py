@@ -446,7 +446,7 @@ class KaTrainGui(Screen, KaTrainBase):
         self.game.current_node.end_state = f"{self.game.current_node.player}+R"
 
     def _do_tsumego_record_toggle(self):
-        """回答帳: 「正解手順を記録」/「この手順を保存」ボタン(回答帳スペック§6)。"""
+        """回答帳: 「正解手順を記録」/「この手順を保存」ボタン（回答帳スペック§6）。"""
         from katrain.core import tsumego_answer_book as answer_book
         from katrain.core.tsumego_solver_api import moves_from_game
 
