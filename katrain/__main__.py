@@ -379,6 +379,11 @@ class KaTrainGui(Screen, KaTrainBase):
             self.play_mode.switch_ui_mode()  # for new game, go to play, for loaded, analyze
         self.board_gui.animating_pv = None
         self.board_gui.reset_rotation()
+        if self.tsumego_recording and getattr(self, "_tsumego_record_prev_black", None):
+            # 記録モードのまま新規対局＝記録の放棄。黒プレイヤーを記録前の状態に戻す
+            prev = self._tsumego_record_prev_black
+            self._tsumego_record_prev_black = None
+            self.update_player("B", player_type=prev[0], player_subtype=prev[1])
         self.engine.on_new_game()  # clear queries
         self.game = Game(
             self,
@@ -474,6 +479,7 @@ class KaTrainGui(Screen, KaTrainBase):
         moves = moves_from_game(game)
         Clock.schedule_once(lambda _dt: setattr(self, "tsumego_recording", False), 0)
         prev = getattr(self, "_tsumego_record_prev_black", None)
+        self._tsumego_record_prev_black = None
         if prev:
             self.update_player("B", player_type=prev[0], player_subtype=prev[1])
         if not moves or moves[0][1] != "B":
