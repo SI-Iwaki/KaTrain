@@ -282,6 +282,48 @@ def test_extract_nakade_sacrifice_is_not_semeai():
     assert prob.target_color == WHITE
 
 
+def test_capturable_group_is_not_a_wall():
+    """取れる連を壁（＝生きていると仮定する境界）にした閉包を受理しない。
+
+    実測 2026-08-02 の GUI 誤答（13路右下・黒が白の大群を殺す問題）。抽出は隅で
+    アタリになっている黒3子（L2/M1/M2）だけを見て「5点の中で黒が生きられるか」に
+    化けさせ、**その黒を殺している白15子（呼吸点4）を壁＝生き**と仮定していた。
+    実際にはその白こそが詰碁の的で、正解 L1 の次の N3（白2子を取って白の大群の
+    呼吸点も詰める）は 5 点の region の外にあるため、AI は打つ手を失って pass する。
+
+    壁は「不可侵の境界」なので、取れる連を壁にした瞬間に抽出は元の詰碁と別物になる。
+    region を広げ直せるならそれでもよいが、少なくとも正解の急所を締め出したまま
+    受理してはいけない（受理しなければキャプチャは現行経路＝枠張りへ落ちる）。
+    """
+    from katrain.core.tsumego_problem import extract_problem
+    from katrain.core.tsumego_solver.model import ProblemError
+
+    rows = [
+        ". . . . . . . . . . . . .",
+        ". . . . . . . . . . . . .",
+        ". . . . . . . . . . . . .",
+        ". . . . . . . . . . . . .",
+        ". . . . . . . . . . . . .",
+        ". . . . . . X X X X . . .",
+        ". . . . . . X O O X . X .",
+        ". . . . . . X O X . X . .",
+        ". . . . . . X O X . X X .",
+        ". . . . . . X O . X O O X",
+        ". . . . . . X O . O O O .",
+        ". . . . . . X O O O X X O",
+        ". . . . . . X X O . . X O",
+    ]
+    black, white, size = diagram(rows)
+    vital = (12, 2)  # N3: 白2子を取り、白の大群の呼吸点でもある急所
+    try:
+        prob = extract_problem(stones=(black, white), board_size=size, to_play=BLACK)
+    except ProblemError:
+        return  # 抽出を諦めて現行経路へ落ちるのが正しい（G5 フォールバック）
+    assert vital in prob.region, (
+        f"取れる白（呼吸点4）を壁にして region {sorted(prob.region)} が急所 N3 を締め出している"
+    )
+
+
 # ---------- 証明ストアのキー（§6.6: 条件を削ると誤答することの固定）----------
 
 

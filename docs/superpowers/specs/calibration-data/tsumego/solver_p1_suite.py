@@ -106,6 +106,13 @@ def run_case(name, case, plies_list, time_ms):
     return rows
 
 
+# ソルバの射程外と実測で分かっているケースは既定で回さない（名前で明示すれば回る）。
+# AA は**抽出**の回帰ケース（spec 追記6）で、hint 付きだと矩形 region モードの 72 点に
+# 落ちるので df-pn は必ず打ち切られる＝1ケースで既定 5 分×4 手番を捨てるだけになる。
+# ソルバが解けないこと自体は W/I/R と同じ既知の規模の壁で、ここで測り直す価値が無い
+P1_SKIP = {"AA"}
+
+
 def main():
     global SOLVER_CLASS
     args = list(sys.argv[1:])
@@ -122,7 +129,7 @@ def main():
     argv = [a for a in args if not a.startswith("--")]
     table = dict(CASES)
     table.update(KNOWN_LIMITS)
-    names = argv or list(table)
+    names = argv or [nm for nm in table if nm not in P1_SKIP]
     all_rows = []
     for nm in names:
         case = table.get(nm)

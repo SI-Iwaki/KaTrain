@@ -183,6 +183,16 @@ CASES = {
         "2手目は root 分散で M9 6/9・N4 3/9（N4 もコウ経路と検出された上での、コウ同士の"
         "root 目数タイブレーク）のため expect に含めない",
     ),
+    "AA": dict(
+        sgf="case-aa-wall-is-target-20260802.sgf",
+        region="5,12,0,8",
+        line=["L1", "J4", "N3", "K5", "K6", "N2", "N5"],
+        expect={0: ("L1",), 2: ("N3",), 4: ("K6",), 6: ("N5",)},
+        note="問題抽出が「取れる連（白15子・呼吸点4）」を壁にして region を5点に潰していた盤"
+        "（spec 追記6）。region さえ潰れなければ選択則は正解手順を 3/3 で再現するので、"
+        "これは抽出（tsumego_problem）側の回帰ケース。単体の固定は"
+        "tests/test_tsumego_solver.py::test_capturable_group_is_not_a_wall",
+    ),
 }
 # 既知限界（エンジン側の value/探索の問題で選択則では救えない。spec 追記13/21）
 KNOWN_LIMITS = {
