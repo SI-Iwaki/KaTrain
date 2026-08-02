@@ -1,6 +1,9 @@
 """tsumego_answer_book のユニットテスト（KataGo/Kivy/humanSL モデル不要）。"""
+from types import SimpleNamespace
+
 import pytest
 
+from katrain.core.ai import tsumego_book_next_move
 from katrain.core.tsumego_answer_book import (
     AnswerBook,
     canonicalize,
@@ -203,3 +206,44 @@ class TestAnswerBook:
         book = AnswerBook(path=str(tmp_path / "none" / "book.json"))
         assert book.lookup("k1") is None
         assert book.add_line("k1", 9, "B", [], [], ["A4"])  # 親ディレクトリも作る
+
+
+def _fake_game(black, white, line_moves_played, size, entry, transforms):
+    """current_node チェーンと石リストを持つ最小の game。"""
+    node = SimpleNamespace(move=None, parent=None)  # root
+    stones = [SimpleNamespace(coords=p) for p in black | white]
+    for i, coords in enumerate(line_moves_played):
+        player = "BW"[i % 2]
+        node = SimpleNamespace(move=SimpleNamespace(coords=coords, player=player), parent=node)
+        if coords is not None:
+            stones.append(SimpleNamespace(coords=coords))  # 取りは無視（占有チェック用の近似で十分）
+    return SimpleNamespace(
+        current_node=node,
+        stones=stones,
+        board_size=(size, size),
+        tsumego_book_entry=entry,
+        tsumego_book_transforms=transforms,
+    )
+
+
+class TestBookNextMove:
+    def test_returns_recorded_move(self):
+        _, transforms, entry = _entry_for(REF_BLACK, REF_WHITE, REF_LINE, SIZE)
+        game = _fake_game(REF_BLACK, REF_WHITE, [], SIZE, entry, transforms)
+        found, coords = tsumego_book_next_move(game)
+        assert found and coords == REF_LINE[0]
+
+    def test_no_entry_returns_miss(self):
+        game = _fake_game(REF_BLACK, REF_WHITE, [], SIZE, None, None)
+        assert tsumego_book_next_move(game) == (False, None)
+
+    def test_occupied_point_returns_miss(self):
+        # 認識ずれ等で記録手の点が占有済みなら再生しない（スペック§8）
+        _, transforms, entry = _entry_for(REF_BLACK, REF_WHITE, REF_LINE, SIZE)
+        game = _fake_game(REF_BLACK | {REF_LINE[0]}, REF_WHITE, [], SIZE, entry, transforms)
+        assert tsumego_book_next_move(game) == (False, None)
+
+    def test_deviation_returns_miss(self):
+        _, transforms, entry = _entry_for(REF_BLACK, REF_WHITE, REF_LINE, SIZE)
+        game = _fake_game(REF_BLACK, REF_WHITE, [REF_LINE[0], (6, 6)], SIZE, entry, transforms)
+        assert tsumego_book_next_move(game) == (False, None)

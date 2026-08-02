@@ -2925,6 +2925,34 @@ def tsumego_ko_escape_succeeds(value, stone_count, threshold=TSUMEGO_SUCCESS_OWN
     return value / stone_count >= threshold
 
 
+def tsumego_book_next_move(game):
+    """回答帳の次手 (ヒットしたか, coords)。パスが記録されていれば (True, None)。
+
+    白の応手が全 line から逸脱した／記録手の点が占有済み（認識ずれ）なら
+    (False, None) ＝ 呼び出し側は従来パイプラインへ。毎手呼び直すので、白が
+    記録の枝に戻れば再ヒットする（回答帳スペック§7）。解析クエリは使わない。
+    """
+    entry = getattr(game, "tsumego_book_entry", None)
+    transforms = getattr(game, "tsumego_book_transforms", None)
+    if not entry or not transforms:
+        return False, None
+    try:
+        from katrain.core import tsumego_answer_book as answer_book
+        from katrain.core.tsumego_solver_api import moves_from_game
+
+        size = game.board_size
+        if not isinstance(size, int):
+            size = size[0]
+        found, coords = answer_book.next_move(entry, transforms, moves_from_game(game), size)
+        if not found:
+            return False, None
+        if coords is not None and any(m.coords == coords for m in game.stones):
+            return False, None  # 認識ずれ等で占有点になっている＝記録が現盤に合わない
+        return True, coords
+    except Exception:
+        return False, None
+
+
 @register_strategy(AI_TSUMEGO_SOLVER)
 class TsumegoSolverStrategy(AIStrategy):
     """詰碁専用 死活ソルバ戦略（スペック 2026-08-01-tsumego-solver-design.md §9.1）。
@@ -2959,6 +2987,11 @@ class TsumegoSolverStrategy(AIStrategy):
 
         def logger(msg, level=None):
             katrain.log(msg, OUTPUT_ERROR if level == "error" else OUTPUT_INFO)
+
+        book_hit, book_coords = tsumego_book_next_move(self.game)
+        if book_hit:
+            katrain.log(f"[{self.strategy_name}] 回答帳の記録手順から着手します", OUTPUT_INFO)
+            return Move(book_coords, player=self.cn.next_player), "回答帳: 記録された正解手順"
 
         settings = self._solver_settings()
         session = getattr(self.game, "tsumego_solver_session", None)
@@ -3004,6 +3037,10 @@ class TsumegoOwnershipStrategy(AIStrategy):
     def generate_move(self) -> Tuple[Move, str]:
         # 体感速度の調査用に所要時間を必ず出す（キャプチャ側の「枠の採否判定に X 秒」と同じ意図）
         started = time.time()
+        book_hit, book_coords = tsumego_book_next_move(self.game)
+        if book_hit:
+            self.game.katrain.log(f"[{self.strategy_name}] 回答帳の記録手順から着手します", OUTPUT_INFO)
+            return Move(book_coords, player=self.cn.next_player), "回答帳: 記録された正解手順"
         try:
             return self._generate_move()
         finally:
