@@ -517,6 +517,39 @@ def test_root_order_hint_ignores_bogus_points(solver_cls):
 
 
 @pytest.mark.parametrize("solver_cls", SOLVERS)
+def test_opt_stops_after_first_timeout(solver_cls):
+    """同格タイの opt は最初のタイムアウトで残りを打ち切る（クラス・本手は opt 無しと同一）。
+
+    実測 2026-08-02: 同格の本手が6手ある詰碁で opt が1手3秒ずつ全部タイムアウトし
+    18.2 秒（うち第1段階は 0.1 秒）。タイムアウトしたタイは plies=0 のまま sort_key の
+    最上位に並ぶので、残りのタイを最適化しても最終選択は変わらない（成功しても同格タイから
+    外れるだけ）＝打ち切りは結果不変で安全。
+    """
+    from katrain.core.tsumego_solver.reference import SolverTimeout
+
+    prob_rows = [". . . . . . . .", "O O O O O O O O", "O X X X X X X O", "O X . . . . X O"]
+    target = {(1, 1), (2, 1), (3, 1), (4, 1), (5, 1), (6, 1), (1, 0), (6, 0)}
+    region = target | {(2, 0), (3, 0), (4, 0), (5, 0)}
+    make = lambda: make_problem(prob_rows, region=region, target=target, problem_type=ProblemType.DEFEND)  # noqa: E731
+    baseline = solver_cls(make(), SolverLimits(time_limit_ms=60000, optimize_line=False)).solve()
+    assert len(baseline.root_moves) >= 2  # 同格タイが複数あるテスト形であること
+
+    solver = solver_cls(make(), SolverLimits(time_limit_ms=60000))
+    calls = []
+
+    def always_timeout(move, info):
+        calls.append(move)
+        raise SolverTimeout("stub")
+
+    solver._optimize_after = always_timeout
+    sol = solver.solve()
+    assert len(calls) == 1  # 2手目以降のタイは打ち切り（従来はタイ全員が3秒ずつ燃えていた）
+    assert sol.value.result == baseline.value.result
+    assert sol.value.plies == 0
+    assert moves_gtp(sol) == moves_gtp(baseline)  # opt 全滅時の答えは opt 無しと同一
+
+
+@pytest.mark.parametrize("solver_cls", SOLVERS)
 def test_opt_skip_after_slow_stage1_keeps_class_and_moves(solver_cls):
     """第1段階が opt_skip_after_ms を超えたら手順最適化を省く（クラス・本手は不変で plies だけ 0）。
 

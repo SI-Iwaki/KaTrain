@@ -696,7 +696,11 @@ class ReferenceSolver:
                         mat = o_mat
                         line = [m] + list(sub_line)
                 except SolverTimeout:
-                    pass  # 第1段階の解をそのまま（クラスは正しいまま劣化。§4.2.2）
+                    # 第1段階の解をそのまま（クラスは正しいまま劣化。§4.2.2）。さらに残りの
+                    # タイの opt も打ち切る: タイムアウトしたタイは plies=0 のまま sort_key の
+                    # 最上位に並ぶので、以後の opt は最終選択を変えられない（成功しても同格タイ
+                    # から外れるだけ）。同格6手 × 3秒 = 18秒の初手を 3秒に縮める（実測 2026-08-02）
+                    allow_opt = False
             value = SolutionValue(
                 result=info["result"], ko_level=info["ko_level"], plies=plies, material=mat, sub_demotion=info["sub"]
             )
