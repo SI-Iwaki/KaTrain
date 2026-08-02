@@ -1261,6 +1261,9 @@ class AnalysisControls(MDBoxLayout):
 
 
 class BadukPanControls(MDFloatLayout):
+    # rebind=True は必須: kv ルール評価時は app.gui が未代入（KaTrainGui 構築中）で katrain=None のため、
+    # rebind が無いと `root.katrain.tsumego_book_ready` 等の連鎖バインディングが確立されず初期値で凍結する
+    katrain = ObjectProperty(None, rebind=True)
     engine_status_col = ListProperty(Theme.ENGINE_DOWN_COLOR)
     engine_status_pondering = NumericProperty(-1)
     queries_remaining = NumericProperty(0)
