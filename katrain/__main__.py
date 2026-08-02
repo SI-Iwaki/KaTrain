@@ -123,6 +123,7 @@ class KaTrainGui(Screen, KaTrainBase):
 
     zen = NumericProperty(0)
     tsumego_view = BooleanProperty(False)  # 詰碁専用表示: 右パネル+上部トグル非表示、下部ナビは残す
+    tsumego_book_ready = BooleanProperty(False)  # 回答帳照合完了（Task 6 で kv バインディングが消費）
     controls = ObjectProperty(None)
 
     def __init__(self, **kwargs):
@@ -1259,6 +1260,29 @@ class KaTrainGui(Screen, KaTrainBase):
         # ソルバモード: 抽出済みの問題コンテキストを新しいゲームに引き渡す（§9.1 照会プロトコル。
         # 戦略はこれを使ってセッションを作り、以後の手番で再抽出しない）
         self.game.tsumego_solver_problem = solver_problem
+        # 回答帳（スペック 2026-08-02-tsumego-answer-book-design.md）: 枠を張る前の認識石で
+        # 正規化キーを計算して照合。ヒットしたら戦略が記録手順を0秒で再生する。
+        # 枠張り・ソルバゲートの判断は従来どおり（スペック§5）
+        try:
+            from katrain.core import tsumego_answer_book as answer_book
+            from katrain.core.tsumego_problem import grid_to_stones
+
+            bk_black, bk_white, (bk_size, _) = grid_to_stones(grid)
+            key, transforms = answer_book.canonicalize(bk_black, bk_white, bk_size, "B")
+            self.game.tsumego_book_key = key
+            self.game.tsumego_book_transforms = transforms
+            self.game.tsumego_book_stones = (bk_black, bk_white, bk_size)
+            entry = answer_book.get_book(lambda msg: self.log(msg, OUTPUT_INFO)).lookup(key)
+            self.game.tsumego_book_entry = entry
+            if entry is not None:
+                self.log(
+                    f"tsumego_capture: 回答帳にヒット（記録 {len(entry['lines'])} 手順）。"
+                    f"黒は記録どおりに打ちます",
+                    OUTPUT_INFO,
+                )
+            Clock.schedule_once(lambda _dt: setattr(self, "tsumego_book_ready", True), 0)
+        except Exception as e:
+            self.log(f"tsumego_capture: 回答帳の照合に失敗（{e}）", OUTPUT_INFO)
         if solver_problem is not None:
             # 投機実行（§8.3-7）: GUI 描画と並行して root を解き、証明ストアを温めておく。
             # 結果は捨ててもよい（着手時の solve がキャッシュ/温TTで速くなる）
