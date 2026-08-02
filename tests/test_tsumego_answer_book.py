@@ -2,6 +2,7 @@
 import pytest
 
 from katrain.core.tsumego_answer_book import (
+    AnswerBook,
     canonicalize,
     gtp_to_point,
     inverse_transform,
@@ -164,3 +165,41 @@ class TestNextMove:
         played = [(REF_LINE[0], "B"), (None, "W")]
         found, coords = next_move(entry, transforms, played, SIZE)
         assert found and coords == REF_LINE[2]
+
+
+class TestAnswerBook:
+    def test_roundtrip(self, tmp_path):
+        path = str(tmp_path / "book.json")
+        book = AnswerBook(path=path)
+        assert book.lookup("k1") is None
+        assert book.add_line("k1", 13, "B", ["A5"], ["B4"], ["A4", "A2", "B1"])
+        book2 = AnswerBook(path=path)  # 別インスタンス=ファイルから再ロード
+        entry = book2.lookup("k1")
+        assert entry is not None and entry["lines"] == [["A4", "A2", "B1"]]
+        assert entry["size"] == 13 and entry["to_play"] == "B"
+
+    def test_duplicate_line_ignored(self, tmp_path):
+        book = AnswerBook(path=str(tmp_path / "book.json"))
+        assert book.add_line("k1", 13, "B", ["A5"], ["B4"], ["A4"])
+        assert not book.add_line("k1", 13, "B", ["A5"], ["B4"], ["A4"])
+        assert len(book.lookup("k1")["lines"]) == 1
+
+    def test_second_line_appended(self, tmp_path):
+        book = AnswerBook(path=str(tmp_path / "book.json"))
+        book.add_line("k1", 13, "B", ["A5"], ["B4"], ["A4", "A2"])
+        book.add_line("k1", 13, "B", ["A5"], ["B4"], ["A4", "A3", "B2"])
+        assert len(book.lookup("k1")["lines"]) == 2
+
+    def test_corrupt_file_treated_as_empty(self, tmp_path):
+        path = tmp_path / "book.json"
+        path.write_text("{ broken json", encoding="utf-8")
+        logs = []
+        book = AnswerBook(path=str(path), logger=logs.append)
+        assert book.lookup("k1") is None
+        assert logs  # 破損はログに出す
+        assert book.add_line("k1", 13, "B", [], [], ["A4"])  # 破損後も保存できる
+
+    def test_missing_file_ok(self, tmp_path):
+        book = AnswerBook(path=str(tmp_path / "none" / "book.json"))
+        assert book.lookup("k1") is None
+        assert book.add_line("k1", 9, "B", [], [], ["A4"])  # 親ディレクトリも作る

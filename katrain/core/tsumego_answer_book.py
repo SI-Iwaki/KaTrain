@@ -3,7 +3,10 @@
 スペック: docs/superpowers/specs/2026-08-02-tsumego-answer-book-design.md
 Kivy / KataGo 非依存（tsumego_problem.py と同じ層）。座標は (x, y)・y は下origin。
 """
+import datetime
 import hashlib
+import json
+import os
 from typing import List, Optional, Sequence, Set, Tuple
 
 Point = Tuple[int, int]
@@ -89,3 +92,73 @@ def next_move(entry: dict, transforms: Sequence[int], moves: List[Tuple[Optional
                 p = gtp_to_point(line[n])
                 return True, (None if p is None else transform_point(p, inv, size))
     return False, None
+
+
+DEFAULT_PATH = os.path.expanduser("~/.katrain/tsumego_answers.json")
+
+
+class AnswerBook:
+    """回答帳の永続ストア（スペック§4）。破損・欠損は空として続行する。"""
+
+    def __init__(self, path: Optional[str] = None, logger=None):
+        self.path = path or DEFAULT_PATH
+        self.log = logger or (lambda msg: None)
+        self._data = None
+
+    def _load(self):
+        if self._data is not None:
+            return
+        self._data = {"version": BOOK_VERSION, "entries": {}}
+        try:
+            if os.path.exists(self.path):
+                with open(self.path, encoding="utf-8") as f:
+                    raw = json.load(f)
+                if isinstance(raw.get("entries"), dict):
+                    self._data["entries"] = raw["entries"]
+        except Exception as e:
+            self.log(f"tsumego_answer_book: 回答帳の読み込みに失敗（{e}）。空として続行します")
+
+    def lookup(self, key: str) -> Optional[dict]:
+        self._load()
+        return self._data["entries"].get(key)
+
+    def add_line(self, key, size, to_play, canonical_black, canonical_white, line) -> bool:
+        """手順を追加して保存する。既存エントリには line 追加（重複は無視）。追加できたら True。"""
+        self._load()
+        entry = self._data["entries"].setdefault(
+            key,
+            {
+                "size": size,
+                "to_play": to_play,
+                "canonical_black": canonical_black,
+                "canonical_white": canonical_white,
+                "lines": [],
+                "created": datetime.date.today().isoformat(),
+            },
+        )
+        if line in entry["lines"]:
+            return False
+        entry["lines"].append(line)
+        self._save()
+        return True
+
+    def _save(self):
+        folder = os.path.dirname(self.path)
+        if folder:
+            os.makedirs(folder, exist_ok=True)
+        tmp = self.path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(self._data, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, self.path)
+
+
+_default_book = None
+
+
+def get_book(logger=None) -> AnswerBook:
+    global _default_book
+    if _default_book is None:
+        _default_book = AnswerBook(logger=logger)
+    elif logger is not None:
+        _default_book.log = logger
+    return _default_book
