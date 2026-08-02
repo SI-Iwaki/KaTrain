@@ -5,6 +5,8 @@ from katrain.core.tsumego_answer_book import (
     canonicalize,
     gtp_to_point,
     inverse_transform,
+    moves_to_canonical,
+    next_move,
     point_to_gtp,
     transform_point,
 )
@@ -101,3 +103,64 @@ class TestCanonicalize:
         assert key2 == key
         t = transforms2[0]
         assert _transform_set(rot_black, t, SIZE) == _transform_set(REF_BLACK, transforms[0], SIZE)
+
+
+def _entry_for(black, white, line_moves, size):
+    """Test helper: convert moves in board orientation to canonical and store in entry."""
+    key, transforms = canonicalize(black, white, size, "B")
+    players = ["B", "W"] * ((len(line_moves) + 1) // 2)
+    moves = list(zip(line_moves, players))
+    line = moves_to_canonical(moves, transforms[0], size)
+    return key, transforms, {"lines": [line]}
+
+
+class TestNextMove:
+    def test_first_move_and_full_line(self):
+        key, transforms, entry = _entry_for(REF_BLACK, REF_WHITE, REF_LINE, SIZE)
+        played = []
+        for expect in [REF_LINE[0], REF_LINE[2], REF_LINE[4]]:  # Black moves only
+            found, coords = next_move(entry, transforms, played, SIZE)
+            assert found and coords == expect
+            played.append((coords, "B"))
+            i = len(played)
+            if i < len(REF_LINE):
+                played.append((REF_LINE[i], "W"))  # White plays recorded response
+
+    def test_white_deviation_misses(self):
+        _, transforms, entry = _entry_for(REF_BLACK, REF_WHITE, REF_LINE, SIZE)
+        played = [(REF_LINE[0], "B"), ((6, 6), "W")]  # White deviates
+        found, coords = next_move(entry, transforms, played, SIZE)
+        assert not found and coords is None
+
+    def test_line_exhausted_misses(self):
+        _, transforms, entry = _entry_for(REF_BLACK, REF_WHITE, REF_LINE, SIZE)
+        players = ["B", "W"] * 3
+        played = list(zip(REF_LINE, players))
+        found, _ = next_move(entry, transforms, played, SIZE)
+        assert not found
+
+    def test_multiple_lines_branch(self):
+        # Entry with alt branch: white plays (0,2) instead of (0,1)
+        key, transforms, entry = _entry_for(REF_BLACK, REF_WHITE, REF_LINE, SIZE)
+        alt_moves = [(REF_LINE[0], "B"), ((0, 2), "W"), ((2, 1), "B")]
+        entry["lines"].append(moves_to_canonical(alt_moves, transforms[0], SIZE))
+        played = [(REF_LINE[0], "B"), ((0, 2), "W")]
+        found, coords = next_move(entry, transforms, played, SIZE)
+        assert found and coords == (2, 1)
+
+    def test_rotated_board_plays_transformed_moves(self):
+        # Board recorded in lower-left, re-presented rotated 180 (upper-right)
+        _, transforms0, entry = _entry_for(REF_BLACK, REF_WHITE, REF_LINE, SIZE)
+        rot_black = _transform_set(REF_BLACK, 2, SIZE)
+        rot_white = _transform_set(REF_WHITE, 2, SIZE)
+        key2, transforms2 = canonicalize(rot_black, rot_white, SIZE, "B")
+        found, coords = next_move(entry, transforms2, [], SIZE)
+        assert found and coords == transform_point(REF_LINE[0], 2, SIZE) == (12, 9)
+
+    def test_pass_in_line(self):
+        _, transforms, entry = _entry_for(REF_BLACK, REF_WHITE, REF_LINE, SIZE)
+        moves = [(REF_LINE[0], "B"), (None, "W"), (REF_LINE[2], "B")]
+        entry["lines"] = [moves_to_canonical(moves, transforms[0], SIZE)]
+        played = [(REF_LINE[0], "B"), (None, "W")]
+        found, coords = next_move(entry, transforms, played, SIZE)
+        assert found and coords == REF_LINE[2]

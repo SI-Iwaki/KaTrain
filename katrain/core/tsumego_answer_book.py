@@ -4,7 +4,7 @@
 Kivy / KataGo 非依存（tsumego_problem.py と同じ層）。座標は (x, y)・y は下origin。
 """
 import hashlib
-from typing import List, Optional, Set, Tuple
+from typing import List, Optional, Sequence, Set, Tuple
 
 Point = Tuple[int, int]
 
@@ -66,3 +66,26 @@ def canonicalize(black: Set[Point], white: Set[Point], size: int, to_play: str) 
     transforms = [t for t in range(8) if forms[t] == best]
     payload = repr((BOOK_VERSION, size, to_play, best)).encode()
     return hashlib.sha1(payload).hexdigest(), transforms
+
+
+def moves_to_canonical(moves: List[Tuple[Optional[Point], str]], t: int, size: int) -> List[str]:
+    """Root からの (coords, player) 列を標準形向きの GTP 文字列列にする。パスは "pass"。"""
+    return [point_to_gtp(None if c is None else transform_point(c, t, size)) for c, _p in moves]
+
+
+def next_move(entry: dict, transforms: Sequence[int], moves: List[Tuple[Optional[Point], str]], size: int) -> Tuple[bool, Optional[Point]]:
+    """前方一致する line の次手を盤の向きで返す。(ヒット, coords)。次手パスは (True, None)。
+
+    対称な配置では変換がタイになるため全有効変換で試し、実際に打たれた手列が
+    前方一致する変換を採用する（スペック§3「対称局面の曖昧性」）。
+    """
+    lines = entry.get("lines") or []
+    for t in transforms:
+        canon = moves_to_canonical(moves, t, size)
+        n = len(canon)
+        inv = inverse_transform(t)
+        for line in lines:
+            if len(line) > n and line[:n] == canon:
+                p = gtp_to_point(line[n])
+                return True, (None if p is None else transform_point(p, inv, size))
+    return False, None
