@@ -1222,3 +1222,9 @@ msgstr ""
 #. TODO
 msgid "engine:humanlike_model"
 msgstr "Path to human-like model"
+
+msgid "tsumego:record"
+msgstr "正解手順を記録"
+
+msgid "tsumego:save"
+msgstr "この手順を保存"

@@ -275,6 +275,13 @@
         NavIconButton:
             icon: 'Rotate.png'
             on_press: root.katrain('rotate')
+    AutoSizedRoundedRectangleButton:
+        text: i18n._('tsumego:save') if root.katrain and root.katrain.tsumego_recording else i18n._('tsumego:record')
+        size_hint: None, 0.5
+        pos_hint: {'center_x': 0.94, 'center_y': 0.5}
+        opacity: 1 if root.katrain and root.katrain.tsumego_book_ready else 0
+        disabled: not (root.katrain and root.katrain.tsumego_book_ready)
+        on_left_release: root.katrain("tsumego-record-toggle")
     ClickableLabel:
         pos_hint: {'center_x': 0.85,'center_y':0.5}
         size_hint: None, 1

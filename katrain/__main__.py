@@ -124,6 +124,7 @@ class KaTrainGui(Screen, KaTrainBase):
     zen = NumericProperty(0)
     tsumego_view = BooleanProperty(False)  # 詰碁専用表示: 右パネル+上部トグル非表示、下部ナビは残す
     tsumego_book_ready = BooleanProperty(False)  # 回答帳照合完了（Task 6 で kv バインディングが消費）
+    tsumego_recording = BooleanProperty(False)  # 回答帳の記録モード中（ボタンは「この手順を保存」）
     controls = ObjectProperty(None)
 
     def __init__(self, **kwargs):
@@ -386,6 +387,12 @@ class KaTrainGui(Screen, KaTrainBase):
             analyze_fast=analyze_fast or not move_tree,
             sgf_filename=sgf_filename,
         )
+
+        def _reset_book_props(_dt):
+            self.tsumego_book_ready = False
+            self.tsumego_recording = False
+
+        Clock.schedule_once(_reset_book_props, 0)
         for bw, player_info in self.players_info.items():
             player_info.sgf_rank = self.game.root.get_property(bw + "R")
             player_info.calculated_rank = None
@@ -437,6 +444,57 @@ class KaTrainGui(Screen, KaTrainBase):
 
     def _do_resign(self):
         self.game.current_node.end_state = f"{self.game.current_node.player}+R"
+
+    def _do_tsumego_record_toggle(self):
+        """回答帳: 「正解手順を記録」/「この手順を保存」ボタン(回答帳スペック§6)。"""
+        from katrain.core import tsumego_answer_book as answer_book
+        from katrain.core.tsumego_solver_api import moves_from_game
+
+        game = self.game
+        key = getattr(game, "tsumego_book_key", None)
+        if not key:
+            self.controls.set_status("詰碁キャプチャの出題中のみ記録できます", STATUS_INFO)
+            return
+        if not self.tsumego_recording:
+            # 記録モード開始: root に巻き戻し、黒を人間にして黒白両方を手入力できるようにする
+            self._tsumego_record_prev_black = (
+                self.players_info["B"].player_type,
+                self.players_info["B"].player_subtype,
+            )
+            self.board_gui.animating_pv = None
+            game.undo(9999)
+            self.update_player("B", player_type=PLAYER_HUMAN, player_subtype=PLAYING_NORMAL)
+            Clock.schedule_once(lambda _dt: setattr(self, "tsumego_recording", True), 0)
+            self.controls.set_status(
+                "記録モード: アプリの正解どおりに黒白両方を打ち、終わったら「この手順を保存」",
+                STATUS_INFO,
+            )
+            return
+        # 保存
+        moves = moves_from_game(game)
+        Clock.schedule_once(lambda _dt: setattr(self, "tsumego_recording", False), 0)
+        prev = getattr(self, "_tsumego_record_prev_black", None)
+        if prev:
+            self.update_player("B", player_type=prev[0], player_subtype=prev[1])
+        if not moves or moves[0][1] != "B":
+            self.controls.set_status("手順が空か黒番から始まっていないため記録を破棄しました", STATUS_INFO)
+            return
+        bk_black, bk_white, bk_size = game.tsumego_book_stones
+        t0 = game.tsumego_book_transforms[0]
+        line = answer_book.moves_to_canonical(moves, t0, bk_size)
+        canonical_black = sorted(
+            answer_book.point_to_gtp(answer_book.transform_point(p, t0, bk_size)) for p in bk_black
+        )
+        canonical_white = sorted(
+            answer_book.point_to_gtp(answer_book.transform_point(p, t0, bk_size)) for p in bk_white
+        )
+        book = answer_book.get_book(lambda msg: self.log(msg, OUTPUT_INFO))
+        added = book.add_line(key, bk_size, "B", canonical_black, canonical_white, line)
+        game.tsumego_book_entry = book.lookup(key)  # 保存直後から再生可能（root に戻して検証できる）
+        self.controls.set_status(
+            f"正解手順を記録しました（{len(line)}手）" if added else "同じ手順が記録済みです",
+            STATUS_INFO,
+        )
 
     def _do_redo(self, n_times=1):
         self.board_gui.animating_pv = None

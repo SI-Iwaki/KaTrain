@@ -1276,3 +1276,9 @@ msgstr "Distance of wall"
 #. tsumego: ko is good enough?
 msgid "tsumego:ko"
 msgstr "Ko allowed?"
+
+msgid "tsumego:record"
+msgstr "Record solution"
+
+msgid "tsumego:save"
+msgstr "Save solution"
