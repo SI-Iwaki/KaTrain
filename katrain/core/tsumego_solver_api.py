@@ -26,7 +26,7 @@ from katrain.core.tsumego_solver.model import (
     opponent,
     problem_with_stones,
 )
-from katrain.core.tsumego_solver.reference import ReferenceSolver, SolverLimits, SolverTimeout
+from katrain.core.tsumego_solver.reference import ReferenceSolver, SolverLimits, SolverTimeout, ladder_steps
 
 try:
     from katrain.core.tsumego_solver.native import NativeSolver, native_available
@@ -245,12 +245,18 @@ class TsumegoSolverSession:
             return list(self._policy_hint)
         return None
 
+    # 永続キャッシュの版数。答えの決まり方が変わったら上げて旧エントリを無効化する。
+    # 2: 証明ストア即答にクラス格上げ確認を追加（case AB）。旧版は KO gate の決め手を
+    #    そのまま保存しており、上位クラスが成立する局面の誤答（N11）が焼き付いている
+    CACHE_VERSION = 2
+
     def _cache_path(self):
         import hashlib
         import os
 
         payload = repr(
             (
+                self.CACHE_VERSION,
                 self.problem.size,
                 sorted(self.problem.black),
                 sorted(self.problem.white),
@@ -332,28 +338,54 @@ class TsumegoSolverSession:
         if getattr(self, "_gave_up", False):
             return None, "FALLBACK: この問題は予算内に解けない（既知）"
         # 証明ストア即答（§6.6 応答フロー / G4）: 前回の solve が確定させたコンテキストで
-        # 現局面が証明済みなら、解析ゼロで決め手を返す（< 10ms）。ミスなら通常の solve へ
+        # 現局面が証明済みなら、解析ゼロで決め手を返す（< 10ms）。ミスなら通常の solve へ。
+        # ただし gate は「そのクラスで解ける」証明にすぎない。相手が最強防御を外すと上位クラスが
+        # 成立しうる（実測 2026-08-02 case AB・13路右上: root は W L12 の最強防御でコウ殺しのみ
+        # ＝class=KO が正しいが、白が N12 と受けた局面には無条件殺し M13 がある。KO gate の
+        # probe は同格の決め手 N11＝コウ手を返し、詰碁の順序 無条件 > コウ で誤答）。
+        # 現 gate が型の最上位クラスでないときは上位ゲートを先に照会し、ヒットすれば格上げ、
+        # ミスなら通常の solve で再分類する。再分類が打ち切られたときだけ従来の即答へ退避する
+        # （_gave_up にはしない＝クラス確定済みの問題を手放さない）
         last_gate = getattr(self, "last_gate", None)
+        probe_fallback = None  # (gate, coords): 格上げ確認の solve 打ち切り時に返す従来の即答
         if last_gate is not None and self.kernel is not None:
             try:
                 hit = self.kernel.probe(last_gate)
             except Exception:
                 hit = None  # 旧 DLL 等で probe 未対応でも通常経路で動く
             if hit is not None:
-                coords = hit[1]
-                if coords is None:
-                    self.log("tsumego_solver: 証明ストア即答（パスが本手）", "info")
-                    return None, "証明ストア即答: パスが本手"
-                if coords != self.ban_point:
-                    # 証明ストアの決め手は df-pn が「最初に証明できた手」で、同格の別解が
-                    # 複数ある局面ではアプリの解答樹の本手と限らない（実測 2026-08-01 case 2:
-                    # J13/K13/M13 が全部同格で J13 を即答 → アプリは K13 のみ正解）。
-                    # KataGo の本命が同じ gate を証明するならそちらを採る（§6.5.1-3 の深いノード版）
-                    coords = self._prefer_ranked_gate_move(coords, last_gate)
-                    self.log(f"tsumego_solver: 証明ストア即答 {gtp_coord(coords)}（解析ゼロ）", "info")
-                    self._cache_store(cache_path, coords, f"証明ストア即答 {gtp_coord(coords)}")
-                    return coords, f"証明ストア即答: {gtp_coord(coords)}"
-                # コウ禁止に当たる場合は通常の solve で別手を探す
+                better = self._better_gates(last_gate)
+                answer_gate = last_gate if not better else None
+                for gate_up in better:
+                    try:
+                        hit_up = self.kernel.probe(gate_up)
+                    except Exception:
+                        answer_gate = last_gate  # probe 不能: 格上げ確認は諦めて従来動作
+                        break
+                    if hit_up is not None:
+                        answer_gate, hit = gate_up, hit_up
+                        self.last_gate = gate_up
+                        self.log(f"tsumego_solver: 証明ストアでクラス格上げ（gate={gate_up}）", "info")
+                        break
+                if answer_gate is not None:
+                    coords = hit[1]
+                    if coords is None:
+                        self.log("tsumego_solver: 証明ストア即答（パスが本手）", "info")
+                        return None, "証明ストア即答: パスが本手"
+                    if coords != self.ban_point:
+                        # 証明ストアの決め手は df-pn が「最初に証明できた手」で、同格の別解が
+                        # 複数ある局面ではアプリの解答樹の本手と限らない（実測 2026-08-01 case 2:
+                        # J13/K13/M13 が全部同格で J13 を即答 → アプリは K13 のみ正解）。
+                        # KataGo の本命が同じ gate を証明するならそちらを採る（§6.5.1-3 の深いノード版）
+                        coords = self._prefer_ranked_gate_move(coords, answer_gate)
+                        self.log(f"tsumego_solver: 証明ストア即答 {gtp_coord(coords)}（解析ゼロ）", "info")
+                        self._cache_store(cache_path, coords, f"証明ストア即答 {gtp_coord(coords)}")
+                        return coords, f"証明ストア即答: {gtp_coord(coords)}"
+                    # コウ禁止に当たる場合は通常の solve で別手を探す
+                else:
+                    # 上位ゲートが証明ストアに無い＝今の局面で上位が成立するかは未知。
+                    # 通常の solve で再分類し、打ち切られたらこの即答へ退避する
+                    probe_fallback = (last_gate, hit[1])
         problem_now = problem_with_stones(self.problem, blk, wht)
         kernel = self._get_kernel()
         t0 = time.time()
@@ -367,6 +399,22 @@ class TsumegoSolverSession:
                 solver.root_order_hint = hint
             solution = solver.solve()
         except SolverTimeout:
+            if probe_fallback is not None:
+                # 格上げ確認のための再分類だけが打ち切られた（現クラスの証明は生きている）。
+                # 従来の即答へ退避する。退避解は格上げ未確認なので永続キャッシュには入れない
+                # （次に速く解けたセッションが正しい答えで埋める）
+                gate_fb, coords_fb = probe_fallback
+                self.log(
+                    f"tsumego_solver: 格上げ確認の再分類が打ち切り [{time.time() - t0:.1f}s]。"
+                    "現クラスの証明ストア即答へ退避します",
+                    "info",
+                )
+                if coords_fb is None:
+                    return None, "証明ストア即答: パスが本手（格上げ確認は打ち切り）"
+                if coords_fb != self.ban_point:
+                    coords_fb = self._prefer_ranked_gate_move(coords_fb, gate_fb)
+                    return coords_fb, f"証明ストア即答: {gtp_coord(coords_fb)}（格上げ確認は打ち切り）"
+                # 退避先がコウ禁止に当たる場合だけ従来どおり未解決扱い
             self._gave_up = True  # 以後の手番は即フォールバック（局面が進んでも region 規模は同じ）
             self.log(
                 f"tsumego_solver: 未解決（時間/ノード制限）。以後この問題は現行経路へフォールバックします "
@@ -426,6 +474,25 @@ class TsumegoSolverSession:
         # 同格の手が全部コウ禁止（実用上ほぼ来ない）→ パスでコウ待ち
         self.log("tsumego_solver: 同格の本手が全てコウ禁止のためパスします（コウ待ち）", "info")
         return None, f"コウ待ちのパス（{summary}）"
+
+    def _better_gates(self, gate):
+        """現 gate より上位クラスのゲート列（良い順。gate が最上位なら空）。
+
+        型別ラダー（reference.ladder_steps）は best→worst 順なので、gate に一致する step より
+        前の step が上位クラス。一致は (pred, komaster, want) で取る（gate の budget には KO 細分の
+        n* が入るので比較に使わない）。上位ゲートの budget は None＝分類時と同じ無限 budget
+        （証明ストアのエントリは分類の solve が budget=None で書いている）。
+        """
+        try:
+            steps = ladder_steps(self.problem)
+        except Exception:
+            return []
+        better = []
+        for _result, _sub, pred, komaster, want in steps:
+            if (pred, komaster, want) == (gate[0], gate[1], gate[3]):
+                return better
+            better.append((pred, komaster, None, want))
+        return []  # gate がラダーに無い（想定外）→ 格上げ確認なし＝従来動作
 
     # KataGo 本命の同格差し替えで検証する候補数と1手あたりの予算。検証は温まった証明ストア上の
     # solve なので実測ミリ秒級（case 2 の K13 はコールドでも 1461 ノード）。タイムアウトは

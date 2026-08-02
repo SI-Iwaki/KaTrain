@@ -142,6 +142,49 @@ def test_presolve_survives_broken_hint_provider():
     assert session.last_solution is not None
 
 
+def test_gate_probe_upgrades_class_after_defender_mistake():
+    """case AB（実測 2026-08-02・13路右上）: root=KO の詰碁で相手が最強防御を外し
+    無条件殺しが成立した局面では、証明ストア即答が KO gate の決め手（コウ手 N11）を
+    返してはならず、格上げした無条件の本手 M13 を返すこと。
+
+    root は W L12（L11 の黒を抜く）が最強防御でコウ殺しのみ＝class=KO が正しい。
+    白が N12 と受けるとその時点から B M13 で無条件に殺せる（五目中手）。
+    詰碁の順序は 無条件 > コウ なので、gate の probe だけで即答すると誤答になる。
+    """
+    from katrain.core.tsumego_problem import extract_problem
+    from katrain.core.tsumego_solver.model import from_gtp_coord
+
+    black = {from_gtp_coord(s) for s in "J13 J12 M12 J11 L11 J10 J9 K9 L9 M9 N9".split()}
+    white = {from_gtp_coord(s) for s in "K13 K12 K11 M11 K10 L10 M10".split()}
+    prob = extract_problem(stones=(black, white), board_size=(13, 13), to_play="B")
+    session = solver_api.TsumegoSolverSession(
+        prob, {"solver_cache": False, "solver_time_limit_ms": 60000}
+    )
+    coords, thoughts = session.generate()
+    assert coords == from_gtp_coord("N10"), thoughts  # root の本手（KO クラス）
+    session.sync_moves([(from_gtp_coord("N10"), "B"), (from_gtp_coord("N12"), "W")])
+    coords2, thoughts2 = session.generate()
+    assert coords2 == from_gtp_coord("M13"), thoughts2  # N11（コウ）ではなく無条件の M13
+
+
+def test_better_gates_follow_type_ladder():
+    """_better_gates は型別ラダーの「現 gate より前の step」を返す（最上位なら空）。"""
+    from katrain.core.tsumego_problem import extract_problem
+    from katrain.core.tsumego_solver.model import from_gtp_coord
+
+    black = {from_gtp_coord(s) for s in "J13 J12 M12 J11 L11 J10 J9 K9 L9 M9 N9".split()}
+    white = {from_gtp_coord(s) for s in "K13 K12 K11 M11 K10 L10 M10".split()}
+    prob = extract_problem(stones=(black, white), board_size=(13, 13), to_play="B")
+    assert prob.problem_type.value == "attack"
+    session = solver_api.TsumegoSolverSession(prob, {"solver_cache": False})
+    # KO gate（komaster=攻め方 B。budget は n* なので比較に使われない）の上位 = 無条件ゲートのみ
+    assert session._better_gates(("seki", "B", 0, False)) == [("seki", "W", None, False)]
+    # 無条件 gate は最上位 → 空（従来どおりの 0ms 即答）
+    assert session._better_gates(("seki", "W", None, False)) == []
+    # ラダーに無い gate（想定外）→ 空 = 従来動作
+    assert session._better_gates(("alive", "W", None, True)) == []
+
+
 def test_root_order_hint_prefers_move_visits_over_capture_hint():
     """手番の solve は戦略が渡す move_visits（現局面）を優先し、capture 時のヒントは
     root 局面（applied_moves が空）でしか使わない（途中局面では盤が違うため）。"""

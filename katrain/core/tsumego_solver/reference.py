@@ -84,6 +84,39 @@ class _Worse:
 WORSE = _Worse()
 
 
+def ladder_steps(problem: Problem):
+    """分類ラダー（§4.3.2.1 の完全対応表を評価順に並べたもの）。
+
+    (ResultClass, sub_demotion, pred, komaster, want) を best→worst 順で返す。
+    どの型でも「相手が komaster ＝ 自分にとって最悪の仮定」を先に解く並びなので、
+    無条件が答えの問題は solve 1回で確定する（§4.3.3）。
+    ReferenceSolver._ladder_steps と TsumegoSolverSession._better_gates
+    （証明ストア即答のクラス格上げ確認。case AB）が共用する。
+    """
+    att, deff = opponent(problem.target_color), problem.target_color
+    pt = problem.problem_type
+    if pt == ProblemType.DEFEND:
+        return [
+            (ResultClass.UNCONDITIONAL, 0, PRED_ALIVE, att, True),  # A
+            (ResultClass.SEKI, 0, PRED_SEKI, att, True),  # S
+            (ResultClass.KO, 0, PRED_ALIVE, deff, True),  # A'
+            (ResultClass.KO, 1, PRED_SEKI, deff, True),  # S'（コウでセキ）
+        ]
+    if pt == ProblemType.ATTACK:
+        return [
+            (ResultClass.UNCONDITIONAL, 0, PRED_SEKI, deff, False),  # ¬S'
+            (ResultClass.KO, 0, PRED_SEKI, att, False),  # ¬S
+            (ResultClass.SEKI, 0, PRED_ALIVE, att, False),  # ¬A（細目は A' で判別）
+        ]
+    own, opp = problem.to_play, opponent(problem.to_play)
+    return [
+        (ResultClass.UNCONDITIONAL, 0, PRED_SEM_WIN, opp, True),
+        (ResultClass.KO, 0, PRED_SEM_WIN, own, True),
+        (ResultClass.SEKI, 0, PRED_SEM_SEKI, opp, True),
+        (ResultClass.KO, 1, PRED_SEM_SEKI, own, True),
+    ]
+
+
 class ReferenceSolver:
     def __init__(self, problem: Problem, limits: Optional[SolverLimits] = None):
         self.problem = problem
@@ -429,33 +462,8 @@ class ReferenceSolver:
     # ---------- 分類ラダー（§4.3.2.1 の完全対応表を評価順に並べたもの）----------
 
     def _ladder_steps(self):
-        """(ResultClass, sub_demotion, pred, komaster, want) を best→worst 順で返す。
-
-        どの型でも「相手が komaster ＝ 自分にとって最悪の仮定」を先に解く並びなので、
-        無条件が答えの問題は solve 1回で確定する（§4.3.3）。
-        """
-        att, deff = self.attacker_color, self.target_color
-        pt = self.problem.problem_type
-        if pt == ProblemType.DEFEND:
-            return [
-                (ResultClass.UNCONDITIONAL, 0, PRED_ALIVE, att, True),  # A
-                (ResultClass.SEKI, 0, PRED_SEKI, att, True),  # S
-                (ResultClass.KO, 0, PRED_ALIVE, deff, True),  # A'
-                (ResultClass.KO, 1, PRED_SEKI, deff, True),  # S'（コウでセキ）
-            ]
-        if pt == ProblemType.ATTACK:
-            return [
-                (ResultClass.UNCONDITIONAL, 0, PRED_SEKI, deff, False),  # ¬S'
-                (ResultClass.KO, 0, PRED_SEKI, att, False),  # ¬S
-                (ResultClass.SEKI, 0, PRED_ALIVE, att, False),  # ¬A（細目は A' で判別）
-            ]
-        own, opp = self.own_color, opponent(self.own_color)
-        return [
-            (ResultClass.UNCONDITIONAL, 0, PRED_SEM_WIN, opp, True),
-            (ResultClass.KO, 0, PRED_SEM_WIN, own, True),
-            (ResultClass.SEKI, 0, PRED_SEM_SEKI, opp, True),
-            (ResultClass.KO, 1, PRED_SEM_SEKI, own, True),
-        ]
+        """(ResultClass, sub_demotion, pred, komaster, want) を best→worst 順で返す。"""
+        return ladder_steps(self.problem)
 
     def _classify_after(self, move: Optional[int], floor_key=None):
         """move を打った後に解く側が保証できるクラス。floor_key（incumbent の
