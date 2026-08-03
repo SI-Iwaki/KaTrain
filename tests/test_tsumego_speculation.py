@@ -372,8 +372,14 @@ def test_early_items_include_verify_batch_and_stage12_sets():
     assert {"C3", "D4"} == screen_cond
 
 
-def test_early_items_dedupe_same_condition():
-    """同じ (move, until_depth, wRN) は1回だけ（検証バッチと救済集合の重複を潰す）"""
+def test_early_items_keep_same_move_under_different_conditions():
+    """dedup のキーは (move, until_depth, wide_root_noise) の3要素で、move だけでは潰さない。
+
+    C3 は検証バッチ本体（until_depth=None/wRN=None）とコウ検査温め（until_depth=6/wRN=0.0）の
+    両方に対象として現れる。同じ手でも条件が違えば別クエリなので両方とも残らねばならない
+    （move だけで潰す実装だと、後段の実クエリの一方が温まらずキャッシュミスする）。
+    全キーがユニークであること自体は重複排除の回帰網として引き続き有効。
+    """
     chosen = _cand("C3", 0.4, 500, {(3, 3): 0.9, (4, 4): 0.9})
     score_best = _cand("D4", -0.1, 400, {(3, 3): 0.1})
     items = tsumego_early_speculation_items(
@@ -381,6 +387,8 @@ def test_early_items_dedupe_same_condition():
     )
     keys = [(i["move"], i["until_depth"], i["wide_root_noise"]) for i in items]
     assert len(keys) == len(set(keys))
+    assert ("C3", None, None) in keys
+    assert ("C3", TSUMEGO_KO_REGION_UNTIL_DEPTH, TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE) in keys
 
 
 def test_early_items_empty_when_no_selection():

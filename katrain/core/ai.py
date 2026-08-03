@@ -2566,6 +2566,11 @@ def tsumego_early_speculation_items(candidate_moves, root_ownership, stones, boa
         include_rescue=settings.get("gain_verify", True),
         include_ko_screen=settings.get("tie_ko_screen", True),
     )
+    # 現状の3経路（検証バッチ／救済／コウ検査）は構成上ここで衝突しない
+    # （verify_moves は contenders 由来、rescue は `tsumego_rescue_candidates` が
+    # contenders を除外、ko_screen は条件（until_depth/wRN）が別）が、温め集合を
+    # 足すときに同一 (move, until_depth, wide_root_noise) を二重発行しないための
+    # 安全網としてこの重複排除は残す
     seen, deduped = set(), []
     for item in items:
         key = (item["move"], item["until_depth"], item["wide_root_noise"])
