@@ -763,7 +763,11 @@ class Game(BaseGame):
             items = ai_mod.tsumego_early_speculation_items(
                 node.candidate_moves, node.ownership, stones, self.board_size, player_sign, settings
             )
-        except Exception:
+        except Exception as exc:
+            self.katrain.log(
+                f"tsumego 前倒し投機: 温め集合の計算に失敗したため前倒し投機を中止: {exc}",
+                OUTPUT_DEBUG,
+            )
             return
         if not items:
             return
@@ -796,7 +800,11 @@ class Game(BaseGame):
                     ),
                     priority=PRIORITY_TSUMEGO_SPECULATION,
                 )
-            except Exception:
+            except Exception as exc:
+                self.katrain.log(
+                    f"tsumego 前倒し投機: {item['move']} の前倒し発行に失敗（スキップ）: {exc}",
+                    OUTPUT_DEBUG,
+                )
                 continue
             fired_nodes.append(child)
             fired.append(item["move"])
