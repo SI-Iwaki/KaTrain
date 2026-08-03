@@ -32,15 +32,25 @@
 
 ## 3. 設計
 
-### 3.1 発火タイミング
+### 3.1 発火タイミングと場所（2026-08-03 プラン作成時に訂正）
 
-root リージョン解析は `reportDuringSearchEvery=1` で毎秒部分結果が届き、KaTrain は
-callback 経由で `node.analysis` を更新する（GUI ライブ表示と同じ既存機構）。戦略は現在
-`wait_for_analysis` で完了までブロックしているので、`_generate_move` 冒頭の待ちを
-「50ms 間隔で `self.cn` の解析 visits を確認しながら待つ」ループに差し替え、
-**root visits ≥ `TSUMEGO_SPECULATION_ROOT_FRACTION`(0.67) × analysis_visits**（1800v なら
-約1200v）に一度だけ達したところで前倒し投機を発火する。待ちの終了条件・タイムアウト・
-完了後の処理は現行と同一（実クエリと判定への影響なし）。
+**発火は Game 側のウォッチャスレッドで行う**。当初案の「戦略の待ちループ差し替え」は
+実装棚卸しで不成立と判明した: 戦略の `wait_for_analysis`（`ai.py` の
+`while not self.cn.analysis_complete`）は実質 no-op で、**root 待ちは戦略の外にある** —
+GUI はノードの解析完了を見てから generate を呼び、CLI ハーネス（`generate_move_e2e.py`）も
+`analyse()` が region 完了までブロックしてから generate を呼ぶ。戦略内のフックでは
+前倒しにならない。
+
+そこで `Game.play()` の region 分岐が新ノードの解析を発行した直後、**次番が AI
+（strategy が `ai:tsumego`）** ならウォッチャスレッドを起動する（`_maybe_region_prefetch`
+の鏡像＝あちらは次番が人間のとき）。部分結果は region クエリの callback が
+`GameNode.set_analysis(partial_result=True)` で `node.analysis` に反映済み
+（`moves`（per-move ownership 込み）と `ownership` は部分でも更新される。`root` は
+fast クエリ由来で約0.3秒で揃う＝`candidate_moves` の pointsLost 計算は成立する）。
+ウォッチャは 50ms 間隔で `node.analysis["moves"]` の visits 合計を確認し、
+**visits 合計 ≥ `TSUMEGO_EARLY_SPECULATION_ROOT_FRACTION`(0.67) × region_analysis_visits**
+（1800v なら約1200v）に一度だけ達したところで温め集合を計算・発行する。
+region 完了・ノード切替・リージョン解除・期限（30秒）で発火せず終了する。
 
 ### 3.2 前倒しで温める集合
 
@@ -51,9 +61,16 @@ callback 経由で `node.analysis` を更新する（GUI ライブ表示と同�
 2. `tsumego_score_best_challengers` → 仮挑戦者列（検証バッチ本体の集合）
 3. `tsumego_speculation_plan` → 段階1+2 の温め集合（救済スーパーセット＋コウ検査）
 
-温め集合 = **(2) の検証バッチ本体（incumbent＋挑戦者、untilDepth=1・wRN=0.04・
-ownership=True＝実検証と同一条件）** ＋ (3)。発行は既存 `_fire_speculation` を流用
-（優先度500・使い捨てノード・`generate_move` finally の掃除も既存のまま）。
+温め集合 = **(2) の検証バッチ本体（incumbent＋挑戦者＋仮 chosen、untilDepth=1・wRN=0.04・
+ownership=True＝実検証と同一条件）** ＋ (3)。発行は Game 側に `_maybe_region_prefetch` /
+`_region_prefetch_worker` / `_cancel_region_prefetch` と同型の3点セット
+（`_maybe_early_speculation` / `_early_speculation_worker` / `_cancel_early_speculation`）を
+設け、使い捨て sim（`_region_prefetch_sim` を再利用）＋優先度 `PRIORITY_TSUMEGO_SPECULATION`
+(500) で撃つ。掃除は次の `Game.play()` 冒頭（prefetch と同じ位置）。戦略設定は
+`katrain.config("ai/ai:tsumego")` から読み、仮選択の計算は ai.py の既存純関数を
+**ウォッチャ内の遅延 import** で使う（game→ai のモジュール循環を避けるため）。
+温め集合の組み立て自体は ai.py 側の新純関数 `tsumego_early_speculation_items` に置き、
+単体テスト可能にする。
 
 最終 1800visits で候補セットがずれた分は従来どおりミス（捨てるだけ）。root 完了後の
 既存発火点（段階1+2）はそのまま残す＝前倒しでヒット済みならエンジン側で即返るだけ。
@@ -70,8 +87,9 @@ ownership=True＝実検証と同一条件）** ＋ (3)。発行は既存 `_fire_
    `select_tsumego_move` / gain 系純関数は部分結果に適用できない。fallback: 温め集合を
    「目数順上位＋visits 上位」の簡易プロキシで採る（ミス率が上がるだけで安全性は同じ）。
    切り分けは実ログの partial payload を1本ダンプすれば足りる
-2. **50ms ポーリングへの差し替えが既存の待ちセマンティクスを完全に保存しているか**
-   （タイムアウト・エラー時の挙動・`region_completed` の扱い）
+2. **ウォッチャがスレッド・クエリをリークしないか**（期限30秒・`current_node` 切替 /
+   リージョン解除 / `region_completed` での bail、`play()` 冒頭での terminate。
+   §3.1 の訂正により「戦略の待ちセマンティクス保存」の論点は消滅＝戦略コードは触らない）
 3. **GPU 競合**: 実効 `numAnalysisThreads=12`（親スペック追記2）なのでスロット枯渇は
    ないが、root 探索末期と温め4〜8本が GPU 計算を分け合う。**root ウォールの非劣化
    （+0.3秒以内）を採用ゲート**にする（発火閾値 0.67 で競合窓は約1秒）
