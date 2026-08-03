@@ -1919,3 +1919,76 @@ debug_level 0 でも開くので、後ろに置くと次の対局の行が直前
 
 回帰: `tests/test_game_log.py`（7 件。短い詰碁ログの生存・対局ログの従来規則・種別ごとの
 自動削除・debug_level 0 での閉じ忘れ）
+
+---
+
+## 追記12（2026-08-04）case AE — space は「眼を作れる余地」の代理でしかない
+
+### 事象
+
+GUI 実戦（ログ `~/.katrain/logs/tsumego_20260804_031607.log`。追記11 の1問1ファイルログの初適用）。
+
+```
+tsumego_capture: 認識盤面 13路 ko=False margin=4 black_to_attack=True
+tsumego_capture: 黒 A9 B7 B8 B9 C11 C7 D12 D6 D8 E12 E6 E9 F10 F13 F7 F8 F9 G10 G11 G12 H12
+tsumego_capture: 白 A10 A11 B10 C12 C8 C9 D11 D13 D9 E11 E8 F11 F12
+tsumego_solver: class=UNCONDITIONAL ko_level=0 plies=1 mat=0 nodes=3 本手=['E7'] 手順=['E7']
+tsumego_capture: ソルバモードで出題します type=attack target=1子 region=4点 [抽出 0.00 秒]
+```
+
+黒 **E7**（呼吸点1の白1子 E8 を取るだけ）を打って不正解。ユーザー記録の正解は
+**B12 → W B13 → A12 → W C10 → D10**（白を無条件死）。
+
+### 根本原因 — 追記9 の空間ゲートを「ちょうど」通り抜けた
+
+中身は case AC とまったく同じ「アタリの1子を取るだけ」だが、閉包が余分に2点を巻き込んだ:
+
+```
+region = {D7, D8, E7, E8}（4点）   target = {E8}（呼吸点1 = E7）
+space  = 4 - 1 = 3 = MIN_TARGET_SPACE   ← 追記9 のゲートは「3 以上なら受理」
+```
+
+- **D8** は黒石（呼吸点1）。壁の黒 {A9,B7,B8,B9,C7} に裏打ちされているので `_reaches_safety` が
+  真＝at_risk から外れるが、**吸収連としては region に入る**
+- **D7** はその D8 の呼吸点。`_near_empties` の深さ2 BFS で region に入る
+
+どちらも**白 E8 の眼空間ではない**のに space に数えられた。つまり
+`space = len(region) - len(target)` は「target が眼を作れる余地」の**代理**であって、
+相手側の石やその呼吸点まで数えてしまう。
+
+真の問題は左上の白 {A10,A11,B10}（呼吸点3 = A12/B11/C10）と {C8,C9,D9}（呼吸点2 = C10/D10）で、
+記録された正解手順はまさにその呼吸点を詰めている。正解初手 B12 は region の外。
+
+### 修正 — 「1手で取り切れる target」を直接判定する
+
+`predetermined_reason` に判定をもう1本足した（`_captured_in_one`）:
+
+> **攻め方の手番で target が丸ごとアタリ**（target の全連が呼吸点1で、その唯一の呼吸点が同じ1点）
+> なら、region の広さに関係なく1手で取って終わり＝詰碁ではない。
+
+space ゲート（追記9）は残す。両者は別の誤りを捕まえる:
+
+| ゲート | 捕まえるもの | 例 |
+|---|---|---|
+| `MIN_TARGET_SPACE`(3) | 眼を作る余地そのものが無い/決まっている形 | case AC（space=1） |
+| `_captured_in_one` | 広さはあるが「取るだけ」の形 | **case AE（space=3）**・case AC も該当 |
+
+### 実測
+
+- 既存スイートの**全抽出 300 件**（21ケース × 全 ply × hint 有無）で `_captured_in_one` を
+  無効化した A/B: **差分 0 件**（成功 255 件も同数）＝既存ケースには「攻め方の手番で丸ごと
+  アタリの target」が1つも無い＝この判定は今回の誤りだけを外科的に落とす
+- 報告済み3盤のキャプチャゲート: **AC / AD / AE いずれも枠張り経路へ**
+  （AC・AE は抽出を拒否、AD は FAILED 検算で拒否）
+- unit 569 passed（新規 `test_capture_in_one_is_not_a_problem_even_with_room_in_region` は
+  修正前に決定的 FAIL）
+
+### 学び
+
+- **代理指標は「ちょうど閾値」で破れる**。space=1 の case AC を見て 3 を選んだが、同じ誤りが
+  space=3 で再来した。閾値の位置ではなく**測っている量が問いに答えているか**を疑うべきだった
+  （「target が眼を作れる余地」を聞きたいのに、region 全体の点数を数えていた）
+- **同じ誤りの再来は、直前の修正が本質を外していた証拠**。case AC の本質は「space が小さい」
+  ではなく「取るだけで終わる」だった
+- 追記11 の1問1ファイルログが初回で効いた: 認識盤面・抽出・ソルバ裁定・着手が1ファイルに
+  揃っており、**ログを読んだ時点で原因が確定した**（盤の再現も同ファイルの座標リストで足りた）

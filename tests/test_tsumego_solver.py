@@ -283,6 +283,37 @@ def test_predetermined_capture_is_not_a_problem():
         raise AssertionError(f"呼吸点1の白1子を受理した: region {len(prob.region)}点 target {len(prob.target)}子")
 
 
+def test_capture_in_one_is_not_a_problem_even_with_room_in_region():
+    """「取るだけ」の判定を region の広さ（space）で代用しない。
+
+    実測 2026-08-04 の GUI 誤答（13路左上・case AE。ログ tsumego_20260804_031607）。
+    抽出は case AC と同じ「呼吸点1の白1子を取るだけ」なのに、閉包が黒 D8（呼吸点1で
+    壁に裏打ちされている）とその呼吸点 D7 まで巻き込んだため
+    `region={D7,D8,E7,E8} target={E8}` ＝ **space が 3 ちょうど**になり、追記9 の空間ゲートを
+    素通りした（ソルバは UNCONDITIONAL・plies=1・nodes=3 で「E7 で取る」と答えて誤答）。
+
+    space は「target が眼を作れる余地」の代理でしかなく、target の眼空間ではない点
+    （相手側の石やその呼吸点）まで数えてしまう。攻め方の手番で target が丸ごとアタリなら、
+    広さに関係なく1手で取って終わり＝詰碁ではない。
+
+    真の問題は左上の白 {A10,A11,B10}（呼吸点3）と {C8,C9,D9}（呼吸点2）で、
+    記録された正解は B12 → W B13 → A12 → W C10 → D10（白を無条件死）。
+    """
+    from katrain.core.tsumego_problem import extract_problem
+    from katrain.core.tsumego_solver.model import ProblemError, from_gtp_coord
+
+    b_stones = "A9 B7 B8 B9 C11 C7 D12 D6 D8 E12 E6 E9 F10 F13 F7 F8 F9 G10 G11 G12 H12"
+    w_stones = "A10 A11 B10 C12 C8 C9 D11 D13 D9 E11 E8 F11 F12"
+    black = {from_gtp_coord(s) for s in b_stones.split()}
+    white = {from_gtp_coord(s) for s in w_stones.split()}
+    with pytest.raises(ProblemError):
+        prob = extract_problem(stones=(black, white), board_size=(13, 13), to_play=BLACK)
+        raise AssertionError(
+            f"1手で取れる白を詰碁として受理した: region {len(prob.region)}点"
+            f" target {len(prob.target)}子 space {len(prob.region) - len(prob.target)}"
+        )
+
+
 # ---------- 問題の型と target（§5.2）----------
 
 

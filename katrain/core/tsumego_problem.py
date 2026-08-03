@@ -56,7 +56,30 @@ def predetermined_reason(problem: Problem) -> Optional[str]:
     space = len(problem.region) - len(problem.target)
     if space < MIN_TARGET_SPACE:
         return f"target が使える空間が {space} 点（初手より前に結果が決まっている）"
+    if problem.problem_type == ProblemType.ATTACK and _captured_in_one(problem):
+        # space は「眼を作れる余地」の代理でしかなく、target の眼空間ではない点（相手の石や
+        # その呼吸点）まで数える。実測 2026-08-04 case AE（13路左上）: 中身は case AC と同じ
+        # 「呼吸点1の白1子を取るだけ」なのに、閉包が黒 D8（呼吸点1・壁に裏打ち）とその呼吸点 D7 を
+        # 巻き込んで region={D7,D8,E7,E8}／target={E8} ＝ space ちょうど 3 で素通りした。
+        # 攻め方の手番で丸ごとアタリなら、region の広さに関係なく1手で取って終わり
+        return "攻め方の手番で target が丸ごとアタリ（取るだけで終わる）"
     return None
+
+
+def _captured_in_one(problem: Problem) -> bool:
+    """target 全部を1手で取れる（＝target の全連がアタリで、唯一の呼吸点が同じ1点）か。"""
+    board = board_from_stones(problem.size, problem.black, problem.white)
+    shared: Optional[int] = None
+    for stones, libs in board.all_chains():
+        if board.point(stones[0]) not in problem.target:
+            continue
+        if len(libs) != 1:
+            return False
+        lib = next(iter(libs))
+        if shared is not None and shared != lib:
+            return False  # 別々の呼吸点＝1手では取り切れない
+        shared = lib
+    return shared is not None
 
 
 def grid_to_stones(grid: Sequence[Sequence[str]]) -> Tuple[Set[Point], Set[Point], Tuple[int, int]]:
