@@ -2519,9 +2519,16 @@ def tsumego_speculation_plan(
 
 # 段階3（前倒し投機）の発火閾値: root リージョン解析の visits 合計がこの割合に達したら
 # Game 側ウォッチャが温め集合を発行する（スペック 2026-08-03-tsumego-stage3-early-speculation）。
-# 実測 2026-08-03: 部分結果は約1秒間隔で1本のみ・visits 1160〜1182（1800visits の 0.644〜0.657）。
-# 0.67（1206v）では構造的に届かないので、1本目の部分結果で確実に発火する 0.55（990v）にする
-TSUMEGO_EARLY_SPECULATION_ROOT_FRACTION = 0.55
+# 実測 2026-08-03（Task 4a）: 唯一の PARTIAL 報告点の visits は position-dependent にばらつき
+# （990v=0.55 に対し M@4 903v・V2@2 708v は届かず、独立試行(run1) 1/3 しか発火しない）。
+# 実測 2026-08-03（Task 4b・A/B、各ケース独立試行3プロセス）: 0.35（630v）にすると M@4/O@2/V2@2
+# とも 3/3 発火（V2@2 は 0.55 でも run 間分散で 708〜1233v とばらつき偶発的に 1/3 発火することは
+# あるが、630v は 9/9 で安定して届く）。発火が効いた2ケース（0.55 で非飽和だった M@4/V2@2）で
+# run1 の generate 秒が平均 0.87s/0.56s 短縮（3独立試行平均、いずれも閾値 0.3s 超）。root ウォール
+# （analyse 秒）は M@4 で +0.30s（境界値・ノイズ域、O@2/V2@2 はむしろ改善）で劣化ゲート
+# （+0.3s 超）には抵触しない。0.35 を採用（Task 4b 報告: .superpowers/sdd/
+# 2026-08-03-tsumego-stage3-early-speculation/task-4b-report.md）
+TSUMEGO_EARLY_SPECULATION_ROOT_FRACTION = 0.35
 
 
 def tsumego_early_speculation_items(candidate_moves, root_ownership, stones, board_size, player_sign, settings):
