@@ -3123,10 +3123,6 @@ class TsumegoSolverStrategy(AIStrategy):
 class TsumegoOwnershipStrategy(AIStrategy):
     """詰碁用: 盤全体の目数ではなく対象石群の死活（ownership の変化量）で手を選ぶ"""
 
-    def __init__(self, game: Game, ai_settings: Dict):
-        super().__init__(game, ai_settings)
-        self._speculative_nodes = []
-
     def generate_move(self) -> Tuple[Move, str]:
         # 体感速度の調査用に所要時間を必ず出す（キャプチャ側の「枠の採否判定に X 秒」と同じ意図）
         started = time.time()

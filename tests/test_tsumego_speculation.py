@@ -270,6 +270,9 @@ def test_fire_speculation_issues_discardable_queries_with_exact_conditions():
         assert child is not node and child.parent is not node  # 複製ゲームの子ノード
     assert kw1["region_until_depth"] is None
     assert kw2["region_until_depth"] == 6
+    # wRN の伝播検証: NN キャッシュ全ミス対策で実クエリと完全一致が必須
+    assert kw1["extra_settings"]["wideRootNoise"] == 0.04  # None→本譜の既定値
+    assert kw2["extra_settings"]["wideRootNoise"] == 0.0   # 指定あり→その値
     assert strategy._speculative_nodes == [child1, child2]
 
 
