@@ -130,13 +130,21 @@ root リージョン解析は `reportDuringSearchEvery=1` で毎秒部分結果�
 ### フル回帰
 
 `e2e_suite.py --full` 66/69 PASS（既存ゲート、Task 4 前半で完了済み）。手順差分 R@2/Z@2 は
-既知分散（spec 追記33 / case Z root分散）と整合。回帰点失敗 K@0 は A/B 裁定で HEAD 3/3 C13 ・
-base(1a0cebc) 2/3(A12×1) となり、A12 は「検出すべき最小 0.09」のナイフエッジ既知箇所の分散
-（投機起因でない）と裁定・記録済み。正答不変ゲート PASS。
+既知分散（spec 追記33 / case Z root分散）と整合。
 
-**ただし本追記の計測作業中に発見した環境上の落とし穴（下記）により、この K@0 A/B の base 側が
-実際に 1a0cebc のコードを実行していたか未確認**（`k_ab.ps1` は base 側実行前に `PYTHONPATH` を
-設定していない）。詳細は「懸念」節参照。
+回帰点失敗 K@0 は当初 `k_ab.ps1` で A/B 裁定（HEAD 3/3 C13 ・base(1a0cebc) 2/3(A12×1)）としたが、
+**この `k_ab.ps1` は base 側実行前に `PYTHONPATH` を設定しておらず、下記(1)の `.pth` 汚染により
+base 側も実際には HEAD のコードを実行していた**（コントローラが `PYTHONPATH` 明示＋
+`inspect.getsource` でのフック有無確認により検証）。すなわち旧 A/B の「base 2/3」は真の base
+サンプルではなく **もう1本の HEAD サンプル**だった。
+
+`PYTHONPATH` 明示のうえ再計測（コントローラ実施）: base(1a0cebc・真) K@0 = **3/3 C13**
+（`k-ab-base2.log`）。HEAD 追加2回 = 3/3・3/3（`k-head-extra1.log` / `k-head-extra2.log`）。
+これまでの全 HEAD サンプル（フル回帰1回・旧 k-ab-after.log 1回・誤って base とラベルされていた
+実質HEAD 1回・追加2回 の計5回×3rep=15回）を合算すると **HEAD 13/15 C13（A12 2/15）・
+base(真) 3/3 C13**。A12 は「検出すべき最小 0.09」vs 閾値 0.05 という変更前から文書化済みの
+ナイフエッジ（ai-parameters.md）の run 分散であり、HEAD 側にのみ現れているが base(真) は
+サンプル数3と少ないため系統的な正答変化とは言えない。**正答不変ゲート PASS で確定**。
 
 ### 時間計測: 環境上の落とし穴（2件・本タスクで新規発見）
 
@@ -228,14 +236,17 @@ CLAUDE.md 記載の `4` のまま不一致）が既に 12 で動いており、�
 
 ### 懸念
 
-- **PYTHONPATH 問題が過去の base 比較（K@0 A/B・progress.md記載）にも及ぶ可能性**: `k_ab.ps1`
-  は base 側実行前に `PYTHONPATH` を設定しておらず、上記(1)のとおり `python docs/.../
-  e2e_suite.py K` の子プロセス（`generate_move_e2e.py`）も同じ経路で HEAD の `katrain` を
-  import した可能性が高い（e2e_suite.py 自身は katrain を import しないため CASES 表示等は
-  正常に見えるが、実際の着手生成は誤った worktree のコードで行われていた疑いが残る）。K@0 の
-  「base 2/3・既知ナイフエッジで投機起因でない」という裁定は **未検証**（本タスクのスコープ外
-  につき再実行はしていない）。次回 base worktree を使う作業では必ず `PYTHONPATH` を明示し、
-  可能なら K@0 A/B の再実行を推奨する。
+- ~~PYTHONPATH 問題が過去の base 比較（K@0 A/B・progress.md記載）にも及ぶ可能性~~ →
+  **解決済み（コントローラが検証・再計測）**。`k_ab.ps1` は base 側実行前に `PYTHONPATH` を
+  設定しておらず、上記(1)のとおり `python docs/.../e2e_suite.py K` の子プロセス
+  （`generate_move_e2e.py`）も同じ経路で HEAD の `katrain` を import していたことを
+  `PYTHONPATH` 明示＋`inspect.getsource` によるフック（`_fire_speculation(`/`_cancel_
+  speculation`）有無の直接確認で実証（真の base(1a0cebc) にはフック無し）。`PYTHONPATH`
+  明示のうえ base を再計測した結果 K@0 = 3/3 C13（`k-ab-base2.log`）、HEAD 追加2回も
+  3/3・3/3（`k-head-extra1.log`/`k-head-extra2.log`）。旧「base 2/3」はラベル誤りの
+  HEAD サンプルだったと判明し、全 HEAD サンプルを合算すると 13/15 C13（A12 2/15）・
+  base(真) 3/3 C13 で確定（フル回帰節に記載）。次回 base worktree を使う作業では引き続き
+  `PYTHONPATH` の明示を徹底すること。
 - 上記2件の落とし穴により、base-M の初回実行（PYTHONPATH無し・モデル無し）はエンジンクラッシュ
   後に無限リトライへ入り、Bash ツールの 400秒 タイムアウトで自動バックグラウンド化した
   （`timing-base-M.log` が417KB化）。プロセス kill・ログ削除で復旧し、PYTHONPATH 付与＋モデル
