@@ -2523,11 +2523,13 @@ def tsumego_speculation_plan(
 # （990v=0.55 に対し M@4 903v・V2@2 708v は届かず、独立試行(run1) 1/3 しか発火しない）。
 # 実測 2026-08-03（Task 4b・A/B、各ケース独立試行3プロセス）: 0.35（630v）にすると M@4/O@2/V2@2
 # とも 3/3 発火（V2@2 は 0.55 でも run 間分散で 708〜1233v とばらつき偶発的に 1/3 発火することは
-# あるが、630v は 9/9 で安定して届く）。発火が効いた2ケース（0.55 で非飽和だった M@4/V2@2）で
-# run1 の generate 秒が平均 0.87s/0.56s 短縮（3独立試行平均、いずれも閾値 0.3s 超）。root ウォール
-# （analyse 秒）は M@4 で +0.30s（境界値・ノイズ域、O@2/V2@2 はむしろ改善）で劣化ゲート
-# （+0.3s 超）には抵触しない。0.35 を採用（Task 4b 報告: .superpowers/sdd/
-# 2026-08-03-tsumego-stage3-early-speculation/task-4b-report.md）
+# あるが、630v は 9/9 で安定して届く）。**主指標は正味秒（analyse+generate＝ユーザー体感時間）**:
+# 3ケースとも改善（M@4 -0.57s・O@2 -0.34s・V2@2 -0.80s）。root ウォール単体（analyse 秒）は
+# O@2/V2@2 で改善、M@4 だけ n=3 で +0.30s・n=6（0.35側のみ追加測定）で +0.20s に縮小する
+# 再現性のある実効果（発火率が 0/3→6/6 と最大に増えたケースで、同時投機クエリの増加分だけ
+# root が GPU を分け合う）。ただし劣化ゲート（+0.3s 超）には一度も抵触せず、generate 短縮が
+# これを上回るため正味は改善。0.35 を採用（Task 4b 報告: .superpowers/sdd/
+# 2026-08-03-tsumego-stage3-early-speculation/task-4b-report.md、追記3）
 TSUMEGO_EARLY_SPECULATION_ROOT_FRACTION = 0.35
 
 
