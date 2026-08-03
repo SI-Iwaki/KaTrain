@@ -24,7 +24,8 @@ paths:
 
 ## エンジン設定（maxVisits）
 
-Stage1とGUI/analysis_configの3箇所を同じ値に揃える。Stage2は独立値。
+揃えるのはStage1とGUIの2箇所（パッケージ側 `analysis_config.cfg` のデフォルト値は、クエリが毎回
+`maxVisits` を明示送信するため明示指定のないクエリにしか効かず揃える対象外）。Stage2は独立値。
 
 | 場所 | 現在値 | 役割 |
 |---|---|---|
