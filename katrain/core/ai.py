@@ -3430,6 +3430,9 @@ class TsumegoOwnershipStrategy(AIStrategy):
         条件（visits・ownership・untilDepth・wRN・リージョン）は実クエリと完全一致させる
         — KataGo の NN キャッシュは ownerMap の有無や設定差を区別するため、ずれた温めは
         1秒も速くしない（実測 2026-08-01 prefetch_cache_probe.py）。
+
+        投機は純最適化＝どの失敗も着手生成に伝播させない（結果は元々捨てるだけなので、
+        ここで起きる例外はすべて黙って諦めてよい）。
         """
         if not plan:
             return
@@ -3437,35 +3440,48 @@ class TsumegoOwnershipStrategy(AIStrategy):
         if sim is None:
             return
         base = sim.current_node
-        engine = self.game.engines[self.cn.next_player]
+        try:
+            engine = self.game.engines[self.cn.next_player]
+        except Exception as exc:
+            self.game.katrain.log(
+                f"[{self.strategy_name}] 投機温め: engine 取得に失敗（投機を中止）: {exc}",
+                OUTPUT_DEBUG,
+            )
+            return
         visits = int((self.settings or {}).get("gain_verify_visits", TSUMEGO_GAIN_VERIFY_VISITS))
         fired = []
         for item in plan:
-            sim.set_current_node(base)
             try:
+                sim.set_current_node(base)
                 child = sim.play(Move.from_gtp(item["move"], player=self.cn.next_player))
+                wrn = item["wide_root_noise"]
+                engine.request_analysis(
+                    child,
+                    callback=lambda _analysis, _partial: None,
+                    error_callback=lambda _error: None,
+                    visits=visits,
+                    time_limit=False,
+                    ownership=True,
+                    region_of_interest=self.game.region_of_interest,
+                    region_until_depth=item["until_depth"],
+                    extra_settings=region_analysis_extra_settings(
+                        visits,
+                        getattr(self.game, "region_analysis_wide_root_noise", REGION_ANALYSIS_WIDE_ROOT_NOISE)
+                        if wrn is None
+                        else wrn,
+                    ),
+                    priority=PRIORITY_TSUMEGO_SPECULATION,
+                )
+                self._speculative_nodes.append(child)
+                fired.append(item["move"])
             except IllegalMoveException:
                 continue
-            wrn = item["wide_root_noise"]
-            engine.request_analysis(
-                child,
-                callback=lambda _analysis, _partial: None,
-                error_callback=lambda _error: None,
-                visits=visits,
-                time_limit=False,
-                ownership=True,
-                region_of_interest=self.game.region_of_interest,
-                region_until_depth=item["until_depth"],
-                extra_settings=region_analysis_extra_settings(
-                    visits,
-                    getattr(self.game, "region_analysis_wide_root_noise", REGION_ANALYSIS_WIDE_ROOT_NOISE)
-                    if wrn is None
-                    else wrn,
-                ),
-                priority=PRIORITY_TSUMEGO_SPECULATION,
-            )
-            self._speculative_nodes.append(child)
-            fired.append(item["move"])
+            except Exception as exc:
+                self.game.katrain.log(
+                    f"[{self.strategy_name}] 投機温め: {item.get('move')} の発行に失敗（無視して続行）: {exc}",
+                    OUTPUT_DEBUG,
+                )
+                continue
         if fired:
             self.game.katrain.log(
                 f"[{self.strategy_name}] 投機温め: {fired} の子局面を先回り発行（{visits}visits・結果は捨てる）",

@@ -80,11 +80,13 @@ Stage2（クリーンクエリ）は独立した値（現在600）で、これ�
 | `katrain/core/ai.py` `override_settings["maxVisits"]` | Stage1: HumanSL着手選択クエリ | 800 |
 | `katrain/core/ai.py` `clean_override_settings["maxVisits"]` | Stage2: クリーンスコア検証クエリ | 600 |
 | KaTrain GUI → `C:\Users\iwaki\.katrain\config.json` | `max_visits` — 事後分析クエリ | 800 |
-| `C:\Users\iwaki\.katrain\analysis_config.cfg` 51行目 | `maxVisits` — デフォルト値 | 800 |
+| `katrain/KataGo/analysis_config.cfg` 51行目（**パッケージ側**。エンジンが実際に読むのはこちら） | `maxVisits` — デフォルト値 | 500 |
+
+エンジンが読む cfg は `config.json` の `engine.config` が解決する**パッケージ側** `katrain/KataGo/analysis_config.cfg` で、`C:\Users\iwaki\.katrain\analysis_config.cfg` は**参照されない**。なお個々のクエリは毎回 `maxVisits` を明示送信する（Stage1=800 / Stage2=600）ため、cfg 側のデフォルト値が効く場面は明示指定のないクエリに限られ限定的。
 
 - [ ] `katrain/core/ai.py` — `override_settings` の `"maxVisits": XXX`（Stage1）
 - [ ] KaTrain GUI「エンジン設定 → 分析時の最大探索手数」→「設定を更新」
-- [ ] `C:\Users\iwaki\.katrain\analysis_config.cfg` — `maxVisits = XXX`
+- [ ] `katrain/KataGo/analysis_config.cfg` — `maxVisits = XXX`（パッケージ側。`C:\Users\iwaki\.katrain\analysis_config.cfg` を編集しても反映されない）
 
 ## GREEN_MOVE_THRESHOLD 調整メモ（13路盤）
 

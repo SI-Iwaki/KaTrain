@@ -31,7 +31,8 @@ Stage1とGUI/analysis_configの3箇所を同じ値に揃える。Stage2は独立
 | ai.py `override_settings["maxVisits"]` (HumanStyle/Fighting/Siege/Hunt) | 800 | Stage1: HumanSL着手選択 |
 | ai.py `stage1_override["maxVisits"]` (Jigo) | 1 | Stage1: humanPolicy 取得のみ（humanSL NN の root policy 出力で visits 不変） |
 | ai.py `clean_override_settings["maxVisits"]` | 600 | Stage2: クリーンスコア検証（独立値） |
-| GUI `max_visits` / `analysis_config.cfg` | 800 | 事後分析クエリ（Stage1と揃える） |
+| GUI `max_visits`（`~/.katrain/config.json`） | 800 | 事後分析クエリ（Stage1と揃える設計値） |
+| `katrain/KataGo/analysis_config.cfg`（**パッケージ側**。エンジンが実際に読むのはこちら。`~/.katrain/analysis_config.cfg` は参照されない） | 500 | `maxVisits` デフォルト値。個々のクエリは毎回 maxVisits を明示送信するため、cfg 側のデフォルトが効く場面は限定的 |
 
 ## 力戦派モード（FightingStrategy）
 
@@ -172,7 +173,11 @@ Python の盤面プローブを疑うこと**（クエリ実測 0.1〜1.0 秒 vs
 (0.15) ＋ min_visits を通る非 contender（条件は実救済呼び出しと同一: 800visits・ownership=True・
 untilDepth=1・wRN=0.04。`rescue_margin` も実呼び出しと同じ式 `(settings).get("gain_rescue_margin",
 TSUMEGO_GAIN_RESCUE_MARGIN)` で伝播）、(2) コウ検査対象＝選択手＋目数最善（同一なら1手。条件は
-実コウ経路検査と同一: 800visits・ownership=True・untilDepth=6・wRN=0）。優先度は新定数
+実コウ経路検査と同一: 800visits・ownership=True・untilDepth=6・wRN=0）。**ただし温めが効く
+コウ経路検査クエリは選択手（chosen）の `want_ownership=True` の1本のみ**（`_ko_route_screen`）
+＝格下げ先候補（`pool[1:]`）の検査は `_ko_route_screen(pool[1:])` が ownership なしで撃つため、
+温めても cache hit しない（score_best が pool[1:] 側に回るケースも同様）＝意図的なトレードオフ。
+優先度は新定数
 `PRIORITY_TSUMEGO_SPECULATION`=500（実クエリ 10010・通常ノード解析 1010 より下、アイドル
 先読み `ponder_replies` の -40/-50 より上＝実クエリのスロットを奪わない）。未消化分は
 `generate_move` の `finally` でノード単位 terminate（次の解析とGPUを取り合わない）。実測: 条件が

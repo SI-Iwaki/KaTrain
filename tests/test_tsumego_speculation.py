@@ -19,12 +19,10 @@ from katrain.core.ai import (
     TsumegoOwnershipStrategy,
     tsumego_gain_contenders,
     tsumego_rescue_candidates,
-    tsumego_score_best,
     tsumego_speculation_plan,
 )
 from katrain.core.constants import PRIORITY_TSUMEGO_SPECULATION
-from katrain.core.game import BaseGame, Game, GameNode
-from katrain.core.sgf_parser import Move
+from katrain.core.game import BaseGame, Game, GameNode, Move
 
 BOARD = 13
 # tsumego_ownership_gain は var_to_grid(ownership, board_size) 経由で盤を読むため、
@@ -207,10 +205,21 @@ def test_rescue_margin_parameter_propagates_to_rescue_threshold():
     assert "H8" in _plan_moves(plan_narrow_margin)
 
 
-def test_empty_when_no_stones_or_no_score_best():
+def test_empty_when_no_score_best():
+    """score_best=None（後段の検証がまだ走っていない等）は stones があってもガードで [] を返す。"""
     chosen = _cand("C3", 0.0, 500, {(3, 3): 0.9})
     assert tsumego_speculation_plan(
-        [chosen], [chosen], chosen, None, ROOT_OWNERSHIP, [], BOARD_SIZE,
+        [chosen], [chosen], chosen, None, ROOT_OWNERSHIP, STONES, BOARD_SIZE,
+        player_sign=1, min_visits=10, min_visit_ratio=0.5, points_epsilon=0.25,
+    ) == []
+
+
+def test_empty_when_no_stones():
+    """score_best があっても stones=[]（gain 集計対象なし）ならガードで [] を返す。"""
+    chosen = _cand("C3", 0.0, 500, {(3, 3): 0.9})
+    score_best = _cand("D4", -0.1, 400, {(3, 3): 0.1})
+    assert tsumego_speculation_plan(
+        [chosen, score_best], [chosen, score_best], chosen, score_best, ROOT_OWNERSHIP, [], BOARD_SIZE,
         player_sign=1, min_visits=10, min_visit_ratio=0.5, points_epsilon=0.25,
     ) == []
 
@@ -232,11 +241,13 @@ class FakeKatrain:
         pass
 
 
-def _speculation_strategy():
+def _speculation_strategy(pre_moves=None, engine_cls=FakeEngine):
     katrain = FakeKatrain()
     base = BaseGame(katrain, move_tree=GameNode(properties={"SZ": 13, "RU": "japanese", "KM": 6.5}))
     node = base.current_node  # 黒番の初期局面
-    engine = FakeEngine()
+    for gtp in pre_moves or []:
+        node = base.play(Move.from_gtp(gtp, player=node.next_player))
+    engine = engine_cls()
     game = Game.__new__(Game)  # エンジン起動・解析スレッドを伴わない素の Game
     game.katrain = katrain
     game.engines = {"B": engine, "W": engine}
@@ -301,3 +312,41 @@ def test_fire_speculation_skips_illegal_moves_and_empty_plan():
     # 同一 sim 上で同じ空点に2回打つ→2手目は set_current_node(base) で戻すので両方合法。
     # 非合法スキップの検証は盤外相当が作れないため「例外を出さず発行数が plan 以下」で担保
     assert 1 <= len(engine.requests) <= 2
+
+
+def test_fire_speculation_skips_move_on_occupied_point():
+    """cn が黒 C3 を打った直後の局面（次番=白）で、plan が既に石のある C3 を狙うと
+    非合法手として例外を出さずスキップされる（`sim.play` の IllegalMoveException）。"""
+    strategy, engine, node = _speculation_strategy(pre_moves=["C3"])
+    strategy._fire_speculation([{"move": "C3", "until_depth": None, "wide_root_noise": None}])
+    assert engine.requests == []
+    assert strategy._speculative_nodes == []
+
+
+class RaisingOnceEngine(FakeEngine):
+    """1回目の request_analysis だけ例外を送出し、以降は通常どおり記録する。
+
+    投機は純最適化なので、1件のクエリ発行が失敗しても他の予定（後続 plan 項目）は
+    続行されねばならない（`_fire_speculation` の per-item ガードの検証用）。
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._calls = 0
+
+    def request_analysis(self, node, **kwargs):
+        self._calls += 1
+        if self._calls == 1:
+            raise RuntimeError("boom")
+        super().request_analysis(node, **kwargs)
+
+
+def test_fire_speculation_isolates_request_analysis_exception():
+    strategy, engine, node = _speculation_strategy(engine_cls=RaisingOnceEngine)
+    plan = [
+        {"move": "C3", "until_depth": None, "wide_root_noise": None},  # 1件目: 例外で失敗
+        {"move": "D4", "until_depth": None, "wide_root_noise": None},  # 2件目: 成功して残る
+    ]
+    strategy._fire_speculation(plan)
+    assert len(engine.requests) == 1
+    assert len(strategy._speculative_nodes) == 1
