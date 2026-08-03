@@ -2,9 +2,13 @@
 
 守っているのは3点:
 1. **投機プランは実際に後段が撃つクエリの上位集合**（救済の最終リストは選択手確定後に
-   決まるが、温め集合はどの選択結果でもそれを含む＝ミスによる温め漏れが構造的に出ない）
-2. 温め条件（untilDepth・wideRootNoise）が実クエリと一致する（条件がずれると NN キャッシュ
-   全ミス＝1秒も速くならない。ownership は配管側 Task 2 で担保）
+   決まるが、温め集合はどの選択結果でもそれを含む＝ミスによる温め漏れが構造的に出ない。
+   アンカー選定は chosen・score_best だけでなく `tsumego_score_best_challengers` 経由の
+   第3の eligible 候補にも及ぶ＝その候補が検証後の勝者になるケースも塞ぐ）
+2. 温め条件（untilDepth・wideRootNoise・**rescue_margin**）が実クエリと一致する（条件が
+   ずれると NN キャッシュ全ミス＝1秒も速くならない。特に rescue_margin はユーザー設定
+   `gain_rescue_margin` を渡す経路なので既定値決め打ちだと上位集合が破れる。ownership は
+   配管側 Task 2 で担保）
 3. 投機は判定に影響しない＝プラン計算は読み取り専用の純関数
 """
 
@@ -125,6 +129,78 @@ def test_flags_disable_each_kind():
     assert "E5" not in _plan_moves(no_rescue)
     no_screen = tsumego_speculation_plan(*args, include_ko_screen=False, **kwargs)
     assert all(i["until_depth"] is None for i in no_screen)
+
+
+def test_rescue_superset_covers_challenger_anchor_with_third_eligible_candidate():
+    """検証後の勝者が chosen でも score_best でもない第3の eligible 候補になるケースも、
+    アンカー選定（gain 最小）に取り込まれて上位集合が保たれる。
+
+    F6 は `tsumego_score_best_challengers` 経由で anchors に入る第3の eligible 候補で、
+    gain が chosen・score_best の両方より低い。F6 がアンカーに選ばれて初めて、chosen 基準
+    （閾値+2.8）・score_best 基準（閾値+1.1）のどちらでも超えられない救済候補 G7
+    （gain+1.08）が温め集合に入る（F6 基準の閾値は+1.05）。
+    """
+    chosen = _cand("C3", 0.4, 500, {(3, 3): 0.9, (4, 4): 0.9})  # gain +1.8
+    score_best = _cand("D4", -0.1, 400, {(3, 3): 0.1})  # gain +0.1
+    # 第3の eligible 候補: gain は score_best よりさらに低く、visits は深さゲート(0.5)を通る
+    third = _cand("F6", 0.2, 250, {(3, 3): 0.05})  # gain +0.05
+    eligible = [chosen, score_best, third]
+    # F6 基準の閾値(+0.05+1.0=+1.05)だけを超え、chosen(+2.8)・score_best(+1.1)基準では超えない
+    rescue = _cand("G7", 3.0, 200, {(3, 3): 0.54, (4, 4): 0.54})  # gain +1.08
+    candidate_moves = eligible + [rescue]
+
+    plan = tsumego_speculation_plan(
+        candidate_moves, eligible, chosen, score_best, ROOT_OWNERSHIP, STONES, BOARD_SIZE,
+        player_sign=1, min_visits=10, min_visit_ratio=0.5, points_epsilon=0.25,
+    )
+
+    # (a) chosen・score_best を直接アンカーにした実救済呼び出しでは G7 は救済されない
+    # ＝F6 がアンカーになって初めて G7 が温め集合に入ることの裏づけ
+    contenders = tsumego_gain_contenders(eligible, score_best, 0.5)
+    rescue_with_chosen = tsumego_rescue_candidates(
+        candidate_moves, contenders, chosen, ROOT_OWNERSHIP, STONES, BOARD_SIZE, 1, 10, TSUMEGO_GAIN_RESCUE_MARGIN
+    )
+    rescue_with_score_best = tsumego_rescue_candidates(
+        candidate_moves, contenders, score_best, ROOT_OWNERSHIP, STONES, BOARD_SIZE, 1, 10, TSUMEGO_GAIN_RESCUE_MARGIN
+    )
+    assert "G7" not in {c["move"] for c in rescue_with_chosen}
+    assert "G7" not in {c["move"] for c in rescue_with_score_best}
+
+    # (b) F6（検証後の勝者）基準の実救済リストは温め集合に包含される
+    rescue_with_third = tsumego_rescue_candidates(
+        candidate_moves, contenders, third, ROOT_OWNERSHIP, STONES, BOARD_SIZE, 1, 10, TSUMEGO_GAIN_RESCUE_MARGIN
+    )
+    assert {c["move"] for c in rescue_with_third} <= _plan_moves(plan)
+    assert "G7" in _plan_moves(plan)  # F6 がアンカーに選ばれて初めて温まる救済候補
+
+
+def test_rescue_margin_parameter_propagates_to_rescue_threshold():
+    """rescue_margin を明示的に渡すと救済の閾値が変わる（実救済のユーザー設定
+    `gain_rescue_margin` と揃える経路）。
+
+    既定 margin(1.0) では救済候補 H8(gain +0.9) は score_best 基準の閾値(+0.1+1.0=+1.1)
+    を超えられず温まらないが、より狭い margin(0.5) を渡すと閾値(+0.1+0.5=+0.6) を超えて
+    温め対象に入る。`tsumego_speculation_plan` が rescue_margin を内部の
+    `tsumego_rescue_candidates` 呼び出しに伝播していないと、この2つの呼び出し結果が
+    同じになり後半の assert が失敗する。
+    """
+    chosen = _cand("C3", 0.4, 500, {(3, 3): 0.9, (4, 4): 0.9})  # gain +1.8
+    score_best = _cand("D4", -0.1, 400, {(3, 3): 0.1})  # gain +0.1
+    eligible = [chosen, score_best]
+    borderline_margin = _cand("H8", 3.0, 200, {(3, 3): 0.45, (4, 4): 0.45})  # gain +0.9
+    candidate_moves = eligible + [borderline_margin]
+
+    plan_default = tsumego_speculation_plan(
+        candidate_moves, eligible, chosen, score_best, ROOT_OWNERSHIP, STONES, BOARD_SIZE,
+        player_sign=1, min_visits=10, min_visit_ratio=0.5, points_epsilon=0.25,
+    )
+    assert "H8" not in _plan_moves(plan_default)
+
+    plan_narrow_margin = tsumego_speculation_plan(
+        candidate_moves, eligible, chosen, score_best, ROOT_OWNERSHIP, STONES, BOARD_SIZE,
+        player_sign=1, min_visits=10, min_visit_ratio=0.5, points_epsilon=0.25, rescue_margin=0.5,
+    )
+    assert "H8" in _plan_moves(plan_narrow_margin)
 
 
 def test_empty_when_no_stones_or_no_score_best():

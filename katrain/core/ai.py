@@ -2444,6 +2444,7 @@ def tsumego_speculation_plan(
     min_visits,
     min_visit_ratio,
     points_epsilon,
+    rescue_margin=TSUMEGO_GAIN_RESCUE_MARGIN,
     include_rescue=True,
     include_ko_screen=True,
 ):
@@ -2463,6 +2464,12 @@ def tsumego_speculation_plan(
     chosen か score_best なので、その2手（同一なら1手）を検査と同一条件
     （`TSUMEGO_KO_REGION_UNTIL_DEPTH`・`TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE`）で温める。
     ガード外の選択手は検査されない（`tsumego_class_screen_applies`）ので温めない。
+
+    `rescue_margin` は実救済呼び出し（`select_tsumego_move` 経路、ユーザー設定
+    `gain_rescue_margin`）と**必ず同じ値を渡すこと**。既定 `TSUMEGO_GAIN_RESCUE_MARGIN` と
+    ずれると、閾値が実クエリよりプラン側で高くなるケース（ユーザー設定が既定より小さい等）で
+    実救済が撃つ候補をプランが温めず、「温め集合は実救済リストの上位集合」という不変条件が
+    破れる（精度への影響は無いが温め漏れでキャッシュがコールドのままになる）。
 
     要素は {"move", "until_depth", "wide_root_noise"}。None は「本譜と同じ既定」
     （`_start_region_root` と同じ意味論）。
@@ -2494,6 +2501,7 @@ def tsumego_speculation_plan(
                 board_size,
                 player_sign,
                 min_visits,
+                rescue_margin=rescue_margin,
                 max_candidates=TSUMEGO_GAIN_RESCUE_MAX_CANDIDATES + 1,
             ):
                 plan.append({"move": cand["move"], "until_depth": None, "wide_root_noise": None})
