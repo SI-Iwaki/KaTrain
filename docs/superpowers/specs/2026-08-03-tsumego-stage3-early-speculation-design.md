@@ -157,3 +157,135 @@ summary: PARTIAL=1 FINAL_SEEN=True
   run2: 31→47 で PARTIAL のほうが少ない）。前倒し温め集合の計算対象（gain/score_best 系）は
   「その時点で探索された候補」に限られるため、最終候補セットとのズレは§3.2の「最終
   1800visits で候補セットがずれた分は従来どおりミス」の想定どおりの挙動として扱ってよい
+
+## 追記2（実測）: 発火経路の確認（Task 4a、2026-08-03）
+
+段階3のウォッチャ（`_maybe_early_speculation`）は `Game.play()` の region 分岐からしか起動
+しない。既存 E2E ハーネス `generate_move_e2e.py` の `analyse()` は `node.analyze()` を
+**直接**呼んでおり `Game.play()` を一切通らないため、**既存ハーネスでは段階3は構造的に
+一度も発火しない**（発火有無・効果のどちらも検証できない）。これを検証するため GUI と同じ
+経路（`Game.play()` 経由）を再現する専用ハーネス
+`docs/superpowers/specs/calibration-data/tsumego/early_speculation_e2e.py` を新設した。
+
+### ハーネスの構造
+
+1. `game.region_of_interest` / `region_analysis_visits`(1800) / `region_analysis_wide_root_noise`
+   (0.04) を**最初の着手より前に**設定
+2. `katrain.players_info` を「黒=AI（`player_type=PLAYER_AI`, `player_subtype=AI_TSUMEGO`）／
+   白=人間（`PLAYER_HUMAN`）」に設定（`Player.strategy` は `ai` なら `player_subtype` を返す
+   ため、この2値だけで `_maybe_early_speculation` の起動条件を満たす）
+3. 目標 ply の直前までは `game.play(move, analyze=False)`（`DebugGame.play` の既定＝
+   `BaseGame.play` 直呼び、`Game.play` の region 分岐を通らない）で高速に再生し、**直前の
+   白の手だけ** `game.play(move, analyze=True)`（＝ `Game.play()` 経由）で打つ
+4. `node.analysis["region_completed"]` を待ってから `STRATEGY_REGISTRY[AI_TSUMEGO]
+   (game, settings).generate_move()` を呼ぶ
+5. `KaTrainStub.log()` は `quiet=True` でも `self.logs` に全ログを積むため、`debug_level` に
+   関係なく「前倒し投機」を含むログ行の有無で発火を判定できる
+
+**ハーネス側で追加対応が必要だった2点**（本体コードは変更していない）:
+
+- **`DebugGame.__init__` は `Game.__init__` をバイパスする**（`analyze_all_nodes` の自動起動
+  スレッドを避けるため `BaseGame.__init__` を直接呼ぶ）。そのため `Game.__init__` が本来
+  初期化する `region_analysis_visits` / `region_analysis_wide_root_noise` /
+  `region_prefetch_replies` / `_region_prefetch_nodes` / `_early_speculation_nodes` が
+  DebugGame インスタンスに一切存在せず、`Game.play(analyze=True)` が無条件に呼ぶ
+  `_cancel_region_prefetch()` / `_cancel_early_speculation()` / `_maybe_region_prefetch()`
+  で `AttributeError` になる。ハーネスの `build_game()` で `game.play()` を呼ぶ前にこれらを
+  明示的に初期化して対処した（GUI の `Game` はコンストラクタで必ず初期化されるので本体側の
+  バグではない）
+- **エンジンのモデルロード費用を warmup で分離する**。`KataGoEngine` は初回クエリで
+  TensorRT のモデルロードを行うため、warmup なしだと REPEATS の run1 が
+  「モデルロード＋着手決定」の合算になり 36〜38 秒かかる（3ケース共通）。ウォッチャの
+  `_early_speculation_worker` は固定 30 秒デッドラインを持つため、run1 はこの一度きりの
+  ロード費用だけでデッドラインを超過し、閾値に届く前にウォッチャが自壊する（詳細は下表）。
+  GUI 実戦ではキャプチャ時点で（起動直後の最初の1問を除き）既にエンジンが温まっているため、
+  この「モデルロードを含む cold run1」は GUI の通常の1手を代表しない。判定対象と**別局面**
+  （root）に低 visits の使い捨てクエリを撃って結果を破棄する `warmup_engine()` を repeats
+  ループの前に追加し、以降は「エンジンは温かいが、この局面は未キャッシュ」という GUI の
+  典型的な1手を測れるようにした（NN キャッシュは局面ごとに効くため、別局面での warmup は
+  判定対象のキャッシュを汚染しない）。
+
+### 構造的制約: ply0（キャプチャ直後の初手）には効かない
+
+ウォッチャは `Game.play()` の region 分岐からしか起動しないため、**盤の初期状態
+（キャプチャ直後、まだ誰も着手していない局面の黒番）には前倒し投機が構造的に発火しない**。
+GUI で最初に `region_of_interest` が張られた直後の1手目は、この意味で温め機会が無い。
+本ハーネスも ply0 を受け付けない（`ply must be even and >= 2` で弾く）。
+
+### 発火実測
+
+対象: M@4（`generate_move_e2e.py` の line 上 ply4）・O@2（ply2）・V2@2（ply2）。いずれも
+「直前に白の手がある黒番」（`_maybe_early_speculation` が判定対象にする局面）。各ケース
+3run・別プロセス（`--repeats` は使わずケースごとに新規プロセス起動、プロセス内では
+REPEATS=3 で run1=cold position/run2-3=NN cache hit の構図を意図的に作って両方の非発火経路を
+観測した）。
+
+**構成A（warmup なし。run1 はモデルロード込み）**:
+
+| ケース | run1 (cold, モデルロード込み) | run2 (NN cache hit) | run3 (NN cache hit) |
+|---|---|---|---|
+| V2@2 | analyse=38.01s, max_visits=1478, **NOT FIRED** | analyse=0.36s, max_visits=304, NOT FIRED | analyse=0.32s, max_visits=305, NOT FIRED |
+| M@4 | analyse=36.34s, max_visits=679, **NOT FIRED** | analyse=0.46s, max_visits=306, NOT FIRED | analyse=0.15s, max_visits=306, NOT FIRED |
+| O@2 | analyse=37.61s, max_visits=1431, **NOT FIRED** | analyse=0.52s, max_visits=304, NOT FIRED | analyse=0.20s, max_visits=306, NOT FIRED |
+
+9/9 NOT FIRED。V2@2 と O@2 の run1 は `max_visits`（ハーネス側の独立ポーリングで観測した
+`moves` visits 合計の最大値）が閾値 990v を上回っているにも関わらず発火していない —
+`_early_speculation_worker` の `deadline = time.time() + 30.0` はスレッド起動時刻基準で、
+モデルロードが数十秒かかる run1 では region クエリ自体が完了する頃には既に30秒を超過して
+おり、ウォッチャは「閾値に届いたか」を確認する前に `time.time() > deadline` で自壊している
+（`region_completed` が立つより先にタイムアウトする）。M@4 の run1 は `max_visits=679` で
+そもそも閾値未到達（別の非発火要因）。run2/3 は NN キャッシュヒットで analyse が
+0.15〜0.52秒と、`reportDuringSearchEvery`(=`REPORT_DT`=1秒) の最初の報告点にすら届く前に
+クエリが完了しており、部分結果 (`moves`) が閾値に届く機会が構造的に無い。
+
+**構成B（warmup あり。「エンジンは温かいが局面は未キャッシュ」という GUI の通常の1手を再現）**:
+
+| ケース | run1 (engine warm / position cold) | run2 (NN cache hit) | run3 (NN cache hit) |
+|---|---|---|---|
+| V2@2 | analyse=2.07s, max_visits=708, NOT FIRED | analyse=0.41s, max_visits=306, NOT FIRED | analyse=0.31s, max_visits=306, NOT FIRED |
+| M@4  | analyse=1.81s, max_visits=903, NOT FIRED | analyse=0.36s, max_visits=305, NOT FIRED | analyse=0.21s, max_visits=305, NOT FIRED |
+| O@2  | analyse=2.32s, max_visits=1577, **FIRED** | analyse=0.36s, max_visits=305, NOT FIRED | analyse=0.41s, max_visits=305, NOT FIRED |
+
+warmup 自体は 35.0〜35.6秒（3ケース共通・別局面なので判定対象のキャッシュを汚染しない）。
+O@2 run1 で実際に発火を確認した:
+
+```
+run1 case=O@2 (white played C10): move=C13 analyse=2.32s generate=0.05s
+max_visits_seen_during_wait=1577
+speculation=FIRED moves=['C13', 'C13'] threshold=990v verify_visits=800
+```
+
+`C13` が2回現れるのは検証バッチ本体（`until_depth=None, wide_root_noise=None`）とコウ経路
+検査（`until_depth=TSUMEGO_KO_REGION_UNTIL_DEPTH, wide_root_noise=0`）の両方の設定で同じ手を
+温めているため（`tsumego_early_speculation_items` の重複排除キーは `(move, until_depth,
+wide_root_noise)` の組で、同じ手でも設定が違えば別エントリとして残る＝設計どおり）。
+`verify_visits=800` は `TSUMEGO_GAIN_VERIFY_VISITS` と一致。
+
+構成Bでは 1/9 run が発火。V2@2 は run1 で `max_visits=708`（990v の 39%）、M@4 は
+`max_visits=903`（50%）と、どちらも唯一の PARTIAL 報告点（`reportDuringSearchEvery=1秒`）で
+閾値に届かなかった。O@2 だけ `max_visits=1577`（88%）と大きく上回って発火した。
+
+### 結論
+
+1. **既存 E2E ハーネスでは段階3は一切発火しない**（構造的。`node.analyze()` 直呼びが
+   `Game.play()` の region 分岐を通らないため）。本タスクの新ハーネスは GUI と同じ
+   `Game.play()` 経路を再現し、実際に発火することを O@2 で確認した＝機構自体は実装どおり
+   到達可能で正しく動く（`_maybe_early_speculation` の起動条件・`_early_speculation_worker`
+   のロジックにバグは見つからなかった）
+2. **ply0（キャプチャ直後の初手）には構造的に効かない**（ウォッチャの起動点が
+   `Game.play()` のみのため）。これは設計どおりの制約であり本体側のバグではない
+3. **発火は現状かなり限定的**: 実測 9 run 中 1 run のみ発火。非発火の内訳は主に2種類の
+   構造的レース: (a) NN キャッシュヒットで解析が 0.15〜0.52秒と `reportDuringSearchEvery`
+   =1秒の最初の報告点より先に完了し、部分結果が届く前にクエリが終わる（6/9 run で観測）、
+   (b) エンジンのモデルロードを含む真の cold run では `_early_speculation_worker` の固定
+   30秒デッドラインをロード費用だけで超過しうる（構成A で観測。GUI の通常プレイでは
+   起動直後の最初の1問を除き該当しない見込み）、(c) 唯一の PARTIAL 報告点での visits が
+   閾値 990v（55%）にたまたま届かない（V2@2 39%・M@4 50%、構成B）。(c) は追記1の
+   「PARTIAL は毎回1本だけ」という制約と合わせ、**その1本がどれだけ visits を稼げているかは
+   局面ごとの探索速度に左右され、閾値をまたぐかどうかは position-dependent で保証がない**
+   ことを示す実測。これは本体のバグではなく §3.1 で自認済みのリスク（「クエリ自体の想定
+   所要時間との関係を重経路ケースでも確認すること」）が実際に顕在化した結果であり、
+   閾値・報告間隔のチューニング余地として次段（Task 4b 等）に引き継ぐ
+4. 判定: **BLOCKED ではない**（例外・AttributeError・ロジック矛盾は無く、機構は設計どおり
+   動作して実際に発火も確認できた）。ただし発火率が低く体感できる高速化効果は限定的な
+   可能性がある、という懸念は残る（DONE_WITH_CONCERNS）
