@@ -204,3 +204,56 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main([__file__, "-v"]))
+
+
+def test_hopeless_extraction_is_rejected_before_publishing():
+    """抽出した問題が「手番側は勝てない（FAILED）」と証明されたら出題してはいけない。
+
+    実測 2026-08-04 の GUI 誤答（13路左下・case AD）。抽出は黒6子 {D7,E5,E6,E7,F5,F7} を
+    D〜G × 5〜7 の 10 点の箱に閉じ込めた `type=defend region=10点` を返したが、
+    箱の空点 G5/G6/G7 はいずれも白の壁石に接していて黒の眼にならず、F6 の1眼しか作れない
+    ＝黒は生きられない（solver: FAILED・0.01s/194nodes）。
+
+    本当の争点は白 {C6,C7,D5,D6}（呼吸点3 = B6/B7/C5）で、記録された正解手順は
+    その呼吸点 C5 から始まる。抽出器はこの「取れる白」を不可侵の壁と仮定していた
+    （case AA と同型だが、_reaches_safety は広い空き地を歩いて別の白壁へ到達できるため
+    発火しない）。出題してしまうと analysis_region が 4x3 の箱に固定され、FAILED で
+    現行経路へフォールバックしても KataGo は箱の外（C5）を打てない。
+
+    詰碁は「手番側に正解手がある」問題なので、FAILED と証明できた抽出は間違い＝
+    出題せず枠張り経路へ落とす（G5 フォールバック）。
+    """
+    from katrain.core.tsumego_problem import extract_problem
+    from katrain.core.tsumego_solver.model import ProblemType, from_gtp_coord
+
+    b_stones = "C9 C8 D7 E7 F7 E6 E5 F5 C4 D4"
+    w_stones = "B12 D12 C11 D10 D8 E8 F8 G8 C7 H7 C6 D6 H6 D5 H5 E4 F4 G4 B3 C2 E2"
+    black = {from_gtp_coord(s) for s in b_stones.split()}
+    white = {from_gtp_coord(s) for s in w_stones.split()}
+    prob = extract_problem(stones=(black, white), board_size=(13, 13), to_play="B")
+    assert prob.problem_type == ProblemType.DEFEND and len(prob.region) == 10  # 抽出自体は現状の仕様
+    settings = {"solver_cache": False, "solver_verdict_ms": 20000}
+    assert solver_api.problem_is_hopeless(prob, settings), "FAILED の抽出を出題してしまう"
+
+
+def test_solvable_extraction_is_not_rejected():
+    """解ける詰碁は当然 hopeless ではない（上の判定が出題そのものを止めないこと）。"""
+    from katrain.core.tsumego_problem import extract_problem
+    from katrain.core.tsumego_solver.model import from_gtp_coord
+
+    black = {from_gtp_coord(s) for s in "J13 J12 M12 J11 L11 J10 J9 K9 L9 M9 N9".split()}
+    white = {from_gtp_coord(s) for s in "K13 K12 K11 M11 K10 L10 M10".split()}
+    prob = extract_problem(stones=(black, white), board_size=(13, 13), to_play="B")
+    settings = {"solver_cache": False, "solver_verdict_ms": 60000}
+    assert not solver_api.problem_is_hopeless(prob, settings)
+
+
+def test_hopeless_check_is_budget_bounded():
+    """予算内に決まらなければ「間違いとは言えない」＝False（従来どおり出題する）。"""
+    from katrain.core.tsumego_problem import extract_problem
+    from katrain.core.tsumego_solver.model import from_gtp_coord
+
+    black = {from_gtp_coord(s) for s in "J13 J12 M12 J11 L11 J10 J9 K9 L9 M9 N9".split()}
+    white = {from_gtp_coord(s) for s in "K13 K12 K11 M11 K10 L10 M10".split()}
+    prob = extract_problem(stones=(black, white), board_size=(13, 13), to_play="B")
+    assert not solver_api.problem_is_hopeless(prob, {"solver_cache": False, "solver_verdict_ms": 1})

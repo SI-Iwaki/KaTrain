@@ -52,6 +52,12 @@ DEFAULT_SETTINGS = {
     # 第1段階（分類）がこれより遅かったら第2段階（plies/material 最適化）を省く
     # （SolverLimits.opt_skip_after_ms 参照。難問では opt が予算3秒を燃やして成果ゼロだった）
     "solver_opt_skip_after_ms": 5000,
+    # 出題前の検算（problem_is_hopeless）に使う時間予算[ms]。0 以下で検算しない。
+    # 壊れた抽出の FAILED は探索するものが無いぶん速く証明される（実測 case AD 0.01s /
+    # case F 0.19s / case F2 0.10s）ので、最遅 0.19s の約5倍を取る。予算切れは「間違いとは
+    # 言えない」＝従来どおり出題なので、外し方は現状維持。解ける問題（D/E/K/O/Q/V/V2）は
+    # 予算内に終わらないためこの秒数がキャプチャに乗る＝上げるほど遅くなる
+    "solver_verdict_ms": 1000,
 }
 
 
@@ -575,6 +581,39 @@ class TsumegoSolverSession:
                 json.dump({"move": list(move) if move else None, "summary": summary}, f, ensure_ascii=False)
         except Exception:
             pass  # キャッシュ書き込み失敗は無害
+
+
+def problem_is_hopeless(problem, settings: dict, logger=None) -> bool:
+    """抽出した問題が「手番側は勝てない（FAILED）」と**証明できた**とき True。
+
+    詰碁は手番側に正解手がある問題なので、FAILED はその抽出が元の詰碁と別物である証拠になる
+    （枠の採否判定 `frame_destroys_problem` が使っているのと同じ前提）。出題してしまうと
+    `analysis_region` が誤った小さい箱に固定され、戦略が FAILED でフォールバックしても
+    KataGo は箱の外の正解手を打てない＝救済不能になるので、**出題前に**捨てる。
+
+    実測 2026-08-04 case AD（13路左下）: 抽出は黒6子を D〜G × 5〜7 の 10 点の箱に閉じ込めた
+    `type=defend region=10点` を返したが、箱の空点 G5/G6/G7 は全部白の壁石に接していて眼に
+    ならず黒は1眼しか作れない（FAILED・0.01s/194nodes）。本当の争点は白 {C6,C7,D5,D6}
+    （呼吸点3 = B6/B7/C5）で、正解手順は C5 から始まる＝抽出器が「取れる白」を壁と仮定していた。
+
+    **予算内に決まらなければ False**（＝従来どおり出題する）。判定は「間違いだと証明できたか」で
+    あって「正しいと確認できたか」ではないので、分からないときは現状維持に倒す。予算
+    `solver_verdict_ms` を短く取れるのは、壊れた抽出の FAILED は探索するものが無いぶん速く
+    証明されるため（実測 case AD 0.01s / case F@2 0.1s に対し、解ける問題の solve は 0.0〜12s）。
+    解けた場合は永続キャッシュに載るので、その後の投機実行と初手の solve が速くなる。
+    """
+    budget = float(settings.get("solver_verdict_ms", DEFAULT_SETTINGS["solver_verdict_ms"]))
+    if budget <= 0:
+        return False
+    probe_settings = dict(settings)
+    probe_settings["solver_time_limit_ms"] = budget
+    try:
+        session = TsumegoSolverSession(problem, probe_settings, logger)
+        session.presolve()
+        solution = getattr(session, "last_solution", None)
+    except Exception:
+        return False  # 検算そのものが失敗したら従来どおり出題する（G5）
+    return solution is not None and solution.value.result == ResultClass.FAILED
 
 
 def build_session_from_game(game, settings: dict, logger=None) -> Optional[TsumegoSolverSession]:

@@ -72,6 +72,7 @@ class KaTrainBase:
         self.game = None
         self._game_log_file = None
         self._game_log_path = None
+        self._game_log_keep = False  # True なら手数が短くても消さない（詰碁ログ）
 
         self.logger = lambda message, level=OUTPUT_INFO: self.log(message, level)
         self.config_file = self._load_config(force_package_config=force_package_config)
@@ -98,18 +99,32 @@ class KaTrainBase:
             except Exception:
                 pass
 
-    def start_game_log(self):
+    # ログの種別ごとの (ファイル名の接頭辞, 残す本数)。詰碁は1問1ファイルなので本数を多めに取る
+    LOG_KINDS = {"game": ("game", 10), "tsumego": ("tsumego", 30)}
+
+    def start_game_log(self, kind="game"):
+        """新しいログファイルを開く。kind="tsumego" は詰碁1問ぶんのログ。
+
+        詰碁ログが対局ログと別種なのは2点の違いがあるため:
+        - **短さで削除しない**: 詰碁は数手で終わるので、対局用の「MIN_MOVES 手未満は無効試合」
+          規則をそのまま適用すると、次の問題をキャプチャした瞬間に直前の問題のログが消える
+        - **debug_level に関係なく残す**: 不具合報告にそのまま添付できるように（内容の詳しさは
+          従来どおり debug_level に従う＝0 なら INFO 行のみ、1 ならエンジンのクエリまで入る）
+        """
         MIN_MOVES = 20
-        if self.debug_level < 1:
-            return
+        prefix, max_logs = self.LOG_KINDS.get(kind, self.LOG_KINDS["game"])
+        is_tsumego = kind == "tsumego"
+        # 直前のファイルは debug_level に関係なく必ず閉じる（詰碁ログは debug_level 0 でも
+        # 開くので、閉じる処理を下の早期 return より後ろに置くと、次の対局のログが
+        # 直前の詰碁ログに流れ込む）
         if self._game_log_file:
             try:
                 self._game_log_file.close()
             except Exception:
                 pass
             self._game_log_file = None
-            # 直前の対局が MIN_MOVES 手未満なら無効試合として削除
-            if self._game_log_path:
+            # 直前の対局が MIN_MOVES 手未満なら無効試合として削除（詰碁ログは対象外）
+            if self._game_log_path and not self._game_log_keep:
                 try:
                     moves = self.game.current_node.depth if self.game else 0
                 except Exception:
@@ -120,6 +135,9 @@ class KaTrainBase:
                     except Exception:
                         pass
             self._game_log_path = None
+            self._game_log_keep = False
+        if not is_tsumego and self.debug_level < 1:
+            return
 
         from datetime import datetime
         import glob
@@ -127,22 +145,27 @@ class KaTrainBase:
         log_dir = os.path.join(os.path.expanduser(DATA_FOLDER), "logs")
         os.makedirs(log_dir, exist_ok=True)
 
-        MAX_LOGS = 10
-        existing = sorted(glob.glob(os.path.join(log_dir, "game_*.log")))
-        for old_file in existing[: max(0, len(existing) - MAX_LOGS + 1)]:
+        # 種別ごとに独立して古い順に消す（詰碁ログが対局ログを押し出さない）
+        existing = sorted(glob.glob(os.path.join(log_dir, f"{prefix}_*.log")))
+        for old_file in existing[: max(0, len(existing) - max_logs + 1)]:
             try:
                 os.remove(old_file)
             except Exception:
                 pass
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_path = os.path.join(log_dir, f"game_{timestamp}.log")
+        log_path = os.path.join(log_dir, f"{prefix}_{timestamp}.log")
+        seq = 2  # 同じ秒に2回開いても直前のファイルを潰さない（連続キャプチャ）
+        while os.path.exists(log_path):
+            log_path = os.path.join(log_dir, f"{prefix}_{timestamp}_{seq}.log")
+            seq += 1
         try:
             self._game_log_file = open(log_path, "w", encoding="utf-8")
             self._game_log_path = log_path
-            print(f"Game log: {log_path}")
+            self._game_log_keep = is_tsumego
+            print(f"{'詰碁ログ' if is_tsumego else 'Game log'}: {log_path}")
         except Exception as e:
-            print(f"Failed to open game log: {e}")
+            print(f"Failed to open {kind} log: {e}")
 
     def _load_config(self, force_package_config):
         if len(sys.argv) > 1 and sys.argv[1].endswith("config.json"):

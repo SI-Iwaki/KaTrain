@@ -1245,6 +1245,22 @@ class KaTrainGui(Screen, KaTrainBase):
 
         settings = self._config.get("tsumego_capture") or {}
         komi = self.config("game/komi", 6.5)
+        # 詰碁は1問1ファイルでログを取る（~/.katrain/logs/tsumego_<日付>_<時刻>.log。古い順に自動削除）。
+        # ここで開くのは、出題の判断（抽出・検算・枠の採否）が _do_new_game より前に出るため
+        # ＝ここより後ろで開くと肝心の判断が直前の問題のファイルに落ちる
+        self.start_game_log(kind="tsumego")
+        try:  # 認識した盤面をログ先頭に残す（この1ファイルだけで局面を再現できるように）
+            from katrain.core.tsumego_problem import grid_to_stones
+
+            bl, wh, (sz, _) = grid_to_stones(grid)
+            self.log(
+                f"tsumego_capture: 認識盤面 {sz}路 ko={ko} margin={margin} black_to_attack={black_to_attack}",
+                OUTPUT_INFO,
+            )
+            for label, pts in (("黒", bl), ("白", wh)):
+                self.log(f"tsumego_capture: {label} {' '.join(sorted(Move(p).gtp() for p in pts))}", OUTPUT_INFO)
+        except Exception as e:
+            self.log(f"tsumego_capture: 認識盤面のログ出力に失敗（{e}）", OUTPUT_INFO)
         board, analysis_region = None, None
         # 死活ソルバモード（スペック 2026-08-01-tsumego-solver-design.md）: KataGo を使わず問題を
         # 静的に抽出できたら、枠を張らず盤面をそのまま出題する（§3。枠の採否判定 KataGo 最大5本が消える）。
@@ -1288,6 +1304,25 @@ class KaTrainGui(Screen, KaTrainBase):
                     )
                     solver_problem = None
             if solver_problem is not None:
+                # 出題前の検算（spec 追記10・case AD）: 詰碁は手番側に正解手がある問題なので、
+                # 抽出した問題が FAILED（手番側は勝てない）と証明されたらその抽出は別物。
+                # 出題してしまうと analysis_region が誤った小さい箱に固定され、戦略が FAILED で
+                # フォールバックしても KataGo は箱の外の正解手を打てない＝ここでしか救えない。
+                # 予算内に決まらなければ従来どおり出題する（solver_verdict_ms）
+                from katrain.core import tsumego_solver_api as solver_api
+
+                started = time.time()
+                if solver_api.problem_is_hopeless(
+                    solver_problem, settings, lambda msg, level=None: self.log(msg, OUTPUT_INFO)
+                ):
+                    self.log(
+                        f"tsumego_capture: 抽出した問題は手番側が勝てない（FAILED）と裁定されました"
+                        f"＝抽出が元の詰碁と別物です。現行経路（枠張り）で出題します"
+                        f" [検算 {time.time() - started:.2f} 秒]",
+                        OUTPUT_INFO,
+                    )
+                    solver_problem = None
+            if solver_problem is not None:
                 board = grid  # 盤面をそのまま出す（枠を張らない）
                 size = len(grid)
                 xs = [p[0] for p in solver_problem.region]
@@ -1321,7 +1356,7 @@ class KaTrainGui(Screen, KaTrainBase):
             # ユーザーに認識できる（メッセージループスレッドなのでClock経由のGUI操作は不要）
             self.log(f"詰碁キャプチャ失敗: {e}", OUTPUT_ERROR)
             return
-        self._do_new_game(move_tree=move_tree)
+        self._do_new_game(move_tree=move_tree, _log=False)  # ログは上で詰碁用に開いてある
         # ソルバモード: 抽出済みの問題コンテキストを新しいゲームに引き渡す（§9.1 照会プロトコル。
         # 戦略はこれを使ってセッションを作り、以後の手番で再抽出しない）
         self.game.tsumego_solver_problem = solver_problem
