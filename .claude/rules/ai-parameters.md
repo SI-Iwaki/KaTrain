@@ -194,6 +194,17 @@ TSUMEGO_GAIN_RESCUE_MARGIN)` で伝播）、(2) コウ検査対象＝選択手�
 CLAUDE.md「ランタイム設定ファイル」節）。詳細は
 `docs/superpowers/specs/2026-08-03-tsumego-latency-overlap-design.md`（追記1・追記2）。
 
+**高速化第4弾（2026-08-03・精度不変）**: **段階3（root 部分結果からの前倒し投機）**。段階1+2（手番内投機）は選択手確定後＝検証バッチ実クエリと同時発火のため、初回手番では並走による部分短縮しか得られないという残課題への対応。当初案「戦略の待ちループ差し替え」は実装棚卸しで不成立と判明した: 戦略の `wait_for_analysis`（`ai.py` の `while not self.cn.analysis_complete`）は実質 no-op で、**root 待ちは戦略の外**にある（GUI はノードの解析完了を見てから generate を呼び、CLI ハーネスも `analyse()` が region 完了までブロックしてから generate を呼ぶため、戦略内のフックでは前倒しにならない）。
+
+そこで発火場所は**Game 側のウォッチャスレッド**（`_maybe_early_speculation` / `_early_speculation_worker` / `_cancel_early_speculation`。`Game.play()` の region 分岐が新ノードの解析を発行した直後、次番が `ai:tsumego` ならウォッチャを起動する＝アイドル先読み `_maybe_region_prefetch` の**鏡像**。掃除は次の `Game.play()` 冒頭で prefetch と同じ位置）。**戦略コード（`ai.py` の判定ロジック）は不変**——ウォッチャは 50ms 間隔で `node.analysis["moves"]` の visits 合計を確認し、`TSUMEGO_EARLY_SPECULATION_ROOT_FRACTION` × region_analysis_visits に達した時点で一度だけ温め集合を計算・発行する（region 完了・ノード切替・リージョン解除・期限30秒で bail）。
+
+温め集合は新純関数 `tsumego_early_speculation_items`（ai.py）が計算する**検証バッチ本体（incumbent＋挑戦者＋仮 chosen。`tsumego_score_best_challengers` 相当、untilDepth=1・wRN=0.04・ownership=True＝実検証と同一条件）＋段階1+2 の温め集合（救済スーパーセット＋コウ経路検査）**の和。判定は従来どおり最終1800visitsのroot値のみを使い、部分結果は温め集合の計算にしか使わない読み取り専用（仮 chosen がどうであれ実クエリの内容・発行順・待ち合わせ・タイブレークは変わらない）。仮選択の計算に使う ai.py の純関数はウォッチャ内で**遅延 import**する（`game.py`→`ai.py` のモジュール循環を避けるため）。
+
+閾値定数 `TSUMEGO_EARLY_SPECULATION_ROOT_FRACTION` は実測で3段階変更した: 当初案 0.67（部分結果の PARTIAL 報告は毎回1本のみで、実測 visits 1160〜1182 と構造的に僅かに未達）→ 0.55 でも重経路ケース（M@4・V2@2）で独立試行1/3しか発火せず → **0.35（1800v なら630v）で3/3安定発火**（M@4 はn=6拡張確認で6/6）、これを採用。**構造的制約**: ウォッチャは `Game.play()` からしか起動しないため、**キャプチャ直後の初手（ply0）には効かない**。効くのは白が応手した後の黒番（ply2以降）のみ。
+
+**実測**（GUI 経路を再現した専用ハーネス `early_speculation_e2e.py`。既存 CLI E2E ハーネス `generate_move_e2e.py` は `node.analyze()` を直接呼び `Game.play()` を通らないため段階3は構造的に一切発火せず、**効果検証にはこの専用ハーネスが要る**）: 1手あたりの正味秒（analyse+generate、体感時間）で3ケースとも改善——M@4 5.36→4.79秒(-0.57)／O@2 2.59→2.26秒(-0.33)／V2@2 6.07→5.27秒(-0.80)。root ウォール（analyse秒）は O@2・V2@2 で改善、M@4 のみ n=6平均で+0.20秒（同時発行される投機クエリ増でGPUを分け合うため）だが採用ゲート（+0.3秒超で不可）には抵触せず、generate短縮が上回るため正味は改善。回帰は `e2e_suite.py --full` 66/69（差分3件 AA@6・E@2・Z@2 はKataGoのrun間分散・既知）——**ただし CLI E2E では段階3のコードが1行も実行されないため、この回帰結果は段階3の正答不変を検証していない**（新規発火経路が既存判定に触れないことは `tests/test_tsumego_early_speculation.py` の単体テストと、上記専用ハーネスの発火ログ確認で別途担保）。詳細は
+`docs/superpowers/specs/2026-08-03-tsumego-stage3-early-speculation-design.md`。
+
 **枠の採否判定**（設定キーではなくコード定数。`tsumego_frame.py` / `__main__._choose_tsumego_frame`）:
 
 | 定数 | 値 | 備考 |
