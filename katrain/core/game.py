@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Union
 from kivy.clock import Clock
 
 from katrain.core.constants import (
+    AI_TSUMEGO,
     OUTPUT_DEBUG,
     OUTPUT_EXTRA_DEBUG,
     OUTPUT_INFO,
@@ -28,6 +29,7 @@ from katrain.core.constants import (
     PRIORITY_EQUALIZE,
     PRIORITY_DEFAULT,
     PRIORITY_REGION_PREFETCH,
+    PRIORITY_TSUMEGO_SPECULATION,
 )
 from katrain.core.engine import KataGoEngine
 from katrain.core.game_node import GameNode
@@ -469,6 +471,7 @@ class Game(BaseGame):
         self.region_analysis_wide_root_noise = REGION_ANALYSIS_WIDE_ROOT_NOISE  # 同上: root の探索の広げ方
         self.region_prefetch_replies = 0  # 同上: 人間の応手 top-K の子局面を先読みする本数（0で無効）
         self._region_prefetch_nodes = []  # 先読みクエリを発行した使い捨て子ノード（play 時の terminate 用）
+        self._early_speculation_nodes = []  # 前倒し投機（段階3）の使い捨て子ノード（terminate 用）
 
         threading.Thread(
             target=lambda: self.analyze_all_nodes(analyze_fast=analyze_fast, even_if_present=False),
@@ -564,6 +567,7 @@ class Game(BaseGame):
         # 未消化の先読みを先に止める＝実クエリ（この着手の解析）が解析スロットを直ちに取れる。
         # リージョンを解除した直後の着手でも残骸を掃除するため、region 分岐の外で呼ぶ
         self._cancel_region_prefetch()
+        self._cancel_early_speculation()
         if analyze:
             if self.region_of_interest:
                 played_node.analyze(self.engines[played_node.next_player], analyze_fast=True)
@@ -580,6 +584,7 @@ class Game(BaseGame):
                     ownership=True if self.region_analysis_visits else None,
                 )
                 self._maybe_region_prefetch(played_node)
+                self._maybe_early_speculation(played_node)
             else:
                 played_node.analyze(self.engines[played_node.next_player])
         return played_node
@@ -697,6 +702,115 @@ class Game(BaseGame):
             # 二重 terminate は無害＝未登録 id への terminate は KataGo が無視する）
             self._region_prefetch_nodes = []
             for child in prefetch_nodes:
+                for child_engine in set(self.engines.values()):
+                    child_engine.terminate_queries(only_for_node=child)
+
+    def _cancel_early_speculation(self):
+        """発行済みの前倒し投機クエリを打ち切る（結果はもともと捨てるだけなので副作用なし）"""
+        nodes = self._early_speculation_nodes
+        self._early_speculation_nodes = []
+        for node in nodes:
+            for engine in set(self.engines.values()):
+                engine.terminate_queries(only_for_node=node)
+
+    def _maybe_early_speculation(self, node):
+        """次番が AI（ai:tsumego）なら、root 部分結果を見張って温め集合を前倒し発行する。
+
+        `_maybe_region_prefetch`（次番が人間のときの応手先読み）の鏡像。目的は NN キャッシュ
+        温めだけで結果は捨てる＝着手判定への影響はゼロ。設計はスペック
+        2026-08-03-tsumego-stage3-early-speculation-design.md §3。
+        """
+        if not self.region_analysis_visits or not self.region_of_interest:
+            return
+        players_info = getattr(self.katrain, "players_info", None)
+        if not players_info:
+            return
+        try:
+            info = players_info[node.next_player]
+            if info.player_type == PLAYER_HUMAN or getattr(info, "strategy", None) != AI_TSUMEGO:
+                return
+        except (KeyError, AttributeError):
+            return
+        threading.Thread(target=self._early_speculation_worker, args=(node,), daemon=True).start()
+
+    def _early_speculation_worker(self, node):
+        """root リージョン解析の visits 合計が閾値に達したら温め集合を計算・発行する。
+
+        発火は一度だけ。region 完了（＝段階1+2 の実クエリ側に委ねる）・ノード切替・
+        リージョン解除・期限30秒では発火せず終了する。温めの失敗は着手生成に影響しないので
+        例外はすべて握って終了する（投機は純最適化）。
+        """
+        from katrain.core import ai as ai_mod  # game→ai のモジュール循環を避ける遅延 import
+
+        deadline = time.time() + 30.0
+        threshold = ai_mod.TSUMEGO_EARLY_SPECULATION_ROOT_FRACTION * self.region_analysis_visits
+        while True:
+            if (
+                time.time() > deadline
+                or self.current_node is not node
+                or not self.region_of_interest
+                or node.analysis.get("region_completed")
+            ):
+                return
+            moves = node.analysis.get("moves") or {}
+            if moves and sum(d.get("visits", 0) for d in moves.values()) >= threshold:
+                break
+            time.sleep(0.05)
+        try:
+            settings = self.katrain.config(f"ai/{AI_TSUMEGO}") or {}
+            player_sign = node.player_sign(node.next_player)
+            stones = ai_mod.tsumego_gain_stones([s.coords for s in self.stones], self.region_of_interest)
+            items = ai_mod.tsumego_early_speculation_items(
+                node.candidate_moves, node.ownership, stones, self.board_size, player_sign, settings
+            )
+        except Exception:
+            return
+        if not items:
+            return
+        sim = self._region_prefetch_sim(node)
+        if sim is None:
+            return
+        base = sim.current_node
+        engine = self.engines[node.next_player]
+        visits = int(settings.get("gain_verify_visits", ai_mod.TSUMEGO_GAIN_VERIFY_VISITS))
+        region = self.region_of_interest
+        fired_nodes, fired = [], []
+        for item in items:
+            if self.current_node is not node:
+                break
+            try:
+                sim.set_current_node(base)
+                child = sim.play(Move.from_gtp(item["move"], player=node.next_player), ignore_ko=True)
+                wrn = item["wide_root_noise"]
+                engine.request_analysis(
+                    child,
+                    callback=lambda _analysis, _partial: None,
+                    error_callback=lambda _error: None,
+                    visits=visits,
+                    time_limit=False,
+                    ownership=True,
+                    region_of_interest=region,
+                    region_until_depth=item["until_depth"],
+                    extra_settings=region_analysis_extra_settings(
+                        visits, self.region_analysis_wide_root_noise if wrn is None else wrn
+                    ),
+                    priority=PRIORITY_TSUMEGO_SPECULATION,
+                )
+            except Exception:
+                continue
+            fired_nodes.append(child)
+            fired.append(item["move"])
+        if not fired_nodes:
+            return
+        self._early_speculation_nodes = fired_nodes
+        self.katrain.log(
+            f"tsumego 前倒し投機: {fired} を root 部分結果（閾値{threshold:.0f}v）時点で発行"
+            f"（{visits}visits・結果は捨てる）",
+            OUTPUT_DEBUG,
+        )
+        if self.current_node is not node:
+            self._early_speculation_nodes = []
+            for child in fired_nodes:
                 for child_engine in set(self.engines.values()):
                     child_engine.terminate_queries(only_for_node=child)
 
