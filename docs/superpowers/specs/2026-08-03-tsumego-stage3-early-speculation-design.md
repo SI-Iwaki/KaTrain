@@ -110,3 +110,46 @@ ownership=True＝実検証と同一条件）** ＋ (3)。発行は Game 側に `
 | root 探索末期の GPU 競合で root が遅くなる | 発火閾値 0.67＋root ウォール非劣化を採用ゲートに |
 | 部分結果と最終結果で候補セットがずれ温めが外れる | ミスは捨てるだけ（従来コールドと同じ）。ヒット率は計測で報告 |
 | 待ちループ差し替えで待ちセマンティクスが変わる | §4-2 を実装プランの最初のタスクにし、既存挙動の単体テストを先に固定する |
+
+## 追記1（実測）: 部分結果の payload
+
+§4-1 の検証点をプローブで実測（`docs/superpowers/specs/calibration-data/tsumego/partial_payload_probe.py`）。
+`generate_move_e2e.py` の局面構築（KaTrainStub＋engine起動）を流用し、region 解析クエリを
+`engine.request_analysis` で直接発行して callback だけ差し替え（`node.analyze` は callback を
+`self.set_analysis` に固定しているため）。本番条件どおり visits=1800・ownership=True・
+`extra_settings=region_analysis_extra_settings(1800, 0.04)`・`region_of_interest`・
+`report_every=1`（`reportDuringSearchEvery=1`）。対象はケース V
+（`case-v-declass-no-kill-20260731.sgf`、region `4,12,4,12`、0手目＝初期局面）。
+
+実測（別プロセス2run、フォアグラウンド）:
+
+```
+run1:
+PARTIAL visits=1182 n_moves=47 has_root_ownership=True first_move_has_ownership=True
+FINAL   visits=1806 n_moves=47 has_root_ownership=True first_move_has_ownership=True
+summary: PARTIAL=1 FINAL_SEEN=True
+
+run2:
+PARTIAL visits=1160 n_moves=31 has_root_ownership=True first_move_has_ownership=True
+FINAL   visits=1807 n_moves=47 has_root_ownership=True first_move_has_ownership=True
+summary: PARTIAL=1 FINAL_SEEN=True
+```
+
+**結論: (a) 純関数がそのまま使える**。2 run とも `has_root_ownership=True` /
+`first_move_has_ownership=True` で、root ownership と per-move ownership の両方が
+部分結果（`isDuringSearch=True`）に既に乗っている。§3.2 の「既存の純関数をそのまま適用」
+という前提は成立し、Task 2 の簡易プロキシ差し替え（目数順上位＋visits上位の和集合）は不要。
+
+ただし2点、当初想定とのズレを記録する:
+
+- **PARTIAL は毎回1本だけ**（brief の期待「2本以上」を満たさず）。ケース V の region クエリは
+  1800visits が約1.2〜1.5秒で完了するため、`reportDuringSearchEvery=1`（1秒間隔）の窓が
+  1回しか開かない。§3.1 の発火閾値（visits合計 ≥ 0.67×1800≈1200）は run1 の PARTIAL
+  （visits=1182）だと僅かに届かず、run2（visits=1160）はさらに届かない＝**ケース V だけで見ると
+  唯一の PARTIAL が発火直前で終わるケースが有り得る**。より重い（探索が長引く）ケースでは
+  複数 PARTIAL が届く可能性が高いが、軽いケースでは前倒しの実効窓がほぼ無いことを示す実測。
+  実装時は発火閾値と「クエリ自体の想定所要時間」の関係を重経路ケース（M/O/V2 等）でも確認すること
+- **`n_moves`（moveInfos の候補数）が PARTIAL と FINAL で異なる**（run1: 47→47 で一致、
+  run2: 31→47 で PARTIAL のほうが少ない）。前倒し温め集合の計算対象（gain/score_best 系）は
+  「その時点で探索された候補」に限られるため、最終候補セットとのズレは§3.2の「最終
+  1800visits で候補セットがずれた分は従来どおりミス」の想定どおりの挙動として扱ってよい
