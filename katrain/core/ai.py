@@ -4228,7 +4228,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
     def _start_region_root(self, node, visits, ownership=False, until_depth=None, wide_root_noise=None):
         """リージョン限定解析を**発行だけして待たない**。結果ハンドル（dict）を返す。
 
-        KataGo は `numAnalysisThreads`(=4) 本のクエリを並列に処理できるのに、1本ずつ発行して
+        KataGo は `numAnalysisThreads`(=12) 本のクエリを並列に処理できるのに、1本ずつ発行して
         完了を待つと選択則の追加解析（同深さ検証・コウ経路検査・脱出・格上げ・コウ勝ち評価）が
         全部直列になる。独立な子局面のクエリは全員分を発行してから `_wait_region_roots` で
         まとめて待つ＝クエリ内容・判定順序は一切変えず wall time だけ縮める（並列実行が

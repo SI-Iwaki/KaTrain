@@ -163,6 +163,31 @@ wRN=0）のクラス格上げ incumbent 検証だけが再利用する（wRN=0.0
 Python の盤面プローブを疑うこと**（クエリ実測 0.1〜1.0 秒 vs 着手決定 4.3〜10.0 秒の乖離が
 入口だった）。詳細は spec 追記39。
 
+**高速化第3弾（2026-08-03・精度不変）**: **手番内投機（in-turn speculation）**。
+`select_tsumego_move` が選択手を返した直後（`score_best = tsumego_score_best(eligible)` の直後・
+検証バッチの発行前）に、この後の段（救済・コウ経路検査）が撃つことになりそうな子局面を
+同一条件・低優先度で先回り発行し、結果は捨てて NN キャッシュだけ温める（`tsumego_speculation_plan`
+/ `_fire_speculation`）。温め集合は2種: (1) 救済スーパーセット＝gain 降順トップ
+`TSUMEGO_GAIN_RESCUE_MAX_CANDIDATES`(3) ＋ visit比フロア `TSUMEGO_GAIN_RESCUE_MIN_VISIT_RATIO`
+(0.15) ＋ min_visits を通る非 contender（条件は実救済呼び出しと同一: 800visits・ownership=True・
+untilDepth=1・wRN=0.04。`rescue_margin` も実呼び出しと同じ式 `(settings).get("gain_rescue_margin",
+TSUMEGO_GAIN_RESCUE_MARGIN)` で伝播）、(2) コウ検査対象＝選択手＋目数最善（同一なら1手。条件は
+実コウ経路検査と同一: 800visits・ownership=True・untilDepth=6・wRN=0）。優先度は新定数
+`PRIORITY_TSUMEGO_SPECULATION`=500（実クエリ 10010・通常ノード解析 1010 より下、アイドル
+先読み `ponder_replies` の -40/-50 より上＝実クエリのスロットを奪わない）。未消化分は
+`generate_move` の `finally` でノード単位 terminate（次の解析とGPUを取り合わない）。実測: 条件が
+完全一致した実クエリは 0.0〜0.2 秒で返る（コールドな初回クエリ群は 2.5〜3.0 秒）。ただし
+発火から実クエリまでの間隔が短い経路（コウ脱出等で即座に後続クエリが飛ぶ場合）は投機と実クエリが
+ほぼ並列実行され、恩恵が部分的（0.6〜1.2秒）に留まることもある。E2E `--full` は 66/69 PASS
+（手順差分2件は既知分散・K@0 は PYTHONPATH 未設定で base 側が誤って HEAD コードを実行していた
+ラベル誤りを裁定し直し base(真) 3/3 C13・HEAD 全サンプル 13/15 C13＝既知ナイフエッジ分散で
+正答不変ゲート PASS 確定）。全体では generate_move() 秒の中央値が 2.55→2.0 秒（M/O/V2 の4点・
+簡略法=1プロセス3rep・全12サンプル）。**`numAnalysisThreads` の実効値はパッケージ同梱
+`katrain/KataGo/analysis_config.cfg` の 12**（`~/.katrain/analysis_config.cfg` はエンジンに
+参照されない。実測 2026-08-03: ユーザーが後者を 4→8 に編集しても no-op だった。詳細は
+CLAUDE.md「ランタイム設定ファイル」節）。詳細は
+`docs/superpowers/specs/2026-08-03-tsumego-latency-overlap-design.md`（追記1・追記2）。
+
 **枠の採否判定**（設定キーではなくコード定数。`tsumego_frame.py` / `__main__._choose_tsumego_frame`）:
 
 | 定数 | 値 | 備考 |

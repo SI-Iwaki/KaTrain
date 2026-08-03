@@ -189,7 +189,7 @@ generate_move() 所要（秒）:
 | V2@2 | HEAD | 3.3 | 1.4 | 1.8 | 1.8 |
 | V2@2 | base | 3.7 | 1.6 | 1.5 | 1.6 |
 
-全12サンプル合算: HEAD median 2.0秒・mean 2.43秒 ／ base median 2.55秒・mean 2.74秒（約12〜22%短縮）。
+全12サンプル合算: HEAD median 2.0秒・mean 2.43秒 ／ base median 2.55秒・mean 2.74秒（約11〜22%短縮）。
 正答は24呼び出し全件一致（M:K1／O:A11／V2:L12・N13）。
 
 **run1〜3 は同一プロセス内の3repであることに注意**: run2/3 は同一局面の root 解析自体もエンジン
@@ -254,3 +254,74 @@ CLAUDE.md 記載の `4` のまま不一致）が既に 12 で動いており、�
   実行し、同種の暴走は再発しなかった。
 - 計測はケースごとに1プロセス（3rep内蔵）のみで、真の別プロセスコールド3run平均ではない
   （上記「計測方法」参照）。より厳密な数値が必要なら別プロセス3回×各点の再測定を推奨。
+
+## 追記2（2026-08-03）: 案Cの前提が偽 — 実効 numAnalysisThreads は以前から12
+
+### 発見の経緯
+
+Task 5（`analysis_config.cfg` の `numAnalysisThreads` 4→8、設計 §7「エンジン設定（ユーザー
+手動編集）」＝案C）でユーザーが `C:\Users\iwaki\.katrain\analysis_config.cfg` を編集した後に
+再計測したところ、Task 4 の数値とほぼ同一だったため調査したところ、**このファイルはエンジンに
+一切参照されていない**ことが判明した。
+
+`katrain/core/engine.py:140` が `cfg = find_package_resource(config["config"])` で `-config`
+引数を構築する。`config["config"]` は `config.json` の `"engine"."config"` キー＝リテラル文字列
+`"katrain/KataGo/analysis_config.cfg"`（相対パス）で、`find_package_resource`
+（`katrain/core/utils.py:45-56`）は `"katrain"` で始まるパスを
+`pkg_resources.files("katrain").absolute()`（＝インストール済みパッケージのディレクトリ、
+editable install の `_katrain.pth` により常に本リポジトリの HEAD チェックアウト）に対して解決
+する。すなわち実際にエンジンへ渡される `-config` は**パッケージ同梱** `katrain/KataGo/
+analysis_config.cfg`（git管理、`numAnalysisThreads = 12`、最終更新コミット `b4cc80e`・2026年3月
+＝本プロジェクトより前）であり、`~/.katrain/analysis_config.cfg`（ユーザーが編集した「ランタイム
+設定」ファイル）は無関係。`-override-config "homeDataDir=..."` は `homeDataDir` キー1つだけを
+上書きするフラグで、他の設定には影響しない。実際の GUI アプリ（`python -m katrain`）も
+`__main__.py:203` `KataGoEngine(self, self.config("engine"))` で全く同じ経路を通るため、同じ
+問題が実アプリにも及ぶ（コントローラが config.json の値・パッケージ cfg の実値・engine.py の
+読みの3点を裏取りし確定）。
+
+### 再計測データの読み替え
+
+`timing-head8-{M,O,V2}.log` は「8スレッド」を意図した計測だったが、実際には Task 4 の
+「HEAD 4スレッド」計測と**同一条件（numAnalysisThreads=12）の追加3repサンプル**だった。
+generate_move() 秒（追加サンプルとして表に併記）:
+
+| ケース@ply | run1 | run2 | run3 | median |
+|---|---|---|---|---|
+| M@4 | 3.9 | 1.9 | 0.5 | 1.9 |
+| O@0 | 3.7 | 0.9 | 0.4 | 0.9 |
+| V2@0 | 5.8 | 2.2 | 1.7 | 2.2 |
+| V2@2 | 4.0 | 2.4 | 1.3 | 2.4 |
+
+全12サンプル合算 median 2.05秒・mean 2.39秒（Task 4 の HEAD median 2.0秒・mean 2.43秒と同水準）。
+正答は全12呼び出し一致。
+
+非劣化ゲート（root解析ウォール、QUERY:2=1800visits・own=True、run1）の結果 M@4 -0.1秒／O@0 0.0秒／
+V2@0 -0.2秒／V2@2 +0.1秒は、「8スレッド化による劣化なし」ではなく **「同一条件（12）の再現性
+確認」** と読み替える（差はすべて run-to-run 分散の範囲内）。
+
+### 裁定
+
+案C（`numAnalysisThreads` 4→8）は**実施不要でクローズ**: 実効値は変更前から12であり、これは
+投機込みの同時発行本数（実クエリ1本＋救済・コウ検査の温め2〜3本＝概ね同時8〜10本）を既に
+上回っている。「4スレッドで詰まっている」という設計 §7 の前提そのものが偽だったため、
+変更対象が存在しない。12 は従来からの値としてそのまま文書化する（CLAUDE.md 訂正で対応）。
+
+### 目標到達状況と残る手段
+
+コールド run1 の合計（root待ち＋着手決定）は現状:
+
+| ケース@ply | 合計（run1） |
+|---|---|
+| M@4 | 3.9秒 |
+| O@0 | 3.6秒 |
+| V2@0 | 6.3秒 |
+| V2@2 | 3.3秒（唯一「エンジン起動済み・新局面」に近い純粋なサンプル） |
+
+目標 3〜3.5秒/手 に対し、重経路ケース（M/O/V2、救済＋コウ経路検査の両方が発火する構成）は
+依然未達（V2@2 のみ僅かに届く）。numAnalysisThreads は変更不能（既に十分）と確定したため、
+残る手段は**段階3（root部分結果からの前倒し発火＝検証バッチ本体の子局面も含めて温める）**の
+みとなる。ただし段階3は本プラン（`docs/superpowers/plans/2026-08-03-tsumego-latency-overlap.md`）
+のスコープ外（§6 に「段階1+2の計測後に判断」と記載済み）であり、着手する場合は**別スペックとして
+起票する**ことを推奨する。66/69 の大半を占める通常経路（対抗馬1〜2手・バッチ1本のみ）は本追記の
+対象外だが、コールド 4.7〜5.4秒 だった旧基準より軽いはずで、段階1+2 のみで目標圏内に収まって
+いる可能性が高い。
