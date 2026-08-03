@@ -34,6 +34,29 @@ FRONTIER_LIBERTIES = 3  # 壁の判定: region 外の呼吸点がこれ以上な
 FRONTIER_RETRY_MAX = 5  # 閉じなければここまで上げて再構成
 DEFAULT_MAX_REGION_POINTS = 72  # §8.4 solver_max_region_points（P1 の実測で調整。仮に緩め）
 OPEN_RECT_MAX_POINTS = 84  # 矩形 region モード（枠なし・開いた盤）の上限。閉包モードより広くなる
+MIN_TARGET_SPACE = 3  # target が眼を作れる余地（region − target の点数）の下限
+
+
+def predetermined_reason(problem: Problem) -> Optional[str]:
+    """開始時点で結果が決まっている（＝解くべき詰碁ではない）なら理由を返す。
+
+    詰碁は「打つ手で結果が変わる」問題。target が使える空間 = region から target 自身の
+    石を除いた点数（空点 + 眼空間の中の相手の石。ナカデの捨て石も眼空間なので数える）が
+    2 以下だと、1手も打たないうちに結果が決まっている:
+      0〜1 点 → 取るだけ（相手はもう何もできない）
+      2 点   → 隣接なら二眼にならず死・離れていれば既に二眼で生き（どちらも手番と無関係）
+    3 点（直三）が「初手で結果が変わる」最小の形なので、そこを下限にする。
+
+    実測 2026-08-04 の GUI 誤答（13路・中央の開いた競り合い）: 盤の大半は広い空き地へ
+    抜けて閉包が全部失敗し、黒に完全包囲された**呼吸点1の白1子 G8** だけが閉じた領域を
+    作れた。抽出は「region 2点・target 1子の攻め」を返し、ソルバは正しく「G7 で取る」と
+    答えたが、それは画面の詰碁ではない。実キャプチャ 21 ケースの空間は最小 6 点
+    （Z 11−5）で、教科書的な最小形（直三・ナカデ）でも 3 点なので 2 以下だけを弾く。
+    """
+    space = len(problem.region) - len(problem.target)
+    if space < MIN_TARGET_SPACE:
+        return f"target が使える空間が {space} 点（初手より前に結果が決まっている）"
+    return None
 
 
 def grid_to_stones(grid: Sequence[Sequence[str]]) -> Tuple[Set[Point], Set[Point], Tuple[int, int]]:
@@ -281,7 +304,7 @@ class _Extractor:
         candidates = [ci for ci in candidates if not all(p in self.pass_alive for p in self.chains[ci][0])]
         if not candidates:
             raise ProblemError("対象群が無い", "危険な石が見つからない")
-        last_reason = ""
+        last_kind, last_reason = "領域が閉じていない", ""
         for frontier in range(FRONTIER_LIBERTIES, FRONTIER_RETRY_MAX + 1):
             # 種 = 単独で閉じ、かつその閉包の中で自色の壁/地へ到達できない連（＝本当に危険な連）。
             # 到達できる連は地に裏打ちされた壁側の石で、種にすると region が膨張する
@@ -294,20 +317,29 @@ class _Extractor:
                     continue
                 anchors.add(ci)
             if not anchors:
-                last_reason = "どの連からも閉じた領域が作れない"
+                last_kind, last_reason = "領域が閉じていない", "どの連からも閉じた領域が作れない"
                 continue
             result = self._closure(anchors, frontier)
             if result is None:
-                last_reason = "領域が閉じない/大きすぎる"
+                last_kind, last_reason = "領域が閉じていない", "領域が閉じない/大きすぎる"
                 continue
             problem = self._decide(result)
             reason = self._closes(result, problem.target_color)
+            if reason is not None:
+                last_kind, last_reason = "領域が閉じていない", reason
+                continue
+            # 閉じていても「開始時点で結果が決まっている」形は詰碁ではない（ただの石取り）
+            reason = predetermined_reason(problem)
             if reason is None:
                 return problem
-            last_reason = reason
+            last_kind, last_reason = "詰碁として成立していない", reason
         if self.hint is not None:
-            return self._open_rect_problem()  # 枠なし・開いた盤: 矩形 region モード
-        raise ProblemError("領域が閉じていない", last_reason)
+            problem = self._open_rect_problem()  # 枠なし・開いた盤: 矩形 region モード
+            reason = predetermined_reason(problem)
+            if reason is not None:
+                raise ProblemError("詰碁として成立していない", reason)
+            return problem
+        raise ProblemError(last_kind, last_reason)
 
     # ---- 矩形 region モード（枠なしキャプチャの後継。現行の region_of_interest 相当）----
 

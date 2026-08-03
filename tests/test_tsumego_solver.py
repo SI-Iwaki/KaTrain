@@ -236,19 +236,51 @@ def test_replay_on_captured_point_utegaeshi(solver_cls):
 def test_region_includes_eye_space_interior():
     from katrain.core.tsumego_problem import extract_problem
 
+    # 十字5点の眼空間（中心は白のどの石とも隣接しない＝どの連の呼吸点でもない）。
+    # 白は呼吸点4で外へ出られず、黒先なら中心のナカデで死ぬ＝本物の詰碁。
     rows = [
-        ". . . . . . .",
-        "X X X X X X .",
-        "X O O O X . .",
-        "X O . O X . .",
-        "X O O O X . .",
-        "X X X X X . .",
+        ". . . . . . . . .",
+        ". X X X X X X X .",
+        ". X O O O O O X .",
+        ". X O O . O O X .",
+        ". X O . . . O X .",
+        ". X O O . O O X .",
+        ". X O O O O O X .",
+        ". X X X X X X X .",
+        ". . . . . . . . .",
     ]
     black, white, size = diagram(rows)
     prob = extract_problem(stones=(black, white), board_size=size, to_play=BLACK)
-    center = (2, 2)  # 3x3 眼空間の中心（どの連の呼吸点でもない）
+    center = (4, 4)  # 眼空間の中心（どの連の呼吸点でもない）
     assert center in prob.region, "眼空間の内部点が region から漏れている（§5.1 の穴）"
     assert prob.problem_type == ProblemType.ATTACK
+
+
+def test_predetermined_capture_is_not_a_problem():
+    """開始時点で勝負がついている形（＝ただの石取り）を詰碁として受理しない。
+
+    実測 2026-08-04 の GUI 誤答（13路・中央の開いた競り合い）。盤の大部分は
+    盤中央の広い空き地へ抜けるため閉包が全部失敗し、**黒に完全包囲された呼吸点1の
+    白1子 G8** だけが「閉じた領域を作れる連」として生き残った。抽出はこれを
+    「region 2点・target 1子の攻め」として返し、ソルバは正しく「G7 で取る
+    （UNCONDITIONAL・1手）」と答えたが、それは画面の詰碁ではない。
+
+    詰碁は「打つ手で結果が変わる」問題なので、target が使える空間
+    （region から target 自身の石を除いた点数）が 2 以下＝眼が2つ作れる余地が
+    無い（1以下は即取り、2は隣接なら死・離れていれば既に生き）形は、最初の
+    1手より前に結果が決まっている。受理しなければキャプチャは現行経路
+    （枠張り）へ落ちる（G5 フォールバック）。
+    """
+    from katrain.core.tsumego_problem import extract_problem
+    from katrain.core.tsumego_solver.model import ProblemError, from_gtp_coord
+
+    b_stones = "E13 L13 E12 L12 M12 E11 F11 G11 M11 F10 N10 E9 G9 J9 N9 F8 H8 L8 M8 F7 H7 J7 K7 L7 G6"
+    w_stones = "G13 K13 F12 G12 K12 H11 L11 G10 H10 L10 M10 H9 K9 L9 G8 J8"
+    black = {from_gtp_coord(s) for s in b_stones.split()}
+    white = {from_gtp_coord(s) for s in w_stones.split()}
+    with pytest.raises(ProblemError):
+        prob = extract_problem(stones=(black, white), board_size=(13, 13), to_play=BLACK)
+        raise AssertionError(f"呼吸点1の白1子を受理した: region {len(prob.region)}点 target {len(prob.target)}子")
 
 
 # ---------- 問題の型と target（§5.2）----------
