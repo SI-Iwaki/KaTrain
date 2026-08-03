@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** root リージョン解析の部分結果（約0.67×1800visits 時点）から検証バッチ本体を含む温め集合を Game 側ウォッチャで前倒し発行し、コールド1手目の合計 4.6〜7.7秒を 3〜3.5秒級へ縮める（判定は完全不変）。
+**Goal:** root リージョン解析の部分結果（約0.55×1800visits 時点）から検証バッチ本体を含む温め集合を Game 側ウォッチャで前倒し発行し、コールド1手目の合計 4.6〜7.7秒を 3〜3.5秒級へ縮める（判定は完全不変）。
 
 **Architecture:** `Game.play()` の region 分岐で次番が AI（ai:tsumego）ならウォッチャスレッドを起動（`_maybe_region_prefetch` の鏡像）。ウォッチャは `node.analysis["moves"]` の visits 合計が閾値に達したら、ai.py の新純関数 `tsumego_early_speculation_items`（検証バッチ本体＋段階1+2集合）で温めプランを計算し、使い捨て sim＋優先度500で発行、結果は捨てる。判定・実クエリは1バイトも変えない。
 
@@ -14,7 +14,8 @@
 
 - **精度不変が絶対条件**: 実クエリの内容・発行順・待ち合わせ・判定関数・タイブレーク・戦略コード（`TsumegoOwnershipStrategy`）は一切変更しない。温めの結果は必ず捨てる
 - 温め条件は実クエリと完全一致（ownership=True・`gain_verify_visits`・region・untilDepth/wRN は項目指定、None=本譜既定）。優先度は既存 `PRIORITY_TSUMEGO_SPECULATION`(500)
-- 新定数 `TSUMEGO_EARLY_SPECULATION_ROOT_FRACTION = 0.67`（ai.py）
+- 新定数 `TSUMEGO_EARLY_SPECULATION_ROOT_FRACTION = 0.55`（ai.py。訂正: 追記1実測で PARTIAL は
+  毎回1本のみ・visits 1160〜1182 のため当初案 0.67(≈1200v) では届かず、0.55(≈990v) に変更）
 - **game.py から ai.py をモジュールレベル import しない**（循環。ウォッチャ内の遅延 import で解決）
 - ウォッチャの bail 条件: `current_node` 切替 / リージョン解除 / `region_completed` / 期限30秒。発火は一度だけ。掃除は次の `Game.play()` 冒頭
 - 採用ゲート（Task 4）: E2E フル回帰の正答不変 ＋ root ウォール非劣化（+0.3秒以内）
@@ -85,7 +86,8 @@ git commit -m "docs(tsumego): 段階3の前提実測（部分結果のownership�
 **Interfaces:**
 - Consumes（既存）: `tsumego_eligible_candidates(candidates, max_points_behind, min_visits)` / `select_tsumego_move(...)` / `tsumego_score_best(eligible)` / `tsumego_needs_score_best_verify(chosen, score_best, points_epsilon)` / `tsumego_score_best_challengers(chosen, eligible, score_best, root_ownership, stones, board_size, player_sign, min_visit_ratio)` / `tsumego_speculation_plan(...)`（Task 1 の結果が「含まれない」なら本文の集合計算をプロキシ版に差し替え）
 - Produces（Task 3 が使う）:
-  - `TSUMEGO_EARLY_SPECULATION_ROOT_FRACTION = 0.67`
+  - `TSUMEGO_EARLY_SPECULATION_ROOT_FRACTION = 0.55`（コントローラ裁定で 0.67 から変更。理由は
+    Global Constraints 参照）
   - `tsumego_early_speculation_items(candidate_moves, root_ownership, stones, board_size, player_sign, settings) -> list[dict]` — 要素は `{"move": str, "until_depth": Optional[int], "wide_root_noise": Optional[float]}`（`tsumego_speculation_plan` と同形式）。`settings` は `ai/ai:tsumego` の設定 dict（既定値の解決は関数内で `_generate_move` と同じキー・同じ既定値）
 
 - [ ] **Step 1: 失敗するテストを書く**
@@ -163,9 +165,8 @@ Expected: 新規4件が `ImportError` で FAIL
 ```python
 # 段階3（前倒し投機）の発火閾値: root リージョン解析の visits 合計がこの割合に達したら
 # Game 側ウォッチャが温め集合を発行する（スペック 2026-08-03-tsumego-stage3-early-speculation）。
-# 部分結果は約1秒間隔（reportDuringSearchEvery=1）で届くので、0.67×1800≈1200v は
-# 実質「2本目の部分結果」で発火する
-TSUMEGO_EARLY_SPECULATION_ROOT_FRACTION = 0.67
+# 実測 2026-08-03: 部分結果は約1秒間隔で1本のみ・visits 1160〜1182。0.67 では届かないので 0.55
+TSUMEGO_EARLY_SPECULATION_ROOT_FRACTION = 0.55
 
 
 def tsumego_early_speculation_items(candidate_moves, root_ownership, stones, board_size, player_sign, settings):

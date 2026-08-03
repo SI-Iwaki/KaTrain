@@ -2517,6 +2517,65 @@ def tsumego_speculation_plan(
     return plan
 
 
+# 段階3（前倒し投機）の発火閾値: root リージョン解析の visits 合計がこの割合に達したら
+# Game 側ウォッチャが温め集合を発行する（スペック 2026-08-03-tsumego-stage3-early-speculation）。
+# 実測 2026-08-03: 部分結果は約1秒間隔で1本のみ・visits 1160〜1182（1800visits の 0.644〜0.657）。
+# 0.67（1206v）では構造的に届かないので、1本目の部分結果で確実に発火する 0.55（990v）にする
+TSUMEGO_EARLY_SPECULATION_ROOT_FRACTION = 0.55
+
+
+def tsumego_early_speculation_items(candidate_moves, root_ownership, stones, board_size, player_sign, settings):
+    """root 部分結果のスナップショットから前倒し温め集合を返す純関数（判定には一切使わない）。
+
+    集合 = 検証バッチ本体（仮 chosen・目数最善・挑戦者。実検証と同一条件＝untilDepth 既定・
+    wRN 既定・ownership=True で撃たれる）＋ 段階1+2 の温め集合（`tsumego_speculation_plan`）。
+    仮選択は最終 1800visits と別物になりうるが、ずれた分はミス（捨てるだけ）で安全。
+    設定キーと既定値は `_generate_move` の抽出と同一に保つこと（ずれると温め条件が実クエリと
+    合わずキャッシュ全ミスになる）。
+    """
+    settings = settings or {}
+    max_points_behind = settings.get("max_points_behind", 2.0)
+    gain_epsilon = settings.get("gain_epsilon", 0.3)
+    min_visits = settings.get("min_visits", 10)
+    min_visit_ratio = float(settings.get("gain_min_visit_ratio", TSUMEGO_GAIN_MIN_VISIT_RATIO))
+    points_epsilon = float(settings.get("points_epsilon", TSUMEGO_POINTS_EPSILON))
+    rescue_margin = float(settings.get("gain_rescue_margin", TSUMEGO_GAIN_RESCUE_MARGIN))
+    chosen = select_tsumego_move(
+        candidate_moves, root_ownership, stones, board_size, player_sign,
+        max_points_behind, gain_epsilon, min_visits, min_visit_ratio, points_epsilon,
+    )
+    if chosen is None:
+        return []
+    eligible = tsumego_eligible_candidates(candidate_moves, max_points_behind, min_visits)
+    score_best = tsumego_score_best(eligible)
+    items = []
+    if score_best is not None:
+        verify_moves = [chosen["move"]]
+        if score_best["move"] not in verify_moves:
+            verify_moves.append(score_best["move"])
+        if chosen["move"] != score_best["move"] and tsumego_needs_score_best_verify(chosen, score_best, points_epsilon):
+            for cand in tsumego_score_best_challengers(
+                chosen, eligible, score_best, root_ownership, stones, board_size, player_sign, min_visit_ratio
+            ):
+                if cand["move"] not in verify_moves:
+                    verify_moves.append(cand["move"])
+        items += [{"move": m, "until_depth": None, "wide_root_noise": None} for m in verify_moves]
+    items += tsumego_speculation_plan(
+        candidate_moves, eligible, chosen, score_best, root_ownership, stones, board_size, player_sign,
+        min_visits, min_visit_ratio, points_epsilon, rescue_margin=rescue_margin,
+        include_rescue=settings.get("gain_verify", True),
+        include_ko_screen=settings.get("tie_ko_screen", True),
+    )
+    seen, deduped = set(), []
+    for item in items:
+        key = (item["move"], item["until_depth"], item["wide_root_noise"])
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped
+
+
 def select_tsumego_move(
     candidates,
     root_ownership,

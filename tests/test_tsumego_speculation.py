@@ -13,10 +13,12 @@
 """
 
 from katrain.core.ai import (
+    TSUMEGO_EARLY_SPECULATION_ROOT_FRACTION,
     TSUMEGO_GAIN_RESCUE_MARGIN,
     TSUMEGO_KO_REGION_UNTIL_DEPTH,
     TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE,
     TsumegoOwnershipStrategy,
+    tsumego_early_speculation_items,
     tsumego_gain_contenders,
     tsumego_rescue_candidates,
     tsumego_speculation_plan,
@@ -350,3 +352,50 @@ def test_fire_speculation_isolates_request_analysis_exception():
     strategy._fire_speculation(plan)
     assert len(engine.requests) == 1
     assert len(strategy._speculative_nodes) == 1
+
+
+def test_early_items_include_verify_batch_and_stage12_sets():
+    """検証バッチ本体（chosen・score_best・挑戦者、条件None/None）と段階1+2集合の和집합を返す"""
+    chosen = _cand("C3", 0.4, 500, {(3, 3): 0.9, (4, 4): 0.9})  # gain大・目数2番手
+    score_best = _cand("D4", -0.1, 400, {(3, 3): 0.1})  # 目数最善
+    rescue = _cand("E5", 3.0, 200, {(3, 3): 0.65, (4, 4): 0.65})  # 非contenderのgain上位
+    items = tsumego_early_speculation_items(
+        [chosen, score_best, rescue], ROOT_OWNERSHIP, STONES, (BOARD, BOARD), 1, {}
+    )
+    default_cond = {i["move"] for i in items if i["until_depth"] is None and i["wide_root_noise"] is None}
+    # 検証バッチ本体: chosen と score_best（この局面では挑戦者= chosen のみ）
+    assert {"C3", "D4"} <= default_cond
+    # 段階1+2 の救済スーパーセットも含まれる
+    assert "E5" in default_cond
+    # コウ検査温め（ud=6/wRN=0.0）も並存する
+    screen_cond = {i["move"] for i in items if i["until_depth"] is not None}
+    assert {"C3", "D4"} == screen_cond
+
+
+def test_early_items_dedupe_same_condition():
+    """同じ (move, until_depth, wRN) は1回だけ（検証バッチと救済集合の重複を潰す）"""
+    chosen = _cand("C3", 0.4, 500, {(3, 3): 0.9, (4, 4): 0.9})
+    score_best = _cand("D4", -0.1, 400, {(3, 3): 0.1})
+    items = tsumego_early_speculation_items(
+        [chosen, score_best], ROOT_OWNERSHIP, STONES, (BOARD, BOARD), 1, {}
+    )
+    keys = [(i["move"], i["until_depth"], i["wide_root_noise"]) for i in items]
+    assert len(keys) == len(set(keys))
+
+
+def test_early_items_empty_when_no_selection():
+    """ownership が無い等で仮選択できなければ空（発行しない＝安全側）"""
+    no_own = {"move": "C3", "pointsLost": 0.0, "visits": 500}  # ownership キーなし
+    assert tsumego_early_speculation_items([no_own], ROOT_OWNERSHIP, STONES, (BOARD, BOARD), 1, {}) == []
+
+
+def test_early_items_respect_settings_gates():
+    """gain_verify=False で救済温めが消え、tie_ko_screen=False でコウ検査温めが消える"""
+    chosen = _cand("C3", 0.4, 500, {(3, 3): 0.9, (4, 4): 0.9})
+    score_best = _cand("D4", -0.1, 400, {(3, 3): 0.1})
+    rescue = _cand("E5", 3.0, 200, {(3, 3): 0.65, (4, 4): 0.65})
+    args = ([chosen, score_best, rescue], ROOT_OWNERSHIP, STONES, (BOARD, BOARD), 1)
+    no_rescue = tsumego_early_speculation_items(*args, {"gain_verify": False})
+    assert "E5" not in {i["move"] for i in no_rescue}
+    no_screen = tsumego_early_speculation_items(*args, {"tie_ko_screen": False})
+    assert all(i["until_depth"] is None for i in no_screen)
