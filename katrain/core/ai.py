@@ -14,7 +14,7 @@ from katrain.core.constants import (
     AI_TENUKI, AI_TENUKI_ELO_GRID, AI_TERRITORY, AI_TERRITORY_ELO_GRID,
     AI_FIGHTING, AI_FIGHTING_SCORELOSS_ELO,
     AI_WEIGHTED, AI_WEIGHTED_ELO, CALIBRATED_RANK_ELO, OUTPUT_DEBUG,
-    OUTPUT_ERROR, OUTPUT_INFO, PRIORITY_EXTRA_AI_QUERY, ADDITIONAL_MOVE_ORDER, AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE
+    OUTPUT_ERROR, OUTPUT_INFO, PRIORITY_EXTRA_AI_QUERY, PRIORITY_TSUMEGO_SPECULATION, ADDITIONAL_MOVE_ORDER, AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE
 )
 from katrain.core.engine import KataGoEngine
 from katrain.core.game import (
@@ -3123,6 +3123,10 @@ class TsumegoSolverStrategy(AIStrategy):
 class TsumegoOwnershipStrategy(AIStrategy):
     """詰碁用: 盤全体の目数ではなく対象石群の死活（ownership の変化量）で手を選ぶ"""
 
+    def __init__(self, game: Game, ai_settings: Dict):
+        super().__init__(game, ai_settings)
+        self._speculative_nodes = []
+
     def generate_move(self) -> Tuple[Move, str]:
         # 体感速度の調査用に所要時間を必ず出す（キャプチャ側の「枠の採否判定に X 秒」と同じ意図）
         started = time.time()
@@ -3396,6 +3400,64 @@ class TsumegoOwnershipStrategy(AIStrategy):
             OUTPUT_DEBUG,
         )
         return move, f"詰碁戦略: {len(candidate_moves)}手から {move.gtp()} を選択（{gain_text}）"
+
+    def _fire_speculation(self, plan):
+        """温めプランを低優先度で発行する。結果は捨てる＝着手判定への影響は構造的にゼロ。
+
+        投機クエリは使い捨て複製ゲームの子ノードに紐づける（`_region_prefetch_sim` と同じ
+        パターン）＝ terminate が投機だけに当たり、本譜ノードのクエリを巻き込まない。
+        条件（visits・ownership・untilDepth・wRN・リージョン）は実クエリと完全一致させる
+        — KataGo の NN キャッシュは ownerMap の有無や設定差を区別するため、ずれた温めは
+        1秒も速くしない（実測 2026-08-01 prefetch_cache_probe.py）。
+        """
+        if not plan:
+            return
+        sim = tsumego_simulation_game(self.game, self.cn)
+        if sim is None:
+            return
+        base = sim.current_node
+        engine = self.game.engines[self.cn.next_player]
+        visits = int((self.settings or {}).get("gain_verify_visits", TSUMEGO_GAIN_VERIFY_VISITS))
+        fired = []
+        for item in plan:
+            sim.set_current_node(base)
+            try:
+                child = sim.play(Move.from_gtp(item["move"], player=self.cn.next_player))
+            except IllegalMoveException:
+                continue
+            wrn = item["wide_root_noise"]
+            engine.request_analysis(
+                child,
+                callback=lambda _analysis, _partial: None,
+                error_callback=lambda _error: None,
+                visits=visits,
+                time_limit=False,
+                ownership=True,
+                region_of_interest=self.game.region_of_interest,
+                region_until_depth=item["until_depth"],
+                extra_settings=region_analysis_extra_settings(
+                    visits,
+                    getattr(self.game, "region_analysis_wide_root_noise", REGION_ANALYSIS_WIDE_ROOT_NOISE)
+                    if wrn is None
+                    else wrn,
+                ),
+                priority=PRIORITY_TSUMEGO_SPECULATION,
+            )
+            self._speculative_nodes.append(child)
+            fired.append(item["move"])
+        if fired:
+            self.game.katrain.log(
+                f"[{self.strategy_name}] 投機温め: {fired} の子局面を先回り発行（{visits}visits・結果は捨てる）",
+                OUTPUT_DEBUG,
+            )
+
+    def _cancel_speculation(self):
+        """未消化の投機クエリを打ち切る（結果はもともと捨てるだけなので副作用なし）"""
+        nodes = self._speculative_nodes
+        self._speculative_nodes = []
+        for node in nodes:
+            for engine in set(self.game.engines.values()):
+                engine.terminate_queries(only_for_node=node)
 
     def _log_candidates(self, candidate_moves, stones, player_sign, top=5):
         """上位候補を visits / 最多手比 / 目数 / gain つきで残す。

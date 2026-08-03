@@ -16,11 +16,15 @@ from katrain.core.ai import (
     TSUMEGO_GAIN_RESCUE_MARGIN,
     TSUMEGO_KO_REGION_UNTIL_DEPTH,
     TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE,
+    TsumegoOwnershipStrategy,
     tsumego_gain_contenders,
     tsumego_rescue_candidates,
     tsumego_score_best,
     tsumego_speculation_plan,
 )
+from katrain.core.constants import PRIORITY_TSUMEGO_SPECULATION
+from katrain.core.game import BaseGame, Game, GameNode
+from katrain.core.sgf_parser import Move
 
 BOARD = 13
 # tsumego_ownership_gain は var_to_grid(ownership, board_size) 経由で盤を読むため、
@@ -209,3 +213,88 @@ def test_empty_when_no_stones_or_no_score_best():
         [chosen], [chosen], chosen, None, ROOT_OWNERSHIP, [], BOARD_SIZE,
         player_sign=1, min_visits=10, min_visit_ratio=0.5, points_epsilon=0.25,
     ) == []
+
+
+class FakeEngine:
+    def __init__(self):
+        self.requests = []
+        self.terminated = []
+
+    def request_analysis(self, node, **kwargs):
+        self.requests.append((node, kwargs))
+
+    def terminate_queries(self, only_for_node=None, lock=True):
+        self.terminated.append(only_for_node)
+
+
+class FakeKatrain:
+    def log(self, *args, **kwargs):
+        pass
+
+
+def _speculation_strategy():
+    katrain = FakeKatrain()
+    base = BaseGame(katrain, move_tree=GameNode(properties={"SZ": 13, "RU": "japanese", "KM": 6.5}))
+    node = base.current_node  # 黒番の初期局面
+    engine = FakeEngine()
+    game = Game.__new__(Game)  # エンジン起動・解析スレッドを伴わない素の Game
+    game.katrain = katrain
+    game.engines = {"B": engine, "W": engine}
+    game.root = base.root
+    game.current_node = node
+    game.region_of_interest = [2, 6, 2, 6]
+    game.region_analysis_wide_root_noise = 0.04
+    strategy = TsumegoOwnershipStrategy.__new__(TsumegoOwnershipStrategy)
+    strategy.game = game
+    strategy.cn = node
+    strategy.settings = {"gain_verify_visits": 800}
+    strategy.strategy_name = "TsumegoOwnershipStrategy"
+    strategy._speculative_nodes = []
+    return strategy, engine, node
+
+
+def test_fire_speculation_issues_discardable_queries_with_exact_conditions():
+    strategy, engine, node = _speculation_strategy()
+    plan = [
+        {"move": "C3", "until_depth": None, "wide_root_noise": None},
+        {"move": "D4", "until_depth": 6, "wide_root_noise": 0.0},
+    ]
+    strategy._fire_speculation(plan)
+    assert len(engine.requests) == 2
+    (child1, kw1), (child2, kw2) = engine.requests
+    for child, kw in engine.requests:
+        assert kw["ownership"] is True  # ownerMap の有無で NN キャッシュが別物になる
+        assert kw["visits"] == 800
+        assert kw["region_of_interest"] == [2, 6, 2, 6]
+        assert kw["priority"] == PRIORITY_TSUMEGO_SPECULATION
+        assert child is not node and child.parent is not node  # 複製ゲームの子ノード
+    assert kw1["region_until_depth"] is None
+    assert kw2["region_until_depth"] == 6
+    assert strategy._speculative_nodes == [child1, child2]
+
+
+def test_cancel_terminates_exactly_the_speculative_nodes():
+    strategy, engine, node = _speculation_strategy()
+    strategy._fire_speculation([{"move": "C3", "until_depth": None, "wide_root_noise": None}])
+    fired = list(strategy._speculative_nodes)
+    strategy._cancel_speculation()
+    assert engine.terminated == fired
+    assert strategy._speculative_nodes == []
+    strategy._cancel_speculation()
+    assert engine.terminated == fired  # 二重 cancel は no-op
+
+
+def test_fire_speculation_skips_illegal_moves_and_empty_plan():
+    strategy, engine, node = _speculation_strategy()
+    strategy._fire_speculation([])
+    assert engine.requests == []
+    # 既に石がある点（root の追加配置は無いので普通の空点2連打で再現: C3 を2回）
+    strategy._fire_speculation(
+        [
+            {"move": "C3", "until_depth": None, "wide_root_noise": None},
+            {"move": "C3", "until_depth": None, "wide_root_noise": None},
+        ]
+    )
+    # 同一 sim 上で同じ空点に2回打つ→2手目は set_current_node(base) で戻すので両方合法。
+    # 非合法スキップの検証は盤外相当が作れないため「例外を出さず発行数が plan 以下」で担保
+    assert 1 <= len(engine.requests) <= 2

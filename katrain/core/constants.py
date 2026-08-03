@@ -26,6 +26,7 @@ PRIORITY_SWEEP = -10  # sweep is live, but slow, so deprioritize
 # 詰碁キャプチャの先読み（白番考慮中に有力応手の子局面で NN キャッシュを温める）。実クエリより
 # 必ず下に置く＝キューで追い越されない。実行中の先読みは Game.play が terminate する
 PRIORITY_REGION_PREFETCH = -50
+PRIORITY_TSUMEGO_SPECULATION = 500  # 手番内投機（温め）: 実クエリ(10_000)・新規ノード解析(1000)より下
 PRIORITY_ALTERNATIVES = 100  # extra analysis, live interaction
 PRIORITY_EQUALIZE = 100
 PRIORITY_EXTRA_ANALYSIS = 100
