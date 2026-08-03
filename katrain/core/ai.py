@@ -3126,6 +3126,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
     def generate_move(self) -> Tuple[Move, str]:
         # 体感速度の調査用に所要時間を必ず出す（キャプチャ側の「枠の採否判定に X 秒」と同じ意図）
         started = time.time()
+        self._speculative_nodes = []
         book_hit, book_coords = tsumego_book_next_move(self.game)
         if book_hit:
             self.game.katrain.log(f"[{self.strategy_name}] 回答帳の記録手順から着手します", OUTPUT_INFO)
@@ -3133,6 +3134,8 @@ class TsumegoOwnershipStrategy(AIStrategy):
         try:
             return self._generate_move()
         finally:
+            # 未消化の投機を掃除＝この後の新規ノード解析（priority 1000）とGPUを取り合わない
+            self._cancel_speculation()
             self.game.katrain.log(
                 f"[{self.strategy_name}] 着手決定に {time.time() - started:.1f} 秒", OUTPUT_INFO
             )
@@ -3213,6 +3216,28 @@ class TsumegoOwnershipStrategy(AIStrategy):
         else:
             escape_value, escape_label = None, "コウ脱出"
             score_best = tsumego_score_best(eligible)
+            # 手番内投機: この後の段（救済・コウ経路検査）が撃つことになりそうな子局面を
+            # 同一条件・低優先度で先回り発行して NN キャッシュを温める（結果は捨てる＝
+            # 判定への影響ゼロ。実クエリの再クエリが 0.1〜0.3 秒で返る）。
+            # 設計: docs/superpowers/specs/2026-08-03-tsumego-latency-overlap-design.md
+            self._fire_speculation(
+                tsumego_speculation_plan(
+                    candidate_moves,
+                    eligible,
+                    chosen,
+                    score_best,
+                    self.cn.ownership,
+                    stones,
+                    self.game.board_size,
+                    player_sign,
+                    min_visits,
+                    min_visit_ratio,
+                    points_epsilon,
+                    rescue_margin=float((self.settings or {}).get("gain_rescue_margin", TSUMEGO_GAIN_RESCUE_MARGIN)),
+                    include_rescue=(self.settings or {}).get("gain_verify", True),
+                    include_ko_screen=(self.settings or {}).get("tie_ko_screen", True),
+                )
+            )
             if (
                 score_best is not None
                 and chosen["move"] != score_best["move"]
