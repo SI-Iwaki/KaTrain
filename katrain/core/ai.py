@@ -2432,6 +2432,83 @@ def tsumego_rescue_candidates(
     return [cand for _gain, cand in scored[:max_candidates]]
 
 
+def tsumego_speculation_plan(
+    candidate_moves,
+    eligible,
+    chosen,
+    score_best,
+    root_ownership,
+    stones,
+    board_size,
+    player_sign,
+    min_visits,
+    min_visit_ratio,
+    points_epsilon,
+    include_rescue=True,
+    include_ko_screen=True,
+):
+    """後段（救済・コウ経路検査）が撃つことになりそうな子局面クエリの温めプランを返す。
+
+    **判定には一切使わない**読み取り専用の純関数。返した手は同一条件・低優先度で
+    先回り解析され結果は捨てられる（実クエリが同一条件で再クエリするとエンジン側
+    キャッシュで 0.1〜0.3 秒＝実測 2026-08-03 の QUERY:462/480）。ミスしても実クエリが
+    従来どおりコールドで走るだけで、着手判定への影響は構造的にゼロ。
+
+    救済の最終リスト（`tsumego_rescue_candidates`）は「検証後の選択手」の gain を閾値に
+    使うため発火時点では決まらないが、検証後の選択手は {chosen, score_best, challengers}
+    のどれかなので、**その中で gain 最小のものをアンカー**に計算すれば上位集合になる
+    （閾値が最小＝候補が最多。cap も +1 して縁を保険する）。
+
+    コウ経路検査の対象は最終選択手（＋格下げ時の対抗馬）だが、実測で最終選択手はほぼ
+    chosen か score_best なので、その2手（同一なら1手）を検査と同一条件
+    （`TSUMEGO_KO_REGION_UNTIL_DEPTH`・`TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE`）で温める。
+    ガード外の選択手は検査されない（`tsumego_class_screen_applies`）ので温めない。
+
+    要素は {"move", "until_depth", "wide_root_noise"}。None は「本譜と同じ既定」
+    （`_start_region_root` と同じ意味論）。
+    """
+    if chosen is None or score_best is None or not stones or not root_ownership:
+        return []
+    plan = []
+    if include_rescue:
+        anchors = [chosen, score_best]
+        if chosen["move"] != score_best["move"] and tsumego_needs_score_best_verify(
+            chosen, score_best, points_epsilon
+        ):
+            anchors += tsumego_score_best_challengers(
+                chosen, eligible, score_best, root_ownership, stones, board_size, player_sign, min_visit_ratio
+            )
+        with_gain = [
+            (tsumego_ownership_gain(root_ownership, a["ownership"], stones, board_size, player_sign), a)
+            for a in anchors
+            if a.get("ownership")
+        ]
+        if with_gain:
+            anchor = min(with_gain, key=lambda item: item[0])[1]
+            for cand in tsumego_rescue_candidates(
+                candidate_moves,
+                tsumego_gain_contenders(eligible, score_best, min_visit_ratio),
+                anchor,
+                root_ownership,
+                stones,
+                board_size,
+                player_sign,
+                min_visits,
+                max_candidates=TSUMEGO_GAIN_RESCUE_MAX_CANDIDATES + 1,
+            ):
+                plan.append({"move": cand["move"], "until_depth": None, "wide_root_noise": None})
+    if include_ko_screen and tsumego_class_screen_applies(chosen, eligible):
+        for cand in {c["move"]: c for c in [chosen, score_best]}.values():
+            plan.append(
+                {
+                    "move": cand["move"],
+                    "until_depth": TSUMEGO_KO_REGION_UNTIL_DEPTH,
+                    "wide_root_noise": TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE,
+                }
+            )
+    return plan
+
+
 def select_tsumego_move(
     candidates,
     root_ownership,
