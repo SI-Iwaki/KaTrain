@@ -24,7 +24,7 @@
 `BaseGame.__init__` を直接呼ぶ。そのため `Game.__init__` が本来設定する
 `region_analysis_visits` / `region_analysis_wide_root_noise` / `region_prefetch_replies` /
 `_region_prefetch_nodes` / `_early_speculation_nodes` が **DebugGame インスタンスには一切
-存在しない**。`Game.play(analyze=True)` は无条件に `self._cancel_region_prefetch()` /
+存在しない**。`Game.play(analyze=True)` は無条件に `self._cancel_region_prefetch()` /
 `self._cancel_early_speculation()` を呼び、region 分岐に入れば `self._maybe_region_prefetch()`
 （`self.region_prefetch_replies` を読む）も呼ぶため、これらを持たない DebugGame でそのまま
 `analyze=True` の play() を呼ぶと `AttributeError` になる。GUI の `Game` はコンストラクタで
@@ -49,7 +49,7 @@ import time
 os.environ["KIVY_NO_ARGS"] = "1"
 
 from katrain.core.constants import AI_TSUMEGO, DATA_FOLDER, PLAYER_AI, PLAYER_HUMAN
-from katrain.core.ai import STRATEGY_REGISTRY
+from katrain.core.ai import STRATEGY_REGISTRY, TSUMEGO_EARLY_SPECULATION_ROOT_FRACTION
 from katrain.core.base_katrain import Player
 from katrain.core.engine import KataGoEngine
 from katrain.core.game import Move
@@ -59,7 +59,8 @@ from katrain_debug.runner import DebugGame, load_sgf_to_move
 HERE = os.path.dirname(os.path.abspath(__file__))
 VISITS = 1800
 WIDE_ROOT_NOISE = 0.04
-SPECULATION_THRESHOLD_FRACTION = 0.55  # ai.py TSUMEGO_EARLY_SPECULATION_ROOT_FRACTION と同値（表示用のみ）
+# ai.py の定数をそのまま表示用に使う（ハードコード値だと変更のたびにここが古くなる）
+SPECULATION_THRESHOLD_FRACTION = TSUMEGO_EARLY_SPECULATION_ROOT_FRACTION
 
 # e2e_suite.py の CASES から M/O/V2 だけ複製（region はリスト表現・line は正解手順）。
 # ply は「直前に白の手がある黒番」（偶数・2以上）を選ぶ: M は expect={4} をそのまま使用、

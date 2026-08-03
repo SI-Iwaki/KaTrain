@@ -6,6 +6,7 @@
 3. 掃除（_cancel_early_speculation）はウォッチャの子ノードだけを terminate する
 4. region 完了済み・閾値未達では発火しない
 """
+import threading
 import time
 
 from katrain.core.constants import AI_TSUMEGO, PLAYER_AI, PLAYER_HUMAN, PRIORITY_TSUMEGO_SPECULATION
@@ -93,7 +94,7 @@ def _early_game(visits_now=1500, region_completed=False):
 
 
 def test_worker_fires_exact_conditions_at_threshold():
-    game, node, engine = _early_game(visits_now=1500)  # 1500 >= 0.55*1800=990
+    game, node, engine = _early_game(visits_now=1500)  # 1500 >= 0.35*1800=630
     game._early_speculation_worker(node)
     assert engine.requests, "閾値到達で発火するはず"
     for child, kw in engine.requests:
@@ -107,14 +108,29 @@ def test_worker_fires_exact_conditions_at_threshold():
     assert game._early_speculation_nodes == [c for c, _ in engine.requests]
 
 
-def test_worker_does_not_fire_when_region_completed_or_below_threshold():
+def test_worker_does_not_fire_when_region_completed():
     game, node, engine = _early_game(visits_now=1500, region_completed=True)
     game._early_speculation_worker(node)
     assert engine.requests == []  # 完了済み＝段階1+2に委ねる
-    game2, node2, engine2 = _early_game(visits_now=600)  # 600 < 990
-    game2.current_node = None  # 閾値未達のままノード切替 → bail（無限ループ防止のテスト都合）
-    game2._early_speculation_worker(node2)
-    assert engine2.requests == []
+
+
+def test_worker_does_not_fire_below_threshold():
+    """閾値未達では発火しないことを、ワーカーを実際に待たせて検証する。
+
+    旧テストは `game2.current_node = None` を呼んでから worker を呼んでいたため、ワーカーが
+    ループ先頭の `self.current_node is not node` チェックで即 return し、閾値判定
+    （`sum(visits) >= threshold`）に一度も到達しない vacuous なテストだった（実装中に
+    0.67→0.55→0.35 と3回変わった値の回帰網が存在しない状態）。ここではワーカーを別スレッドで
+    起動し、閾値未達のまま待たせてから何も発火していないことを確認する（ゲートを消すと
+    最初のループで即発火して落ちる）。
+    """
+    game, node, engine = _early_game(visits_now=600)  # 600 < 0.35*1800=630
+    th = threading.Thread(target=game._early_speculation_worker, args=(node,), daemon=True)
+    th.start()
+    time.sleep(0.3)
+    assert engine.requests == []  # 閾値未達で発火しない（ゲートを消すと落ちる）
+    game.current_node = None  # ワーカーを bail させて後片付け
+    th.join(timeout=2)
 
 
 def test_maybe_skips_human_and_non_tsumego_ai():

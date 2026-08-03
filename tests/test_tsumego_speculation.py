@@ -355,7 +355,7 @@ def test_fire_speculation_isolates_request_analysis_exception():
 
 
 def test_early_items_include_verify_batch_and_stage12_sets():
-    """検証バッチ本体（chosen・score_best・挑戦者、条件None/None）と段階1+2集合の和집합を返す"""
+    """検証バッチ本体（chosen・score_best・挑戦者、条件None/None）と段階1+2集合の和集合を返す"""
     chosen = _cand("C3", 0.4, 500, {(3, 3): 0.9, (4, 4): 0.9})  # gain大・目数2番手
     score_best = _cand("D4", -0.1, 400, {(3, 3): 0.1})  # 目数最善
     rescue = _cand("E5", 3.0, 200, {(3, 3): 0.65, (4, 4): 0.65})  # 非contenderのgain上位

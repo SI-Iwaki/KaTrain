@@ -707,7 +707,10 @@ class Game(BaseGame):
 
     def _cancel_early_speculation(self):
         """発行済みの前倒し投機クエリを打ち切る（結果はもともと捨てるだけなので副作用なし）"""
-        nodes = self._early_speculation_nodes
+        # play() は着手のたびに無条件でこれを呼ぶため、Game.__init__ を経由しないインスタンス
+        # （デバッグ用サブクラス等）で _early_speculation_nodes 未初期化のまま AttributeError に
+        # ならないよう getattr で防御する
+        nodes = getattr(self, "_early_speculation_nodes", [])
         self._early_speculation_nodes = []
         for node in nodes:
             for engine in set(self.engines.values()):
@@ -727,6 +730,9 @@ class Game(BaseGame):
             return
         try:
             info = players_info[node.next_player]
+            # strategy == AI_TSUMEGO のみ対象。ai:tsumego_solver は未解決時に同一手番内で
+            # ai:tsumego へ委譲するがここでは弾く＝ソルバ採用時にフォールバックは稀なため対象外
+            # とした設計判断（漏れではない）。必要ならここを広げる
             if info.player_type == PLAYER_HUMAN or getattr(info, "strategy", None) != AI_TSUMEGO:
                 return
         except (KeyError, AttributeError):
@@ -744,6 +750,8 @@ class Game(BaseGame):
 
         deadline = time.time() + 30.0
         threshold = ai_mod.TSUMEGO_EARLY_SPECULATION_ROOT_FRACTION * self.region_analysis_visits
+        if threshold <= 0:
+            return  # 0 以下で機構を停止（`ponder_replies=0` と対称）
         while True:
             if (
                 time.time() > deadline
@@ -753,7 +761,10 @@ class Game(BaseGame):
             ):
                 return
             moves = node.analysis.get("moves") or {}
-            if moves and sum(d.get("visits", 0) for d in moves.values()) >= threshold:
+            # エンジン受信スレッドが analysis["moves"] に新規キーを挿入している最中に読むと
+            # "dictionary changed size during iteration" が飛びうるので list() でスナップショットする
+            # （game_node.py の move_dicts と同じ理由）
+            if moves and sum(d.get("visits", 0) for d in list(moves.values())) >= threshold:
                 break
             time.sleep(0.05)
         try:
