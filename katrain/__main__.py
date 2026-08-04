@@ -1361,14 +1361,26 @@ class KaTrainGui(Screen, KaTrainBase):
                     solver_problem = None
             if solver_problem is not None:
                 board = grid  # 盤面をそのまま出す（枠を張らない）
-                size = len(grid)
-                xs = [p[0] for p in solver_problem.region]
-                ys = [p[1] for p in solver_problem.region]
-                # analysis_region は上origin ((imin, imax), (jmin, jmax))。y（下origin）から変換
-                analysis_region = ((size - 1 - max(ys), size - 1 - min(ys)), (min(xs), max(xs)))
+                # 解析リージョンは**抽出 region の外接矩形にしない**。ソルバは自前の
+                # problem.region で解くのでこの矩形を必要としないが、KataGo 側（フォールバックの
+                # ai:tsumego と、セッションの再抽出 hint = build_session_from_game の
+                # region_of_interest）はこれに縛られる。抽出が戦いの一部しか覆えていなかった場合、
+                # ソルバが FAILED でフォールバックしても KataGo は箱の外の正解手を打てない。
+                # 実測 2026-08-05 case AF（13路左上・ログ tsumego_20260805_002009）: アタリの
+                # 黒 {A11,A12,A13} は白ターゲットと石でしか接しておらず（黒の呼吸点は A10 だけ、
+                # 白の呼吸点は C11/C12/C13 で共有ゼロ）閉包に一度も現れないため、抽出 region は
+                # 18点＝A列が丸ごと外になった。白 A10 でその黒を取られると跡地が白の眼形＝急所で、
+                # 正解は A12 なのに解析リージョン B9-F13 の外。generate_move_e2e 実測（同一局面・
+                # 3run）: 抽出 bbox(25点)→**F10 3/3**（GUI の誤答そのもの・pointsLost +19.53）／
+                # 枠なし経路と同じ region(63点)→**A12 3/3**。再抽出の hint も
+                # `defend target=3子 region=25点`（A12 は外）→ `attack target=13子 region=63点`
+                # （A12 を含む）に改善する。枠を張らない盤なのだから、リージョンも枠なし経路と
+                # 同じ「石の密集部＋pad」であるべき（抽出の狭さを KataGo に伝播させない）
+                _, analysis_region = self._tsumego_frameless_board(grid, settings, quiet=True)
                 self.log(
                     f"tsumego_capture: ソルバモードで出題します type={solver_problem.problem_type.value}"
                     f" target={len(solver_problem.target)}子 region={len(solver_problem.region)}点"
+                    f"（解析リージョンは枠なし経路と同じ{'全盤' if analysis_region is None else '範囲'}）"
                     f" [抽出 {time.time() - started:.2f} 秒]",
                     OUTPUT_INFO,
                 )

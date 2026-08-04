@@ -433,3 +433,57 @@ def test_capture_region_brackets_stones_in_move_coords():
         assert xmin <= x <= xmax and ymin <= y <= ymax, (
             f"石 (i={i},j={j}) → Move({x},{y}) がリージョン外: x[{xmin},{xmax}] y[{ymin},{ymax}]"
         )
+
+
+def test_solver_mode_analysis_region_is_the_frameless_one_not_the_problem_bbox():
+    """ソルバモードの解析リージョンは抽出 region の外接矩形にしない（case AF）。
+
+    実測 2026-08-05 の GUI 誤答（13路左上・ログ tsumego_20260805_002009）。抽出は
+    アタリの黒 {A11,A12,A13}（白ターゲットと石でしか接しておらず閉包に現れない）を
+    黙って境界に使い、`region=18点`＝**A列が丸ごと外**の別問題を返した。ソルバは自前の
+    problem.region で解くのでこの矩形を必要としないが、KataGo 側（フォールバックの
+    ai:tsumego と、セッション再抽出の hint）はこれに縛られるため、白 A10 で戦いが箱の外へ
+    出たあと、正解 A12 が候補にすら入らず F10（pointsLost +19.53）になった。
+
+    generate_move_e2e 実測（同一局面・3run）: 抽出 bbox(25点) → **F10 3/3**（GUI の誤答
+    そのもの）／枠なし経路と同じリージョン(63点) → **A12 3/3**（記録された正解手）。
+
+    __main__.py は Kivy 依存でここから import できないため、本番と同じ選び方
+    （`_tsumego_frameless_board` → `frameless_region(grid, region_pad)`）と同じ変換式
+    （y = board_size - 1 - i）だけをここに複製する。本番側を変更したらここも同期すること。
+    """
+    from katrain.core.tsumego_frame import frameless_region
+    from katrain.core.tsumego_problem import extract_problem
+
+    size = 13
+    cols = "ABCDEFGHJKLMN"
+
+    def to_ij(gtp):  # 認識グリッドの (i=上origin行, j=列)
+        return size - int(gtp[1:]), cols.index(gtp[0])
+
+    b_stones = "A11 A12 A13 B10 B9 C8 C9 D13 D8 E10 E8 F11 F9 G11 G12 G13 G9 H10".split()
+    w_stones = "B11 B12 B13 C10 D10 D9 E11 E12 E9 F12 F13".split()
+    grid = [["." for _ in range(size)] for _ in range(size)]
+    for gtp in b_stones:
+        i, j = to_ij(gtp)
+        grid[i][j] = "B"
+    for gtp in w_stones:
+        i, j = to_ij(gtp)
+        grid[i][j] = "W"
+
+    problem = extract_problem(grid=grid, to_play="B")
+    # 旧実装が使っていた「抽出 region の外接矩形」。正解手 A12 を含まない
+    xs = [p[0] for p in problem.region]
+    ys = [p[1] for p in problem.region]
+    old = (min(xs), max(xs), min(ys), max(ys))
+
+    region = frameless_region(grid, 1)  # 本番の region_pad 既定値
+    assert region is not None, "枠なし経路のリージョンが全盤に退化している（前提チェック）"
+    (imin, imax), (jmin, jmax) = region
+    new = (jmin, jmax, size - 1 - imax, size - 1 - imin)  # __main__._apply_tsumego_region と同じ変換
+
+    ax, ay = cols.index("A"), 12 - 1  # A12 の Move.coords（y は下origin: 行12 → y=11）
+    assert not (old[0] <= ax <= old[1] and old[2] <= ay <= old[3]), "前提: 旧リージョンは A12 を含まない"
+    assert new[0] <= ax <= new[1] and new[2] <= ay <= new[3], (
+        f"ソルバモードの解析リージョンが正解手 A12 を含んでいない: x[{new[0]},{new[1]}] y[{new[2]},{new[3]}]"
+    )

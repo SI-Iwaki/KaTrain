@@ -314,6 +314,47 @@ def test_capture_in_one_is_not_a_problem_even_with_room_in_region():
         )
 
 
+def test_extraction_can_miss_the_fight_through_stone_only_contact():
+    """既知の限界（case AF）を数値ごと固定する。抽出はここでは直せない。
+
+    実測 2026-08-05 の GUI 誤答（13路左上・ログ tsumego_20260805_002009）。記録された
+    正解手順は D12 → W D11 → C12 → **W A10（黒3子を取る）** → **A12** → W A11 → C11 →
+    W F10 → A9 で、白 A10 で取られた跡地 A11/A12/A13 が白 {B11,B12,B13} の眼形になる
+    ＝そこが急所。ところが黒 {A11,A12,A13} は白ターゲットと**石同士でしか接していない**
+    （黒の呼吸点は A10 だけ、白の呼吸点は C11/C12/C13 で共有する空点がゼロ）ため、
+    「region の空点に隣接する連」しか見ない closure に一度も現れず、absorbed にも walls にも
+    入らないまま「不可侵の境界」として黙って仮定される。case AA で入れた `_reaches_safety` の
+    ゲートは walls にしか掛からないので素通りする。
+
+    **これを閉包側で塞ぐ試みは実測で却下済み**（21ケース×全ply×hint有無 = 280抽出の A/B）:
+      - 石隣接の連も吸収/壁に分類する  → AA/E/F/F2/J/L/O/P の region が爆発または ERR（13件）
+      - 石隣接の連を壁にして `_reaches_safety` に掛ける → case AF は素通り（アタリの連も
+        唯一の呼吸点を通って自群へ歩けるので safety を満たす）。しかも5件が変化
+      - 石接触のアタリ連があれば閉包を却下 → 同 A/B で9件が ERR 化。E@2 の黒 N4、F@0 の
+        K12/N9、P@6 の L1/L2、AA@6 の N3N4、O@6 の A11A12B11B12 と、正常なケースにも
+        「隣接するアタリの連」は普通に存在し、静的には case AF と区別できない
+    区別には「その取りが答えに関わるか」＝解いてみることが要り、それは抽出の役目ではない。
+
+    実際の修正は解析リージョン側（`katrain/__main__.py` のソルバモード分岐が抽出 region の
+    外接矩形ではなく枠なし経路と同じリージョンを使う）で、フォールバックが正解手 A12 に
+    届くようにしてある。ここでは「抽出はこの盤を覆えない」ことを明示的に固定して、
+    将来この数値が動いたときに気づけるようにする。
+    """
+    from katrain.core.tsumego_problem import extract_problem
+    from katrain.core.tsumego_solver.model import from_gtp_coord
+
+    b_stones = "A11 A12 A13 B10 B9 C8 C9 D13 D8 E10 E8 F11 F9 G11 G12 G13 G9 H10"
+    w_stones = "B11 B12 B13 C10 D10 D9 E11 E12 E9 F12 F13"
+    black = {from_gtp_coord(s) for s in b_stones.split()}
+    white = {from_gtp_coord(s) for s in w_stones.split()}
+    prob = extract_problem(stones=(black, white), board_size=(13, 13), to_play=BLACK)
+    assert prob.problem_type == ProblemType.ATTACK
+    assert len(prob.region) == 18 and len(prob.target) == 11
+    xs = [p[0] for p in prob.region]
+    assert min(xs) == 1, "A列が抽出 region の外にある（case AF の既知の限界）"
+    assert from_gtp_coord("A12") not in prob.region
+
+
 # ---------- 問題の型と target（§5.2）----------
 
 
