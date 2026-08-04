@@ -150,8 +150,16 @@ class Theme:
     # info PV link
     INFO_PV_COLOR = to_hexcol(YELLOW)
 
-    # 回答帳バナー（盤の上・詰碁ビューでは右パネルのステータス欄が見えないため）
-    TSUMEGO_BOOK_BANNER_COLORS = {"playing": YELLOW, "done": GREEN, "off": ORANGE}
+    # 回答帳バナー（盤の上・詰碁ビューでは右パネルのステータス欄が見えないため）。
+    # playing/done/off = 再生状況、save/info/warn = 記録ボタンの一時メッセージ
+    TSUMEGO_BOOK_BANNER_COLORS = {
+        "playing": YELLOW,
+        "done": GREEN,
+        "off": ORANGE,
+        "save": GREEN,
+        "info": BLUE,
+        "warn": ORANGE,
+    }
     TSUMEGO_BOOK_BANNER_TEXT_COLOR = BLACK
 
     # graph

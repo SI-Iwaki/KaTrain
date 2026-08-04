@@ -128,6 +128,8 @@ class KaTrainGui(Screen, KaTrainBase):
     # 回答帳の再生状況（"" = 回答帳に無い問題）。詰碁ビューでは右パネルのステータス欄が
     # 非表示なので、盤の上のバナー（kv の TsumegoBookBanner）で常時見えるようにする
     tsumego_book_status = StringProperty("")
+    tsumego_banner_flash = StringProperty("")  # 同バナーへの一時メッセージ（保存完了など。空で解除）
+    tsumego_banner_flash_kind = StringProperty("save")  # 一時メッセージの色（save / info / warn）
     controls = ObjectProperty(None)
 
     def __init__(self, **kwargs):
@@ -151,6 +153,7 @@ class KaTrainGui(Screen, KaTrainBase):
 
         self.last_key_down = None
         self.last_focus_event = 0
+        self._tsumego_flash_event = None  # バナー一時メッセージの消去タイマー
 
     def log(self, message, level=OUTPUT_INFO):
         super().log(message, level)
@@ -403,6 +406,10 @@ class KaTrainGui(Screen, KaTrainBase):
             self.tsumego_book_ready = False
             self.tsumego_recording = False
             self.tsumego_book_status = ""  # 新しい盤ではバナーを一旦消す（照合後に update_gui が立て直す）
+            if self._tsumego_flash_event is not None:  # 前の盤の一時メッセージを持ち越さない
+                self._tsumego_flash_event.cancel()
+                self._tsumego_flash_event = None
+            self.tsumego_banner_flash = ""
 
         Clock.schedule_once(_reset_book_props, 0)
         for bw, player_info in self.players_info.items():
@@ -457,6 +464,28 @@ class KaTrainGui(Screen, KaTrainBase):
     def _do_resign(self):
         self.game.current_node.end_state = f"{self.game.current_node.player}+R"
 
+    def _tsumego_message(self, message, kind="save", seconds=5.0):
+        """記録ボタンの操作結果を盤上バナーに一時表示する（回答帳スペック追記2）。
+
+        詰碁ビューでは右パネルごとステータス欄が消えるので `set_status` は画面に出ない。
+        通常表示のためにステータス欄にも従来どおり出しつつ、バナーにも重ねて出す。
+        メッセージループスレッドから呼ばれるため、プロパティ更新は Clock 経由で行う。
+        """
+        self.controls.set_status(message, STATUS_INFO)
+
+        def _clear(_dt):
+            self._tsumego_flash_event = None
+            self.tsumego_banner_flash = ""
+
+        def _show(_dt):
+            if self._tsumego_flash_event is not None:  # 連打時は前のタイマーを捨てて出し直す
+                self._tsumego_flash_event.cancel()
+            self.tsumego_banner_flash_kind = kind
+            self.tsumego_banner_flash = message
+            self._tsumego_flash_event = Clock.schedule_once(_clear, seconds)
+
+        Clock.schedule_once(_show, 0)
+
     def _do_tsumego_record_toggle(self):
         """回答帳: 「正解手順を記録」/「この手順を保存」ボタン（回答帳スペック§6）。"""
         from katrain.core import tsumego_answer_book as answer_book
@@ -465,7 +494,7 @@ class KaTrainGui(Screen, KaTrainBase):
         game = self.game
         key = getattr(game, "tsumego_book_key", None)
         if not key:
-            self.controls.set_status("詰碁キャプチャの出題中のみ記録できます", STATUS_INFO)
+            self._tsumego_message("詰碁キャプチャの出題中のみ記録できます", kind="warn")
             return
         if not self.tsumego_recording:
             # 記録モード開始: root に巻き戻し、黒を人間にして黒白両方を手入力できるようにする
@@ -478,9 +507,10 @@ class KaTrainGui(Screen, KaTrainBase):
             game.undo(9999)
             self.update_player("B", player_type=PLAYER_HUMAN, player_subtype=PLAYING_NORMAL)
             Clock.schedule_once(lambda _dt: setattr(self, "tsumego_recording", True), 0)
-            self.controls.set_status(
+            self._tsumego_message(
                 "記録モード: アプリの正解どおりに黒白両方を打ち、終わったら「この手順を保存」",
-                STATUS_INFO,
+                kind="info",
+                seconds=8,
             )
             return
         # 保存
@@ -491,7 +521,7 @@ class KaTrainGui(Screen, KaTrainBase):
         if prev:
             self.update_player("B", player_type=prev[0], player_subtype=prev[1])
         if not moves or moves[0][1] != "B":
-            self.controls.set_status("手順が空か黒番から始まっていないため記録を破棄しました", STATUS_INFO)
+            self._tsumego_message("手順が空か黒番から始まっていないため記録を破棄しました", kind="warn")
             return
         bk_black, bk_white, bk_size = game.tsumego_book_stones
         t0 = game.tsumego_book_transforms[0]
@@ -505,10 +535,10 @@ class KaTrainGui(Screen, KaTrainBase):
         book = answer_book.get_book(lambda msg: self.log(msg, OUTPUT_INFO))
         added = book.add_line(key, bk_size, "B", canonical_black, canonical_white, line)
         game.tsumego_book_entry = book.lookup(key)  # 保存直後から再生可能（root に戻して検証できる）
-        self.controls.set_status(
-            f"正解手順を記録しました（{len(line)}手）。rootに戻しAI着手で検証できます" if added else "同じ手順が記録済みです",
-            STATUS_INFO,
-        )
+        if added:
+            self._tsumego_message(f"正解手順を回答帳に保存しました（{len(line)}手）", kind="save")
+        else:
+            self._tsumego_message("同じ手順が記録済みです（回答帳は変更なし）", kind="info")
 
     def _do_redo(self, n_times=1):
         self.board_gui.animating_pv = None
