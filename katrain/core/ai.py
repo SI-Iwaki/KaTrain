@@ -3115,6 +3115,32 @@ def tsumego_book_next_move(game):
         return False, None
 
 
+def tsumego_book_status(game):
+    """回答帳の再生状況（GUI バナー用）。"" / "playing" / "done" / "off"。
+
+    "" は「この問題は回答帳に無い（＝通常の詰碁パイプライン）」。着手判定には使わず
+    表示だけに使うが、"playing" の条件は `tsumego_book_next_move` と一致させる
+    （占有ずれで再生できない局面を「解答中」と表示しないため）。解析クエリは使わない。
+    """
+    entry = getattr(game, "tsumego_book_entry", None)
+    transforms = getattr(game, "tsumego_book_transforms", None)
+    if not entry or not transforms:
+        return ""
+    try:
+        from katrain.core import tsumego_answer_book as answer_book
+        from katrain.core.tsumego_solver_api import moves_from_game
+
+        size = game.board_size
+        if not isinstance(size, int):
+            size = size[0]
+        status = answer_book.line_status(entry, transforms, moves_from_game(game), size)
+        if status == "playing" and not tsumego_book_next_move(game)[0]:
+            return "off"
+        return status
+    except Exception:
+        return ""
+
+
 @register_strategy(AI_TSUMEGO_SOLVER)
 class TsumegoSolverStrategy(AIStrategy):
     """詰碁専用 死活ソルバ戦略（スペック 2026-08-01-tsumego-solver-design.md §9.1）。

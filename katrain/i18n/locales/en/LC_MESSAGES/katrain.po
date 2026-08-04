@@ -1282,3 +1282,15 @@ msgstr "Record solution"
 
 msgid "tsumego:save"
 msgstr "Save solution"
+
+#. banner: current problem is in the answer book and the recorded line is being replayed
+msgid "tsumego:book-playing"
+msgstr "Solving a problem from the answer book"
+
+#. banner: the recorded line has been played out to its end
+msgid "tsumego:book-done"
+msgstr "Answer book problem (recorded solution finished)"
+
+#. banner: moves deviated from every recorded line, back to the normal pipeline
+msgid "tsumego:book-off"
+msgstr "Answer book problem (off the recorded line - normal analysis)"

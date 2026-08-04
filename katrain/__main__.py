@@ -63,7 +63,7 @@ from kivy.resources import resource_find
 from kivy.properties import BooleanProperty, NumericProperty, ObjectProperty, StringProperty
 from kivy.clock import Clock
 from kivy.metrics import dp
-from katrain.core.ai import generate_ai_move
+from katrain.core.ai import generate_ai_move, tsumego_book_status as compute_tsumego_book_status
 
 from katrain.core.lang import DEFAULT_LANGUAGE, i18n
 from katrain.core.constants import (
@@ -125,6 +125,9 @@ class KaTrainGui(Screen, KaTrainBase):
     tsumego_view = BooleanProperty(False)  # 詰碁専用表示: 右パネル+上部トグル非表示、下部ナビは残す
     tsumego_book_ready = BooleanProperty(False)  # 回答帳照合完了（Task 6 で kv バインディングが消費）
     tsumego_recording = BooleanProperty(False)  # 回答帳の記録モード中（ボタンは「この手順を保存」）
+    # 回答帳の再生状況（"" = 回答帳に無い問題）。詰碁ビューでは右パネルのステータス欄が
+    # 非表示なので、盤の上のバナー（kv の TsumegoBookBanner）で常時見えるようにする
+    tsumego_book_status = StringProperty("")
     controls = ObjectProperty(None)
 
     def __init__(self, **kwargs):
@@ -247,6 +250,9 @@ class KaTrainGui(Screen, KaTrainBase):
         else:
             self.board_controls.engine_status_col = Theme.ENGINE_BUSY_COLOR
         self.board_controls.queries_remaining = self.engine.queries_remaining()
+
+        # 回答帳バナー（解析クエリ無しの純判定。回答帳に無い問題では "" ＝バナー非表示）
+        self.tsumego_book_status = compute_tsumego_book_status(self.game)
 
         # redraw board/stones
         if redraw_board:
@@ -396,6 +402,7 @@ class KaTrainGui(Screen, KaTrainBase):
         def _reset_book_props(_dt):
             self.tsumego_book_ready = False
             self.tsumego_recording = False
+            self.tsumego_book_status = ""  # 新しい盤ではバナーを一旦消す（照合後に update_gui が立て直す）
 
         Clock.schedule_once(_reset_book_props, 0)
         for bw, player_info in self.players_info.items():

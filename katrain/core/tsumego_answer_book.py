@@ -94,6 +94,26 @@ def next_move(entry: dict, transforms: Sequence[int], moves: List[Tuple[Optional
     return False, None
 
 
+def line_status(entry: dict, transforms: Sequence[int], moves: List[Tuple[Optional[Point], str]], size: int) -> str:
+    """記録手順に対する現在の局面の位置づけ。GUI 表示用（着手判定には使わない）。
+
+    "playing" = まだ記録の途中（次手が記録にある）/ "done" = 記録手順を打ち切った /
+    "off" = どの line とも前方一致しない（白が記録から逸脱した等）。
+    """
+    lines = entry.get("lines") or []
+    done = False
+    for t in transforms:
+        canon = moves_to_canonical(moves, t, size)
+        n = len(canon)
+        for line in lines:
+            if line[:n] != canon:  # 長さが足りない line もここで落ちる
+                continue
+            if len(line) > n:
+                return "playing"
+            done = True
+    return "done" if done else "off"
+
+
 DEFAULT_PATH = os.path.expanduser("~/.katrain/tsumego_answers.json")
 
 

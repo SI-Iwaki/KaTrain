@@ -3,12 +3,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from katrain.core.ai import tsumego_book_next_move
+from katrain.core.ai import tsumego_book_next_move, tsumego_book_status
 from katrain.core.tsumego_answer_book import (
     AnswerBook,
     canonicalize,
     gtp_to_point,
     inverse_transform,
+    line_status,
     moves_to_canonical,
     next_move,
     point_to_gtp,
@@ -247,3 +248,56 @@ class TestBookNextMove:
         _, transforms, entry = _entry_for(REF_BLACK, REF_WHITE, REF_LINE, SIZE)
         game = _fake_game(REF_BLACK, REF_WHITE, [REF_LINE[0], (6, 6)], SIZE, entry, transforms)
         assert tsumego_book_next_move(game) == (False, None)
+
+
+class TestLineStatus:
+    """GUI バナー用の状況判定（着手には使わない）。"""
+
+    def test_playing_at_start_and_mid_line(self):
+        _, transforms, entry = _entry_for(REF_BLACK, REF_WHITE, REF_LINE, SIZE)
+        players = ["B", "W"] * 3
+        for n in range(len(REF_LINE)):  # 0手目〜最終手の1つ手前まで全部「再生中」
+            played = list(zip(REF_LINE[:n], players[:n]))
+            assert line_status(entry, transforms, played, SIZE) == "playing"
+
+    def test_done_when_line_exhausted(self):
+        # 記録を打ち切った局面は「逸脱」ではない（next_move は同じく miss を返す）
+        _, transforms, entry = _entry_for(REF_BLACK, REF_WHITE, REF_LINE, SIZE)
+        played = list(zip(REF_LINE, ["B", "W"] * 3))
+        assert line_status(entry, transforms, played, SIZE) == "done"
+        assert not next_move(entry, transforms, played, SIZE)[0]
+
+    def test_off_when_white_deviates(self):
+        _, transforms, entry = _entry_for(REF_BLACK, REF_WHITE, REF_LINE, SIZE)
+        played = [(REF_LINE[0], "B"), ((6, 6), "W")]
+        assert line_status(entry, transforms, played, SIZE) == "off"
+
+    def test_longer_line_wins_over_exhausted_one(self):
+        # 短い line を打ち切っていても、続きのある line と前方一致するなら「再生中」
+        _, transforms, entry = _entry_for(REF_BLACK, REF_WHITE, REF_LINE[:3], SIZE)
+        entry["lines"].append(moves_to_canonical(list(zip(REF_LINE, ["B", "W"] * 3)), transforms[0], SIZE))
+        played = list(zip(REF_LINE[:3], ["B", "W", "B"]))
+        assert line_status(entry, transforms, played, SIZE) == "playing"
+
+
+class TestBookStatusFromGame:
+    def test_no_entry_is_empty(self):
+        game = _fake_game(REF_BLACK, REF_WHITE, [], SIZE, None, None)
+        assert tsumego_book_status(game) == ""
+
+    def test_playing(self):
+        _, transforms, entry = _entry_for(REF_BLACK, REF_WHITE, REF_LINE, SIZE)
+        game = _fake_game(REF_BLACK, REF_WHITE, [], SIZE, entry, transforms)
+        assert tsumego_book_status(game) == "playing"
+
+    def test_occupied_point_reports_off(self):
+        # 認識ずれで再生できない局面を「解答中」と表示しない（戦略の判定と一致させる）
+        _, transforms, entry = _entry_for(REF_BLACK, REF_WHITE, REF_LINE, SIZE)
+        game = _fake_game(REF_BLACK | {REF_LINE[0]}, REF_WHITE, [], SIZE, entry, transforms)
+        assert tsumego_book_status(game) == "off"
+
+    def test_done_and_off(self):
+        _, transforms, entry = _entry_for(REF_BLACK, REF_WHITE, REF_LINE, SIZE)
+        assert tsumego_book_status(_fake_game(REF_BLACK, REF_WHITE, REF_LINE, SIZE, entry, transforms)) == "done"
+        deviated = _fake_game(REF_BLACK, REF_WHITE, [REF_LINE[0], (6, 6)], SIZE, entry, transforms)
+        assert tsumego_book_status(deviated) == "off"

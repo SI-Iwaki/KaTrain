@@ -1228,3 +1228,15 @@ msgstr "正解手順を記録"
 
 msgid "tsumego:save"
 msgstr "この手順を保存"
+
+#. banner: current problem is in the answer book and the recorded line is being replayed
+msgid "tsumego:book-playing"
+msgstr "回答帳の問題を解答中"
+
+#. banner: the recorded line has been played out to its end
+msgid "tsumego:book-done"
+msgstr "回答帳の問題（記録手順は再生完了）"
+
+#. banner: moves deviated from every recorded line, back to the normal pipeline
+msgid "tsumego:book-off"
+msgstr "回答帳の問題（記録外の手順→通常の解析で着手）"

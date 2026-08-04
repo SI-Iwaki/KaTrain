@@ -225,6 +225,37 @@
         size_hint: None, 0.5
         pos_hint: {'center_x': 0.15,'center_y':0.5}
         on_left_release: root.katrain("play",None)
+    ClickableLabel:
+        # エンジン状態ランプ。記録ボタンが出ている間だけその左へ退避する（非表示時は従来位置
+        # center_x=0.85 のまま）。退避時は当たり判定の箱も詰める（狭い窓ではナビゲーション
+        # ボタン列の右端と接するため。描画は min(width,height) 基準なので見た目の大きさは不変）。
+        # ナビゲーション列より前に宣言＝重なった数pxではナビ側がタッチを取る（kv の後勝ち）
+        pos_hint: {'center_y':0.5}
+        x: (tsumego_record_btn.x - dp(4) - self.width) if (root.katrain and root.katrain.tsumego_book_ready) else (0.85 * root.width - self.width / 2)
+        size_hint: None, 1
+        width: self.height * (0.6 if (root.katrain and root.katrain.tsumego_book_ready) else 1)
+        canvas.before:
+            Color:
+                rgba: Theme.ENGINE_PONDERING_COLOR
+            Ellipse:
+                pos: self.center_x - min(self.width,self.height)/6, self.center_y - min(self.width,self.height)/6
+                size: min(self.width,self.height)/3, min(self.width,self.height)/3
+            Color:
+                rgba: root.engine_status_col
+            Ellipse:
+                angle_start: 0 if root.engine_status_pondering==-1 else root.engine_status_pondering % 360
+                angle_end: 360 if root.engine_status_pondering==-1 else (root.engine_status_pondering  % 360 + 180)
+                pos: self.center_x - min(self.width,self.height)/6, self.center_y - min(self.width,self.height)/6
+                size: min(self.width,self.height)/3, min(self.width,self.height)/3
+            Color:
+                rgba: BLACK
+            Line:
+                circle: self.center_x, self.center_y, min(self.width,self.height)/6
+                width: 1
+        text: str(root.queries_remaining) if root.queries_remaining >= 3 else ''
+        color: BLACK
+        font_size: 0.5 * min(self.width,self.height) / max(2,len(self.text))
+        on_press: app.gui.controls.set_status(i18n._('ai-ponder'),STATUS_INFO)
     BoxLayout:
         size_hint: None, 1
         width: 8 * self.height
@@ -276,38 +307,35 @@
             icon: 'Rotate.png'
             on_press: root.katrain('rotate')
     AutoSizedRoundedRectangleButton:
+        id: tsumego_record_btn
         text: i18n._('tsumego:save') if root.katrain and root.katrain.tsumego_recording else i18n._('tsumego:record')
         size_hint: None, 0.5
-        pos_hint: {'center_x': 0.94, 'center_y': 0.5}
+        # 幅はテキスト依存（AutoSized）なので center_x で置くと分割表示の狭い窓で右にはみ出して
+        # 見切れる。右端から dp(6) に固定し、幅が変わっても追従するよう self.width にも束縛する
+        pos_hint: {'center_y': 0.5}
+        x: root.width - dp(6) - self.width
         opacity: 1 if root.katrain and root.katrain.tsumego_book_ready else 0
         disabled: not (root.katrain and root.katrain.tsumego_book_ready)
         on_left_release: root.katrain("tsumego-record-toggle")
-    ClickableLabel:
-        pos_hint: {'center_x': 0.85,'center_y':0.5}
-        size_hint: None, 1
-        width: self.height
-        canvas.before:
-            Color:
-                rgba: Theme.ENGINE_PONDERING_COLOR
-            Ellipse:
-                pos: self.pos[0] + self.width/2 - self.width/6, self.pos[1]  + self.height/2  - self.width/6
-                size: self.width/3, self.width/3
-            Color:
-                rgba: root.engine_status_col
-            Ellipse:
-                angle_start: 0 if root.engine_status_pondering==-1 else root.engine_status_pondering % 360
-                angle_end: 360 if root.engine_status_pondering==-1 else (root.engine_status_pondering  % 360 + 180)
-                pos: self.pos[0] + self.width/2 - self.width/6, self.pos[1]  + self.height/2  - self.width/6
-                size: self.width/3, self.width/3
-            Color:
-                rgba: BLACK
-            Line:
-                circle: self.pos[0] + self.width/2, self.pos[1] + self.height/2, self.width/6
-                width: 1
-        text: str(root.queries_remaining) if root.queries_remaining >= 3 else ''
-        color: BLACK
-        font_size: 0.5 * self.width / max(2,len(self.text))
-        on_press: app.gui.controls.set_status(i18n._('ai-ponder'),STATUS_INFO)
+
+
+# 回答帳バナー: 盤の真上に出す全幅の帯。詰碁ビューでは右パネル（ステータス欄）が非表示なので、
+# 回答帳の再生状況をログ以外で知る手段がここしかない。status が '' のときは高さ0で完全に消える
+<TsumegoBookBanner@MDBoxLayout+BackgroundMixin>:
+    status: ''
+    background_color: Theme.TSUMEGO_BOOK_BANNER_COLORS.get(root.status, Theme.TSUMEGO_BOOK_BANNER_COLORS['playing'])
+    Label:
+        font_name: i18n.font_name
+        font_size: min(sp(20), 0.65 * self.height)
+        bold: True
+        color: Theme.TSUMEGO_BOOK_BANNER_TEXT_COLOR
+        # 狭い窓では帯からはみ出さずに省略する（text_size 無しだとテクスチャが両端へあふれる）
+        text_size: self.width - dp(12), None
+        halign: 'center'
+        valign: 'middle'
+        shorten: True
+        shorten_from: 'right'
+        text: i18n._('tsumego:book-playing') if root.status=='playing' else (i18n._('tsumego:book-done') if root.status=='done' else (i18n._('tsumego:book-off') if root.status=='off' else ''))
 
 
 <HamburgerButton@TransparentIconButton>:
@@ -1165,6 +1193,12 @@
                             size_hint_y: None
                             height: 1 if root.zen > 0 or root.tsumego_view else max(sp(Theme.CONTROLS_PANEL_MIN_HEIGHT),min(sp(Theme.CONTROLS_PANEL_MAX_HEIGHT),self.width / Theme.CONTROLS_PANEL_ASPECT_RATIO))
                             opacity: 0 if root.zen > 0 or root.tsumego_view else 1
+                        TsumegoBookBanner:
+                            id: tsumego_book_banner
+                            status: root.tsumego_book_status
+                            size_hint_y: None
+                            height: dp(30) if root.tsumego_book_status else 0
+                            opacity: 1 if root.tsumego_book_status else 0
                         BadukPanWidget:
                             id: board_gui
                         BadukPanControls:
