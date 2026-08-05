@@ -284,6 +284,9 @@ Spec: `docs/superpowers/specs/2026-07-29-tsumego-ownership-design.md`（誤答�
 | jigo_deception_13_phase1_target | -2.0 | 13路盤のみ。Phase 1 の eff_target（target_max は +1.0 自動）。値: -1.0/-2.0/-3.0/-4.0 |
 | jigo_deception_13_phase2_target | -1.0 | 13路盤のみ。Phase 2 の eff_target（target_max は +1.0 自動）。値: -0.5/-1.0/-1.5/-2.0 |
 | jigo_force_sanrensei | false | ON で19路盤序盤に星打ちを強制（黒=三連星/白=2連星）。13路・9路は無効。黒が2子置いたコミット済みラインの中辺星等を白が妨害した瞬間、別ラインへpivotせず強制を打ち切り通常jigoに戻る。Stage 1 直後に対象を計算し非空なら Stage 2 をスキップして即着手。Spec: docs/superpowers/specs/2026-05-30-jigo-force-sanrensei-design.md |
+| jigo_endgame_humanstyle | false | ON でヨセ段階（下記手数以降）は target 追従をやめ、目差が target_score 以上になった手番から HumanStyle 9段（rank_9d）へ委譲する。**ヨセの手抜きは相手から見て露骨**（1手の目数がほぼ確定していて手順も一本道なので、大きい場所を放置する選択が明らかに不自然）なので、それを止めるためのオプション。判定は Stage1 発行前・目差は前手のキャッシュ（1手ラグ）。**劣勢のうちは jigo を継続**（`lead < target_score` の jigo は target 最接近手＝実質最善手なので手抜きは起きず、deception の挽回も取りこぼさない）。**比較対象はユーザー設定の target_score であって deception の eff_target ではない**（phase1/2 の eff_target は負なので、それと比べると「設計どおり劣勢に留まっている状態」を到達とみなして即委譲する）。一度委譲したら戻らない（sticky＝`game._jigo_endgame_handoff`。手番ごとに往復するとかえって不自然＋委譲後は `_jigo_last_current_lead` が更新されないのでどのみち古い値で判定し続ける）。委譲先は素の9段（`{"human_kyu_rank": -8, "modern_style": True}`＝`first_impression_*` 等は渡さない）。ai_thoughts に `[Jigo→9d yose]` が前置される。副作用: 相手が弱いとヨセで素直に稼ぐため最終目差は target を超えて広がりうる。Spec: docs/superpowers/specs/2026-08-05-jigo-endgame-humanstyle-design.md |
+| jigo_endgame_move | 150 | [19路] ヨセ委譲を開始する手数（120〜200・10刻み）。既定は deception phase3 開始手数と同じ |
+| jigo_endgame_move_13 | 85 | [13路] 同上（55〜90・5刻み）。既定は共通規約 ceil(0.5×169)=85（phase3 開始 83 は5刻みに乗らないため）。19/13/9路以外の盤は設定キーを持たず ceil(0.5×盤面マス数) にフォールバック |
 
 **設計上の限界**: 相手が毎手 6 目以上の大損失手を連続で打つような極端な棋力差の対局では、1 手あたり損失上限 `max_loss_per_move (5.6)` を AI 側が超えられず、target 範囲への収束が保証されない。ただし人間らしい着手は維持されるため「バレないこと」という主目的は達成される。相手の棋力が持碁モード（humanSL 9段相当）と釣り合うときのみ目差収束を期待する設計。
 
@@ -318,6 +321,8 @@ Spec: `docs/superpowers/specs/2026-07-29-tsumego-ownership-design.md`（誤答�
 | jigo9_phase3_start | 30 | 26/30/34/38 | phase2→3（挽回開始）。早いほど挽回が間に合う |
 | jigo9_phase1_target | -1.5 | -1.0/-1.5/-2.0/-2.5 | target_max=target+1.0 自動 |
 | jigo9_phase2_target | -0.5 | -0.5/-1.0/-1.5 | 同上 |
+| jigo_endgame_humanstyle | false | bool | ON でヨセ段階は HumanStyle 9段へ委譲（19/13路と共通のキー・挙動は上表参照） |
+| jigo9_endgame_move | 30 | 22/26/30/34/38 | ヨセ委譲を開始する手数。既定は deception phase3 開始手数と同じ |
 
 検証は GUI 実戦のみ（deception は trajectory 形成型で batch 評価不可）。CLI: `python -m katrain_debug --sgf <9路SGF> --move N --strategy jigo9`。Spec: `docs/superpowers/specs/2026-06-04-jigo-9x9-dedicated-mode-design.md`
 
