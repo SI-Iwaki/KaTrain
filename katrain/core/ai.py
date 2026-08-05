@@ -748,6 +748,53 @@ def _jigo_exclude_sharp_moves(candidates, current_lead, epsilon=SHARP_EPSILON):
     return non_sharp if non_sharp else candidates
 
 
+# ヨセ委譲の盤サイズ別スライダーキー（board_size → (設定キー, 既定手数)）
+# 19路150 / 9路30 は deception phase3 開始手数と一致（deception の ON/OFF で
+# 切替タイミングが動かない）。13路の phase3 開始 83 はスライダーの5刻みに
+# 乗らないので、他戦略と同じ共通規約 ceil(0.5 x 169) = 85 を採る。
+_JIGO_ENDGAME_MOVE_KEYS = {
+    19: ("jigo_endgame_move", 150),
+    13: ("jigo_endgame_move_13", 85),
+    9: ("jigo9_endgame_move", 30),
+}
+
+
+def _jigo_endgame_threshold(board_size, settings):
+    """ヨセ委譲を開始する手数。
+
+    19/13/9 路は盤サイズ別スライダー、それ以外は他戦略と同じ共通規約
+    ceil(0.5 × 盤面マス数) にフォールバックする。
+    board_size は max(width, height)（既存の呼び出し規約）。
+    GUI スライダーは float で保存されるので int() で丸める。
+    """
+    key_default = _JIGO_ENDGAME_MOVE_KEYS.get(board_size)
+    if key_default is None:
+        return math.ceil(0.5 * board_size * board_size)
+    key, default = key_default
+    return int(settings.get(key, default))
+
+
+def _jigo_endgame_handoff(board_size, move_num, last_lead, target_score, settings, sticky=False):
+    """HumanStyle 9段へ委譲すべきか。
+
+    条件: チェックボックス ON かつ
+          （sticky＝既に委譲済み）または
+          （手数が閾値以上 かつ last_lead が target_score 以上）
+
+    last_lead は前手のキャッシュ（None なら未到達扱い＝委譲しない）。
+    比較対象は**ユーザー設定の target_score** であって deception の eff_target
+    ではない。phase1/2 の eff_target は負なので、それと比べると「設計どおり
+    劣勢に留まっている状態」を到達とみなして即委譲してしまう。
+    """
+    if not settings.get("jigo_endgame_humanstyle", False):
+        return False
+    if sticky:
+        return True
+    if move_num < _jigo_endgame_threshold(board_size, settings):
+        return False
+    return last_lead is not None and last_lead >= target_score
+
+
 # 動的 rank 降格の chain（下位 → 上位）
 _JIGO_RANK_CHAIN = ["rank_5d", "rank_7d", "rank_9d"]
 
