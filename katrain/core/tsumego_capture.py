@@ -206,6 +206,38 @@ def capture_tsumego_grid(settings):
     return grid
 
 
+DEFAULT_NOFRAME_REGION_PAD = 3
+
+
+def capture_settings_for_frame_mode(settings, frameless):
+    """枠なしキャプチャ（ホットキー指定）のときだけ設定を差し替えて返す。
+
+    枠は「認識石の外接矩形 + margin」の**閉じた箱**で、`fit_margin` が枠外に守り側の
+    代償地帯（約 (盤面積-コミ-5)/2 点）を要求するため**内側は盤の約半分が上限**になる。
+    箱の外に正解手がある問題では、壁（攻め方の色）がその点を占めて打てなくなる
+    （実測 2026-08-05 case AG・13路・ログ tsumego_20260805_015813: bbox 8行×7列で
+    margin が 4→2 に縮み壁が row 4 に来た。正解手順は白が L8→M7→M6→L5 と下辺へ走る
+    ので、続く白 **M4 が黒の壁石**だった）。
+
+    枠を広げる方向では直せない（margin 3 は枠外 59 点 < 78.5 点で不成立）。自動判定も
+    できない — 「対象が問題自身の石で囲われていない」は実測30キャプチャ中25件で発火し、
+    これで枠を切り替えると正常な問題まで枠なしに落ちる。よって枠なしは**ユーザーの明示
+    指定**（`hotkey_noframe`）とし、押されなければ設定オブジェクトをそのまま返す＝
+    既存の3ホットキーの経路は一切変わらない。
+
+    枠なし時のリージョンは `noframe_region_pad`（既定 3）で取る。既定の `region_pad`(1)
+    のままだと人間（白）は盤全体に打てる一方で **AI（黒）の候補が壁の内側に留まる**ため、
+    箱の外へ出た戦いを追えない。
+    """
+    if not frameless:
+        return settings
+    try:
+        pad = max(0, int(settings.get("noframe_region_pad", DEFAULT_NOFRAME_REGION_PAD)))
+    except (TypeError, ValueError):
+        pad = DEFAULT_NOFRAME_REGION_PAD
+    return {**settings, "use_frame": False, "region_pad": pad}
+
+
 def main():
     import os
 

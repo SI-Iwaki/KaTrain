@@ -487,3 +487,81 @@ def test_solver_mode_analysis_region_is_the_frameless_one_not_the_problem_bbox()
     assert new[0] <= ax <= new[1] and new[2] <= ay <= new[3], (
         f"ソルバモードの解析リージョンが正解手 A12 を含んでいない: x[{new[0]},{new[1]}] y[{new[2]},{new[3]}]"
     )
+
+
+# ---- 枠なしキャプチャ（ホットキー指定・case AG） ----------------------------------
+
+
+def test_frame_mode_settings_untouched_when_not_frameless():
+    """枠なし指定が無いキャプチャは設定オブジェクトをそのまま返す（既存経路を一切変えない）"""
+    from katrain.core.tsumego_capture import capture_settings_for_frame_mode
+
+    settings = {"use_frame": True, "region_pad": 1, "noframe_region_pad": 3}
+    assert capture_settings_for_frame_mode(settings, False) is settings
+
+
+@pytest.mark.parametrize(
+    "settings,expected_pad",
+    [
+        ({"use_frame": True, "region_pad": 1}, 3),  # 既定
+        ({"use_frame": True, "region_pad": 1, "noframe_region_pad": 2}, 2),
+        ({"use_frame": True, "region_pad": 1, "noframe_region_pad": "x"}, 3),  # 壊れた値は既定へ
+        ({"use_frame": True, "region_pad": 1, "noframe_region_pad": -5}, 0),  # 負値はクランプ
+    ],
+)
+def test_frame_mode_settings_disables_frame_and_widens_region(settings, expected_pad):
+    """枠なし指定のキャプチャは use_frame を落とし、リージョンを noframe_region_pad で取る"""
+    from katrain.core.tsumego_capture import capture_settings_for_frame_mode
+
+    applied = capture_settings_for_frame_mode(settings, True)
+    assert applied is not settings, "元の設定 dict を破壊してはいけない"
+    assert applied["use_frame"] is False
+    assert applied["region_pad"] == expected_pad
+    assert settings.get("region_pad") == 1, "呼び出し側の設定が書き換わっている"
+
+
+def test_frameless_capture_reaches_answer_outside_the_frame_wall():
+    """枠の壁が正解手順を切る盤で、枠なしキャプチャなら正解手 M4 が打てる（case AG）。
+
+    実測 2026-08-05（13路・ログ tsumego_20260805_015813）。認識石の bbox は 8行×7列で、
+    `fit_margin` は「枠外に守り側の代償地帯 (169-7-5)/2 = 78.5 点」を確保できる最大の
+    margin を返すため 4 → **2** に縮む（margin 3 は枠外 59 点で不足）。結果、壁は
+    認識石のわずか2線外＝row 4 に来る。この問題の正解手順は白が L8→M7→M6→L5 と下辺へ
+    走るので、次の白 **M4 が黒の壁石**になり打てない。
+
+    枠を広げる方向では直せない（枠の内側は設計上「盤の約半分」が上限）。また「対象が
+    囲われていない」シグナルは実測30キャプチャ中25件で発火し、自動で枠を切り替えると
+    正常な問題まで枠なしに落ちる。よって枠なしはユーザーの明示指定（ホットキー）とし、
+    そのときのリージョンは `noframe_region_pad`(3) で取って黒も壁の外まで追えるようにする。
+    """
+    from katrain.core.tsumego_capture import capture_settings_for_frame_mode
+    from katrain.core.tsumego_frame import frameless_region, tsumego_frame_board
+
+    size = 13
+    cols = "ABCDEFGHJKLMN"
+
+    def to_ij(gtp):
+        return size - int(gtp[1:]), cols.index(gtp[0])
+
+    b_stones = "G12 G8 H10 H11 H7 H9 J12 J13 J6 J9 K7 L7 L9 M8 N8".split()
+    w_stones = "J10 J11 J8 K12 K8 K9 M10 M12".split()
+    grid = [["." for _ in range(size)] for _ in range(size)]
+    for gtp in b_stones:
+        i, j = to_ij(gtp)
+        grid[i][j] = "B"
+    for gtp in w_stones:
+        i, j = to_ij(gtp)
+        grid[i][j] = "W"
+
+    mi, mj = to_ij("M4")
+    framed, _region = tsumego_frame_board(grid, 7.0, True, False, 4, drop_non_core=True, black_to_attack_p=True)
+    assert grid[mi][mj] == ".", "前提: 認識盤では M4 は空点"
+    assert framed[mi][mj] == "B", "前提: 枠ありでは M4 が黒の壁石になる（これが打てない原因）"
+
+    pad = capture_settings_for_frame_mode({"use_frame": True, "region_pad": 1}, True)["region_pad"]
+    region = frameless_region(grid, pad)
+    assert region is not None, "枠なしのリージョンが全盤に退化している"
+    (imin, imax), (jmin, jmax) = region
+    assert imin <= mi <= imax and jmin <= mj <= jmax, (
+        f"枠なしキャプチャの解析リージョンが M4 を含んでいない: i[{imin},{imax}] j[{jmin},{jmax}]"
+    )

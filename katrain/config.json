@@ -53,6 +53,7 @@
         "hotkey": "f4",
         "hotkey_attack": "shift+f4",
         "hotkey_defend": "ctrl+f4",
+        "hotkey_noframe": "shift+ctrl+f4",
         "window_title": "BlueStacks",
         "board_sizes": [
             9,
@@ -70,6 +71,7 @@
         "region_wide_root_noise": 0.04,
         "use_frame": true,
         "region_pad": 1,
+        "noframe_region_pad": 3,
         "ponder_replies": 3,
         "solver_enabled": true,
         "solver_time_limit_ms": 30000,

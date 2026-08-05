@@ -798,11 +798,17 @@ class KaTrainGui(Screen, KaTrainBase):
         # 詰碁で構造的に反転し、測って直すことはできない（生盤 ownership・枠バランス・手番
         # フリップの3測定族すべて実測で分離不能＝spec 追記37）。アプリの問題文（黒先白死/
         # 黒先活）を見ているユーザーだけが役割を知っているので、押し分けで明示してもらう
+        # 枠なしキャプチャ（hotkey_noframe）: 枠は認識石の bbox+margin の閉じた箱で、内側は
+        # 設計上「盤の約半分」が上限（`capture_settings_for_frame_mode`）。箱の外に正解手が
+        # ある問題では壁がその点を占めて打てない（case AG）。自動では判定できないので、
+        # アプリの解答手順を見ているユーザーに押し分けてもらう。枠なしでは役割が読めない
+        # （壁の色が無い＝`tsumego_solver_attacks` が None）ので役割指定との組合せは持たない
         hotkeys = []
-        for key, default, role, label in (
-            ("hotkey", "f4", None, "自動推定"),
-            ("hotkey_attack", "shift+f4", True, "黒が攻め方(殺す問題)"),
-            ("hotkey_defend", "ctrl+f4", False, "黒が守り方(生きる問題)"),
+        for key, default, role, frameless, label in (
+            ("hotkey", "f4", None, False, "自動推定"),
+            ("hotkey_attack", "shift+f4", True, False, "黒が攻め方(殺す問題)"),
+            ("hotkey_defend", "ctrl+f4", False, False, "黒が守り方(生きる問題)"),
+            ("hotkey_noframe", "shift+ctrl+f4", None, True, "枠なし(正解手が枠の外に出る問題)"),
         ):
             spec = settings.get(key, default)
             if not spec:
@@ -812,7 +818,7 @@ class KaTrainGui(Screen, KaTrainBase):
             except ValueError as e:
                 self.log(f"tsumego_capture: ホットキー設定({key})が不正です: {e}", OUTPUT_ERROR)
                 continue
-            hotkeys.append((self._TSUMEGO_HOTKEY_ID + len(hotkeys), spec, mods, vk, role, label))
+            hotkeys.append((self._TSUMEGO_HOTKEY_ID + len(hotkeys), spec, mods, vk, (role, frameless), label))
         if not hotkeys:
             return
         self._tsumego_capture_busy = False
@@ -827,14 +833,15 @@ class KaTrainGui(Screen, KaTrainBase):
         あり、それに巻き込まれてホットキーが突然無反応になっていた（listen スレッドは GetMessage
         ループのまま生き続けるので、プロセスを外から見ても異常に見えないのが厄介だった）。
         RegisterHotKey なら WM_HOTKEY がこのスレッドのメッセージキューに積まれるため取りこぼさない。
-        役割指定ホットキー（黒が攻め方/守り方）も同じループで待ち、msg.wParam（ホットキーID）で
-        どのキーが押されたかを見分けて役割をキャプチャに渡す。
+        役割指定ホットキー（黒が攻め方/守り方）と枠なしキャプチャも同じループで待ち、
+        msg.wParam（ホットキーID）でどのキーが押されたかを見分けて (役割, 枠なし) を
+        キャプチャに渡す。
         """
         from ctypes import wintypes
 
         user32 = ctypes.windll.user32
         registered = []
-        for hotkey_id, spec, mods, vk, role, label in hotkeys:
+        for hotkey_id, spec, mods, vk, action, label in hotkeys:
             if not user32.RegisterHotKey(None, hotkey_id, mods | self._MOD_NOREPEAT, vk):
                 self.log(
                     f"tsumego_capture: ホットキー {spec}（{label}）の登録に失敗しました"
@@ -842,29 +849,29 @@ class KaTrainGui(Screen, KaTrainBase):
                     OUTPUT_ERROR,
                 )
                 continue
-            registered.append((hotkey_id, spec, role, label))
+            registered.append((hotkey_id, spec, action, label))
         if not registered:
             return
-        roles = {hotkey_id: role for hotkey_id, _spec, role, _label in registered}
+        actions = {hotkey_id: action for hotkey_id, _spec, action, _label in registered}
         self.log(
             "tsumego_capture: ホットキー "
-            + " / ".join(f"{spec}={label}" for _id, spec, _role, label in registered)
+            + " / ".join(f"{spec}={label}" for _id, spec, _action, label in registered)
             + " を登録しました",
             OUTPUT_INFO,
         )
         msg = wintypes.MSG()
         try:
             while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
-                if msg.message == self._WM_HOTKEY and msg.wParam in roles:
+                if msg.message == self._WM_HOTKEY and msg.wParam in actions:
                     # キャプチャ中もメッセージループを止めないよう、実処理は作業スレッドに投げる
                     threading.Thread(
-                        target=self._tsumego_capture_trigger, args=(roles[msg.wParam],), daemon=True
+                        target=self._tsumego_capture_trigger, args=actions[msg.wParam], daemon=True
                     ).start()
         finally:
-            for hotkey_id, _spec, _role, _label in registered:
+            for hotkey_id, _spec, _action, _label in registered:
                 user32.UnregisterHotKey(None, hotkey_id)
 
-    def _tsumego_capture_trigger(self, black_to_attack=None):
+    def _tsumego_capture_trigger(self, black_to_attack=None, frameless=False):
         # ホットキースレッドが起こした作業スレッドで実行される。
         # 認識までここで行い、盤面への反映はメッセージループに投げる
         from katrain.core.tsumego_capture import CaptureError, capture_tsumego_grid
@@ -888,7 +895,7 @@ class KaTrainGui(Screen, KaTrainBase):
             except Exception as e:
                 self._tsumego_capture_failed(f"詰碁キャプチャで予期しないエラー: {e}")
                 return
-            self("tsumego-capture-apply", grid, ko, margin, black_to_attack)
+            self("tsumego-capture-apply", grid, ko, margin, black_to_attack, frameless)
         finally:
             self._tsumego_capture_busy = False
 
@@ -1267,7 +1274,7 @@ class KaTrainGui(Screen, KaTrainBase):
         self.log(message, OUTPUT_ERROR)
         Clock.schedule_once(lambda _dt: self.controls.set_status(message, STATUS_ERROR, check_level=False), 0)
 
-    def _do_tsumego_capture_apply(self, grid, ko, margin, black_to_attack=None):
+    def _do_tsumego_capture_apply(self, grid, ko, margin, black_to_attack=None, frameless=False):
         # メッセージループスレッドで実行。既定は枠あり（use_frame: false で枠なし運用も選択可能）。
         # 枠なしを既定にしなかった理由: 実機検証で二律背反が判明したため。空いた盤面を放置すると
         # 地合いが支配し詰碁を読む動機が消える（実測: ある局面で-53目/勝率0%、別の局面で+37目/勝率100%）。
@@ -1278,9 +1285,12 @@ class KaTrainGui(Screen, KaTrainBase):
         # 枠あり設定でもその回だけ枠なしに落ちる（_choose_tsumego_frame が None を返す）。
         # new-game と解析発行は同一メッセージ内で行う
         # （分割すると new-game で game_id が変わり後続メッセージが破棄されるため）
-        from katrain.core.tsumego_capture import CaptureError, grid_to_sgf
+        from katrain.core.tsumego_capture import CaptureError, capture_settings_for_frame_mode, grid_to_sgf
 
         settings = self._config.get("tsumego_capture") or {}
+        # 枠なしキャプチャ（hotkey_noframe）はここで設定を差し替えるだけ。以降の分岐は
+        # `use_frame: false` の既存経路そのものなので、押されていないキャプチャは不変
+        settings = capture_settings_for_frame_mode(settings, frameless)
         komi = self.config("game/komi", 6.5)
         # 詰碁は1問1ファイルでログを取る（~/.katrain/logs/tsumego_<日付>_<時刻>.log。古い順に自動削除）。
         # ここで開くのは、出題の判断（抽出・検算・枠の採否）が _do_new_game より前に出るため
@@ -1291,7 +1301,12 @@ class KaTrainGui(Screen, KaTrainBase):
 
             bl, wh, (sz, _) = grid_to_stones(grid)
             self.log(
-                f"tsumego_capture: 認識盤面 {sz}路 ko={ko} margin={margin} black_to_attack={black_to_attack}",
+                f"tsumego_capture: 認識盤面 {sz}路 ko={ko} margin={margin} black_to_attack={black_to_attack}"
+                + (
+                    f" 枠なし指定=True（ホットキー。解析リージョンは region_pad={settings.get('region_pad')}）"
+                    if frameless
+                    else ""
+                ),
                 OUTPUT_INFO,
             )
             for label, pts in (("黒", bl), ("白", wh)):
