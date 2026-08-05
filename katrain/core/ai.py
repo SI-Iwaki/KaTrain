@@ -1517,6 +1517,52 @@ def parity9_match_tally(nodes, ai_player):
     return sum(mine_seq), sum(opp_seq[: len(mine_seq)]), len(mine_seq)
 
 
+# ヨセ判定で「未確定」とみなす ownership の絶対値の上限。スライダーにはしない
+PARITY9_UNSETTLED_ABS = 0.5
+
+
+def parity9_budget(lead, keep_margin):
+    """自分視点のリード（目）から外し予算（目）を返す。
+
+    互角・劣勢では 0＝一切外さない。安全幅ぶんは常に手元に残す。
+    """
+    return max(0.0, lead - keep_margin)
+
+
+def parity9_is_endgame(depth, ownership, endgame_move, unsettled_max):
+    """ヨセ段階に入ったか（手数閾値 AND 盤上の未確定度）。
+
+    ownership が None（取れなかった）ときは手数だけでヨセ入りに倒す。
+    AND のままだと「測れない＝永遠にヨセに入らない＝外し続ける」という
+    危険側に倒れるため。
+    """
+    if depth < endgame_move:
+        return False
+    if ownership is None:
+        return True
+    unsettled = sum(1 for o in ownership if abs(o) < PARITY9_UNSETTLED_ABS)
+    return unsettled <= unsettled_max
+
+
+def parity9_select(candidates, best_gtp, cap, min_hp):
+    """予算内の非最善手から humanPolicy 最大を選ぶ。該当なしなら None。
+
+    candidates: [{"gtp": str, "loss": float, "hp": float}, ...]
+
+    pass を除外するのは、パスが対局終了に直結し area scoring のダメ処理と
+    絡むため。最善手が pass なら呼び出し側が最善手（=pass）を打つ。
+    humanPolicy 同着は損失が小さいほうを採る（第2キー -loss）。
+    """
+    pool = [
+        c for c in candidates
+        if c["gtp"] != best_gtp and c["gtp"] != "pass"
+        and c["loss"] <= cap and c["hp"] >= min_hp
+    ]
+    if not pool:
+        return None
+    return max(pool, key=lambda c: (c["hp"], -c["loss"]))
+
+
 @register_strategy(AI_SCORELOSS)
 class ScoreLossStrategy(AIStrategy):
     """ScoreLoss strategy - weights moves based on point loss"""
