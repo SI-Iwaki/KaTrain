@@ -372,3 +372,21 @@ Spec: `docs/superpowers/specs/2026-07-29-tsumego-ownership-design.md`（誤答�
 |---|---|---|
 | MIN_TARGET_SPACE | 3 | target が使える空間 `space = len(region) - len(target)`（空点 + 眼空間の中の相手の石。ナカデの捨て石も眼空間なので数える＝**空点だけを数えてはいけない**）がこれ未満の抽出は受理しない（`predetermined_reason` → ProblemError → 枠張りへフォールバック）。詰碁は「打つ手で結果が変わる」問題で、space 0〜1＝取るだけ・2＝隣接なら死/離れていれば既に生き＝どちらも手番と無関係、3（直三・ナカデ）が初手で生死が入れ替わる最小の形。実測 2026-08-04 case AC: 開いた中盤の競り合いで実際の戦いの閉包が全部却下され、**呼吸点1の白1子だけ**が閉じて `region 2点/target 1子`（space=1）を出題→ソルバが 0.0s・nodes=1 で「取る」と答えて誤答。正当側の下限は実キャプチャ21ケースで space 6・教科書的な最小題材で 3。全抽出300件の A/B 差分は case I@2 の2件のみでいずれも改善（変更前は正解手が region 外）。spec 追記9 |
 | （`_captured_in_one`） | — | **space ゲートの穴を塞ぐ第2の判定**（定数なし）。攻め方の手番で target の全連が呼吸点1かつ唯一の呼吸点が同じ1点なら、region の広さに関係なく1手で取り切れる＝詰碁ではないので受理しない。space は「眼を作れる余地」の代理でしかなく **target の眼空間でない点まで数える**（実測 2026-08-04 case AE: 中身は case AC と同じ「アタリの白1子を取るだけ」なのに、閉包が黒 D8 とその呼吸点 D7 を巻き込んで space ちょうど 3 で素通り→誤答）。全抽出300件の A/B で差分0件＝既存ケースには該当する形が無く、今回の誤りだけを外科的に落とす。spec 追記12 |
+
+## Parity9Strategy（`ai:parity9` / 一致率追随（9路））
+
+9路専用。相手の AI 最善手一致数を上回っている間だけ、リード連動の損失予算内で
+humanPolicy 最大の手へ外す。ヨセ以降は KataGo 最善手固定。
+
+| キー | 意味 | 候補値 | 既定 |
+|---|---|---|---|
+| `parity9_keep_margin` | 安全幅（目）。予算 = リード − これ | 1.0 / 2.0 / 3.0 / 5.0 / 8.0 | 3.0 |
+| `parity9_max_loss_per_move` | 1手あたり損失キャップ（目） | 0.5 / 1.0 / 1.5 / 2.0 / 3.0 | 1.5 |
+| `parity9_match_margin` | 解禁に必要な一致数差 | 1 / 2 / 3 | 1 |
+| `parity9_endgame_move` | ヨセ手数閾値 | 22 / 26 / 30 / 34 / 38 | 30 |
+| `parity9_unsettled_max` | ヨセ判定の未確定点上限（\|ownership\| < 0.5 の点数） | 4 / 6 / 8 / 10 / 12 | 8 |
+| `parity9_min_human_policy` | 採用候補の humanPolicy 下限 | 0% / 0.5% / 1% / 2% | 0.01 |
+
+モジュール定数 `PARITY9_UNSETTLED_ABS = 0.5`（スライダーにしない）。
+
+設計: `docs/superpowers/specs/2026-08-06-parity9-strategy-design.md`
