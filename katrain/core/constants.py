@@ -230,12 +230,16 @@ AI_OPTION_VALUES = {
     "jigo_deception_13_phase1_target": [-1.0, -2.0, -3.0, -4.0],
     "jigo_deception_13_phase2_target": [-0.5, -1.0, -1.5, -2.0],
     "jigo_force_sanrensei": "bool",
+    "jigo_endgame_humanstyle": "bool",
+    "jigo_endgame_move": list(range(120, 210, 10)),  # 120〜200（10刻み・19路用）
+    "jigo_endgame_move_13": list(range(55, 95, 5)),  # 55〜90（5刻み・13路用）
     # ===== Jigo9Strategy（9路専用） =====
     "jigo9_phase1_start": [4, 6, 8, 10],
     "jigo9_phase2_start": [12, 16, 20, 24],
     "jigo9_phase3_start": [26, 30, 34, 38],
     "jigo9_phase1_target": [-1.0, -1.5, -2.0, -2.5],
     "jigo9_phase2_target": [-0.5, -1.0, -1.5],
+    "jigo9_endgame_move": [22, 26, 30, 34, 38],
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）
@@ -305,11 +309,15 @@ AI_OPTION_ORDER = {
     "jigo_deception_13_phase1_target": 14,
     "jigo_deception_13_phase2_target": 15,
     "jigo_force_sanrensei": 16,
+    "jigo_endgame_humanstyle": 17,
+    "jigo_endgame_move": 18,
+    "jigo_endgame_move_13": 19,
     "jigo9_phase1_start": 11,
     "jigo9_phase2_start": 12,
     "jigo9_phase3_start": 13,
     "jigo9_phase1_target": 14,
     "jigo9_phase2_target": 15,
+    "jigo9_endgame_move": 18,
 }
 
 AI_KEY_PROPERTIES = {

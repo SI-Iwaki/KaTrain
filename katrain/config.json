@@ -154,7 +154,10 @@
             "jigo_deception_13_phase3_start": 83,
             "jigo_deception_13_phase1_target": -2.0,
             "jigo_deception_13_phase2_target": -1.0,
-            "jigo_force_sanrensei": false
+            "jigo_force_sanrensei": false,
+            "jigo_endgame_humanstyle": false,
+            "jigo_endgame_move": 150,
+            "jigo_endgame_move_13": 85
         },
         "ai:jigo9": {
             "target_score": 0.5,
@@ -167,7 +170,9 @@
             "jigo9_phase2_start": 16,
             "jigo9_phase3_start": 30,
             "jigo9_phase1_target": -1.5,
-            "jigo9_phase2_target": -0.5
+            "jigo9_phase2_target": -0.5,
+            "jigo_endgame_humanstyle": false,
+            "jigo9_endgame_move": 30
         },
         "ai:scoreloss": {
             "strength": 0.2
