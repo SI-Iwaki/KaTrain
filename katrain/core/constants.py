@@ -72,13 +72,16 @@ AI_DIVERGE = "ai:diverge_move"
 AI_SIEGE = "ai:siege"
 AI_HUNT = "ai:hunt"
 AI_HUNT_DIVERGE = "ai:hunt_diverge"
+# 9路専用「一致率追随」戦略。相手の AI 最善手一致数を上回っている間だけ、
+# リード連動の損失予算内で humanPolicy 最大の手へ外す
+AI_PARITY_9 = "ai:parity9"
 
 AI_CONFIG_DEFAULT = AI_RANK
 
-AI_STRATEGIES_ENGINE = [AI_DEFAULT, AI_HANDICAP, AI_SCORELOSS, AI_SIMPLE_OWNERSHIP, AI_JIGO, AI_JIGO_9, AI_ANTIMIRROR]
+AI_STRATEGIES_ENGINE = [AI_DEFAULT, AI_HANDICAP, AI_SCORELOSS, AI_SIMPLE_OWNERSHIP, AI_JIGO, AI_JIGO_9, AI_PARITY_9, AI_ANTIMIRROR]
 AI_STRATEGIES_PICK = [AI_PICK, AI_LOCAL, AI_TENUKI, AI_INFLUENCE, AI_TERRITORY, AI_FIGHTING, AI_RANK]
 AI_STRATEGIES_POLICY = [AI_WEIGHTED, AI_POLICY] + AI_STRATEGIES_PICK
-AI_STRATEGIES = AI_STRATEGIES_ENGINE + AI_STRATEGIES_POLICY + [AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE, AI_TSUMEGO, AI_TSUMEGO_SOLVER]
+AI_STRATEGIES = AI_STRATEGIES_ENGINE + AI_STRATEGIES_POLICY + [AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE, AI_PARITY_9, AI_TSUMEGO, AI_TSUMEGO_SOLVER]
 AI_STRATEGIES_RECOMMENDED_ORDER = [
     AI_DEFAULT,
     AI_HUMAN,
@@ -92,6 +95,7 @@ AI_STRATEGIES_RECOMMENDED_ORDER = [
     AI_WEIGHTED,
     AI_JIGO,
     AI_JIGO_9,
+    AI_PARITY_9,
     AI_ANTIMIRROR,
     AI_PICK,
     AI_LOCAL,
@@ -112,6 +116,7 @@ AI_STRENGTH = {  # dan ranks, backup if model is missing. TODO: remove some?
     AI_POLICY: 5,
     AI_JIGO: float("nan"),
     AI_JIGO_9: float("nan"),
+    AI_PARITY_9: float("nan"),
     AI_SCORELOSS: -4,
     AI_WEIGHTED: -4,
     AI_PICK: -7,
@@ -240,6 +245,13 @@ AI_OPTION_VALUES = {
     "jigo9_phase1_target": [-1.0, -1.5, -2.0, -2.5],
     "jigo9_phase2_target": [-0.5, -1.0, -1.5],
     "jigo9_endgame_move": [22, 26, 30, 34, 38],
+    # ===== Parity9Strategy（9路専用・一致率追随） =====
+    "parity9_keep_margin": [1.0, 2.0, 3.0, 5.0, 8.0],
+    "parity9_max_loss_per_move": [0.5, 1.0, 1.5, 2.0, 3.0],
+    "parity9_match_margin": [1, 2, 3],
+    "parity9_endgame_move": [22, 26, 30, 34, 38],
+    "parity9_unsettled_max": [4, 6, 8, 10, 12],
+    "parity9_min_human_policy": [(0.0, "0%"), (0.005, "0.5%"), (0.01, "1%"), (0.02, "2%")],
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）
@@ -318,6 +330,12 @@ AI_OPTION_ORDER = {
     "jigo9_phase1_target": 14,
     "jigo9_phase2_target": 15,
     "jigo9_endgame_move": 18,
+    "parity9_keep_margin": 0,
+    "parity9_max_loss_per_move": 1,
+    "parity9_match_margin": 2,
+    "parity9_endgame_move": 3,
+    "parity9_unsettled_max": 4,
+    "parity9_min_human_policy": 5,
 }
 
 AI_KEY_PROPERTIES = {

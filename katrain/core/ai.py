@@ -14,7 +14,7 @@ from katrain.core.constants import (
     AI_TENUKI, AI_TENUKI_ELO_GRID, AI_TERRITORY, AI_TERRITORY_ELO_GRID,
     AI_FIGHTING, AI_FIGHTING_SCORELOSS_ELO,
     AI_WEIGHTED, AI_WEIGHTED_ELO, CALIBRATED_RANK_ELO, OUTPUT_DEBUG,
-    OUTPUT_ERROR, OUTPUT_INFO, PRIORITY_EXTRA_AI_QUERY, PRIORITY_TSUMEGO_SPECULATION, ADDITIONAL_MOVE_ORDER, AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE
+    OUTPUT_ERROR, OUTPUT_INFO, PRIORITY_EXTRA_AI_QUERY, PRIORITY_TSUMEGO_SPECULATION, ADDITIONAL_MOVE_ORDER, AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE, AI_PARITY_9
 )
 from katrain.core.engine import KataGoEngine
 from katrain.core.game import (
@@ -1561,6 +1561,204 @@ def parity9_select(candidates, best_gtp, cap, min_hp):
     if not pool:
         return None
     return max(pool, key=lambda c: (c["hp"], -c["loss"]))
+
+
+@register_strategy(AI_PARITY_9)
+class Parity9Strategy(AIStrategy):
+    """9路専用「一致率追随」戦略。
+
+    相手の AI 最善手一致数を上回っている間だけ、リード連動の損失予算内で
+    humanPolicy 最大の手へ外す。ヨセ以降は KataGo 最善手に固定する。
+
+    ゲートは安い順に直列で、すべての分岐が「KataGo 最善手を打つ」に倒れる
+    （フェイルセーフ = 外さない）。設計: 2026-08-06-parity9-strategy-design.md
+    """
+
+    def _log(self, msg):
+        self.game.katrain.log(f"[Parity9Strategy] {msg}", OUTPUT_DEBUG)
+
+    def _best_move(self, reason):
+        """KataGo 最善手（無ければ policy 最上位 → pass）を返す。"""
+        cands = self.cn.candidate_moves
+        if cands:
+            return Move.from_gtp(cands[0]["move"], player=self.cn.next_player), reason
+        pol = self.cn.policy_ranking
+        if pol:
+            return pol[0][1], f"{reason} (policy fallback)"
+        return Move(None, player=self.cn.next_player), f"{reason} (no candidates)"
+
+    def _run_query(self, label, **kwargs):
+        """追加クエリを1本撃って完了まで待つ。失敗時は None。"""
+        analysis, error = None, False
+
+        def on_result(a, partial_result):
+            nonlocal analysis
+            if not partial_result:
+                analysis = a
+
+        def on_error(a):
+            nonlocal error
+            error = True
+            self.game.katrain.log(f"[Parity9Strategy] {label} error: {a}", OUTPUT_ERROR)
+
+        engine = self.game.engines[self.cn.player]
+        engine.request_analysis(
+            self.cn,
+            callback=on_result,
+            error_callback=on_error,
+            priority=PRIORITY_EXTRA_AI_QUERY,
+            **kwargs,
+        )
+        while not (error or analysis):
+            time.sleep(0.01)
+            engine.check_alive(exception_if_dead=True)
+        return None if error else analysis
+
+    def _human_policy_lookup(self, human_policy):
+        """humanPolicy のフラット配列を gtp -> 値の関数に変換する。"""
+        bx, by = self.game.board_size
+
+        def lookup(gtp):
+            if gtp == "pass":
+                return human_policy[-1] if len(human_policy) > bx * by else 0.0
+            try:
+                move = Move.from_gtp(gtp)
+            except Exception:
+                return 0.0
+            if move.coords is None:
+                return 0.0
+            x, y = move.coords
+            idx = (by - 1 - y) * bx + x
+            return human_policy[idx] if 0 <= idx < len(human_policy) else 0.0
+
+        return lookup
+
+    def generate_move(self) -> Tuple[Move, str]:
+        self.wait_for_analysis()
+        player = self.cn.next_player
+        sign = 1 if player == "B" else -1
+
+        # ---- ゲート1: 9路専用 ----
+        if max(self.game.board_size) != 9:
+            self.game.katrain.log(
+                f"[Parity9Strategy] board size {self.game.board_size} is not 9x9; "
+                f"this mode is 9x9-only, playing KataGo best move",
+                OUTPUT_INFO,
+            )
+            return self._best_move("Parity9: not a 9x9 board, playing best move.")
+
+        cands = self.cn.candidate_moves
+        if not cands:
+            return self._best_move("Parity9: no candidate moves.")
+        best_gtp = cands[0]["move"]
+
+        # ---- ゲート2: ヨセ sticky（クエリ0本）----
+        if getattr(self.game, "_parity9_endgame", False):
+            self._log("Endgame: sticky (already locked) -> best move")
+            return self._best_move("Parity9: endgame (sticky), playing best move.")
+
+        # ---- ゲート3: 一致数（クエリ0本）----
+        match_margin = int(self.settings.get("parity9_match_margin", 1))
+        nodes = [n for n in self.cn.nodes_from_root if n.move and not n.is_root]
+        mine, opp, counted = parity9_match_tally(nodes, player)
+        self._log(f"Tally: mine={mine} opp={opp} (counted={counted}) margin={match_margin}")
+        if mine - opp < match_margin:
+            self._log("Tally: gate closed -> best move")
+            return self._best_move(
+                f"Parity9: match gate closed (mine={mine}, opp={opp}), playing best move."
+            )
+
+        # ---- Stage2: クリーンクエリ（正確な scoreLead + ownership）----
+        # ownership=True を明示するのは、ユーザーのローカル設定が
+        # _enable_ownership=false でも未確定度を測れるようにするため
+        stage2 = self._run_query(
+            "Stage2",
+            include_policy=False,
+            ownership=True,
+            extra_settings={
+                "ignorePreRootHistory": False,
+                "maxVisits": 600,
+                "wideRootNoise": 0.0,
+            },
+        )
+        if not stage2 or not stage2.get("moveInfos"):
+            self._log("Stage2 unavailable -> best move")
+            return self._best_move("Parity9: Stage2 unavailable, playing best move.")
+
+        # ---- ゲート4: ヨセ判定 ----
+        endgame_move = int(self.settings.get("parity9_endgame_move", 30))
+        unsettled_max = int(self.settings.get("parity9_unsettled_max", 8))
+        ownership = stage2.get("ownership")
+        n_unsettled = (
+            None if ownership is None
+            else sum(1 for o in ownership if abs(o) < PARITY9_UNSETTLED_ABS)
+        )
+        if parity9_is_endgame(self.cn.depth, ownership, endgame_move, unsettled_max):
+            self.game._parity9_endgame = True
+            self._log(
+                f"Endgame: depth={self.cn.depth} thr={endgame_move} "
+                f"unsettled={n_unsettled} max={unsettled_max} -> yose, locking"
+            )
+            return self._best_move("Parity9: endgame reached, playing best move.")
+        self._log(
+            f"Endgame: depth={self.cn.depth} thr={endgame_move} "
+            f"unsettled={n_unsettled} max={unsettled_max} -> not yet"
+        )
+
+        # ---- ゲート5: 損失予算 ----
+        keep_margin = float(self.settings.get("parity9_keep_margin", 3.0))
+        max_loss = float(self.settings.get("parity9_max_loss_per_move", 1.5))
+        lead = stage2.get("rootInfo", {}).get("scoreLead", 0.0) * sign
+        budget = parity9_budget(lead, keep_margin)
+        cap = min(budget, max_loss)
+        self._log(
+            f"Budget: lead={lead:.2f} margin={keep_margin} -> budget={budget:.2f} cap={cap:.2f}"
+        )
+        if budget <= 0.0:
+            return self._best_move(
+                f"Parity9: no budget (lead={lead:.2f}), playing best move."
+            )
+
+        # ---- Stage1: humanSL 9段（外すと決まってから撃つ）----
+        stage1 = self._run_query(
+            "Stage1",
+            include_policy=True,
+            extra_settings={
+                "humanSLProfile": "rank_9d",
+                "ignorePreRootHistory": False,
+                "maxVisits": 800,
+            },
+        )
+        if not stage1 or "humanPolicy" not in stage1:
+            self._log("Stage1 unavailable -> best move")
+            return self._best_move("Parity9: Stage1 unavailable, playing best move.")
+        hp_for_gtp = self._human_policy_lookup(stage1["humanPolicy"])
+
+        # ---- 候補構築と選択 ----
+        # 損失は「最善手の代わりに打つと何目損か」＝最善手基準（root 基準ではない）
+        move_infos = stage2["moveInfos"]
+        scores = [mi.get("scoreLead", 0.0) * sign for mi in move_infos]
+        best_score = max(scores)
+        candidates = [
+            {"gtp": mi["move"], "loss": best_score - s, "hp": hp_for_gtp(mi["move"])}
+            for mi, s in zip(move_infos, scores)
+        ]
+        min_hp = float(self.settings.get("parity9_min_human_policy", 0.01))
+        chosen = parity9_select(candidates, best_gtp, cap, min_hp)
+        if chosen is None:
+            self._log("No deviation candidate within cap -> best move")
+            return self._best_move("Parity9: no deviation candidate, playing best move.")
+
+        self._log(
+            f"Deviate: played {chosen['gtp']} (loss={chosen['loss']:.2f}, "
+            f"hp={chosen['hp']:.4f}) instead of {best_gtp}"
+        )
+        return (
+            Move.from_gtp(chosen["gtp"], player=player),
+            f"Parity9: deviated to {chosen['gtp']} (loss {chosen['loss']:.2f}, "
+            f"hp {chosen['hp']:.1%}) instead of {best_gtp}; "
+            f"tally mine={mine} opp={opp}, budget={budget:.2f}.",
+        )
 
 
 @register_strategy(AI_SCORELOSS)
