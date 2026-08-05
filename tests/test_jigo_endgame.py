@@ -68,3 +68,129 @@ class TestEndgameHandoff:
         s = _s(jigo9_endgame_move=30, jigo_endgame_move=150)
         assert _jigo_endgame_handoff(9, 29, 2.0, 0.5, s) is False
         assert _jigo_endgame_handoff(9, 30, 2.0, 0.5, s) is True
+
+
+# ---------------------------------------------------------------------------
+# 委譲の配線テスト（フェイクの game/katrain。KataGo エンジンは起動しない）
+# ---------------------------------------------------------------------------
+
+
+class _ReachedStage1(Exception):
+    """委譲されずに通常経路（Stage1 クエリ）へ進んだことを示すセンチネル。"""
+
+
+class _NoEngines(dict):
+    def __getitem__(self, key):
+        raise _ReachedStage1(key)
+
+
+class FakeKatrain:
+    def __init__(self):
+        self.logs = []
+
+    def log(self, msg, level=None):
+        self.logs.append(str(msg))
+
+
+class FakeNode:
+    def __init__(self, depth):
+        self.depth = depth
+        self.analysis_complete = True
+        self.next_player = "B"
+        self.player = "W"
+
+    def player_sign(self, player):
+        # GameNode.player_sign と同じ規約。委譲されなかった経路が
+        # self.game.engines に触れるところまで進めるために必要
+        return 1 if player == "B" else -1
+
+
+class FakeGame:
+    def __init__(self, depth, board_size=(19, 19)):
+        self.board_size = board_size
+        self.current_node = FakeNode(depth)
+        self.katrain = FakeKatrain()
+        self.engines = _NoEngines()
+
+
+def _patch_humanstyle(monkeypatch, captured):
+    """HumanStyleStrategy.generate_move を差し替えてエンジン呼び出しを避ける。"""
+    from katrain.core import ai as ai_mod
+    from katrain.core.sgf_parser import Move
+
+    def fake_generate(self):
+        captured["settings"] = self.settings
+        return Move((3, 3), player="B"), "stub thoughts"
+
+    monkeypatch.setattr(ai_mod.HumanStyleStrategy, "generate_move", fake_generate)
+    return ai_mod
+
+
+def test_generate_move_delegates_to_humanstyle_9d(monkeypatch):
+    captured = {}
+    ai_mod = _patch_humanstyle(monkeypatch, captured)
+
+    game = FakeGame(depth=200)
+    game._jigo_last_current_lead = 2.0
+    settings = {"jigo_endgame_humanstyle": True, "jigo_endgame_move": 150, "target_score": 0.5}
+    strategy = ai_mod.JigoStrategy(game, settings)
+
+    move, thoughts = strategy.generate_move()
+
+    assert move.gtp() == "D4"
+    assert thoughts.startswith("[Jigo→9d yose]")
+    assert captured["settings"] == {"human_kyu_rank": -8, "modern_style": True}
+    assert game._jigo_endgame_handoff is True
+    assert strategy.last_decision_info["endgame_handoff"] is True
+    assert strategy.last_decision_info["rank_used"] == "rank_9d"
+    assert any("Endgame handoff" in line for line in game.katrain.logs)
+
+
+def test_generate_move_stays_in_jigo_while_behind(monkeypatch):
+    captured = {}
+    ai_mod = _patch_humanstyle(monkeypatch, captured)
+
+    game = FakeGame(depth=200)
+    game._jigo_last_current_lead = -1.0  # target 未到達
+    settings = {"jigo_endgame_humanstyle": True, "jigo_endgame_move": 150, "target_score": 0.5}
+    strategy = ai_mod.JigoStrategy(game, settings)
+
+    # 委譲されず通常経路へ進み、エンジン参照でセンチネルが飛ぶ
+    with pytest.raises(_ReachedStage1):
+        strategy.generate_move()
+
+    assert "settings" not in captured
+    assert getattr(game, "_jigo_endgame_handoff", False) is False
+    assert any("Endgame pending" in line for line in game.katrain.logs)
+
+
+def test_generate_move_sticky_delegates_even_before_threshold(monkeypatch):
+    captured = {}
+    ai_mod = _patch_humanstyle(monkeypatch, captured)
+
+    game = FakeGame(depth=20)
+    game._jigo_last_current_lead = -30.0
+    game._jigo_endgame_handoff = True  # 既に委譲済み
+    settings = {"jigo_endgame_humanstyle": True, "jigo_endgame_move": 150, "target_score": 0.5}
+    strategy = ai_mod.JigoStrategy(game, settings)
+
+    move, thoughts = strategy.generate_move()
+
+    assert thoughts.startswith("[Jigo→9d yose]")
+    assert any("sticky" in line for line in game.katrain.logs)
+
+
+def test_generate_move_ignores_option_when_disabled(monkeypatch):
+    captured = {}
+    ai_mod = _patch_humanstyle(monkeypatch, captured)
+
+    game = FakeGame(depth=250)
+    game._jigo_last_current_lead = 30.0
+    settings = {"jigo_endgame_humanstyle": False, "target_score": 0.5}
+    strategy = ai_mod.JigoStrategy(game, settings)
+
+    with pytest.raises(_ReachedStage1):
+        strategy.generate_move()
+
+    assert "settings" not in captured
+    assert not any("Endgame" in line for line in game.katrain.logs)

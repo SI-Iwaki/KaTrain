@@ -1056,6 +1056,50 @@ class JigoStrategy(AIStrategy):
             OUTPUT_DEBUG,
         )
 
+        # ---- ヨセ段階の HumanStyle 9段委譲 ----
+        # ヨセで target に合わせるための手抜きは相手から見て露骨なので、
+        # 目差が target 以上になったら以降は素の9段として打つ。
+        # 判定は Stage1/Stage2 の前に行い、目差は前手のキャッシュを使う（1手ラグ）。
+        if self.settings.get("jigo_endgame_humanstyle", False):
+            board_size_for_endgame = max(self.game.board_size)
+            endgame_sticky = getattr(self.game, "_jigo_endgame_handoff", False)
+            cached_lead = getattr(self.game, "_jigo_last_current_lead", None)
+            endgame_threshold = _jigo_endgame_threshold(board_size_for_endgame, self.settings)
+            if _jigo_endgame_handoff(
+                board_size_for_endgame, self.cn.depth, cached_lead,
+                target_score, self.settings, sticky=endgame_sticky,
+            ):
+                if endgame_sticky:
+                    self.game.katrain.log(
+                        "[JigoStrategy] Endgame handoff: sticky (already handed off) "
+                        "→ HumanStyle rank_9d",
+                        OUTPUT_DEBUG,
+                    )
+                else:
+                    self.game.katrain.log(
+                        f"[JigoStrategy] Endgame handoff: move={self.cn.depth} >= "
+                        f"thr={endgame_threshold}, lead={cached_lead:.2f} >= "
+                        f"target={target_score} → HumanStyle rank_9d",
+                        OUTPUT_DEBUG,
+                    )
+                self.game._jigo_endgame_handoff = True
+                self.last_decision_info.update({
+                    "rank_used": "rank_9d",
+                    "score_lead": cached_lead,
+                    "endgame_handoff": True,
+                })
+                delegate = HumanStyleStrategy(
+                    self.game, {"human_kyu_rank": -8, "modern_style": True}
+                )
+                move, thoughts = delegate.generate_move()
+                return move, f"[Jigo→9d yose] {thoughts}"
+            if self.cn.depth >= endgame_threshold:
+                self.game.katrain.log(
+                    f"[JigoStrategy] Endgame pending: move={self.cn.depth} >= "
+                    f"thr={endgame_threshold} but lead={cached_lead} < target={target_score}",
+                    OUTPUT_DEBUG,
+                )
+
         # ---- Phase 解決（jigo_deception=True 時のみ有効値を上書き） ----
         eff_target = target_score
         eff_target_max = target_score_max
