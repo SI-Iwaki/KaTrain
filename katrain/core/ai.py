@@ -748,6 +748,47 @@ def _jigo_exclude_sharp_moves(candidates, current_lead, epsilon=SHARP_EPSILON):
     return non_sharp if non_sharp else candidates
 
 
+# area scoring（中国ルール等）でパスを「最善とほぼ同等」と見なす目数差
+_AREA_PASS_MARGIN = 0.5
+
+
+def _area_scoring_should_pass(moves, pass_loss, pass_margin=_AREA_PASS_MARGIN):
+    """area scoring（中国ルール等）でパスを強制すべきか。
+
+    **目数だけでは決められない**: area scoring ではダメを詰めても点数が動かない
+    （交互に詰める限り差し引きゼロ）ため、「ダメが残っている局面」と「本当の
+    終局」がどちらも 0 目差に見える。実測 2026-08-06（13路・中国ルール・実戦
+    ログ game_20260806_011214）: ダメが13個残る手数119で pass_loss=0.10 目
+    しかなく、目数だけのゲートは打てる手が41手あるのにパスを強制した。
+
+    **人間モデルは区別できる**: 同じ局面の humanPolicy(pass)=0.0000、ダメを
+    詰め切った後は 0.37〜0.75。そこで目数条件に humanPolicy 条件を AND する。
+    自己対局の実測では ply0〜12 でダメを13個すべて詰めてから ply28 で両者
+    パス＝正常終局する（無限対局にならない）。
+
+    Args:
+        moves: [(Move, weight)] の候補リスト。weight は humanPolicy 由来
+        pass_loss: パスの損失（目・現プレイヤー視点）。**None なら パスしない**
+            （KataGo が pass を評価していない＝目数の証拠が無い場合の保守側）
+        pass_margin: パスを「ほぼ最善」と見なす目数差
+    Returns:
+        True ならパスを強制する
+    """
+    pass_weight = None
+    best_non_pass = None
+    for m, w in moves:
+        if m.is_pass:
+            pass_weight = w if pass_weight is None else max(pass_weight, w)
+        elif best_non_pass is None or w > best_non_pass:
+            best_non_pass = w
+    if pass_weight is None:
+        return False
+    if pass_loss is None or pass_loss >= pass_margin:
+        return False
+    # 同着はパス側に倒す（打ち続けて終局しないより安全）
+    return best_non_pass is None or pass_weight >= best_non_pass
+
+
 # ヨセ委譲の盤サイズ別スライダーキー（board_size → (設定キー, 既定手数)）
 # 19路150 / 9路30 は deception phase3 開始手数と一致（deception の ON/OFF で
 # 切替タイミングが動かない）。13路の phase3 開始 83 はスライダーの5刻みに
@@ -5562,20 +5603,19 @@ class FightingStrategy(PickBasedStrategy):
         # passが候補手に含まれているかチェック
         if any(m.is_pass for m, _ in moves):
             if is_area_scoring:
-                # area scoring（中国ルール等）ではpassは最善手の場合のみ選択する
-                # best_gtp_by_score == "pass" は既に上で処理済み → passを候補から除外して続行
-                # ただし、passと最善手のスコア差が小さい場合は強制パス（ダメ点程度の差なら打つ価値なし）
-                _AREA_PASS_MARGIN = 0.5
+                # area scoring（中国ルール等）ではダメ詰めが score-neutral なので、
+                # 目数だけではパスの可否を決められない（_area_scoring_should_pass 参照）。
+                # best_gtp_by_score == "pass" は既に上で処理済み
                 pass_mi = next((mi for mi in (move_infos or []) if mi.get("move") == "pass"), None)
+                pass_loss = None
                 if pass_mi is not None:
-                    pass_score_lead = pass_mi.get("scoreLead", best_score)
-                    pass_loss = player_sign * (best_score - pass_score_lead)
-                    if pass_loss < _AREA_PASS_MARGIN:
-                        self.game.katrain.log(
-                            f"[FightingStrategy:human] Area scoring: pass within {_AREA_PASS_MARGIN}pt of best "
-                            f"(loss={pass_loss:.2f}), forcing pass", OUTPUT_DEBUG
-                        )
-                        return Move(None, player=self.cn.next_player), "Area scoring: pass near-optimal, forcing pass."
+                    pass_loss = player_sign * (best_score - pass_mi.get("scoreLead", best_score))
+                if _area_scoring_should_pass(moves, pass_loss):
+                    self.game.katrain.log(
+                        f"[FightingStrategy:human] Area scoring: pass is top human move "
+                        f"(loss={pass_loss:.2f}), forcing pass", OUTPUT_DEBUG
+                    )
+                    return Move(None, player=self.cn.next_player), "Area scoring: pass near-optimal, forcing pass."
                 moves_without_pass = [(m, w) for m, w in moves if not m.is_pass]
                 if moves_without_pass:
                     moves = moves_without_pass
@@ -6217,21 +6257,20 @@ class HumanStyleStrategy(AIStrategy):
         # passが候補手に含まれているかチェック
         if any(m.is_pass for m, _ in moves):
             if is_area_scoring:
-                # area scoring（中国ルール等）では、ダメは1点の価値があるためpassは最善手の場合のみ選択する
+                # area scoring（中国ルール等）ではダメ詰めが score-neutral なので、
+                # 目数だけではパスの可否を決められない（_area_scoring_should_pass 参照）。
                 # best_gtp_by_score == "pass" の場合は既に上で処理済み（強制パス済み）
-                # ただし、passと最善手のスコア差が小さい場合は強制パス（ダメ点程度の差なら打つ価値なし）
-                _AREA_PASS_MARGIN = 0.5
                 pass_mi = next((mi for mi in (move_infos or []) if mi.get("move") == "pass"), None)
+                pass_loss = None
                 if pass_mi is not None:
-                    pass_score_lead = pass_mi.get("scoreLead", best_score)
-                    pass_loss = player_sign * (best_score - pass_score_lead)
-                    if pass_loss < _AREA_PASS_MARGIN:
-                        self.game.katrain.log(
-                            f"[HumanStyleStrategy] Area scoring: pass within {_AREA_PASS_MARGIN}pt of best "
-                            f"(loss={pass_loss:.2f}), forcing pass", OUTPUT_DEBUG
-                        )
-                        return Move(None, player=self.cn.next_player), "Area scoring: pass near-optimal, forcing pass."
-                # ここに来た = KataGoはpassを最善と判断していない → passを候補から除外して続行
+                    pass_loss = player_sign * (best_score - pass_mi.get("scoreLead", best_score))
+                if _area_scoring_should_pass(moves, pass_loss):
+                    self.game.katrain.log(
+                        f"[HumanStyleStrategy] Area scoring: pass is top human move "
+                        f"(loss={pass_loss:.2f}), forcing pass", OUTPUT_DEBUG
+                    )
+                    return Move(None, player=self.cn.next_player), "Area scoring: pass near-optimal, forcing pass."
+                # ここに来た = パスは人間モデルの最上位ではない → passを候補から除外して続行
                 moves_without_pass = [(m, w) for m, w in moves if not m.is_pass]
                 if moves_without_pass:
                     moves = moves_without_pass
@@ -6892,16 +6931,19 @@ class SiegeStrategy(AIStrategy):
         # --- pass処理（area scoring） ---
         if any(m.is_pass for m, _ in moves):
             if is_area_scoring:
-                _AREA_PASS_MARGIN = 0.5
+                # ダメ詰めが score-neutral なので目数だけでは決められない
+                # （_area_scoring_should_pass 参照）
                 pass_mi = next((mi for mi in (move_infos or []) if mi.get("move") == "pass"), None)
+                pass_loss = None
                 if pass_mi is not None and best_score is not None:
                     pass_loss = player_sign * (best_score - pass_mi.get("scoreLead", best_score))
-                    if pass_loss < _AREA_PASS_MARGIN:
-                        self.game.katrain.log(
-                            f"[SiegeStrategy:concede] Area scoring: pass near-optimal (loss={pass_loss:.2f}), forcing pass",
-                            OUTPUT_DEBUG,
-                        )
-                        return Move(None, player=self.cn.next_player), "Area scoring: pass near-optimal, forcing pass."
+                if _area_scoring_should_pass(moves, pass_loss):
+                    self.game.katrain.log(
+                        f"[SiegeStrategy:concede] Area scoring: pass is top human move "
+                        f"(loss={pass_loss:.2f}), forcing pass",
+                        OUTPUT_DEBUG,
+                    )
+                    return Move(None, player=self.cn.next_player), "Area scoring: pass near-optimal, forcing pass."
                 moves_no_pass = [(m, w) for m, w in moves if not m.is_pass]
                 if moves_no_pass:
                     moves = moves_no_pass
@@ -7146,16 +7188,19 @@ class SiegeStrategy(AIStrategy):
         # --- pass処理（area scoring） ---
         if any(m.is_pass for m, _ in moves):
             if is_area_scoring:
-                _AREA_PASS_MARGIN = 0.5
+                # ダメ詰めが score-neutral なので目数だけでは決められない
+                # （_area_scoring_should_pass 参照）
                 pass_mi = next((mi for mi in (move_infos or []) if mi.get("move") == "pass"), None)
+                pass_loss = None
                 if pass_mi is not None and best_score is not None:
                     pass_loss = player_sign * (best_score - pass_mi.get("scoreLead", best_score))
-                    if pass_loss < _AREA_PASS_MARGIN:
-                        self.game.katrain.log(
-                            f"[SiegeStrategy:attack] Area scoring: pass near-optimal (loss={pass_loss:.2f}), forcing pass",
-                            OUTPUT_DEBUG,
-                        )
-                        return Move(None, player=self.cn.next_player), "Area scoring: pass near-optimal, forcing pass."
+                if _area_scoring_should_pass(moves, pass_loss):
+                    self.game.katrain.log(
+                        f"[SiegeStrategy:attack] Area scoring: pass is top human move "
+                        f"(loss={pass_loss:.2f}), forcing pass",
+                        OUTPUT_DEBUG,
+                    )
+                    return Move(None, player=self.cn.next_player), "Area scoring: pass near-optimal, forcing pass."
                 moves_no_pass = [(m, w) for m, w in moves if not m.is_pass]
                 if moves_no_pass:
                     moves = moves_no_pass
@@ -8070,18 +8115,19 @@ class HuntStrategy(AIStrategy):
         # パス処理
         if any(m.is_pass for m, _ in moves):
             if is_area_scoring:
-                _AREA_PASS_MARGIN = 0.5
+                # ダメ詰めが score-neutral なので目数だけでは決められない
+                # （_area_scoring_should_pass 参照）
                 pass_mi = next((mi for mi in (move_infos or []) if mi.get("move") == "pass"), None)
+                pass_loss = None
                 if pass_mi is not None:
-                    pass_score_lead = pass_mi.get("scoreLead", best_score)
-                    pass_loss = player_sign * (best_score - pass_score_lead)
-                    if pass_loss < _AREA_PASS_MARGIN:
-                        self.game.katrain.log(
-                            f"[HuntStrategy] Area scoring: pass within {_AREA_PASS_MARGIN}pt of best "
-                            f"(loss={pass_loss:.2f}), forcing pass",
-                            OUTPUT_DEBUG,
-                        )
-                        return Move(None, player=self.cn.next_player), "Area scoring: pass near-optimal, forcing pass."
+                    pass_loss = player_sign * (best_score - pass_mi.get("scoreLead", best_score))
+                if _area_scoring_should_pass(moves, pass_loss):
+                    self.game.katrain.log(
+                        f"[HuntStrategy] Area scoring: pass is top human move "
+                        f"(loss={pass_loss:.2f}), forcing pass",
+                        OUTPUT_DEBUG,
+                    )
+                    return Move(None, player=self.cn.next_player), "Area scoring: pass near-optimal, forcing pass."
                 moves_without_pass = [(m, w) for m, w in moves if not m.is_pass]
                 if moves_without_pass:
                     moves = moves_without_pass

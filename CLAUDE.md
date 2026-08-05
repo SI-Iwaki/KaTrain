@@ -110,6 +110,7 @@ python -m katrain_debug --sgf FILE --strategy hunt --batch --settings hunt_max_l
 ## やってはいけないこと
 
 - **ログファイルをReadで全読みしない** — 数百KB〜1MB超あるため、必ずGrepで必要行だけ抽出する
+- **中国ルール（area scoring）のパス判定を目数だけで決めない** — area scoring では**ダメを詰めても点数が動かない**（交互に詰める限り差し引きゼロ）ので、「ダメが残っている局面」と「本当の終局」が**どちらも0目差に見える**。実測 2026-08-06（13路・実戦ログ `game_20260806_011214`・手数119）: ダメが13個残り打てる手が41手あるのに `pass_loss=0.10` 目だったため `_AREA_PASS_MARGIN`(0.5) の目数ゲートが強制パスし、`# 終局時はhumanPolicy最上位手を選択（9段はヨセを間違えない）` の分岐へ到達する前に `return` していた。**区別できるのは humanPolicy だけ**（同局面で `humanPolicy(pass)=0.0000`、ダメを詰め切った後は 0.37〜0.75）。目数条件に **humanPolicy がパスを最上位に置いているか**を AND する（`_area_scoring_should_pass`）。自己対局の実測で ply0〜12 にダメを13個すべて詰めてから ply28 で両者パス＝**正常終局する**（humanPolicy に委ねても無限対局にならない）。同じ目数ゲートが HumanStyle / Fighting:human / Siege×2 / Hunt の**5箇所にコピー**されていたので共通純関数に集約済み。**「スコアが動かない＝打つ価値がない」は area scoring では成り立たない**
 - **Stage 1（humanSLProfile付き）の`scoreLead`をフィルタ判定に使わない** — バイアスされているため、必ずStage 2のクリーンクエリの値を使う
 - **パッケージ`config.json`だけ更新して終わらない** — ユーザーのローカル設定`C:\Users\iwaki\.katrain\config.json`にもキーを追加しないとGUIに表示されない
 - **ユーザーローカル`config.json`（`C:\Users\iwaki\.katrain\config.json`）の編集をサブエージェントに委任しない** — サブエージェントが成功を報告しても実際に反映されないことがある。このファイルは必ずメインセッションで直接Editする
