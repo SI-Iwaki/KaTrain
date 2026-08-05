@@ -1486,6 +1486,37 @@ class Jigo9Strategy(JigoStrategy):
     }
 
 
+# ===== 9路専用「一致率追随」戦略 ai:parity9 の純関数群 =====
+# 設計: docs/superpowers/specs/2026-08-06-parity9-strategy-design.md
+
+def parity9_match_tally(nodes, ai_player):
+    """AI 最善手一致数を (mine, opp, counted) で返す。
+
+    nodes は root を除く着手ノードの列（時系列）。呼び出し側は
+    [n for n in cn.nodes_from_root if n.move and not n.is_root] で作る。
+
+    一致判定は game_report（ai.py の ai_top_move_count）と同一式で、
+    親局面の解析が完了していて candidate_moves[0] と着手 gtp が一致するか。
+    判定できないノードは**両者とも列に入れない**。
+
+    opp は mine と同じ長さの先頭部分だけを数える（同手数への切り揃え）。
+    AI が白番のとき相手は常に1手多いので、切り揃えないと構造的に
+    「差 >= 1」が成立しにくくなる。
+    """
+    seqs = {"B": [], "W": []}
+    for n in nodes:
+        parent = getattr(n, "parent", None)
+        if not n.move or parent is None or not parent.analysis_complete:
+            continue
+        cands = parent.candidate_moves
+        if not cands:
+            continue
+        seqs[n.player].append(cands[0]["move"] == n.move.gtp())
+    mine_seq = seqs[ai_player]
+    opp_seq = seqs["W" if ai_player == "B" else "B"]
+    return sum(mine_seq), sum(opp_seq[: len(mine_seq)]), len(mine_seq)
+
+
 @register_strategy(AI_SCORELOSS)
 class ScoreLossStrategy(AIStrategy):
     """ScoreLoss strategy - weights moves based on point loss"""
