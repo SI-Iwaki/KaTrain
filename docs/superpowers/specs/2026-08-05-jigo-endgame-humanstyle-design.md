@@ -118,7 +118,7 @@ return move, f"[Jigo→9d yose] {thoughts}"
 
 ## テスト
 
-`tests/test_jigo_endgame_handoff.py`（Kivy 不要の純関数テスト）:
+`tests/test_jigo_endgame.py`（KataGo / Kivy 不要）。判定純関数の境界に加え、フェイクの game/katrain で委譲の配線（HumanStyle が `{"human_kyu_rank": -8, "modern_style": True}` で呼ばれること・sticky が立つこと・劣勢時は通常経路へ進むこと）も検証する:
 
 - 閾値の境界: `move_num` が閾値−1 で False、閾値ちょうどで True
 - チェックボックス OFF なら常に False（他の条件がすべて成立していても）
