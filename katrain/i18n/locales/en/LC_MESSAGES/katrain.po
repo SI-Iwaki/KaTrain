@@ -844,6 +844,30 @@ msgstr "Kata Jigo (9x9)"
 msgid "aihelp:jigo9"
 msgstr "Jigo mode dedicated to the 9x9 board. Aims to win by a small margin of target_score to target_score_max points. Only plays moves with loss <= max_loss_per_move and humanPolicy >= min_human_policy, avoiding inhuman blunders. jigo_mode: natural = best move within range / maintain = always steer toward target. jigo_deception: ON makes the AI deliberately fall behind in the early/middle game and recover late for a human-like style. Phase1/2/3 start moves and Phase1/2 target score gaps are adjustable via sliders. During each phase target_max = target+1.0 is set automatically; a safety valve (+/-5 points) jumps to Phase3 on over/under-performance. Since 9x9 games end quickly, set Phase3 (recovery start) early. Rank is fixed at rank_9d. For 19x19/13x13 use the regular Kata Jigo. jigo_endgame_humanstyle: ON makes the AI stop chasing the target score once the endgame switch move is reached and the lead is at or above target_score; from then on it simply plays as HumanStyle 9-dan (holding back during the endgame is obvious to a human opponent). While still behind it keeps playing normal jigo, so the deception recovery is not cut short. Once switched it never switches back. Against a weak opponent the final margin may therefore grow beyond the target."
 
+msgid "ai:parity9"
+msgstr "Match-Rate Parity (9x9)"
+
+msgid "aihelp:parity9"
+msgstr "9x9 only. Deviates from the KataGo best move only while its own count of AI-best-move matches exceeds the opponent's, so the final match rate never runs far ahead of the opponent's. While the opponent keeps playing best moves, this AI does too. parity9_match_margin: match-count lead required before deviating (the opponent's count is truncated to the AI's own completed move count, so playing White is not penalised). parity9_keep_margin: safety margin in points always kept in reserve. Deviation budget = lead - this value, so an even or losing position gives a budget of 0 and no deviation at all (on 9x9 the opening lead is near zero, so deviation is only possible from the point the game is clearly won until the endgame begins). parity9_max_loss_per_move: per-move loss cap in points; the stricter of the budget and this cap applies. Among non-best moves within the cap the AI picks the one with the highest humanPolicy (so the concession does not look deliberate), breaking humanPolicy ties toward the smaller loss. parity9_min_human_policy: humanPolicy floor for candidates; if only inhuman moves fit the budget the AI plays the best move instead. parity9_endgame_move / parity9_unsettled_max: endgame detection (at or past this move number AND at most this many unsettled board points). Once the endgame is reached the AI plays only KataGo best moves and never deviates again. On 19x19/13x13 it simply plays the best move, so use another strategy there."
+
+msgid "parity9_keep_margin"
+msgstr "[9x9] Safety margin (pts; budget = lead - this)"
+
+msgid "parity9_max_loss_per_move"
+msgstr "[9x9] Per-move loss cap (pts)"
+
+msgid "parity9_match_margin"
+msgstr "[9x9] Match-count lead needed to deviate"
+
+msgid "parity9_endgame_move"
+msgstr "[9x9] Endgame switch move"
+
+msgid "parity9_unsettled_max"
+msgstr "[9x9] Max unsettled points for endgame"
+
+msgid "parity9_min_human_policy"
+msgstr "[9x9] humanPolicy floor for candidates"
+
 msgid "jigo9_phase1_start"
 msgstr "[9x9] Phase1 start move (begin playing modestly)"
 
