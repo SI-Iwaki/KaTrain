@@ -1748,7 +1748,7 @@ class Parity9Strategy(AIStrategy):
 
         # ---- ゲート5: 損失予算 ----
         keep_margin = float(self.settings.get("parity9_keep_margin", 3.0))
-        max_loss = float(self.settings.get("parity9_max_loss_per_move", 1.5))
+        max_loss = float(self.settings.get("parity9_max_loss_per_move", 3.0))
         lead = stage2.get("rootInfo", {}).get("scoreLead", 0.0) * sign
         budget = parity9_budget(lead, keep_margin)
         cap = min(budget, max_loss)
