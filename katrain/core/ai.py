@@ -6172,6 +6172,47 @@ def _complexity_loss_filter(move_infos, best_score, player_sign, base_threshold,
     return result
 
 
+_FIGHTING_LOSS_DEFAULTS = {
+    # 盤面クラス: (序盤閾値, 中盤以降閾値, complexity base 上限, complexity max 上限)
+    "9": (0.5, 3.3, 3.3, 6.0),
+    "std": (2.8, 5.6, 5.6, 10.0),
+}
+
+
+def _fighting_loss_thresholds(settings, board_size, current_move):
+    """力戦派 human/complex の損失閾値を盤面サイズ×フェーズで解決する。
+
+    settings: ai:p:fighting の設定 dict
+    board_size: (bx, by)
+    current_move: 現在の手数（0 始まり）
+
+    戻り値: (bad_move_threshold, complexity_base_max_loss, complexity_max_loss)
+
+    bad_move_threshold は序盤/中盤以降で切り替わる。complexity の2上限はフェーズ
+    非依存で、盤面サイズだけで決まる。9路と 13/19路は完全に独立したキーを使うので
+    片方の設定がもう片方へ漏れない。
+    """
+    bx, by = board_size
+    if bx == 9 and by == 9:
+        suffix = "_9"
+        opening_default, normal_default, base_default, max_default = _FIGHTING_LOSS_DEFAULTS["9"]
+    else:
+        suffix = ""
+        opening_default, normal_default, base_default, max_default = _FIGHTING_LOSS_DEFAULTS["std"]
+
+    opening_boundary = math.ceil(0.14 * bx * by)
+    if current_move < opening_boundary:
+        bad_move_threshold = settings.get(f"fighting_human_opening_max_loss{suffix}", opening_default)
+    else:
+        bad_move_threshold = settings.get(f"fighting_human_max_loss{suffix}", normal_default)
+
+    return (
+        bad_move_threshold,
+        settings.get(f"complexity_base_max_loss{suffix}", base_default),
+        settings.get(f"complexity_max_loss{suffix}", max_default),
+    )
+
+
 def _get_corner_star_points(board_size):
     """盤面サイズに応じた隅の星点（4-4点相当）の集合を返す"""
     bx, by = board_size

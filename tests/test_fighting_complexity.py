@@ -9,6 +9,7 @@ from katrain.core.ai import _complexity_relaxed_cap
 from katrain.core.ai import _passes_complexity_gate
 from katrain.core.ai import _complexity_loss_filter
 from katrain.core.ai import _floor_budget_weights
+from katrain.core.ai import _fighting_loss_thresholds
 from katrain.core.game import Move
 
 
@@ -284,3 +285,66 @@ class TestComplexityLossFilter:
             base_max_loss=7.0,
         )
         assert out == {"A"}
+
+
+class TestFightingLossThresholds:
+    """悪手フィルタ閾値の盤面サイズ×フェーズ解決。
+
+    序盤境界 = ceil(0.14 * マス数) → 19路 51 / 13路 24 / 9路 12。
+    current_move < 境界 が序盤。
+    """
+
+    def test_19_opening_default(self):
+        assert _fighting_loss_thresholds({}, (19, 19), 0)[0] == 2.8
+        assert _fighting_loss_thresholds({}, (19, 19), 50)[0] == 2.8
+
+    def test_19_normal_default(self):
+        assert _fighting_loss_thresholds({}, (19, 19), 51)[0] == 5.6
+
+    def test_9_opening_default(self):
+        assert _fighting_loss_thresholds({}, (9, 9), 0)[0] == 0.5
+        assert _fighting_loss_thresholds({}, (9, 9), 11)[0] == 0.5
+
+    def test_9_normal_default(self):
+        assert _fighting_loss_thresholds({}, (9, 9), 12)[0] == 3.3
+
+    def test_13_uses_19_family(self):
+        # 13路は 9路系ではなく 13/19路系の値を使う（境界は 24）
+        assert _fighting_loss_thresholds({}, (13, 13), 23)[0] == 2.8
+        assert _fighting_loss_thresholds({}, (13, 13), 24)[0] == 5.6
+
+    def test_settings_override_19(self):
+        s = {"fighting_human_opening_max_loss": 1.5, "fighting_human_max_loss": 3.0}
+        assert _fighting_loss_thresholds(s, (19, 19), 0)[0] == 1.5
+        assert _fighting_loss_thresholds(s, (19, 19), 51)[0] == 3.0
+
+    def test_settings_override_9(self):
+        s = {"fighting_human_opening_max_loss_9": 0.3, "fighting_human_max_loss_9": 2.0}
+        assert _fighting_loss_thresholds(s, (9, 9), 0)[0] == 0.3
+        assert _fighting_loss_thresholds(s, (9, 9), 12)[0] == 2.0
+
+    def test_9_settings_do_not_leak_to_19(self):
+        s = {"fighting_human_max_loss_9": 2.0, "complexity_base_max_loss_9": 4.0}
+        assert _fighting_loss_thresholds(s, (19, 19), 51) == (5.6, 5.6, 10.0)
+
+    def test_19_settings_do_not_leak_to_9(self):
+        s = {"fighting_human_max_loss": 9.0, "complexity_base_max_loss": 8.0}
+        assert _fighting_loss_thresholds(s, (9, 9), 12) == (3.3, 3.3, 6.0)
+
+    def test_complexity_caps_default_by_board(self):
+        assert _fighting_loss_thresholds({}, (19, 19), 51)[1:] == (5.6, 10.0)
+        assert _fighting_loss_thresholds({}, (9, 9), 12)[1:] == (3.3, 6.0)
+
+    def test_complexity_caps_override_by_board(self):
+        s = {
+            "complexity_base_max_loss": 7.0,
+            "complexity_max_loss": 12.0,
+            "complexity_base_max_loss_9": 4.0,
+            "complexity_max_loss_9": 5.0,
+        }
+        assert _fighting_loss_thresholds(s, (19, 19), 51)[1:] == (7.0, 12.0)
+        assert _fighting_loss_thresholds(s, (9, 9), 12)[1:] == (4.0, 5.0)
+
+    def test_complexity_caps_are_phase_independent(self):
+        # 上限2値はフェーズで変わらない（変わるのは bad_move_threshold だけ）
+        assert _fighting_loss_thresholds({}, (19, 19), 0)[1:] == _fighting_loss_thresholds({}, (19, 19), 51)[1:]
