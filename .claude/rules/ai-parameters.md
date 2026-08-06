@@ -389,6 +389,6 @@ humanPolicy 最大の手へ外す。ヨセ以降は KataGo 最善手固定。
 
 モジュール定数 `PARITY9_UNSETTLED_ABS = 0.5`（スライダーにしない）。
 
-**校正記録（2026-08-06・9路実戦1局 `calibration-data/parity9/parity9-vs-human-20260806-white.sgf`）**: `parity9_unsettled_max=8` は実測で妥当（中盤の未確定点は10〜64で揺れ、ヨセ突入時は5）。`parity9_max_loss_per_move` は 1.5 だと発火4手の損失が全部天井に張り付き6手が候補なしで落ちたため 3.0 へ緩和。
+**校正記録（2026-08-06・9路実戦1局 `calibration-data/parity9/parity9-vs-human-20260806-white.sgf`）**: `parity9_unsettled_max=8` は実測で妥当（中盤の未確定点は10〜64で揺れ、ヨセ突入時は5）。`parity9_max_loss_per_move` は 1.5 だと発火4手の損失が全部天井に張り付き6手が候補なしで落ちたため 3.0 へ緩和。ただしバッチA/Bで動いたのは19手中1手（`ai_top_move` 16/19→15/19）だけなので、1.5 は制約の一つに過ぎず唯一のボトルネックではない。残り5手を塞いでいる要因は未特定。
 
 設計: `docs/superpowers/specs/2026-08-06-parity9-strategy-design.md`
