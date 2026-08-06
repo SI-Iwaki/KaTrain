@@ -381,12 +381,14 @@ humanPolicy 最大の手へ外す。ヨセ以降は KataGo 最善手固定。
 | キー | 意味 | 候補値 | 既定 |
 |---|---|---|---|
 | `parity9_keep_margin` | 安全幅（目）。予算 = リード − これ | 1.0 / 2.0 / 3.0 / 5.0 / 8.0 | 3.0 |
-| `parity9_max_loss_per_move` | 1手あたり損失キャップ（目） | 0.5 / 1.0 / 1.5 / 2.0 / 3.0 | 1.5 |
+| `parity9_max_loss_per_move` | 1手あたり損失キャップ（目） | 0.5 / 1.0 / 1.5 / 2.0 / 3.0 | 3.0 |
 | `parity9_match_margin` | 解禁に必要な一致数差 | 1 / 2 / 3 | 1 |
 | `parity9_endgame_move` | ヨセ手数閾値 | 22 / 26 / 30 / 34 / 38 | 30 |
 | `parity9_unsettled_max` | ヨセ判定の未確定点上限（\|ownership\| < 0.5 の点数） | 4 / 6 / 8 / 10 / 12 | 8 |
 | `parity9_min_human_policy` | 採用候補の humanPolicy 下限 | 0% / 0.5% / 1% / 2% | 0.01 |
 
 モジュール定数 `PARITY9_UNSETTLED_ABS = 0.5`（スライダーにしない）。
+
+**校正記録（2026-08-06・9路実戦1局 `calibration-data/parity9/parity9-vs-human-20260806-white.sgf`）**: `parity9_unsettled_max=8` は実測で妥当（中盤の未確定点は10〜64で揺れ、ヨセ突入時は5）。`parity9_max_loss_per_move` は 1.5 だと発火4手の損失が全部天井に張り付き6手が候補なしで落ちたため 3.0 へ緩和。
 
 設計: `docs/superpowers/specs/2026-08-06-parity9-strategy-design.md`
