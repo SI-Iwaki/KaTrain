@@ -54,3 +54,42 @@ def test_all_packaged_strategies_fit_in_grid():
             continue
         rows = ai_options_grid_rows(len(settings), min_rows)
         assert rows * 2 >= len(settings) * 2, f"{strategy} does not fit in the options grid"
+
+
+def test_fighting_loss_threshold_keys_are_configurable():
+    """力戦派の損失閾値6キーが GUI ウィジェットと同梱既定値の両方に登録されていること。"""
+    from katrain.core.constants import AI_FIGHTING, AI_OPTION_ORDER, AI_OPTION_VALUES
+    from katrain.core.utils import find_package_resource
+
+    keys = [
+        "fighting_human_opening_max_loss",
+        "fighting_human_max_loss",
+        "fighting_human_opening_max_loss_9",
+        "fighting_human_max_loss_9",
+        "complexity_base_max_loss_9",
+        "complexity_max_loss_9",
+    ]
+    with open(find_package_resource("katrain/config.json"), encoding="utf-8") as f:
+        fighting = json.load(f)["ai"][AI_FIGHTING]
+
+    for k in keys:
+        assert k in AI_OPTION_VALUES, f"{k} が AI_OPTION_VALUES にない（GUI にスライダーが出ない）"
+        assert k in AI_OPTION_ORDER, f"{k} が AI_OPTION_ORDER にない（表示順が不定になる）"
+        assert k in fighting, f"{k} が同梱 config.json の {AI_FIGHTING} にない"
+        assert fighting[k] in AI_OPTION_VALUES[k], f"{k} の既定値 {fighting[k]} がスライダー候補値にない"
+
+
+def test_fighting_defaults_match_hardcoded_thresholds():
+    """同梱既定値が変更前のハードコード値と一致すること（既定なら挙動不変）。"""
+    from katrain.core.constants import AI_FIGHTING
+    from katrain.core.utils import find_package_resource
+
+    with open(find_package_resource("katrain/config.json"), encoding="utf-8") as f:
+        fighting = json.load(f)["ai"][AI_FIGHTING]
+
+    assert fighting["fighting_human_opening_max_loss"] == 2.8
+    assert fighting["fighting_human_max_loss"] == 5.6
+    assert fighting["fighting_human_opening_max_loss_9"] == 0.5
+    assert fighting["fighting_human_max_loss_9"] == 3.3
+    assert fighting["complexity_base_max_loss_9"] == 3.3
+    assert fighting["complexity_max_loss_9"] == 6.0

@@ -189,6 +189,13 @@ AI_OPTION_VALUES = {
     "complexity_base_max_loss": [5.6, 6.0, 7.0, 8.0, 9.0, 10.0],  # 互角時も開放するゲート付き帯の上限（目）
     "complexity_max_loss": [6.0, 7.0, 8.0, 9.0, 10.0, 12.0],    # 緩和時の損失上限（目）
     "complexity_sharpness_min": [1.0, 2.0, 3.0, 4.0, 5.0, 7.0, 10.0],  # 鋭さゲート（scoreStdev、要校正）
+    # 力戦派 human/complex の悪手フィルタ閾値（9路と13/19路で独立。引き下げ方向に刻みを厚くする）
+    "fighting_human_opening_max_loss": [0.5, 1.0, 1.5, 2.0, 2.8, 4.0],  # 13/19路・序盤
+    "fighting_human_max_loss": [1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.6, 7.0, 9.0],  # 13/19路・中盤以降
+    "fighting_human_opening_max_loss_9": [0.2, 0.3, 0.5, 1.0, 1.5, 2.0],  # 9路・序盤
+    "fighting_human_max_loss_9": [0.5, 1.0, 1.5, 2.0, 2.5, 3.3, 4.0, 5.0],  # 9路・中盤以降
+    "complexity_base_max_loss_9": [2.0, 2.5, 3.3, 4.0, 5.0, 6.0],  # 9路・complex 常時上限
+    "complexity_max_loss_9": [4.0, 5.0, 6.0, 8.0, 10.0],  # 9路・complex 緩和上限
     "siege_transition_move": list(range(15, 61, 5)),  # 15〜60（5刻み）
     "siege_min_group_size": list(range(3, 11)),  # 3〜10
     "concede_max_loss": [x / 2 for x in range(2, 13)],  # 1.0〜6.0（0.5刻み）
@@ -276,6 +283,12 @@ AI_OPTION_ORDER = {
     "complexity_base_max_loss": 8,
     "complexity_max_loss": 9,
     "complexity_sharpness_min": 10,
+    "fighting_human_opening_max_loss": 11,
+    "fighting_human_max_loss": 12,
+    "fighting_human_opening_max_loss_9": 13,
+    "fighting_human_max_loss_9": 14,
+    "complexity_base_max_loss_9": 15,
+    "complexity_max_loss_9": 16,
     "pick_override": 10,
     "pick_n": 11,
     "pick_frac": 12,
