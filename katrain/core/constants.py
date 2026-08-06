@@ -138,6 +138,15 @@ AI_STRENGTH = {  # dan ranks, backup if model is missing. TODO: remove some?
     AI_HUNT_DIVERGE: float("nan"),
 }
 
+def _half_steps(lo, hi, extra=()):
+    """lo〜hi を 0.5 刻みで並べ、刻みに乗らない既定値(extra)を混ぜた昇順リストを返す。
+
+    スライダーの候補値に既定値が含まれていないと、設定画面を開いただけでつまみが
+    別の値へスナップして見える（値そのものは textbox 側で保持される）。
+    """
+    return sorted({x / 2 for x in range(int(lo * 2), int(hi * 2) + 1)} | set(extra))
+
+
 AI_OPTION_VALUES = {
     "kyu_rank": [(k, f"{k}[strength:kyu]") for k in range(15, 0, -1)]
     + [(k, f"{1-k}[strength:dan]") for k in range(0, -3, -1)],
@@ -186,16 +195,18 @@ AI_OPTION_VALUES = {
     "fighting_chaos_relax": [x / 2 for x in range(0, 7)],  # 0.0 to 3.0 in 0.5 steps
     "complexity_cut_boost": [1.0, 1.5, 2.0, 3.0, 5.0],          # 切り点の重みブースト
     "complexity_lead_threshold": [5.0, 10.0, 15.0, 20.0, 25.0, 30.0],  # 緩和解禁リード差（目）
-    "complexity_base_max_loss": [5.6, 6.0, 7.0, 8.0, 9.0, 10.0],  # 互角時も開放するゲート付き帯の上限（目）
-    "complexity_max_loss": [6.0, 7.0, 8.0, 9.0, 10.0, 12.0],    # 緩和時の損失上限（目）
+    # complexity の2上限は「無条件帯の上限（fighting_human_*_max_loss）と同じ値まで下げられる」
+    # 必要があるので、刻みも範囲もそちらに合わせる（既定 5.6 / 3.3 は刻みの外なので明示的に混ぜる）
+    "complexity_base_max_loss": _half_steps(1.0, 10.0, extra=[5.6]),  # 13/19路・互角時も開放する上限（目）
+    "complexity_max_loss": _half_steps(1.0, 12.0),  # 13/19路・緩和時の損失上限（目）
     "complexity_sharpness_min": [1.0, 2.0, 3.0, 4.0, 5.0, 7.0, 10.0],  # 鋭さゲート（scoreStdev、要校正）
-    # 力戦派 human/complex の悪手フィルタ閾値（9路と13/19路で独立。引き下げ方向に刻みを厚くする）
-    "fighting_human_opening_max_loss": [0.5, 1.0, 1.5, 2.0, 2.8, 4.0],  # 13/19路・序盤
-    "fighting_human_max_loss": [1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.6, 7.0, 9.0],  # 13/19路・中盤以降
-    "fighting_human_opening_max_loss_9": [0.2, 0.3, 0.5, 1.0, 1.5, 2.0],  # 9路・序盤
-    "fighting_human_max_loss_9": [0.5, 1.0, 1.5, 2.0, 2.5, 3.3, 4.0, 5.0],  # 9路・中盤以降
-    "complexity_base_max_loss_9": [2.0, 2.5, 3.3, 4.0, 5.0, 6.0],  # 9路・complex 常時上限
-    "complexity_max_loss_9": [4.0, 5.0, 6.0, 8.0, 10.0],  # 9路・complex 緩和上限
+    # 力戦派 human/complex の悪手フィルタ閾値（9路と13/19路で独立）
+    "fighting_human_opening_max_loss": _half_steps(0.5, 6.0, extra=[2.8]),  # 13/19路・序盤
+    "fighting_human_max_loss": _half_steps(1.0, 10.0, extra=[5.6]),  # 13/19路・中盤以降
+    "fighting_human_opening_max_loss_9": [x / 10 for x in range(1, 21)],  # 9路・序盤（0.1〜2.0）
+    "fighting_human_max_loss_9": _half_steps(0.5, 6.0, extra=[3.3]),  # 9路・中盤以降
+    "complexity_base_max_loss_9": _half_steps(0.5, 6.0, extra=[3.3]),  # 9路・complex 常時上限
+    "complexity_max_loss_9": _half_steps(1.0, 10.0),  # 9路・complex 緩和上限
     "siege_transition_move": list(range(15, 61, 5)),  # 15〜60（5刻み）
     "siege_min_group_size": list(range(3, 11)),  # 3〜10
     "concede_max_loss": [x / 2 for x in range(2, 13)],  # 1.0〜6.0（0.5刻み）

@@ -95,6 +95,25 @@ def test_fighting_defaults_match_hardcoded_thresholds():
     assert fighting["complexity_max_loss_9"] == 6.0
 
 
+def test_loss_cap_sliders_reach_low_values():
+    """損失上限のスライダーが引き下げ方向をカバーしていること。
+
+    候補値に無い数値もテキストボックスに直接打てば保存はされるが、そのスライダーを
+    一度でも動かすと on_change が最寄りの候補値で上書きしてしまう（実測）。
+    引き下げが主目的のパラメータなので、候補値そのものが低い側まで届いている必要がある。
+    """
+    from katrain.core.constants import AI_OPTION_VALUES
+
+    # complexity の2上限は無条件帯の上限まで下げられないと「互角時は上乗せしない」設定にできない
+    for k in ["fighting_human_max_loss", "complexity_base_max_loss", "complexity_max_loss"]:
+        assert min(AI_OPTION_VALUES[k]) <= 1.0, f"{k} が 1.0 まで下げられない"
+    for k in ["fighting_human_max_loss_9", "complexity_base_max_loss_9"]:
+        assert min(AI_OPTION_VALUES[k]) <= 0.5, f"{k} が 0.5 まで下げられない"
+    # complexity 側は対応する無条件帯の上限と同じ値を選べること（max() に吸収されない設定が作れる）
+    assert set(AI_OPTION_VALUES["fighting_human_max_loss"]) <= set(AI_OPTION_VALUES["complexity_base_max_loss"])
+    assert set(AI_OPTION_VALUES["fighting_human_max_loss_9"]) <= set(AI_OPTION_VALUES["complexity_base_max_loss_9"])
+
+
 def _build_headless_slider():
     """アプリを run() せずに LabelledSelectionSlider を1つ組み立てる。
 
