@@ -93,3 +93,47 @@ def test_fighting_defaults_match_hardcoded_thresholds():
     assert fighting["fighting_human_max_loss_9"] == 3.3
     assert fighting["complexity_base_max_loss_9"] == 3.3
     assert fighting["complexity_max_loss_9"] == 6.0
+
+
+def _build_headless_slider():
+    """アプリを run() せずに LabelledSelectionSlider を1つ組み立てる。
+
+    MDTextField が `MDApp.get_running_app().theme_cls` を要求するので、
+    App._running_app を手で差し込む（GUI ループは起動しない）。
+    """
+    pytest.importorskip("kivy")
+    pytest.importorskip("kivymd")
+    from kivy.app import App
+    from kivy.lang import Builder
+    from kivy.resources import resource_add_path, resource_find
+    from kivymd.app import MDApp
+
+    from katrain.core.utils import PATHS, find_package_resource
+    from katrain.gui.theme import Theme
+
+    if App.get_running_app() is None:
+        app = MDApp()
+        App._running_app = app
+        app.theme_cls.theme_style = "Dark"
+        gui_kv = find_package_resource("katrain/gui.kv")
+        resource_add_path(PATHS["PACKAGE"] + "/fonts")
+        Theme.DEFAULT_FONT = resource_find(Theme.DEFAULT_FONT) or Theme.DEFAULT_FONT
+        Builder.load_file(gui_kv)
+        Builder.load_file(find_package_resource("katrain/popups.kv"))
+
+    from katrain.gui.popups import LabelledSelectionSlider
+
+    return LabelledSelectionSlider(values=[(1.0, "1.0"), (2.0, "2.0")], input_property="x")
+
+
+def test_slider_value_box_is_vertically_centered():
+    """数値ボックスがスライダーと縦中央で揃うこと。
+
+    LabelledFloatInput は `size_hint: 0.5, None`（高さ 53px 固定）なので、
+    水平 BoxLayout の既定では行の下端に置かれ、行が縮むほど上へはみ出して
+    スライダーとの縦ズレが広がる（実測: 17行で +12.2px / 23行で +16.2px）。
+    pos_hint で中央に固定して行の高さから独立させる。
+    """
+    w = _build_headless_slider()
+    assert w.textbox.size_hint_y is None, "前提が変わった: textbox の高さが可変になっている"
+    assert w.textbox.pos_hint.get("center_y") == 0.5, "数値ボックスが縦中央に固定されていない"

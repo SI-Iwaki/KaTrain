@@ -837,6 +837,9 @@
         thumb_color: (0.6, 0.7, 0.9, 1) if root.key_option else (0.3, 0.4, 0.6, 1)
     LabelledFloatInput:
         id: textbox
+        # 高さ固定(size_hint_y: None)なので既定では行の下端に置かれ、行が縮むほど
+        # 上へはみ出してスライダーとの縦位置がずれる。中央固定で行の高さから独立させる。
+        pos_hint: {"center_y": 0.5}
 
 <ConfigAIPopup>:
     options_grid: options_grid
