@@ -1006,7 +1006,8 @@ msgid "aihelp:p:fighting"
 msgstr ""
 "Picks moves weighted toward unsettled areas and near opponent stones, creating complex fighting positions. "
 "'fighting_mode': Classic=pick-based, ScoreLoss=loss filter+fighting, Human=9d humanSL+fighting weights (strongest/slower). "
-"'fighting_max_loss': max point loss for ScoreLoss/Human (lower=stronger). "
+"'fighting_max_loss': max point loss for ScoreLoss mode only (lower=stronger). "
+"Human/complex use 'fighting_human_*_max_loss'; 9x9 (_9 suffix) and 13/19x19 are independent. "
 "'unsettled_power' for aggression, 'proximity_stddev' for closeness to opponent (lower=closer). "
 "'pick_n'/'pick_frac'/'pick_override': Classic mode candidate and strength settings. "
 "'endgame': disables fighting weights after this board fraction. "
@@ -1026,6 +1027,24 @@ msgstr "Max loss when leading"
 
 msgid "complexity_sharpness_min"
 msgstr "Sharpness gate (scoreStdev)"
+
+msgid "fighting_human_opening_max_loss"
+msgstr "Loss cap: opening (13/19x19)"
+
+msgid "fighting_human_max_loss"
+msgstr "Loss cap: midgame+ (13/19x19)"
+
+msgid "fighting_human_opening_max_loss_9"
+msgstr "Loss cap: opening (9x9)"
+
+msgid "fighting_human_max_loss_9"
+msgstr "Loss cap: midgame+ (9x9)"
+
+msgid "complexity_base_max_loss_9"
+msgstr "Always-on loss cap: 9x9 (even game)"
+
+msgid "complexity_max_loss_9"
+msgstr "Max loss when leading: 9x9"
 
 msgid "ai:p:rank"
 msgstr "Calibrated Rank"

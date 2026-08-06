@@ -48,7 +48,16 @@ paths:
 | unsettled_power | 2.0 | 未確定地への重み指数（大きいほど未確定地に集中） |
 | proximity_stddev | 3.0 | 相手石への近接重みの標準偏差（小さいほど近距離に集中、最小2.0） |
 
-humanモードの悪手フィルタ閾値はHumanStyleStrategyと同じBAD_MOVE_THRESHOLD（19路 NORMAL=5.6 / OPENING=2.8、9路 NORMAL=3.3 / OPENING=0.5）を使用。`fighting_max_loss`は無効。
+human/complex モードの悪手フィルタ閾値は **GUI 調整可能**（`fighting_max_loss` は無効＝scoreloss 専用）。盤面サイズ×フェーズで独立したキーを引く（`_fighting_loss_thresholds`）。
+
+| パラメータ | デフォルト | 適用 |
+|---|---|---|
+| fighting_human_opening_max_loss | 2.8 | 13/19路・序盤 |
+| fighting_human_max_loss | 5.6 | 13/19路・中盤以降 |
+| fighting_human_opening_max_loss_9 | 0.5 | 9路・序盤 |
+| fighting_human_max_loss_9 | 3.3 | 9路・中盤以降 |
+
+序盤境界は `ceil(0.14 × 盤面マス数)`（19路=51 / 13路=24 / 9路=12）。安全弁は 4.0 固定なので、閾値を 4.0 超に**引き上げる**と最高重み候補が安全弁で最善手に巻き戻される（引き下げ用途では無害）。
 
 ### complexモード（複雑化）
 
@@ -60,8 +69,10 @@ humanモードの悪手フィルタ閾値はHumanStyleStrategyと同じBAD_MOVE_
 |---|---|---|---|
 | complexity_cut_boost | 2.0 | 1.0/1.5/2.0/3.0/5.0 | 切り点（相手chain2つ以上隣接）の重みブースト |
 | complexity_lead_threshold | 15.0 | 5/10/15/20/25/30 | この目数以上リードで損失緩和を解禁 |
-| complexity_base_max_loss | 5.6 | 5.6/6/7/8/9/10 | 互角〜劣勢でも開放するゲート付き帯の上限（目）。既定5.6=現状維持。効く上限=max(これ, relaxed_cap)。無条件パス帯は不変なので、ここを上げてもただの悪手は鋭さ＋複雑さゲートで弾く |
-| complexity_max_loss | 10.0 | 6/7/8/9/10/12 | 緩和時の損失上限（リード比例で base→max を10目かけて上昇） |
+| complexity_base_max_loss | 5.6 | 5.6/6/7/8/9/10 | **13/19路専用**。互角〜劣勢でも開放するゲート付き帯の上限（目）。既定5.6=現状維持。効く上限=max(これ, relaxed_cap)。無条件パス帯は不変なので、ここを上げてもただの悪手は鋭さ＋複雑さゲートで弾く |
+| complexity_max_loss | 10.0 | 6/7/8/9/10/12 | **13/19路専用**。緩和時の損失上限（リード比例で base→max を10目かけて上昇） |
+| complexity_base_max_loss_9 | 3.3 | 2.0/2.5/3.3/4.0/5.0/6.0 | 9路版。従来は盤面非依存だったため9路に13/19路向けの値が漏れていた |
+| complexity_max_loss_9 | 6.0 | 4.0/5.0/6.0/8.0/10.0 | 9路版。同上 |
 | complexity_sharpness_min | 3.0 | 1/2/3/4/5/7/10 | 緩和バンド通過に必要な scoreStdev（要GUI校正） |
 
 ハードコード定数: `_COMPLEXITY_WEIGHT_FRAC=0.5`（複雑さ重みフロア比）/ `_COMPLEXITY_RAMP=10.0`（relaxed_cap の上昇幅、目）。純関数（`_count_cut_adjacency` / `_apply_cut_boost` / `_complexity_relaxed_cap` / `_passes_complexity_gate` / `_complexity_loss_filter`）は `tests/test_fighting_complexity.py` でユニットテスト済み。検証は GUI 実戦（batch評価では複雑化は測れない）。Spec: docs/superpowers/specs/2026-05-30-fighting-complexity-design.md

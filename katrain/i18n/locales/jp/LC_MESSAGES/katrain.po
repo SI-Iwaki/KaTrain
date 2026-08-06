@@ -693,7 +693,8 @@ msgid "aihelp:p:fighting"
 msgstr ""
 "未確定地域や相手石の近くに重みを付けて力戦局面を作ります. "
 "'fighting_mode': 従来=pick選択, ScoreLoss系=損失フィルタ+力戦重み, Human拡張=9段humanSL+力戦重み(最強・低速). "
-"'fighting_max_loss'はScoreLoss/Humanの許容損失目数(小さいほど強). "
+"'fighting_max_loss'はScoreLoss専用の許容損失目数(小さいほど強). "
+"Human拡張/complexの許容損失は'fighting_human_*_max_loss'で調整し, 9路(_9付き)と13/19路は独立. "
 "'unsettled_power'で争い重視度, 'proximity_stddev'で接近戦度を調整(小さいほど接近戦). "
 "'pick_n'/'pick_frac'/'pick_override'は従来モード専用の候補手と強さ調整. "
 "'endgame'以降は力戦重みを無効化. "
@@ -713,6 +714,24 @@ msgstr "緩和時の損失上限"
 
 msgid "complexity_sharpness_min"
 msgstr "鋭さ閾値(scoreStdev)"
+
+msgid "fighting_human_opening_max_loss"
+msgstr "損失上限:序盤(13/19路)"
+
+msgid "fighting_human_max_loss"
+msgstr "損失上限:中盤以降(13/19路)"
+
+msgid "fighting_human_opening_max_loss_9"
+msgstr "損失上限:序盤(9路)"
+
+msgid "fighting_human_max_loss_9"
+msgstr "損失上限:中盤以降(9路)"
+
+msgid "complexity_base_max_loss_9"
+msgstr "常時の損失上限:9路(互角時)"
+
+msgid "complexity_max_loss_9"
+msgstr "緩和時の損失上限:9路"
 
 msgid "ai:p:rank"
 msgstr "段級位相応"
