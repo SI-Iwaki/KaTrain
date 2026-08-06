@@ -5638,15 +5638,16 @@ class FightingStrategy(PickBasedStrategy):
 
         # --- 悪手フィ��タ ---
         bx, by = board_size
-        opening_boundary = math.ceil(0.14 * bx * by)
-        if bx == 9 and by == 9:
-            OPENING_THRESHOLD = 0.5
-            NORMAL_THRESHOLD = 3.3
-        else:
-            OPENING_THRESHOLD = 2.8
-            NORMAL_THRESHOLD = 5.6
         current_move = self.cn.depth
-        BAD_MOVE_THRESHOLD = OPENING_THRESHOLD if current_move < opening_boundary else NORMAL_THRESHOLD
+        BAD_MOVE_THRESHOLD, _COMPLEXITY_BASE_CAP, _COMPLEXITY_MAX_CAP = _fighting_loss_thresholds(
+            self.settings, board_size, current_move
+        )
+        self.game.katrain.log(
+            f"[FightingStrategy:human] Loss thresholds: board={bx}x{by} move={current_move} "
+            f"bad_move={BAD_MOVE_THRESHOLD} complexity_base={_COMPLEXITY_BASE_CAP} "
+            f"complexity_max={_COMPLEXITY_MAX_CAP}",
+            OUTPUT_DEBUG,
+        )
 
         if clean_analysis and not clean_error:
             move_infos = clean_analysis.get("moveInfos", [])
@@ -5726,9 +5727,9 @@ class FightingStrategy(PickBasedStrategy):
                 root_src = clean_analysis if (clean_analysis and not clean_error) else analysis
                 current_lead = player_sign * (root_src or {}).get("rootInfo", {}).get("scoreLead", best_score)
                 lead_threshold = self.settings.get("complexity_lead_threshold", 15.0)
-                complexity_max_loss = self.settings.get("complexity_max_loss", 10.0)
+                complexity_max_loss = _COMPLEXITY_MAX_CAP
                 sharpness_min = self.settings.get("complexity_sharpness_min", 3.0)
-                complexity_base_max_loss = self.settings.get("complexity_base_max_loss", BAD_MOVE_THRESHOLD)
+                complexity_base_max_loss = _COMPLEXITY_BASE_CAP
                 complexity_weight_by_gtp = {
                     Move((x, y), player=self.cn.next_player).gtp(): w
                     for (x, y), w in gate_weights.items()
