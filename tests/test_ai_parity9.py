@@ -4,7 +4,9 @@ from types import SimpleNamespace
 
 from katrain.core.ai import (
     PARITY9_UNSETTLED_ABS,
+    Parity9Strategy,
     parity9_budget,
+    parity9_build_candidates,
     parity9_is_endgame,
     parity9_match_tally,
     parity9_select,
@@ -200,3 +202,151 @@ class TestSelect:
 
     def test_empty_candidates(self):
         assert parity9_select([], "E5", cap=1.5, min_hp=0.01) is None
+
+
+class TestBuildCandidates:
+    """parity9_build_candidates: Stage2 moveInfos → (candidates, best_score, n_searched)。
+
+    finding 1: 損失の基準は best_gtp（regular analysis の最善手）であって
+    Stage2 argmax ではない。min_visits 未満（1visit の楽観バイアス）は
+    基準にも候補にも入れない。
+    """
+
+    @staticmethod
+    def _mi(move, score_lead, visits):
+        return {"move": move, "scoreLead": score_lead, "visits": visits}
+
+    def test_visit_floor_excludes_low_visit_entries(self):
+        move_infos = [
+            self._mi("E5", 5.0, 200),   # best_gtp, searched
+            self._mi("C3", 4.0, 150),   # searched
+            self._mi("G7", 50.0, 1),    # 1visit optimistic outlier, excluded
+        ]
+        hp = lambda gtp: {"E5": 0.30, "C3": 0.25, "G7": 0.90}[gtp]
+        candidates, best_score, n_searched = parity9_build_candidates(
+            move_infos, sign=1, best_gtp="E5", hp_for_gtp=hp
+        )
+        assert n_searched == 2
+        assert {c["gtp"] for c in candidates} == {"E5", "C3"}
+        # G7 の 50.0 が基準に混入していないことも確認（混入すれば best_score=50.0）
+        assert best_score == 5.0
+
+    def test_baseline_anchors_on_best_gtp_not_stage2_argmax(self):
+        # Stage2 の argmax は C3 (6.0) だが best_gtp は E5 (5.0)。
+        # E5 自身の loss は基準そのものなので必ず 0.0
+        move_infos = [
+            self._mi("E5", 5.0, 200),
+            self._mi("C3", 6.0, 200),
+        ]
+        hp = lambda gtp: 0.1
+        candidates, best_score, n_searched = parity9_build_candidates(
+            move_infos, sign=1, best_gtp="E5", hp_for_gtp=hp
+        )
+        by_gtp = {c["gtp"]: c for c in candidates}
+        assert best_score == 5.0
+        assert by_gtp["E5"]["loss"] == 0.0
+        assert by_gtp["C3"]["loss"] == -1.0
+
+    def test_best_gtp_below_visit_floor_still_anchors_baseline(self):
+        # best_gtp 自身が min_visits 未満でも、regular analysis が選んだ手である
+        # 以上は full move_infos から見つけて基準にする
+        move_infos = [
+            self._mi("E5", 5.0, 1),     # best_gtp, below floor
+            self._mi("C3", 4.0, 200),   # searched
+        ]
+        hp = lambda gtp: 0.1
+        candidates, best_score, n_searched = parity9_build_candidates(
+            move_infos, sign=1, best_gtp="E5", hp_for_gtp=hp
+        )
+        assert best_score == 5.0
+        assert n_searched == 1
+        by_gtp = {c["gtp"]: c for c in candidates}
+        assert by_gtp["C3"]["loss"] == 1.0
+
+    def test_empty_searched_falls_back_to_full_move_infos(self):
+        # 全部が min_visits 未満でも候補ゼロにはしない（フェイルセーフ）
+        move_infos = [
+            self._mi("E5", 5.0, 1),
+            self._mi("C3", 4.0, 1),
+        ]
+        hp = lambda gtp: 0.1
+        candidates, best_score, n_searched = parity9_build_candidates(
+            move_infos, sign=1, best_gtp="E5", hp_for_gtp=hp
+        )
+        assert n_searched == 0
+        assert {c["gtp"] for c in candidates} == {"E5", "C3"}
+        assert best_score == 5.0
+
+    def test_best_gtp_absent_falls_back_to_max_over_working_set(self):
+        move_infos = [
+            self._mi("C3", 4.0, 200),
+            self._mi("G7", 6.0, 200),
+        ]
+        hp = lambda gtp: 0.1
+        candidates, best_score, n_searched = parity9_build_candidates(
+            move_infos, sign=1, best_gtp="E5", hp_for_gtp=hp
+        )
+        assert best_score == 6.0
+
+    def test_candidate_scoring_better_than_best_gtp_yields_negative_loss(self):
+        move_infos = [
+            self._mi("E5", 5.0, 200),
+            self._mi("C3", 6.0, 200),
+        ]
+        hp = lambda gtp: 0.1
+        candidates, best_score, n_searched = parity9_build_candidates(
+            move_infos, sign=1, best_gtp="E5", hp_for_gtp=hp
+        )
+        by_gtp = {c["gtp"]: c for c in candidates}
+        assert by_gtp["C3"]["loss"] == -1.0
+
+
+class TestBuildCandidatesWhiteSign:
+    """sign=-1（白番）でも scoreLead（常に黒視点）から白視点の loss が正しく
+    出ることを確認する。符号バグは「劣勢のときだけ外す」という設計違反を
+    生むが、既存のテストは黒番（sign=1）しか撃っていなかった。
+    """
+
+    def test_white_perspective_loss_is_correct(self):
+        # scoreLead は黒視点（正=黒有利）。白から見た良し悪しは符号が逆になる
+        move_infos = [
+            {"move": "E5", "scoreLead": -3.0, "visits": 200},  # 白+3.0 = best_gtp
+            {"move": "C3", "scoreLead": -1.0, "visits": 200},  # 白+1.0 = loss 2.0
+            {"move": "G7", "scoreLead": 2.0, "visits": 200},   # 白-2.0 = loss 5.0
+        ]
+        hp = lambda gtp: 0.1
+        candidates, best_score, n_searched = parity9_build_candidates(
+            move_infos, sign=-1, best_gtp="E5", hp_for_gtp=hp
+        )
+        by_gtp = {c["gtp"]: c for c in candidates}
+        assert best_score == 3.0
+        assert by_gtp["E5"]["loss"] == 0.0
+        assert by_gtp["C3"]["loss"] == 2.0
+        assert by_gtp["G7"]["loss"] == 5.0
+
+
+class TestHumanPolicyLookupOrientation:
+    """_human_policy_lookup: idx = (by - 1 - y) * bx + x の向きを検算する。
+
+    game/engine なしで軽量インスタンスを作る（tests/test_jigo9.py と同じ
+    __new__ パターン）。合成配列 array[i] == i で座標→idx の対応を直接読む。
+    """
+
+    @staticmethod
+    def _lookup():
+        obj = Parity9Strategy.__new__(Parity9Strategy)
+        obj.game = SimpleNamespace(board_size=(9, 9))
+        human_policy = list(range(82))  # 81 board points + 1 pass, array[i] == i
+        return obj._human_policy_lookup(human_policy)
+
+    def test_corner(self):
+        # A1: x=0 (column A), y=0 (row 1) -> idx = (9-1-0)*9 + 0 = 72
+        assert self._lookup()("A1") == 72
+
+    def test_j_column_skips_i(self):
+        # GTP columns skip "I": J is the 9th letter (index 8), not out of range.
+        # J5: x=8, y=4 -> idx = (9-1-4)*9 + 8 = 44
+        assert self._lookup()("J5") == 44
+
+    def test_pass_is_last_element(self):
+        assert self._lookup()("pass") == 81

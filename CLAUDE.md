@@ -167,6 +167,7 @@ python -m katrain_debug --sgf FILE --strategy hunt --batch --settings hunt_max_l
 - **`tasklist` の出力ヘッダーは cp932 環境で文字化けする** — 日本語 Windows では「イメージ名/PID/…」部分が読めないが、データ行の ASCII 値（PID・プロセス名・メモリ）は正常。grep や値抽出は問題なく使える
 - **worktree で KaTrain のコードを実行するときは `PYTHONPATH=<worktreeルート>` を明示する** — site-packages の `_katrain.pth` が HEAD チェックアウトを無条件登録しており、worktree の cwd から実行しても import は HEAD に解決される（実測 2026-08-03: A/B の base 側が黙って HEAD コードを実行しラベル誤りを起こした）。分離の検算は import 先の `__file__` とフック有無で行う
 - **エンジン設定を変えるときに `C:\Users\iwaki\.katrain\analysis_config.cfg` を編集しない** — エンジンが読むのは config.json の engine.config が解決するパッケージ側 `katrain/KataGo/analysis_config.cfg`（実測 2026-08-03: ~/.katrain 側の numAnalysisThreads 4→8 編集は no-op だった）。編集前に実効ファイルを engine.config → find_package_resource の解決で確認する
+- **`extra_settings={"maxVisits": N}` で解析の visits を変えられると思わない** — `engine.request_analysis` は `maxVisits` を**クエリのトップレベル**に `visits` 引数（既定 `config["max_visits"]`）から入れ、`extra_settings` は `overrideSettings` にしか入らない。KataGo はトップレベルを優先するので override 側は無視される（実測 2026-08-06: top-level 1000 / override 600 のクエリが 1006 visits を返した）。visits を変えたいなら `request_analysis(..., visits=N)` を渡す
 
 ## 開発ワークフロー
 

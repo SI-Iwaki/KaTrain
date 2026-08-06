@@ -1544,6 +1544,44 @@ def parity9_is_endgame(depth, ownership, endgame_move, unsettled_max):
     return unsettled <= unsettled_max
 
 
+# Stage2 の moveInfos は 1visit の手が大半を占める（実測: 9路 1007visits で 81件）。
+# 1visit の scoreLead は子局面の生の NN 評価1本で、相手の最善応手が探索されていない
+# ぶん打つ側に楽観的に出る。損失の基準にも候補にも入れない（ai:tsumego の
+# min_visits と同じ理由）
+PARITY9_MIN_VISITS = 10
+
+
+def parity9_build_candidates(move_infos, sign, best_gtp, hp_for_gtp, min_visits=PARITY9_MIN_VISITS):
+    """Stage2 の moveInfos から (candidates, best_score, n_searched) を返す。
+
+    candidates: [{"gtp", "loss", "hp"}]。loss は **best_gtp を基準**にした
+    「best_gtp の代わりにこの手を打つと何目損か」（spec 4.3）。best_gtp が
+    moveInfos に無ければ、min_visits を満たす手のスコア最大値で代用する。
+
+    min_visits 未満の手は基準にも候補にも入れない。全部が未満なら
+    フィルタを外す（Stage2 が極端に浅い場合のフェイルセーフ＝候補ゼロにしない）。
+    """
+    searched = [mi for mi in move_infos if mi.get("visits", 0) >= min_visits]
+    n_searched = len(searched)
+    working = searched if searched else move_infos
+
+    best_entry = next((mi for mi in move_infos if mi.get("move") == best_gtp), None)
+    if best_entry is not None:
+        best_score = best_entry.get("scoreLead", 0.0) * sign
+    else:
+        best_score = max(mi.get("scoreLead", 0.0) * sign for mi in working)
+
+    candidates = [
+        {
+            "gtp": mi["move"],
+            "loss": best_score - mi.get("scoreLead", 0.0) * sign,
+            "hp": hp_for_gtp(mi["move"]),
+        }
+        for mi in working
+    ]
+    return candidates, best_score, n_searched
+
+
 def parity9_select(candidates, best_gtp, cap, min_hp):
     """予算内の非最善手から humanPolicy 最大を選ぶ。該当なしなら None。
 
@@ -1671,13 +1709,16 @@ class Parity9Strategy(AIStrategy):
         # ---- Stage2: クリーンクエリ（正確な scoreLead + ownership）----
         # ownership=True を明示するのは、ユーザーのローカル設定が
         # _enable_ownership=false でも未確定度を測れるようにするため
+        # maxVisits は extra_settings に置いても効かない: engine.request_analysis は
+        # クエリのトップレベル maxVisits を visits 引数（既定 config["max_visits"]）
+        # から入れ、extra_settings は overrideSettings にしか入らずトップレベルが
+        # 優先される（実測 2026-08-06）。実際の visits は config["max_visits"]（1000）
         stage2 = self._run_query(
             "Stage2",
             include_policy=False,
             ownership=True,
             extra_settings={
                 "ignorePreRootHistory": False,
-                "maxVisits": 600,
                 "wideRootNoise": 0.0,
             },
         )
@@ -1720,13 +1761,14 @@ class Parity9Strategy(AIStrategy):
             )
 
         # ---- Stage1: humanSL 9段（外すと決まってから撃つ）----
+        # maxVisits は同じ理由でここでも無効（上の Stage2 コメント参照）。実際の
+        # visits は config["max_visits"]（1000）
         stage1 = self._run_query(
             "Stage1",
             include_policy=True,
             extra_settings={
                 "humanSLProfile": "rank_9d",
                 "ignorePreRootHistory": False,
-                "maxVisits": 800,
             },
         )
         if not stage1 or "humanPolicy" not in stage1:
@@ -1735,18 +1777,23 @@ class Parity9Strategy(AIStrategy):
         hp_for_gtp = self._human_policy_lookup(stage1["humanPolicy"])
 
         # ---- 候補構築と選択 ----
-        # 損失は「最善手の代わりに打つと何目損か」＝最善手基準（root 基準ではない）
+        # 損失は「best_gtp の代わりに打つと何目損か」＝best_gtp 基準（root 基準
+        # ではない）。1visit の楽観バイアスを避けるため min_visits 未満は基準にも
+        # 候補にも入れない（parity9_build_candidates）
         move_infos = stage2["moveInfos"]
-        scores = [mi.get("scoreLead", 0.0) * sign for mi in move_infos]
-        best_score = max(scores)
-        candidates = [
-            {"gtp": mi["move"], "loss": best_score - s, "hp": hp_for_gtp(mi["move"])}
-            for mi, s in zip(move_infos, scores)
-        ]
+        candidates, best_score, n_searched = parity9_build_candidates(
+            move_infos, sign, best_gtp, hp_for_gtp
+        )
         min_hp = float(self.settings.get("parity9_min_human_policy", 0.01))
         chosen = parity9_select(candidates, best_gtp, cap, min_hp)
         if chosen is None:
-            self._log("No deviation candidate within cap -> best move")
+            non_best = [c for c in candidates if c["gtp"] not in (best_gtp, "pass")]
+            self._log(
+                f"No deviation candidate: cap={cap:.2f} min_hp={min_hp} "
+                f"pool={len(move_infos)} searched={n_searched} non_best={len(non_best)} "
+                f"min_loss={min((c['loss'] for c in non_best), default=float('nan')):.2f} "
+                f"max_hp={max((c['hp'] for c in non_best), default=0.0):.4f}"
+            )
             return self._best_move("Parity9: no deviation candidate, playing best move.")
 
         self._log(

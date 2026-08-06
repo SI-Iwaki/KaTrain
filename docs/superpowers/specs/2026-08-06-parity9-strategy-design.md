@@ -169,6 +169,16 @@ def parity9_select(candidates, best_gtp, cap, min_hp):
 
 ### 4.6 クエリ仕様
 
+**visits は `extra_settings["maxVisits"]` では変えられない**（2026-08-06 訂正）。
+`engine.request_analysis` は `maxVisits` を**クエリのトップレベル**に `visits` 引数
+（既定 `config["max_visits"]`）から入れ、`extra_settings` は `overrideSettings` に
+しか入らない。KataGo はトップレベルを優先するので override 側は無視される（実測
+`~/.katrain/logs/game_20260806_100831.log`: トップレベル 1000 / override 600 の
+クエリが 1006 visits を返した。Stage1 が要求した 800 も同様に 1007 visits で
+返っている）。したがって以下の両クエリとも**実際の visits は `config["max_visits"]`
+に依存する**（この環境では 1000）。`extra_settings` の `maxVisits` キーは実装から
+削除済み（無効なだけでなく読み手を誤誘導するため）。
+
 **Stage2（clean、先に撃つ）** — `DivergenceStrategy` の Stage2 と同形 + ownership:
 
 ```python
@@ -177,7 +187,7 @@ engine.request_analysis(
     priority=PRIORITY_EXTRA_AI_QUERY,
     include_policy=False,
     ownership=True,                       # _enable_ownership=false をバイパス
-    extra_settings={"ignorePreRootHistory": False, "maxVisits": 600, "wideRootNoise": 0.0},
+    extra_settings={"ignorePreRootHistory": False, "wideRootNoise": 0.0},
 )
 ```
 
@@ -188,9 +198,13 @@ engine.request_analysis(
     self.cn, callback=..., error_callback=...,
     priority=PRIORITY_EXTRA_AI_QUERY,
     include_policy=True,
-    extra_settings={"humanSLProfile": "rank_9d", "ignorePreRootHistory": False, "maxVisits": 800},
+    extra_settings={"humanSLProfile": "rank_9d", "ignorePreRootHistory": False},
 )
 ```
+
+visits を実際に変えたい場合は `request_analysis(..., visits=N)` で明示的に渡す
+必要がある（`extra_settings` ではなく引数）。これは今回のスコープ外（校正データが
+現行 visits 数を前提にしているため、visits を変える判断は別途行う）。
 
 `humanPolicy` はフラット配列なので gtp → 値のルックアップに変換する（`JigoStrategy` の `_hp_for_gtp`、`ai.py:1358` と同じ変換。9路は 81+1 要素で末尾が pass）。
 
