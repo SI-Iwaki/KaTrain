@@ -175,12 +175,14 @@
             "jigo9_endgame_move": 30
         },
         "ai:parity9": {
-            "parity9_keep_margin": 3.0,
-            "parity9_max_loss_per_move": 3.0,
-            "parity9_match_margin": 1,
+            "parity9_target_rate": 0.4,
+            "parity9_min_winrate": 0.7,
+            "parity9_max_loss_per_move": 5.0,
+            "parity9_cost_slack": 0.5,
             "parity9_endgame_move": 30,
             "parity9_unsettled_max": 8,
-            "parity9_min_human_policy": 0.01
+            "parity9_yose_max_loss": 0.1,
+            "parity9_min_human_policy": 0.005
         },
         "ai:scoreloss": {
             "strength": 0.2

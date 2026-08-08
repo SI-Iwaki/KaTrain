@@ -539,16 +539,22 @@ msgid "ai:parity9"
 msgstr "一致率追随（9路）"
 
 msgid "aihelp:parity9"
-msgstr "9路盤専用。相手の AI 最善手一致数を自分が上回っている間だけ最善手を外し、終局時の一致率が相手を大きく上回らないようにします。相手が最善手ばかり打っているうちはこちらも最善手のみ打ちます。parity9_match_margin: 外すのに必要な一致数の差（相手の一致数は自分の完了手数に切り揃えて比較するので白番でも不利になりません）。parity9_keep_margin: 常に手元に残す安全幅（目）。外し予算 = リード − この値で、互角・劣勢では予算0＝一切外しません（9路は序盤のリードがほぼ0なので、実際に外せるのは中盤に勝勢となってからヨセに入るまでです）。parity9_max_loss_per_move: 1手あたりの損失上限（目）。予算とこの値の厳しいほうが実効上限になります。外す手は予算内の非最善手のうち humanPolicy が最大のものを選び（手抜きとバレないため）、humanPolicy が同着なら損失が小さいほうを採ります。parity9_min_human_policy: 採用候補の humanPolicy 下限。予算内でも人間らしくない手しか無ければ外さずに最善手へ戻ります。parity9_endgame_move / parity9_unsettled_max: ヨセ判定（この手数以上 かつ 盤上の未確定点がこの数以下）。ヨセに入ったら以降は KataGo 最善手のみを打ち、二度と外しません。19/13路盤では常に最善手を打つだけになるので、他の戦略を使ってください。"
-
-msgid "parity9_keep_margin"
-msgstr "[9路] 安全幅（目・予算=リード−これ）"
+msgstr "9路盤専用。終局レポートの AI 最善手一致率を目標値まで下げつつ勝ちきることをめざします。parity9_target_rate: 目標の一致率。相手の一致率では動きません（相手が強くて目標まで下げると勝てない対局では、下の勝率フロアが自動的に外しを止めるので一致率は自然に上がります）。判定は「この手も最善手にしたら目標を超えるか」の先読み型なので、外し賃の最も安い序盤から使えます。parity9_min_winrate: 着手後の勝率フロア。候補の勝率は相手の最善応手込みの探索値なので、「この手を打って最善で返されてもまだこの勝率」を意味します。＝「次の一手で確実に逆転されない」の判定本体で、安全条件はこれだけです。parity9_max_loss_per_move: 1手あたりの損失上限（目）。parity9_cost_slack: 外す手の選び方。安全条件を満たす候補のうち最も安い手からこの目数以内に収まるものだけを対象に、その中で humanPolicy が最大のものを選びます（0=常に最安、大きくすると人間らしさ優先で高くつく）。parity9_min_human_policy: 採用候補の humanPolicy 下限。下げるほど一致率は下がりますが、9段がめったに打たない手を選ぶようになります。parity9_endgame_move / parity9_unsettled_max: ヨセ判定（この手数以上 かつ 盤上の未確定点がこの数以下）。parity9_yose_max_loss: ヨセに入ってからの1手損失上限（目）。ダメ詰めや1目ヨセは手順が入れ替わっても目数が動かないので、既定 0.1 目なら「ヨセを間違える」ことなく手順だけ変えられます。0 にするとヨセ以降は KataGo 最善手のみになります。19/13路盤では常に最善手を打つだけになるので、他の戦略を使ってください。"
 
 msgid "parity9_max_loss_per_move"
 msgstr "[9路] 1手あたり損失上限（目）"
 
-msgid "parity9_match_margin"
-msgstr "[9路] 外すのに必要な一致数の差"
+msgid "parity9_target_rate"
+msgstr "[9路] 目標の最善手一致率"
+
+msgid "parity9_min_winrate"
+msgstr "[9路] 着手後の勝率フロア"
+
+msgid "parity9_cost_slack"
+msgstr "[9路] 最安手からの許容上乗せ（目）"
+
+msgid "parity9_yose_max_loss"
+msgstr "[9路] ヨセで許す損失上限（目）"
 
 msgid "parity9_endgame_move"
 msgstr "[9路] ヨセ切替手数"

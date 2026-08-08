@@ -848,16 +848,22 @@ msgid "ai:parity9"
 msgstr "Match-Rate Parity (9x9)"
 
 msgid "aihelp:parity9"
-msgstr "9x9 only. Deviates from the KataGo best move only while its own count of AI-best-move matches exceeds the opponent's, so the final match rate never runs far ahead of the opponent's. While the opponent keeps playing best moves, this AI does too. parity9_match_margin: match-count lead required before deviating (the opponent's count is truncated to the AI's own completed move count, so playing White is not penalised). parity9_keep_margin: safety margin in points always kept in reserve. Deviation budget = lead - this value, so an even or losing position gives a budget of 0 and no deviation at all (on 9x9 the opening lead is near zero, so deviation is only possible from the point the game is clearly won until the endgame begins). parity9_max_loss_per_move: per-move loss cap in points; the stricter of the budget and this cap applies. Among non-best moves within the cap the AI picks the one with the highest humanPolicy (so the concession does not look deliberate), breaking humanPolicy ties toward the smaller loss. parity9_min_human_policy: humanPolicy floor for candidates; if only inhuman moves fit the budget the AI plays the best move instead. parity9_endgame_move / parity9_unsettled_max: endgame detection (at or past this move number AND at most this many unsettled board points). Once the endgame is reached the AI plays only KataGo best moves and never deviates again. On 19x19/13x13 it simply plays the best move, so use another strategy there."
-
-msgid "parity9_keep_margin"
-msgstr "[9x9] Safety margin (pts; budget = lead - this)"
+msgstr "9x9 only. Aims to bring the final AI-best-move match rate down to a target while still winning. parity9_target_rate: the target match rate. The opponent's rate never moves it - against a strong opponent the winrate floor below stops the deviations on its own, so the match rate rises naturally instead of the game being thrown away. The test is forward-looking - "would matching here push me over the target?" - so deviation can start in the opening, where it is cheapest. parity9_min_winrate: winrate floor after the move. A candidate's winrate is a search value that already assumes the opponent's best reply, so this directly encodes "cannot be turned around by the next move", and it is the only safety condition. parity9_max_loss_per_move: per-move loss cap in points. parity9_cost_slack: how the deviation is chosen - among the candidates that pass the safety condition, only those within this many points of the cheapest one are considered, and among those the highest humanPolicy wins (0 = always cheapest; larger values favour naturalness at a higher price). parity9_min_human_policy: humanPolicy floor for candidates; lowering it lowers the match rate but starts picking moves a 9 dan would rarely play. parity9_endgame_move / parity9_unsettled_max: endgame detection (at or past this move number AND at most this many unsettled board points). parity9_yose_max_loss: per-move loss cap once the endgame is reached. Dame filling and one-point endgame moves are order-independent, so at the default 0.1 points the AI can vary the order without ever losing a point. Set it to 0 to play only KataGo best moves from the endgame on. On 19x19/13x13 it simply plays the best move, so use another strategy there."
 
 msgid "parity9_max_loss_per_move"
 msgstr "[9x9] Per-move loss cap (pts)"
 
-msgid "parity9_match_margin"
-msgstr "[9x9] Match-count lead needed to deviate"
+msgid "parity9_target_rate"
+msgstr "[9x9] Target best-move match rate"
+
+msgid "parity9_min_winrate"
+msgstr "[9x9] Winrate floor after the move"
+
+msgid "parity9_cost_slack"
+msgstr "[9x9] Slack above cheapest deviation (pts)"
+
+msgid "parity9_yose_max_loss"
+msgstr "[9x9] Loss cap during the endgame (pts)"
 
 msgid "parity9_endgame_move"
 msgstr "[9x9] Endgame switch move"

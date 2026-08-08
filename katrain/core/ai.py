@@ -1521,12 +1521,41 @@ def parity9_match_tally(nodes, ai_player):
 PARITY9_UNSETTLED_ABS = 0.5
 
 
-def parity9_budget(lead, keep_margin):
-    """自分視点のリード（目）から外し予算（目）を返す。
+def parity9_rate_gate(mine, opp, counted, target_rate):
+    """外し解禁の判定を (open, eff_target, my_rate, opp_rate) で返す。
 
-    互角・劣勢では 0＝一切外さない。安全幅ぶんは常に手元に残す。
+    目標は**絶対レート**（`parity9_target_rate`）のみ。`opp` はログ用で判定に
+    使わない。
+
+    **かつて `eff_target = max(target_rate, opp_rate)` にしていたのは誤り**。
+    ユーザー要件は「相手が強すぎて**全体目標以下では勝てない場合**は相手と
+    同率程度であれば超えてもよい」で、条件は「勝てない場合」であって「相手の
+    一致率が高い場合」ではない。そして「勝てない」はすでに安全ゲート
+    （着手後の勝率フロア）が処理しており、外せない手番では自動的にレートが
+    上がって相手の水準へ寄る。相手のレートで目標を引き上げるのは二重適用で、
+    実測（2026-08-08 実戦 game_20260808_224752・相手が 43〜54% 一致してくる
+    接戦）では**30判断中5回**、安全性とは無関係にゲートを閉じるブレーキに
+    なっていた。
+
+    判定は「**この手も一致させたら**実効目標を超えるか」の先読み型:
+    `(mine + 1) / (counted + 1) > eff_target`。counted=0 の初手でも
+    1/1 = 1.0 > target で開くので、対局で最も外し賃の安い序盤を取りこぼさない。
+
+    これは旧実装の一致数差ゲート（`mine - opp >= match_margin`）を置き換える。
+    旧ゲートは 0-0 で必ず閉じるため白の初手が構造的に外せず、実測（校正局）では
+    そこが**盤面で最も原資の多い局面**だった（0.5目以内に人間らしい代替7手、
+    しかも最善手 F6 の humanPolicy 0.194 に対し D4 は 0.485＝9段の第一感は
+    むしろ代替手のほう）。さらに相手が KataGo 最善手に一度も一致しない対局
+    （実測: 校正局の人間は全手番 opp=0）では旧ゲートの追随目標が原理的に
+    達成不能だった。
+
+    `opp` は `parity9_match_tally` が mine と同じ手数に切り揃えた値なので、
+    分母は両者とも `counted` でよい。
     """
-    return max(0.0, lead - keep_margin)
+    my_rate = (mine / counted) if counted else 0.0
+    opp_rate = (opp / counted) if counted else 0.0
+    projected = (mine + 1) / (counted + 1)
+    return projected > target_rate, target_rate, my_rate, opp_rate
 
 
 def parity9_is_endgame(depth, ownership, endgame_move, unsettled_max):
@@ -1544,48 +1573,109 @@ def parity9_is_endgame(depth, ownership, endgame_move, unsettled_max):
     return unsettled <= unsettled_max
 
 
-# Stage2 の moveInfos は 1visit の手が大半を占める（実測: 9路 1007visits で 81件）。
-# 1visit の scoreLead は子局面の生の NN 評価1本で、相手の最善応手が探索されていない
-# ぶん打つ側に楽観的に出る。損失の基準にも候補にも入れない（ai:tsumego の
-# min_visits と同じ理由）
+# 1visit の scoreLead は子局面の生の NN 評価1本で、相手の最善応手が探索されて
+# いないぶん打つ側に楽観的に出る。候補に入れない（ai:tsumego の min_visits と
+# 同じ理由）
 PARITY9_MIN_VISITS = 10
 
 
-def parity9_build_candidates(move_infos, sign, best_gtp, hp_for_gtp, min_visits=PARITY9_MIN_VISITS):
-    """Stage2 の moveInfos から (candidates, best_score, n_searched) を返す。
+def parity9_build_candidates(candidate_moves, player="B", min_visits=PARITY9_MIN_VISITS):
+    """通常解析の candidate_moves から (candidates, n_searched) を返す。
 
-    candidates: [{"gtp", "loss", "hp"}]。loss は **best_gtp を基準**にした
-    「best_gtp の代わりにこの手を打つと何目損か」（spec 4.3）。best_gtp が
-    moveInfos に無ければ、min_visits を満たす手のスコア最大値で代用する。
+    candidate_moves: `GameNode.candidate_moves`（order 昇順で [0] が KataGo 最善手）。
+    candidates: [{"gtp", "loss", "visits", "wr"}]。`wr` は**打つ側視点**の
+    着手後勝率（KataGo の winrate は常に黒視点なので白番は 1-wr に変換する）。
+    取れなければ None。
 
-    min_visits 未満の手は基準にも候補にも入れない。全部が未満なら
-    フィルタを外す（Stage2 が極端に浅い場合のフェイルセーフ＝候補ゼロにしない）。
+    **humanPolicy はここでは載せない**。hp は Stage1（humanSL クエリ）が要るが、
+    loss / wr / visits は通常解析だけで揃うので、先にこの3つで
+    `parity9_has_admissible` を評価すれば「外す候補が無い手番では Stage1 を
+    撃たない」という spec §4.1 の順序を保てる。hp は外すと決まってから
+    呼び出し側が各要素に載せる。
+
+    **プールを Stage2 の moveInfos ではなく通常解析から作る理由**: Stage2 は
+    scoreLead をクリーンに保つため `wideRootNoise=0` で撃っており、9路ではその
+    探索が1点に集中して非最善手が visit floor を越えられない（実測 2026-08-06・
+    校正局 depth 25: 候補28手のうち visits>=10 は最善手1手だけ＝非最善候補ゼロ）。
+    通常解析は `wideRootNoise=0.04`・同 visits で候補が広がり、humanSLProfile も
+    付いていないのでスコアはクリーン。加えて `game_report` の一致判定
+    （`candidate_moves[0]`）と同じ解析を見ることになるので、「外したつもりが
+    一致していた」というズレが構造的に起きない。
+
+    loss は `relativePointsLost`＝「最善手の代わりにこの手を打つと何目損か」で、
+    `GameNode` 側で既に**打つ側視点に符号済み**（sign を掛けてはいけない）。
+    基準が最善手であることは candidate_moves の定義そのものなので、Stage2 版に
+    あった「基準の付け替え」も不要になった。
+
+    min_visits 未満の手は候補に入れない。全部が未満ならフィルタを外す
+    （解析が極端に浅い場合のフェイルセーフ＝候補ゼロにしない）。
     """
-    searched = [mi for mi in move_infos if mi.get("visits", 0) >= min_visits]
+    searched = [d for d in candidate_moves if d.get("visits", 0) >= min_visits]
     n_searched = len(searched)
-    working = searched if searched else move_infos
+    working = searched if searched else list(candidate_moves)
 
-    best_entry = next((mi for mi in move_infos if mi.get("move") == best_gtp), None)
-    if best_entry is not None:
-        best_score = best_entry.get("scoreLead", 0.0) * sign
-    else:
-        best_score = max(mi.get("scoreLead", 0.0) * sign for mi in working)
+    def wr_player(d):
+        wr = d.get("winrate")
+        if wr is None:
+            return None
+        return wr if player == "B" else 1.0 - wr
 
     candidates = [
         {
-            "gtp": mi["move"],
-            "loss": best_score - mi.get("scoreLead", 0.0) * sign,
-            "hp": hp_for_gtp(mi["move"]),
+            "gtp": d["move"],
+            # policy フォールバック分岐（analysis["moves"] が空）の dict には
+            # relativePointsLost が無い。その場合の pointsLost は 0
+            "loss": d.get("relativePointsLost", d.get("pointsLost", 0.0)),
+            "visits": d.get("visits", 0),
+            "wr": wr_player(d),
         }
-        for mi in working
+        for d in working
     ]
-    return candidates, best_score, n_searched
+    return candidates, n_searched
 
 
-def parity9_select(candidates, best_gtp, cap, min_hp):
-    """予算内の非最善手から humanPolicy 最大を選ぶ。該当なしなら None。
+def parity9_has_admissible(candidates, best_gtp, cap, min_winrate):
+    """humanPolicy を見ずに「外せる候補が在りうるか」を判定する。
 
-    candidates: [{"gtp": str, "loss": float, "hp": float}, ...]
+    Stage1（humanSL）を撃つ前の足切り専用。ここを通ってから hp を載せて
+    `parity9_select` に渡す。hp 下限で最終的に全滅することはあるが、その逆
+    （ここで落として select なら通った）は起きない＝安全側の枝刈り。
+    """
+    return any(
+        c["gtp"] != best_gtp and c["gtp"] != "pass"
+        and c["loss"] <= cap
+        and (c.get("wr") is None or c["wr"] >= min_winrate)
+        for c in candidates
+    )
+
+
+def parity9_select(candidates, best_gtp, cap, min_hp, min_winrate=0.0, cost_slack=float("inf")):
+    """予算内の非最善手から1手選ぶ。該当なしなら None。
+
+    選択は**最安バンド内の humanPolicy 最大**: 予算内の候補のうち最も損失の
+    小さい手から `cost_slack` 目以内に収まるものだけを対象に、その中で
+    humanPolicy が最大の手を採る。
+
+    `cost_slack` を入れた理由: 「予算内で humanPolicy 最大」だけだと**毎回
+    予算を使い切る**（実測 2026-08-08・校正局: 上限5.0で12手外して合計21.2目。
+    move 12 は 2.66目の B4 があるのに hp が高い 3.88目の E6 を採っていた）。
+    ユーザー要件は「最善手の次にいいスコアの手」なので、コストが第1基準・
+    人間らしさがバンド内のタイブレークになるのが正しい。実測では高価な外しは
+    humanPolicy も低い（4〜5目の手は hp 1.5〜7.9%、1目未満の手は hp 37〜60%）
+    ので、この順序にするとコストと不自然さが同時に下がる。
+
+    `cost_slack=inf` で旧挙動（予算内で humanPolicy 最大）、0 で純粋に最安。
+
+    candidates: [{"gtp": str, "loss": float, "hp": float, "wr": float|None}, ...]
+
+    `min_winrate` は**着手後の勝率フロア**（打つ側視点）＝「次の一手で逆転され
+    ないこと」の直接的な表現。候補の `winrate` は KataGo の探索値なので
+    **相手の最善応手込み**であり、「この手を打った後で相手に最善で返されても
+    まだこの勝率」を意味する。スコア予算（`lead - keep_margin`）では互角局面で
+    必ず 0 になり序盤が構造的に外せない（実測: 校正局 move 2 は白の勝率 82% で
+    盤面最安の外し 0.28目があるのに、リード 0.99目 < keep_margin 1.0 で
+    予算 0 になり落ちていた）。`wr` が None（勝率が取れない）ならこの条件は
+    課さない。
 
     pass を除外するのは、パスが対局終了に直結し area scoring のダメ処理と
     絡むため。最善手が pass なら呼び出し側が最善手（=pass）を打つ。
@@ -1595,10 +1685,13 @@ def parity9_select(candidates, best_gtp, cap, min_hp):
         c for c in candidates
         if c["gtp"] != best_gtp and c["gtp"] != "pass"
         and c["loss"] <= cap and c["hp"] >= min_hp
+        and (c.get("wr") is None or c["wr"] >= min_winrate)
     ]
     if not pool:
         return None
-    return max(pool, key=lambda c: (c["hp"], -c["loss"]))
+    cheapest = min(c["loss"] for c in pool)
+    band = [c for c in pool if c["loss"] <= cheapest + cost_slack]
+    return max(band, key=lambda c: (c["hp"], -c["loss"]))
 
 
 @register_strategy(AI_PARITY_9)
@@ -1690,20 +1783,41 @@ class Parity9Strategy(AIStrategy):
             return self._best_move("Parity9: no candidate moves.")
         best_gtp = cands[0]["move"]
 
-        # ---- ゲート2: ヨセ sticky（クエリ0本）----
-        if getattr(self.game, "_parity9_endgame", False):
-            self._log("Endgame: sticky (already locked) -> best move")
+        # ヨセで許す1手あたり損失（目）。0 以下でヨセは KataGo 最善手に固定
+        yose_cap = float(self.settings.get("parity9_yose_max_loss", 0.1))
+        in_yose = bool(getattr(self.game, "_parity9_endgame", False))
+
+        # ---- ゲート2: ヨセ sticky（クエリ0本。固定運用のときだけ即 return）----
+        # **ヨセを丸ごとロックしない**。長い9路の実戦ではヨセこそ外し賃が最も
+        # 安い（実測 2026-08-08 実戦 game_20260808_224752・接戦局のヨセ15判断:
+        # **13手に 0.5目以内の人間らしい代替手があり、9手には損失 0.05 以下の
+        # 完全同値手が存在**。ダメ詰めや1目ヨセは手順が入れ替わっても目数が
+        # 動かないため）。この局ではヨセロックが 31判断中16手＝52% を最善手に
+        # 固定しており、一致率が下がらない最大の原因だった。
+        # 以前「ヨセに無料の在庫はない」と結論したのは、校正局（38手で終わり
+        # ヨセが4手しかない）だけを見た過剰一般化。
+        # `yose_cap` を極小に保てば「ヨセを間違えない」要件は満たす（目数を
+        # ほぼ落とさない）。0 にすれば従来どおりの完全固定。
+        if in_yose and yose_cap <= 0.0:
+            self._log("Endgame: sticky (locked, yose_cap=0) -> best move")
             return self._best_move("Parity9: endgame (sticky), playing best move.")
 
-        # ---- ゲート3: 一致数（クエリ0本）----
-        match_margin = int(self.settings.get("parity9_match_margin", 1))
+        # ---- ゲート3: 一致率（クエリ0本）----
+        target_rate = float(self.settings.get("parity9_target_rate", 0.4))
         nodes = [n for n in self.cn.nodes_from_root if n.move and not n.is_root]
         mine, opp, counted = parity9_match_tally(nodes, player)
-        self._log(f"Tally: mine={mine} opp={opp} (counted={counted}) margin={match_margin}")
-        if mine - opp < match_margin:
-            self._log("Tally: gate closed -> best move")
+        gate_open, eff_target, my_rate, opp_rate = parity9_rate_gate(
+            mine, opp, counted, target_rate
+        )
+        self._log(
+            f"Rate: mine={mine}/{counted} ({my_rate:.0%}) opp={opp}/{counted} ({opp_rate:.0%}) "
+            f"target={target_rate:.0%} eff={eff_target:.0%}"
+        )
+        if not gate_open:
+            self._log("Rate: gate closed -> best move")
             return self._best_move(
-                f"Parity9: match gate closed (mine={mine}, opp={opp}), playing best move."
+                f"Parity9: rate gate closed (mine={mine}/{counted}, "
+                f"eff target {eff_target:.0%}), playing best move."
             )
 
         # ---- Stage2: クリーンクエリ（正確な scoreLead + ownership）----
@@ -1734,30 +1848,64 @@ class Parity9Strategy(AIStrategy):
             None if ownership is None
             else sum(1 for o in ownership if abs(o) < PARITY9_UNSETTLED_ABS)
         )
-        if parity9_is_endgame(self.cn.depth, ownership, endgame_move, unsettled_max):
-            self.game._parity9_endgame = True
+        if in_yose or parity9_is_endgame(self.cn.depth, ownership, endgame_move, unsettled_max):
+            if not in_yose:
+                self.game._parity9_endgame = True  # sticky
+            in_yose = True
             self._log(
                 f"Endgame: depth={self.cn.depth} thr={endgame_move} "
-                f"unsettled={n_unsettled} max={unsettled_max} -> yose, locking"
+                f"unsettled={n_unsettled} max={unsettled_max} -> yose "
+                f"(cap -> {yose_cap:.2f})"
             )
-            return self._best_move("Parity9: endgame reached, playing best move.")
-        self._log(
-            f"Endgame: depth={self.cn.depth} thr={endgame_move} "
-            f"unsettled={n_unsettled} max={unsettled_max} -> not yet"
-        )
+        else:
+            self._log(
+                f"Endgame: depth={self.cn.depth} thr={endgame_move} "
+                f"unsettled={n_unsettled} max={unsettled_max} -> not yet"
+            )
 
-        # ---- ゲート5: 損失予算 ----
-        keep_margin = float(self.settings.get("parity9_keep_margin", 3.0))
-        max_loss = float(self.settings.get("parity9_max_loss_per_move", 3.0))
+        # ---- ゲート5: 安全性（着手後の勝率フロア）----
+        # 安全ゲートは**着手後の勝率フロアただ1つ**。かつてここには
+        # スコア予算 `max(0, lead - keep_margin)` があったが、`scoreLead` は
+        # komi 込みなので「lead > 0」は「勝率 > 50%」と同義で、**9路 komi 7 の
+        # 黒は開始時点で lead が負**（実測 2026-08-08 実戦ログ
+        # game_20260808_221839: 黒番の depth 0〜8 で lead -0.22〜-0.04）。
+        # 予算が 0 で早期 return するため序盤5手が問答無用で最善手に固定され、
+        # しかも勝率フロアが一度も評価されないまま「no budget」とログに出ていた
+        # （白番では move 2 の lead +0.99 で通っていた＝黒白で非対称）。
+        # 候補の `winrate` は探索値＝相手の最善応手込みなので、「この手を打って
+        # 最善で返されてもまだこの勝率」＝ユーザー要件「次の一手で確実に
+        # 逆転されない」をそのまま表現する。スコア予算はこれと冗長なうえ、
+        # 上記の非対称を持ち込むだけなので撤去した（`parity9_keep_margin` 削除）。
+        max_loss = float(self.settings.get("parity9_max_loss_per_move", 5.0))
+        min_wr = float(self.settings.get("parity9_min_winrate", 0.7))
+        min_hp = float(self.settings.get("parity9_min_human_policy", 0.005))
+        slack = float(self.settings.get("parity9_cost_slack", 0.5))
+        # ヨセでは cap を yose_cap まで絞る（同値手の順序入れ替えだけを許す）
+        cap = min(max_loss, yose_cap) if in_yose else max_loss
         lead = stage2.get("rootInfo", {}).get("scoreLead", 0.0) * sign
-        budget = parity9_budget(lead, keep_margin)
-        cap = min(budget, max_loss)
+        root_wr = stage2.get("rootInfo", {}).get("winrate")
+        if root_wr is not None:
+            root_wr = root_wr if player == "B" else 1.0 - root_wr
+
+        # プールは Stage2 ではなく**通常解析**（cands）から作る。Stage2 の
+        # wideRootNoise=0 は探索を1点に集中させ非最善候補を消してしまうため
+        # （理由の詳細は parity9_build_candidates の docstring）。Stage2 は
+        # lead・root 勝率・ownership の精度のためだけに使う
+        candidates, n_searched = parity9_build_candidates(cands, player=player)
         self._log(
-            f"Budget: lead={lead:.2f} margin={keep_margin} -> budget={budget:.2f} cap={cap:.2f}"
+            f"Safety: lead={lead:.2f} root_wr="
+            f"{'n/a' if root_wr is None else f'{root_wr:.1%}'} "
+            f"min_wr={min_wr:.0%} cap={cap:.2f} pool={len(cands)} searched={n_searched}"
         )
-        if budget <= 0.0:
+        if not parity9_has_admissible(candidates, best_gtp, cap, min_wr):
+            non_best = [c for c in candidates if c["gtp"] not in (best_gtp, "pass")]
+            self._log(
+                f"No admissible candidate (pre-hp): non_best={len(non_best)} "
+                f"min_loss={min((c['loss'] for c in non_best), default=float('nan')):.2f} "
+                f"max_wr={max((c['wr'] for c in non_best if c['wr'] is not None), default=float('nan')):.3f}"
+            )
             return self._best_move(
-                f"Parity9: no budget (lead={lead:.2f}), playing best move."
+                f"Parity9: no safe deviation (lead={lead:.2f}), playing best move."
             )
 
         # ---- Stage1: humanSL 9段（外すと決まってから撃つ）----
@@ -1776,35 +1924,33 @@ class Parity9Strategy(AIStrategy):
             return self._best_move("Parity9: Stage1 unavailable, playing best move.")
         hp_for_gtp = self._human_policy_lookup(stage1["humanPolicy"])
 
-        # ---- 候補構築と選択 ----
-        # 損失は「best_gtp の代わりに打つと何目損か」＝best_gtp 基準（root 基準
-        # ではない）。1visit の楽観バイアスを避けるため min_visits 未満は基準にも
-        # 候補にも入れない（parity9_build_candidates）
-        move_infos = stage2["moveInfos"]
-        candidates, best_score, n_searched = parity9_build_candidates(
-            move_infos, sign, best_gtp, hp_for_gtp
-        )
-        min_hp = float(self.settings.get("parity9_min_human_policy", 0.01))
-        chosen = parity9_select(candidates, best_gtp, cap, min_hp)
+        # ---- 選択 ----
+        # 候補は既にゲート5で構築済み。ここで humanPolicy だけを載せる
+        for c in candidates:
+            c["hp"] = hp_for_gtp(c["gtp"])
+        chosen = parity9_select(candidates, best_gtp, cap, min_hp, min_wr, slack)
         if chosen is None:
             non_best = [c for c in candidates if c["gtp"] not in (best_gtp, "pass")]
             self._log(
-                f"No deviation candidate: cap={cap:.2f} min_hp={min_hp} "
-                f"pool={len(move_infos)} searched={n_searched} non_best={len(non_best)} "
+                f"No deviation candidate: cap={cap:.2f} min_hp={min_hp} min_wr={min_wr} "
+                f"pool={len(cands)} searched={n_searched} non_best={len(non_best)} "
                 f"min_loss={min((c['loss'] for c in non_best), default=float('nan')):.2f} "
-                f"max_hp={max((c['hp'] for c in non_best), default=0.0):.4f}"
+                f"max_hp={max((c['hp'] for c in non_best), default=0.0):.4f} "
+                f"max_wr={max((c['wr'] for c in non_best if c['wr'] is not None), default=float('nan')):.3f}"
             )
             return self._best_move("Parity9: no deviation candidate, playing best move.")
 
+        wr_txt = "n/a" if chosen["wr"] is None else f"{chosen['wr']:.1%}"
         self._log(
             f"Deviate: played {chosen['gtp']} (loss={chosen['loss']:.2f}, "
-            f"hp={chosen['hp']:.4f}) instead of {best_gtp}"
+            f"hp={chosen['hp']:.4f}, wr={wr_txt}) instead of {best_gtp}"
         )
         return (
             Move.from_gtp(chosen["gtp"], player=player),
             f"Parity9: deviated to {chosen['gtp']} (loss {chosen['loss']:.2f}, "
-            f"hp {chosen['hp']:.1%}) instead of {best_gtp}; "
-            f"tally mine={mine} opp={opp}, budget={budget:.2f}.",
+            f"hp {chosen['hp']:.1%}, wr {wr_txt}) instead of {best_gtp}; "
+            f"rate mine={mine}/{counted} vs eff target {eff_target:.0%}, "
+            f"lead={lead:.2f}.",
         )
 
 
