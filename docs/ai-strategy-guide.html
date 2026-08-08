@@ -1,0 +1,1115 @@
+<title>力戦派・攻城・狩猟 — 戦略ガイド</title>
+
+<style>
+  :root {
+    --ground: #f5f4f1;
+    --surface: #ffffff;
+    --surface-2: #efeeea;
+    --ink: #191a1c;
+    --ink-soft: #43443f;
+    --muted: #6d6c66;
+    --rule: #dcdad3;
+    --rule-strong: #bfbcb2;
+    --fight: #a55e14;
+    --siege: #256461;
+    --hunt: #9c342c;
+    --fight-wash: rgba(165, 94, 20, 0.13);
+    --siege-wash: rgba(37, 100, 97, 0.13);
+    --hunt-wash: rgba(156, 52, 44, 0.13);
+
+    --serif: "Yu Mincho", YuMincho, "游明朝", "Hiragino Mincho ProN", "MS PMincho", serif;
+    --sans: "Yu Gothic UI", "Yu Gothic", YuGothic, "游ゴシック", "Hiragino Sans", "Meiryo", system-ui, sans-serif;
+    --mono: "Cascadia Mono", Consolas, "SFMono-Regular", ui-monospace, "MS Gothic", monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #15161a;
+      --surface: #1b1d22;
+      --surface-2: #21242a;
+      --ink: #e8e6e0;
+      --ink-soft: #c5c3bc;
+      --muted: #97958d;
+      --rule: #2e3138;
+      --rule-strong: #454951;
+      --fight: #e0a04a;
+      --siege: #63b3ac;
+      --hunt: #e28377;
+      --fight-wash: rgba(224, 160, 74, 0.15);
+      --siege-wash: rgba(99, 179, 172, 0.15);
+      --hunt-wash: rgba(226, 131, 119, 0.15);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #15161a;
+    --surface: #1b1d22;
+    --surface-2: #21242a;
+    --ink: #e8e6e0;
+    --ink-soft: #c5c3bc;
+    --muted: #97958d;
+    --rule: #2e3138;
+    --rule-strong: #454951;
+    --fight: #e0a04a;
+    --siege: #63b3ac;
+    --hunt: #e28377;
+    --fight-wash: rgba(224, 160, 74, 0.15);
+    --siege-wash: rgba(99, 179, 172, 0.15);
+    --hunt-wash: rgba(226, 131, 119, 0.15);
+  }
+
+  :root[data-theme="light"] {
+    --ground: #f5f4f1;
+    --surface: #ffffff;
+    --surface-2: #efeeea;
+    --ink: #191a1c;
+    --ink-soft: #43443f;
+    --muted: #6d6c66;
+    --rule: #dcdad3;
+    --rule-strong: #bfbcb2;
+    --fight: #a55e14;
+    --siege: #256461;
+    --hunt: #9c342c;
+    --fight-wash: rgba(165, 94, 20, 0.13);
+    --siege-wash: rgba(37, 100, 97, 0.13);
+    --hunt-wash: rgba(156, 52, 44, 0.13);
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.85;
+    margin: 0;
+    padding: 0 20px 120px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1000px; margin: 0 auto; }
+  .prose { max-width: 700px; }
+
+  /* ---- masthead ---- */
+  .masthead {
+    padding: 68px 0 34px;
+    border-bottom: 2px solid var(--ink);
+    margin-bottom: 44px;
+  }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 18px;
+  }
+  h1 {
+    font-family: var(--serif);
+    font-size: clamp(34px, 5.6vw, 54px);
+    font-weight: 600;
+    line-height: 1.24;
+    letter-spacing: 0.01em;
+    margin: 0 0 20px;
+    text-wrap: balance;
+  }
+  .standfirst {
+    font-size: 17px;
+    color: var(--ink-soft);
+    max-width: 640px;
+    margin: 0;
+  }
+  .stones { display: flex; gap: 26px; flex-wrap: wrap; margin: 28px 0 0; padding: 0; list-style: none; }
+  .stones li { display: flex; align-items: baseline; gap: 9px; font-size: 13.5px; color: var(--ink-soft); }
+  .dot { width: 11px; height: 11px; border-radius: 50%; flex: none; transform: translateY(1px); }
+  .dot.f { background: var(--fight); }
+  .dot.s { background: var(--siege); }
+  .dot.h { background: var(--hunt); }
+
+  /* ---- headings ---- */
+  h2 {
+    font-family: var(--serif);
+    font-size: 27px;
+    font-weight: 600;
+    line-height: 1.4;
+    margin: 78px 0 6px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--rule-strong);
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  h2 .num {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    flex: none;
+  }
+  h2 .dot { transform: translateY(-1px); }
+  h3 {
+    font-family: var(--sans);
+    font-size: 16.5px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin: 44px 0 4px;
+    color: var(--ink);
+  }
+  h4 {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+    margin: 30px 0 2px;
+  }
+  p { margin: 14px 0; }
+  a { color: inherit; }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.875em;
+    background: var(--surface-2);
+    border: 1px solid var(--rule);
+    padding: 0.08em 0.36em;
+    border-radius: 2px;
+    white-space: nowrap;
+  }
+
+  /* ---- callouts ---- */
+  .verdict {
+    background: var(--surface);
+    border: 1px solid var(--rule-strong);
+    border-top: 3px solid var(--ink);
+    padding: 26px 30px;
+    margin: 34px 0;
+  }
+  .verdict h4 { margin-top: 0; }
+  .verdict p:last-child { margin-bottom: 0; }
+
+  .note {
+    border-left: 2px solid var(--rule-strong);
+    padding: 2px 0 2px 18px;
+    margin: 26px 0;
+    font-size: 14.5px;
+    color: var(--ink-soft);
+  }
+  .note b { color: var(--ink); }
+
+  /* ---- formula ---- */
+  .formula {
+    font-family: var(--mono);
+    font-size: 13.5px;
+    line-height: 1.75;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    padding: 16px 20px;
+    margin: 20px 0;
+    overflow-x: auto;
+  }
+  .formula .lead { color: var(--muted); }
+  .formula em { font-style: normal; font-weight: 700; }
+  .formula .f { color: var(--fight); }
+  .formula .s { color: var(--siege); }
+  .formula .h { color: var(--hunt); }
+
+  /* ---- figures ---- */
+  figure { margin: 38px 0; }
+  figure svg { display: block; width: 100%; max-width: 100%; height: auto; color: var(--ink); }
+  .figbox { background: var(--surface); border: 1px solid var(--rule); padding: 20px 22px 12px; overflow-x: auto; }
+  .figbox.narrow { max-width: 480px; }
+  figcaption {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 12px;
+    line-height: 1.7;
+    max-width: 720px;
+  }
+  figcaption b { color: var(--ink-soft); }
+
+  /* ---- tables ---- */
+  .tablewrap { overflow-x: auto; margin: 26px 0; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 13.5px;
+    font-variant-numeric: tabular-nums;
+    background: var(--surface);
+  }
+  caption {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding-bottom: 9px;
+  }
+  th, td {
+    border: 1px solid var(--rule);
+    padding: 9px 12px;
+    text-align: left;
+    vertical-align: top;
+    line-height: 1.65;
+  }
+  thead th {
+    background: var(--surface-2);
+    font-weight: 700;
+    font-size: 12.5px;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+  td.num, th.num { text-align: right; font-family: var(--mono); white-space: nowrap; }
+  tbody th { font-weight: 600; white-space: nowrap; background: var(--surface-2); }
+  .tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    padding: 1px 7px;
+    border: 1px solid currentColor;
+    border-radius: 2px;
+    vertical-align: 1px;
+  }
+  .tag.f { color: var(--fight); }
+  .tag.s { color: var(--siege); }
+  .tag.h { color: var(--hunt); }
+
+  ul, ol { padding-left: 1.35em; margin: 14px 0; }
+  li { margin: 7px 0; }
+  li::marker { color: var(--muted); }
+
+  hr { border: none; border-top: 1px solid var(--rule); margin: 56px 0; }
+
+  :focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+  @media (max-width: 640px) {
+    body { font-size: 15.5px; padding: 0 16px 80px; }
+    .masthead { padding-top: 44px; }
+    h2 { margin-top: 58px; font-size: 23px; }
+    .figbox { padding: 14px 14px 8px; }
+  }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">KaTrain 1.17.1.1 — katrain/core/ai.py</p>
+  <h1>力戦派・攻城・狩猟<br>3つの攻撃型戦略の設計</h1>
+  <p class="standfirst">
+    どれも「KataGo の最善手をそのまま打たない」ための戦略だが、<em>何を犠牲にして何を取りに行くか</em>が違う。
+    フェーズの持ち方、重みの作り方、そして許される損失の大きさ — その3点で読み解く。
+  </p>
+  <ul class="stones">
+    <li><span class="dot f"></span>力戦派 <code>ai:p:fighting</code></li>
+    <li><span class="dot s"></span>攻城 <code>ai:siege</code></li>
+    <li><span class="dot h"></span>狩猟 <code>ai:hunt</code></li>
+  </ul>
+</header>
+
+<div class="prose">
+<h2><span class="num">01</span>三行での違い</h2>
+
+<p>
+3つとも「humanSL 9段の第一感（humanPolicy）に、戦略ごとの重みを掛けて抽選する」という同じ骨格を持つ。
+違うのは<strong>掛ける重みの中身</strong>と、<strong>どれだけ悪い手まで候補に残すか</strong>だけだ。
+</p>
+
+<ul>
+  <li><strong>力戦派</strong> — 盤の<em>未確定な場所</em>と<em>相手石のそば</em>に重みを寄せる。ターゲットという概念が無く、常に「接触の濃いところ」を選ぶ。<code>complex</code> モードでは切り点を優遇し、リードに応じて損失の予算を開く。</li>
+  <li><strong>攻城</strong> — 序盤は<em>わざと損をして地を譲り</em>（Concede）、中盤から不安定な大石群を包囲する（Attack）。フェーズが手数で切り替わる唯一の戦略。</li>
+  <li><strong>狩猟</strong> — 最初から攻める。<em>石群</em>に加えて <em>ownership が中間値の地点（＝まだ確定していない相手の勢力圏）</em>を侵入対象として持ち、常にどちらかを攻めている。追撃・注意フォーカス・死石回避など、付属機構がいちばん多い。</li>
+</ul>
+</div>
+
+<h2><span class="num">02</span>どれが大きい損失手を打つか</h2>
+
+<div class="prose">
+<div class="verdict">
+  <h4>結論</h4>
+  <p>
+    <strong>狩猟が最も大きい損失手を打つ。</strong>19路盤で許容される損失は
+    狩猟が <strong>6.0目（石群攻撃）／8.0目（侵入）</strong>、攻城が <strong>4.5目（現在の設定・序盤も攻撃も同値）</strong>。
+    上限そのものが 1.5〜3.5目ぶん違う。
+  </p>
+  <p>
+    ただし<strong>「上限に張り付きやすい」のは攻城の Concede フェーズ</strong>という逆転がある。攻城の序盤重みは
+    <code>concede_score ∝ loss</code>、つまり<em>損の大きい手ほど重みが高くなる</em>関数で、上限 4.5目の手は損失ゼロの手の 20 倍の重みを持つ。
+    狩猟の重みは損失と無関係（近接・強度・フォーカス）なので、バンドの中では損失分布が偏らない。
+  </p>
+  <p>
+    3戦略を通じての最大は力戦派の <code>complex</code> モードで、勝勢時にはリードに比例して<strong>最大 10.0目</strong>まで帯が開く。
+    さらに <code>_COMPLEXITY_SACRIFICE_FLOOR</code> が予算帯の手の重みを底上げするため、
+    「意図的に大損する勝負手」を実際に打たせる機構を持つのはこのモードだけである。
+  </p>
+</div>
+</div>
+
+<figure>
+  <div class="figbox">
+    <svg viewBox="0 0 900 372" role="img" aria-label="3戦略の許容損失上限を目数の数直線上で比較した図。狩猟の侵入フェーズが8.0目で最大、攻城が4.5目で最小。">
+      <defs>
+        <pattern id="gate" width="7" height="7" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+          <line x1="0" y1="0" x2="0" y2="7" stroke="currentColor" stroke-width="2.2" opacity="0.30"/>
+        </pattern>
+      </defs>
+
+      <!-- axis -->
+      <line x1="250" y1="48" x2="864" y2="48" stroke="currentColor" stroke-width="1" opacity="0.45"/>
+      <g font-family="Consolas, monospace" font-size="11" fill="currentColor" opacity="0.6" text-anchor="middle">
+        <text x="250" y="34">0</text>
+        <text x="372" y="34">2</text>
+        <text x="494" y="34">4</text>
+        <text x="616" y="34">6</text>
+        <text x="738" y="34">8</text>
+        <text x="860" y="34">10</text>
+        <text x="866" y="16" text-anchor="end" opacity="0.85">損失 (目)</text>
+      </g>
+      <g stroke="currentColor" opacity="0.35">
+        <line x1="250" y1="42" x2="250" y2="48"/><line x1="372" y1="42" x2="372" y2="48"/>
+        <line x1="494" y1="42" x2="494" y2="48"/><line x1="616" y1="42" x2="616" y2="48"/>
+        <line x1="738" y1="42" x2="738" y2="48"/><line x1="860" y1="42" x2="860" y2="48"/>
+      </g>
+
+      <!-- safety valve line -->
+      <line x1="494" y1="52" x2="494" y2="348" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 4" opacity="0.55"/>
+      <text x="500" y="344" font-family="Consolas, monospace" font-size="10.5" fill="currentColor" opacity="0.65">安全弁 4.0目</text>
+
+      <!-- group dividers -->
+      <line x1="14" y1="166" x2="864" y2="166" stroke="currentColor" stroke-width="1" opacity="0.16"/>
+      <line x1="14" y1="242" x2="864" y2="242" stroke="currentColor" stroke-width="1" opacity="0.16"/>
+
+      <g font-size="12.5" fill="currentColor">
+        <!-- Fighting -->
+        <circle cx="20" cy="76" r="5" fill="var(--fight)"/>
+        <text x="34" y="80">力戦派 human・序盤（〜50手）</text>
+        <rect x="250" y="68" width="171" height="16" fill="var(--fight-wash)" stroke="var(--fight)" stroke-width="1.2"/>
+        <text x="429" y="80" font-family="Consolas, monospace" font-size="11" fill="var(--fight)">2.8</text>
+
+        <text x="34" y="112">力戦派 human・中盤以降</text>
+        <rect x="250" y="100" width="342" height="16" fill="var(--fight-wash)" stroke="var(--fight)" stroke-width="1.2"/>
+        <text x="600" y="112" font-family="Consolas, monospace" font-size="11" fill="var(--fight)">5.6</text>
+
+        <text x="34" y="144">力戦派 complex（勝勢時）</text>
+        <rect x="250" y="132" width="342" height="16" fill="var(--fight-wash)" stroke="var(--fight)" stroke-width="1.2"/>
+        <rect x="592" y="132" width="268" height="16" fill="url(#gate)" stroke="var(--fight)" stroke-width="1.2" stroke-dasharray="4 3"/>
+        <text x="600" y="126" font-family="Consolas, monospace" font-size="10" fill="currentColor" opacity="0.7">↑ ここから鋭さ＋複雑さゲート</text>
+        <text x="828" y="144" font-family="Consolas, monospace" font-size="11" fill="var(--fight)">10.0</text>
+
+        <!-- Siege -->
+        <circle cx="20" cy="186" r="5" fill="var(--siege)"/>
+        <text x="34" y="190">攻城 Concede（序盤・地を譲る）</text>
+        <rect x="250" y="178" width="275" height="16" fill="var(--siege-wash)" stroke="var(--siege)" stroke-width="1.2"/>
+        <text x="533" y="190" font-family="Consolas, monospace" font-size="11" fill="var(--siege)">4.5</text>
+
+        <text x="34" y="222">攻城 Attack（包囲）</text>
+        <rect x="250" y="210" width="275" height="16" fill="var(--siege-wash)" stroke="var(--siege)" stroke-width="1.2"/>
+        <text x="533" y="222" font-family="Consolas, monospace" font-size="11" fill="var(--siege)">4.5</text>
+
+        <!-- Hunt -->
+        <circle cx="20" cy="262" r="5" fill="var(--hunt)"/>
+        <text x="34" y="266">狩猟 Hunt（石群攻撃）</text>
+        <rect x="250" y="254" width="366" height="16" fill="var(--hunt-wash)" stroke="var(--hunt)" stroke-width="1.2"/>
+        <text x="624" y="266" font-family="Consolas, monospace" font-size="11" fill="var(--hunt)">6.0</text>
+
+        <text x="34" y="298">狩猟 Invade（侵入）</text>
+        <rect x="250" y="286" width="488" height="16" fill="var(--hunt-wash)" stroke="var(--hunt)" stroke-width="1.2"/>
+        <text x="746" y="298" font-family="Consolas, monospace" font-size="11" fill="var(--hunt)">8.0</text>
+
+        <text x="34" y="330">狩猟 劣勢時（−6目以下）</text>
+        <rect x="250" y="318" width="244" height="16" fill="var(--hunt-wash)" stroke="var(--hunt)" stroke-width="1.2" stroke-dasharray="4 3"/>
+        <text x="502" y="330" font-family="Consolas, monospace" font-size="11" fill="var(--hunt)">4.0</text>
+      </g>
+    </svg>
+  </div>
+  <figcaption>
+    <b>図1 — 19路盤・現在の設定での許容損失。</b>斜線部は「無条件では通さず、鋭さ（scoreStdev）と複雑さの2条件を満たした手だけ通す」帯。
+    破線の縦線は全戦略共通の安全弁で、<em>最高重みの候補</em>がこれを超えたら最善手を強制する。抽選で実際に選ばれる手はこの線を越えうる。
+  </figcaption>
+</figure>
+
+<div class="prose">
+<h3>上限が「実効」でない3つの理由</h3>
+
+<p>図1のバーはフィルタの上限であって、そのまま「打たれる最大の損失」ではない。次の3つが上下に効く。</p>
+
+<ol>
+  <li><strong>安全弁は最高重み候補しか見ない。</strong>チェックするのは <code>max(moves, key=weight)</code> であって、抽選で実際に当たった手ではない。トップが健全なら、2位以下の 4.0目超の手が当たっても止まらない。<em>例外は狩猟の Invade フェーズ</em>で、温度サンプリング後に<em>選ばれた手そのもの</em>を <code>hunt_max_loss</code>(6.0) で再チェックする（<code>Post-temp safety</code>）。</li>
+  <li><strong>力戦派と狩猟の安全弁にはクロスチェックがある。</strong><code>_safety_valve_cross_check</code> は、強制しようとしている最善手が<em>通常解析</em>で候補より 2.0目以上劣るなら強制を取り下げる。つまり安全弁が発動しないことがある。<strong>攻城にはこのクロスチェックが無い</strong>ので、攻城の安全弁は最も素直に効く。</li>
+  <li><strong>候補ゼロ時の段階緩和。</strong>力戦派 human と狩猟は、上限で候補が全滅したら閾値を 1.5倍 → 2.0倍 → 絶対上限（力戦派 9.0目／狩猟 9.0目）まで開く。攻城には緩和が無く、候補ゼロなら即最善手にフォールバックする。</li>
+</ol>
+
+<div class="note">
+  <b>劣勢時のブレーキは狩猟だけが持つ。</b><code>score_lead &lt; −6.0</code> のとき、狩猟は <code>hunt_max_loss</code> と
+  <code>hunt_invasion_max_loss</code> を <code>min(設定値, 4.0)</code> にキャップする。緩和段階も 4.0 で頭打ちで、
+  候補が無ければ即 failsafe（最善手）。つまり<strong>狩猟は勝っているときだけ大きく損をする</strong>設計になっている。
+</div>
+</div>
+
+<h2><span class="num">03</span>共通の骨格</h2>
+
+<div class="prose">
+<p>
+力戦派 <code>human</code>／<code>complex</code>・攻城・狩猟は、まったく同じ2段階クエリと同じ後処理を共有している。
+戦略ごとに差し替わるのは、下図②の<strong>重み関数ひとつだけ</strong>だ。
+</p>
+</div>
+
+<figure>
+  <div class="figbox">
+    <svg viewBox="0 0 900 556" role="img" aria-label="2段階のKataGoクエリから着手決定までの共通パイプライン。戦略ごとに差し替わるのは重み付けの段のみ。">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <!-- stage boxes -->
+      <g>
+        <rect x="110" y="20" width="300" height="70" fill="var(--surface-2)" stroke="currentColor" stroke-width="1.2"/>
+        <text x="126" y="42" font-size="13" font-weight="700" fill="currentColor">Stage 1 — humanSL クエリ</text>
+        <text x="126" y="60" font-family="Consolas, monospace" font-size="11" fill="currentColor" opacity="0.75">humanSLProfile=rank_9d, 800 visits</text>
+        <text x="126" y="78" font-size="11.5" fill="currentColor" opacity="0.75">→ humanPolicy（第一感の確率分布）</text>
+
+        <rect x="490" y="20" width="300" height="70" fill="var(--surface-2)" stroke="currentColor" stroke-width="1.2"/>
+        <text x="506" y="42" font-size="13" font-weight="700" fill="currentColor">Stage 2 — クリーンクエリ</text>
+        <text x="506" y="60" font-family="Consolas, monospace" font-size="11" fill="currentColor" opacity="0.75">プロファイル無し, 600 visits, wRN=0</text>
+        <text x="506" y="78" font-size="11.5" fill="currentColor" opacity="0.75">→ scoreLead（正確な目数）</text>
+      </g>
+
+      <g stroke="currentColor" stroke-width="1.3" fill="none">
+        <path d="M 260 90 L 260 108 L 450 108"/>
+        <path d="M 640 90 L 640 108 L 450 108"/>
+        <path d="M 450 108 L 450 128" marker-end="url(#ar)"/>
+      </g>
+
+      <!-- pipeline -->
+      <g>
+        <rect x="250" y="132" width="400" height="46" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+        <text x="266" y="152" font-size="13" font-weight="700" fill="currentColor"><tspan font-family="Consolas, monospace" font-size="11" opacity="0.6">①</tspan>  悪手フィルタ</text>
+        <text x="266" y="169" font-family="Consolas, monospace" font-size="11" fill="currentColor" opacity="0.72">loss = 自分視点の最善 − 候補  ≤ 上限</text>
+
+        <rect x="250" y="194" width="400" height="46" fill="var(--surface-2)" stroke="currentColor" stroke-width="2.2"/>
+        <text x="266" y="214" font-size="13" font-weight="700" fill="currentColor"><tspan font-family="Consolas, monospace" font-size="11" opacity="0.6">②</tspan>  重み付け</text>
+        <text x="266" y="231" font-family="Consolas, monospace" font-size="11" fill="currentColor" opacity="0.72">weight = humanPolicy × 戦略重み</text>
+
+        <rect x="250" y="256" width="400" height="46" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+        <text x="266" y="276" font-size="13" font-weight="700" fill="currentColor"><tspan font-family="Consolas, monospace" font-size="11" opacity="0.6">③</tspan>  安全弁</text>
+        <text x="266" y="293" font-family="Consolas, monospace" font-size="11" fill="currentColor" opacity="0.72">最高重み手の loss ≥ 4.0目 → 最善手を強制</text>
+
+        <rect x="250" y="318" width="400" height="46" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+        <text x="266" y="338" font-size="13" font-weight="700" fill="currentColor"><tspan font-family="Consolas, monospace" font-size="11" opacity="0.6">④</tspan>  パス処理・ヨセ切替</text>
+        <text x="266" y="355" font-family="Consolas, monospace" font-size="11" fill="currentColor" opacity="0.72">ヨセ以降は戦略重みを捨て humanPolicy 最上位</text>
+
+        <rect x="250" y="380" width="400" height="46" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+        <text x="266" y="400" font-size="13" font-weight="700" fill="currentColor"><tspan font-family="Consolas, monospace" font-size="11" opacity="0.6">⑤</tspan>  タイブレーク</text>
+        <text x="266" y="417" font-family="Consolas, monospace" font-size="11" fill="currentColor" opacity="0.72">重み拮抗 or visits逆転 かつ 2.0目差 → 高スコア手</text>
+
+        <rect x="250" y="442" width="400" height="46" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+        <text x="266" y="462" font-size="13" font-weight="700" fill="currentColor"><tspan font-family="Consolas, monospace" font-size="11" opacity="0.6">⑥</tspan>  重み付き抽選</text>
+        <text x="266" y="479" font-family="Consolas, monospace" font-size="11" fill="currentColor" opacity="0.72">weighted_selection_without_replacement</text>
+      </g>
+
+      <g stroke="currentColor" stroke-width="1.3" fill="none" marker-end="url(#ar)">
+        <line x1="450" y1="178" x2="450" y2="192"/>
+        <line x1="450" y1="240" x2="450" y2="254"/>
+        <line x1="450" y1="302" x2="450" y2="316"/>
+        <line x1="450" y1="364" x2="450" y2="378"/>
+        <line x1="450" y1="426" x2="450" y2="440"/>
+        <line x1="450" y1="488" x2="450" y2="510"/>
+      </g>
+      <text x="450" y="530" font-size="13" font-weight="700" fill="currentColor" text-anchor="middle">着手</text>
+
+      <!-- callout on stage 2 -->
+      <g stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 3" fill="none" opacity="0.6">
+        <line x1="650" y1="217" x2="694" y2="217"/>
+      </g>
+      <text x="702" y="212" font-size="12" font-weight="700" fill="currentColor">3戦略が違うのは</text>
+      <text x="702" y="229" font-size="12" font-weight="700" fill="currentColor">この段だけ</text>
+
+      <!-- left annotations -->
+      <text x="236" y="155" font-size="11" fill="currentColor" opacity="0.55" text-anchor="end">戦略ごとの上限</text>
+      <text x="236" y="341" font-size="11" fill="currentColor" opacity="0.55" text-anchor="end">中国ルールは</text>
+      <text x="236" y="356" font-size="11" fill="currentColor" opacity="0.55" text-anchor="end">humanPolicy も見る</text>
+    </svg>
+  </div>
+  <figcaption>
+    <b>図2 — 共通パイプライン。</b>Stage 1 の <code>scoreLead</code> は humanSL プロファイルでバイアスされているので、目数の判定には必ず Stage 2 の値を使う。
+    ④のパス判定は中国ルール（area scoring）ではダメ詰めが 0目に見えるため、目数条件に「humanPolicy がパスを最上位に置いているか」を AND する。
+  </figcaption>
+</figure>
+
+<div class="prose">
+<h3>3つの重み関数</h3>
+</div>
+
+<div class="formula">
+<span class="lead">力戦派 <em class="f">Fighting</em></span>
+  weight = humanPolicy × (1−|ownership|)^<em class="f">unsettled_power</em> × exp(−d²/2σ²) × <em class="f">contact_boost</em> × <em class="f">invasion_bonus</em>
+  <span class="lead">                                    ↑未確定度      ↑相手石への近接   ↑距離1で乗算   ↑相手地に隣接で乗算</span>
+
+<span class="lead">攻城 <em class="s">Siege</em> — Concede</span>
+  weight = humanPolicy × <em class="s">concede_score</em>                    <span class="lead">concede_score = clamp(loss,0,上限)/上限, 最低0.05</span>
+
+<span class="lead">攻城 <em class="s">Siege</em> — Attack</span>
+  weight = humanPolicy × exp(−d²/2σ²) × <em class="s">instability</em>        <span class="lead">d = 上位2ターゲット石群への最短距離</span>
+
+<span class="lead">狩猟 <em class="h">Hunt</em></span>
+  weight = humanPolicy × exp(−d²/2σ²) × <em class="h">intensity</em> × <em class="h">territory_avoid</em> × <em class="h">focus</em>
+  <span class="lead">                       ↑対象別のσ    ↑対象の強度   ↑自陣を避ける   ↑注意の集中</span>
+</div>
+
+<div class="prose">
+<div class="note">
+  <b>攻城 Attack の <code>instability</code> は順位に効かない。</b>これは主ターゲット1つのスカラーで、全候補に同じ値が掛かる。
+  つまり Attack フェーズの実効的な重みは <code>humanPolicy × proximity</code> でしかない。
+  <code>instability</code> が意味を持つのは<em>どの石群を主ターゲットにするか</em>の順位付け（<code>target_score = サイズ × instability</code>）だけである。
+  狩猟では侵入点の <code>intensity</code> が点ごとに変わるため、こちらは順位に効く。
+</div>
+</div>
+
+<h2><span class="num">04</span><span class="dot f"></span>力戦派 — FightingStrategy</h2>
+
+<div class="prose">
+<p>
+4つのモードを持ち、<code>fighting_mode</code> で切り替える。現在の設定は <code>human</code>。
+</p>
+</div>
+
+<div class="tablewrap">
+<table>
+  <caption>fighting_mode の4系統</caption>
+  <thead>
+    <tr><th>モード</th><th>選択の土台</th><th>損失フィルタ</th><th>性格</th></tr>
+  </thead>
+  <tbody>
+    <tr><th>classic</th><td>policy 上位から N 手抽出（PickBased）</td><td class="num">なし</td><td>棋力を落として戦う。目数の歯止めが無い</td></tr>
+    <tr><th>scoreloss</th><td><code>exp(−5×loss)</code> × 力戦重み</td><td class="num">&lt; 4.3目</td><td>損失そのものを指数で嫌う。ソフトな上限</td></tr>
+    <tr><th>human</th><td>humanPolicy × 力戦重み</td><td class="num">2.8 / 5.6目</td><td>HumanStyle と同じ骨格。<strong>現在の設定</strong></td></tr>
+    <tr><th>complex</th><td>humanPolicy × 力戦重み × 切りボーナス</td><td class="num">〜10.0目</td><td>盤面を紛れさせる。損失予算をリードで開く</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="prose">
+<h3>力戦重みの作り方</h3>
+<p>
+盤上の全点について次の3つを掛ける。ターゲット検出は一切行わない — <em>盤の状態だけから</em>「戦いになりそうな場所」を作る。
+</p>
+<ul>
+  <li><strong>未確定度</strong> <code>(1 − |ownership|)^unsettled_power</code>。ownership が ±1 に振り切れた点（確定地・死石）はほぼゼロになる。指数 2.0 なので中間値が相対的に強く残る。</li>
+  <li><strong>相手石への近接</strong> <code>exp(−d²/2σ²)</code>、σ=3.0。最も近い相手石までのユークリッド距離。</li>
+  <li><strong>接触ブースト／侵入ボーナス</strong>。距離1（隣接）なら <code>contact_boost</code>、相手地（<code>ownership×自分符号 &lt; −0.5</code>）かつ距離²≤2 なら <code>invasion_bonus</code>。どちらも現在 3.0 なので、相手石に接する相手地の点は 9倍になる。</li>
+</ul>
+
+<div class="note">
+  <b>σ を小さくしすぎない。</b><code>proximity_stddev</code> を絞ると、遠い点の重みが指数的に消えて
+  <code>contact_boost</code> と <code>invasion_bonus</code> の効き目ごと潰れる。最小 2.0 が実用下限。
+</div>
+
+<h3>complex モード — 損失を予算として使う</h3>
+<p>
+<code>complex</code> は human モードのパイプラインをそのまま使い、重み関数と悪手フィルタだけを差し替える。
+重みには<strong>切りボーナス</strong>（空点かつ相手の異なる連が2つ以上隣接＝切り／楔の点）を乗算する。
+損失フィルタは3つの帯に分かれる。
+</p>
+</div>
+
+<figure>
+  <div class="figbox">
+    <svg viewBox="0 0 900 300" role="img" aria-label="complexモードの損失フィルタ。無条件通過帯・ゲート付き帯・却下帯の3層と、リードに応じて上限が上がるランプ。">
+      <defs>
+        <pattern id="gate2" width="7" height="7" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+          <line x1="0" y1="0" x2="0" y2="7" stroke="var(--fight)" stroke-width="2.2" opacity="0.45"/>
+        </pattern>
+        <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <text x="14" y="24" font-size="12.5" font-weight="700" fill="currentColor">A. 損失の3つの帯</text>
+
+      <!-- bands -->
+      <rect x="14" y="40" width="286" height="42" fill="var(--fight-wash)" stroke="var(--fight)" stroke-width="1.2"/>
+      <rect x="300" y="40" width="180" height="42" fill="url(#gate2)" stroke="var(--fight)" stroke-width="1.2" stroke-dasharray="4 3"/>
+      <rect x="480" y="40" width="140" height="42" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3" stroke-dasharray="2 3"/>
+
+      <text x="157" y="66" font-size="12.5" font-weight="700" fill="currentColor" text-anchor="middle">無条件で通過</text>
+      <text x="390" y="60" font-size="12.5" font-weight="700" fill="currentColor" text-anchor="middle">ゲート付き</text>
+      <text x="390" y="76" font-size="10.5" font-family="Consolas, monospace" fill="currentColor" text-anchor="middle" opacity="0.75">2条件 AND</text>
+      <text x="550" y="66" font-size="12.5" fill="currentColor" text-anchor="middle" opacity="0.5">却下</text>
+
+      <g font-family="Consolas, monospace" font-size="11" fill="currentColor" opacity="0.75">
+        <text x="14" y="98">0目</text>
+        <text x="300" y="98" text-anchor="middle">5.6目</text>
+        <text x="480" y="98" text-anchor="middle">実効上限</text>
+      </g>
+
+      <!-- gate conditions -->
+      <line x1="390" y1="104" x2="390" y2="124" stroke="currentColor" stroke-width="1.2" marker-end="url(#ar2)"/>
+      <g font-size="11.5" fill="currentColor">
+        <text x="330" y="142">① scoreStdev ≥ 3.0（局面が鋭い＝読み筋が割れている）</text>
+        <text x="330" y="162">② 複雑さ重み ≥ 0.5 × 候補中の最大（本当に紛れる点である）</text>
+      </g>
+      <text x="330" y="184" font-size="11" fill="currentColor" opacity="0.6">※ 判定には切りボーナス抜きの素の力戦重みを使う（cut_boost で最大値が膨らむと自己阻害するため）</text>
+
+      <!-- B: ramp -->
+      <text x="14" y="228" font-size="12.5" font-weight="700" fill="currentColor">B. 実効上限はリードで開く</text>
+      <g stroke="currentColor" opacity="0.4">
+        <line x1="120" y1="288" x2="620" y2="288"/>
+        <line x1="120" y1="288" x2="120" y2="240"/>
+      </g>
+      <g font-family="Consolas, monospace" font-size="10.5" fill="currentColor" opacity="0.7">
+        <text x="120" y="302" text-anchor="middle">0</text>
+        <text x="245" y="302" text-anchor="middle">5</text>
+        <text x="370" y="302" text-anchor="middle">10</text>
+        <text x="495" y="302" text-anchor="middle">15</text>
+        <text x="626" y="302">リード(目)</text>
+        <text x="112" y="292" text-anchor="end">5.6</text>
+        <text x="112" y="244" text-anchor="end">10.0</text>
+      </g>
+      <!-- cap curve: flat at 6.1 until lead 6.14, then linear to 10.0 at lead 15 -->
+      <polyline points="120,275 273,275 495,240 620,240" fill="none" stroke="var(--fight)" stroke-width="2.2"/>
+      <line x1="120" y1="275" x2="620" y2="275" stroke="var(--fight)" stroke-width="1" stroke-dasharray="3 3" opacity="0.45"/>
+      <text x="130" y="269" font-family="Consolas, monospace" font-size="10.5" fill="var(--fight)">base 6.1目（リードに関係なく常時開く床）</text>
+      <text x="505" y="234" font-family="Consolas, monospace" font-size="10.5" fill="var(--fight)">max 10.0目</text>
+    </svg>
+  </div>
+  <figcaption>
+    <b>図3 — complex の損失予算。</b>実効上限は <code>max(complexity_base_max_loss, リード適応ランプ)</code>。
+    リードが <code>complexity_lead_threshold</code>(5.0目) を超えると 10目かけて 5.6→10.0 へ線形に上がる。
+    <b>リード条件はゲートそのものではなく、帯の広さを決める</b>点に注意（base 6.1目の帯は互角でも開いている）。
+  </figcaption>
+</figure>
+
+<div class="prose">
+<div class="note">
+  <b>complex だけが「打たれない勝負手」を救い上げる。</b>ゲートを通っても humanPolicy がほぼ 0 の手は抽選で当たらない。
+  そこで <code>_floor_budget_weights</code> が、損失 ≥ 5.6目 の予算帯の手の重みを<em>候補中最大重みの 0.3倍</em>まで底上げする。
+  さらに humanPolicy=0 でプールに入らなかったゲート通過手を <code>weight=0</code> で追加してから底上げする。
+  品質はゲートが担保しているので「ただの悪手」は混ざらない、という設計。
+</div>
+</div>
+
+<h2><span class="num">05</span><span class="dot s"></span>攻城 — SiegeStrategy</h2>
+
+<div class="prose">
+<p>
+「背水の陣」。序盤に地を譲って相手を厚くさせ、その厚みが不安定なまま中盤に入ったところを大石ごと包囲して逆転を狙う。
+2フェーズ構成で、切り替えは<strong>手数 × ターゲットの有無</strong>で決まる。
+</p>
+
+<h3>Concede フェーズ — 損の大きい手ほど重い</h3>
+<p>
+<code>concede_score</code> は損失を上限で正規化しただけの線形関数で、下限 0.05 のフロアを持つ。
+つまり<strong>上限ぎりぎりの手は損失ゼロの手の 20倍</strong>の重みを受け取る。
+これに humanPolicy が掛かるので、「人間なら打ちうる手のうち、いちばん譲る手」が選ばれやすい。
+</p>
+</div>
+
+<figure>
+  <div class="figbox narrow">
+    <svg viewBox="0 0 420 230" role="img" aria-label="concede_scoreの形。損失0.225目までは下限0.05、そこから上限4.5目まで線形に1.0まで上がる。">
+      <g stroke="currentColor" opacity="0.4">
+        <line x1="58" y1="190" x2="392" y2="190"/>
+        <line x1="58" y1="190" x2="58" y2="34"/>
+      </g>
+      <g font-family="Consolas, monospace" font-size="10.5" fill="currentColor" opacity="0.7">
+        <text x="58" y="206" text-anchor="middle">0</text>
+        <text x="132" y="206" text-anchor="middle">1</text>
+        <text x="206" y="206" text-anchor="middle">2</text>
+        <text x="280" y="206" text-anchor="middle">3</text>
+        <text x="354" y="206" text-anchor="middle">4</text>
+        <text x="392" y="222" text-anchor="end">損失 (目)</text>
+        <text x="50" y="194" text-anchor="end">0.05</text>
+        <text x="50" y="46" text-anchor="end">1.00</text>
+        <text x="14" y="26" font-size="11">concede_score</text>
+      </g>
+      <!-- cap line -->
+      <line x1="391" y1="34" x2="391" y2="190" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 4" opacity="0.55"/>
+      <text x="386" y="118" font-size="10.5" fill="currentColor" opacity="0.7" text-anchor="end" transform="rotate(-90 386 118)">上限 4.5目（超は除外）</text>
+      <!-- curve: floor from 0 to 0.225, then linear -->
+      <polyline points="58,182 75,182 391,42" fill="none" stroke="var(--siege)" stroke-width="2.4"/>
+      <circle cx="75" cy="182" r="2.6" fill="var(--siege)"/>
+      <text x="84" y="176" font-size="10.5" font-family="Consolas, monospace" fill="var(--siege)">下限 0.05</text>
+    </svg>
+  </div>
+  <figcaption>
+    <b>図4 — Concede の重み係数。</b>「良い手ほど選ばれにくい」を明示的に実装した唯一の関数。
+    悪手フィルタで上限超は既に落ちているので、実際に効くのは 0〜4.5目の範囲だけ。
+  </figcaption>
+</figure>
+
+<div class="prose">
+<h3>Attack フェーズ — 大石をターゲットにする</h3>
+<p>
+<code>find_targets()</code> が相手石を連結成分に分け、<code>サイズ ≥ min_group_size</code> かつ
+<code>instability = 1 − |平均ownership| ≥ instability_min</code> の群を <code>target_score = サイズ × instability</code> 降順で返す。
+上位2つの石の座標を合併し、そこへの最短距離でガウス近接を掛ける。
+</p>
+
+<h3>フェーズ遷移の実際</h3>
+</div>
+
+<figure>
+  <div class="figbox">
+    <svg viewBox="0 0 900 300" role="img" aria-label="19路盤における攻城と狩猟のフェーズ推移の比較。攻城は手数で切り替わり、狩猟はターゲットの有無で毎手切り替わる。">
+      <defs>
+        <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+        </marker>
+        <pattern id="alt" width="16" height="12" patternUnits="userSpaceOnUse">
+          <rect width="8" height="12" fill="var(--hunt-wash)"/>
+          <rect x="8" width="8" height="12" fill="none"/>
+        </pattern>
+      </defs>
+
+      <!-- axis -->
+      <line x1="96" y1="264" x2="866" y2="264" stroke="currentColor" stroke-width="1" opacity="0.45"/>
+      <g font-family="Consolas, monospace" font-size="10.5" fill="currentColor" opacity="0.65" text-anchor="middle">
+        <text x="96" y="282">0</text>
+        <text x="250" y="282">50</text>
+        <text x="404" y="282">100</text>
+        <text x="558" y="282">150</text>
+        <text x="712" y="282">200</text>
+        <text x="866" y="282">250 手</text>
+      </g>
+
+      <!-- siege lane -->
+      <circle cx="20" cy="76" r="5" fill="var(--siege)"/>
+      <text x="34" y="80" font-size="12.5" font-weight="700" fill="currentColor">攻城</text>
+      <rect x="96" y="96" width="108" height="34" fill="var(--siege-wash)" stroke="var(--siege)" stroke-width="1.2" stroke-dasharray="4 3"/>
+      <text x="150" y="118" font-size="12" fill="currentColor" text-anchor="middle">Concede</text>
+      <rect x="204" y="96" width="454" height="34" fill="var(--siege-wash)" stroke="var(--siege)" stroke-width="1.4"/>
+      <text x="431" y="118" font-size="12" fill="currentColor" text-anchor="middle">Attack（ターゲットがある限り）</text>
+      <rect x="658" y="96" width="208" height="34" fill="none" stroke="currentColor" stroke-width="1.1" opacity="0.45"/>
+      <text x="762" y="118" font-size="12" fill="currentColor" text-anchor="middle" opacity="0.7">ヨセ = humanPolicy 最上位</text>
+
+      <line x1="204" y1="130" x2="204" y2="152" stroke="currentColor" stroke-width="1" opacity="0.5"/>
+      <text x="204" y="166" font-size="10.5" font-family="Consolas, monospace" fill="currentColor" opacity="0.7" text-anchor="middle">35手 かつ ターゲット有</text>
+      <line x1="658" y1="130" x2="658" y2="88" stroke="currentColor" stroke-width="1" opacity="0.5"/>
+      <text x="658" y="80" font-size="10.5" font-family="Consolas, monospace" fill="currentColor" opacity="0.7" text-anchor="middle">181手 = ceil(0.5×361)</text>
+
+      <!-- hunt lane -->
+      <circle cx="20" cy="196" r="5" fill="var(--hunt)"/>
+      <text x="34" y="200" font-size="12.5" font-weight="700" fill="currentColor">狩猟</text>
+      <rect x="96" y="196" width="616" height="34" fill="url(#alt)" stroke="var(--hunt)" stroke-width="1.4"/>
+      <text x="404" y="218" font-size="12" fill="currentColor" text-anchor="middle">Invade ⇄ Hunt（ターゲットの有無で毎手切替・手数の条件なし）</text>
+      <rect x="712" y="196" width="154" height="34" fill="none" stroke="currentColor" stroke-width="1.1" opacity="0.45"/>
+      <text x="789" y="218" font-size="12" fill="currentColor" text-anchor="middle" opacity="0.7">ヨセ</text>
+      <line x1="712" y1="196" x2="712" y2="176" stroke="currentColor" stroke-width="1" opacity="0.5"/>
+      <text x="712" y="168" font-size="10.5" font-family="Consolas, monospace" fill="currentColor" opacity="0.7" text-anchor="middle">200手（設定値）</text>
+      <line x1="96" y1="230" x2="96" y2="250" stroke="currentColor" stroke-width="1" opacity="0.5" marker-end="url(#ar3)"/>
+      <text x="100" y="248" font-size="10.5" font-family="Consolas, monospace" fill="currentColor" opacity="0.7">初手から攻める</text>
+    </svg>
+  </div>
+  <figcaption>
+    <b>図5 — フェーズの持ち方の違い。</b>攻城は「時間で構えを変える」戦略、狩猟は「盤の状態に反応する」戦略。
+    攻城の Attack は 35手目以降でターゲットがある手番にだけ立ち、無ければ Concede に戻る（往復しうる）。
+  </figcaption>
+</figure>
+
+<div class="prose">
+<div class="note">
+  <b>「60%経過で強制移行」はほぼ働かない。</b>強制移行は <code>int(0.6 × 盤面マス数)</code>＝19路216手・13路101手だが、
+  ヨセ切替は <code>ceil(0.5 × 盤面マス数)</code>＝181手・85手で<em>必ず先に来る</em>。
+  ヨセに入った後は両フェーズとも humanPolicy 最上位を打つので、強制移行が変えるのは
+  「悪手フィルタに <code>concede_max_loss</code> と <code>siege_max_loss</code> のどちらを使うか」だけになる。
+</div>
+</div>
+
+<h2><span class="num">06</span><span class="dot h"></span>狩猟 — HuntStrategy</h2>
+
+<div class="prose">
+<p>
+攻める対象を2種類持つのが本質的な違い。<strong>石群ターゲット</strong>（攻城と同じ <code>find_targets()</code>）に加えて、
+ownership が <code>0.2 〜 0.7</code> の帯にある点＝<em>相手の勢力圏だがまだ確定していない場所</em>を<strong>侵入対象</strong>として毎手抽出する。
+石群ターゲットが1つも無い局面でも侵入対象はほぼ必ず存在するので、狩猟は事実上「常に攻めている」。
+</p>
+</div>
+
+<figure>
+  <div class="figbox">
+    <svg viewBox="0 0 900 216" role="img" aria-label="狩猟の候補手の重みを構成する5つの係数の積。">
+      <defs>
+        <marker id="arx" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+      <g>
+        <rect x="14" y="40" width="150" height="56" fill="var(--surface-2)" stroke="currentColor" stroke-width="1.2"/>
+        <text x="89" y="62" font-size="12.5" font-weight="700" fill="currentColor" text-anchor="middle">humanPolicy</text>
+        <text x="89" y="80" font-size="10.5" fill="currentColor" text-anchor="middle" opacity="0.7">9段の第一感</text>
+
+        <text x="180" y="74" font-size="17" fill="currentColor" text-anchor="middle" opacity="0.55">×</text>
+
+        <rect x="196" y="40" width="150" height="56" fill="var(--hunt-wash)" stroke="var(--hunt)" stroke-width="1.2"/>
+        <text x="271" y="62" font-size="12.5" font-weight="700" fill="currentColor" text-anchor="middle">proximity</text>
+        <text x="271" y="80" font-size="10.5" fill="currentColor" text-anchor="middle" opacity="0.7">最近接対象への距離</text>
+
+        <text x="362" y="74" font-size="17" fill="currentColor" text-anchor="middle" opacity="0.55">×</text>
+
+        <rect x="378" y="40" width="150" height="56" fill="var(--hunt-wash)" stroke="var(--hunt)" stroke-width="1.2"/>
+        <text x="453" y="62" font-size="12.5" font-weight="700" fill="currentColor" text-anchor="middle">intensity</text>
+        <text x="453" y="80" font-size="10.5" fill="currentColor" text-anchor="middle" opacity="0.7">対象の弱さ</text>
+
+        <text x="544" y="74" font-size="17" fill="currentColor" text-anchor="middle" opacity="0.55">×</text>
+
+        <rect x="560" y="40" width="150" height="56" fill="var(--hunt-wash)" stroke="var(--hunt)" stroke-width="1.2"/>
+        <text x="635" y="62" font-size="12.5" font-weight="700" fill="currentColor" text-anchor="middle">territory_avoid</text>
+        <text x="635" y="80" font-size="10.5" fill="currentColor" text-anchor="middle" opacity="0.7">自陣で 0.1 まで減衰</text>
+
+        <text x="726" y="74" font-size="17" fill="currentColor" text-anchor="middle" opacity="0.55">×</text>
+
+        <rect x="742" y="40" width="144" height="56" fill="var(--hunt-wash)" stroke="var(--hunt)" stroke-width="1.2"/>
+        <text x="814" y="62" font-size="12.5" font-weight="700" fill="currentColor" text-anchor="middle">focus</text>
+        <text x="814" y="80" font-size="10.5" fill="currentColor" text-anchor="middle" opacity="0.7">2アンカーの max</text>
+      </g>
+
+      <g stroke="currentColor" stroke-width="1" opacity="0.5">
+        <line x1="271" y1="96" x2="271" y2="118"/>
+        <line x1="453" y1="96" x2="453" y2="118"/>
+        <line x1="814" y1="96" x2="814" y2="118"/>
+      </g>
+      <g font-size="11" fill="currentColor" opacity="0.8">
+        <text x="271" y="136" text-anchor="middle">石群なら σ=3.0 / 侵入なら σ=3.0</text>
+        <text x="271" y="152" text-anchor="middle">（13路は石群 σ=2.5）</text>
+        <text x="453" y="136" text-anchor="middle">石群 = instability（全候補に同値）</text>
+        <text x="453" y="152" text-anchor="middle">侵入 = その点の opp_strength（点ごとに変化）</text>
+        <text x="814" y="136" text-anchor="middle">直前の着手 と</text>
+        <text x="814" y="152" text-anchor="middle">最不安定ターゲット重心</text>
+      </g>
+
+      <line x1="453" y1="176" x2="453" y2="196" stroke="currentColor" stroke-width="1.2" marker-end="url(#arx)"/>
+      <text x="453" y="212" font-size="11.5" fill="currentColor" text-anchor="middle" opacity="0.8">最近接の対象が石群か侵入点かで、σ と intensity の出どころが切り替わる</text>
+    </svg>
+  </div>
+  <figcaption>
+    <b>図6 — 狩猟の重みの積。</b>候補点ごとに「最も近い対象」を探し、その対象の種類で <code>σ</code> と <code>intensity</code> を選ぶ。
+    <code>territory_avoid = max(0.1, 1 − max(0, 自分のownership))</code> なので、自分の確定地への着手は重みが 1/10 になる。
+  </figcaption>
+</figure>
+
+<div class="prose">
+<h3>注意フォーカス — 2アンカーの max</h3>
+<p>
+人間の「一点を睨み続ける」挙動を作る機構。<em>直前の着手</em>と<em>最も不安定なターゲットの重心</em>の2点をアンカーにし、
+両方のガウスの<strong>大きい方</strong>を掛ける（下限 0.05）。
+</p>
+</div>
+
+<figure>
+  <div class="figbox narrow">
+    <svg viewBox="0 0 420 200" role="img" aria-label="2つのアンカーのガウス曲線と、その最大値をとった包絡線。平均を取ると谷ができるが、maxなら両方の山が残る。">
+      <g stroke="currentColor" opacity="0.4">
+        <line x1="26" y1="160" x2="398" y2="160"/>
+      </g>
+      <!-- gaussians (light) -->
+      <path d="M 26 160 Q 70 158 100 120 Q 120 88 140 120 Q 170 158 214 160" fill="none" stroke="currentColor" stroke-width="1.1" opacity="0.35" stroke-dasharray="3 3"/>
+      <path d="M 210 160 Q 254 158 284 120 Q 304 88 324 120 Q 354 158 398 160" fill="none" stroke="currentColor" stroke-width="1.1" opacity="0.35" stroke-dasharray="3 3"/>
+      <!-- max envelope -->
+      <path d="M 26 160 Q 70 158 100 120 Q 120 88 140 120 Q 165 152 190 152 Q 215 152 244 128 Q 264 88 284 120 Q 314 158 358 160" fill="none" stroke="var(--hunt)" stroke-width="2.4"/>
+      <!-- floor -->
+      <line x1="26" y1="152" x2="398" y2="152" stroke="currentColor" stroke-width="1" stroke-dasharray="2 3" opacity="0.5"/>
+      <text x="398" y="147" font-size="10" font-family="Consolas, monospace" fill="currentColor" opacity="0.65" text-anchor="end">下限 0.05</text>
+
+      <circle cx="120" cy="160" r="3" fill="var(--hunt)"/>
+      <circle cx="284" cy="160" r="3" fill="var(--hunt)"/>
+      <text x="120" y="178" font-size="10.5" fill="currentColor" text-anchor="middle" opacity="0.8">直前の着手</text>
+      <text x="284" y="178" font-size="10.5" fill="currentColor" text-anchor="middle" opacity="0.8">ターゲット重心</text>
+      <text x="202" y="30" font-size="11" fill="currentColor" text-anchor="middle" opacity="0.75">max を取るので「どちらにも近くない幻の中心」が生まれない</text>
+    </svg>
+  </div>
+  <figcaption>
+    <b>図7 — 2アンカー max 方式。</b>座標の平均を中心にすると、盤の反対側にある2点の中間＝どちらの戦場でもない場所に山ができ、
+    実際の戦闘エリアの手がペナルティを受ける。独立したガウスの max を取ることでこれを避けている。
+  </figcaption>
+</figure>
+
+<div class="prose">
+<h3>狩猟だけが持つ付属機構</h3>
+</div>
+
+<div class="tablewrap">
+<table>
+  <caption>Hunt 固有のサブ機構</caption>
+  <thead>
+    <tr><th>機構</th><th>既定</th><th>働き</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>攻め合い追撃</th><td class="num">ON</td>
+      <td>前々手のターゲットを記憶し、相手がその近く（Chebyshev距離 ≤ 2）に打ってきたら再ターゲットする。呼吸点 ≥ 3 なら無条件追撃、それ未満は ownership の確信度（既定 0.85・群サイズ 10/15 で +0.05/+0.10）が閾値未満なら追撃。<em>手抜きせずに詰め切る</em>ための機構。</td>
+    </tr>
+    <tr>
+      <th>侵入温度</th><td class="num">2.0</td>
+      <td>Invade フェーズでのみ重みを <code>w^(1/T)</code> に平坦化して抽選する。T が大きいほど下位候補が当たりやすい＝侵入先が散る。<strong>大きい損失手が実際に打たれる確率を直接上げる唯一のパラメータ</strong>。選択後に <code>loss ≥ hunt_max_loss</code> なら最高重み手へ差し戻す安全網つき。</td>
+    </tr>
+    <tr>
+      <th>死石回避</th><td class="num">ON</td>
+      <td><code>loss &gt; 0.5</code> の候補のうち、着手点自体が強い相手地（<code>ownership × 自分符号 &lt; −0.85</code>）か、4近傍に死んだ自石があるものを weight × 0.05。死んだ石の周りをつつく無駄手を抑える。</td>
+    </tr>
+    <tr>
+      <th>勝勢時抑制</th><td class="num">ON（既定 OFF）</td>
+      <td>15目以上リードしているとき、KataGo 最善手の weight を 0.3倍にする。勝勢での一致率を落として人間らしさを保つ。</td>
+    </tr>
+    <tr>
+      <th>劣勢時制限</th><td class="num">常時</td>
+      <td><code>score_lead &lt; −6.0</code> で損失上限を 4.0目にキャップ。緩和段階も 4.0 止まり。</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<div class="prose">
+<div class="note">
+  <b>狩猟は9路盤で動かない。</b><code>bx == 9 and by == 9</code> の局面では即座に <code>Move(None)</code> ＝<strong>パスを返す</strong>。
+  フォールバックではなく投了同然の挙動なので、9路では選ばないこと。攻城は 9路でも動くが、
+  <code>BOARD_PARAMS</code> に 9路の項目が無く 19路の値（min_group 5・上限 4.0/5.0）が使われる＝未校正。
+</div>
+</div>
+
+<h2><span class="num">07</span>攻城 と 狩猟 の差分</h2>
+
+<div class="tablewrap">
+<table>
+  <caption>同じ骨格・違う中身</caption>
+  <thead>
+    <tr><th>観点</th><th><span class="tag s">攻城</span></th><th><span class="tag h">狩猟</span></th></tr>
+  </thead>
+  <tbody>
+    <tr><th>序盤の思想</th><td>地を譲る。損の大きい手ほど重い</td><td>侵入する。序盤から相手の勢力圏に入る</td></tr>
+    <tr><th>フェーズ切替</th><td>手数（35手）＋ターゲット有無</td><td>ターゲット有無のみ。手数条件なし</td></tr>
+    <tr><th>攻撃対象</th><td>石群のみ（<code>find_targets</code>）</td><td>石群＋ownership 0.2〜0.7 の地点</td></tr>
+    <tr><th>対象なしのとき</th><td>Concede に戻る（＝譲り続ける）</td><td>素の9段として打つ</td></tr>
+    <tr><th>損失上限</th><td class="num">4.5 / 4.5 目</td><td class="num">6.0 / 8.0 目</td></tr>
+    <tr><th>候補ゼロ時の緩和</th><td>なし（即最善手）</td><td>×1.5 → ×2.0 → 9.0目</td></tr>
+    <tr><th>安全弁</th><td>クロスチェック無し＝素直に効く</td><td>クロスチェックが強制を取り下げうる</td></tr>
+    <tr><th>抽選</th><td>常に重み比例</td><td>Invade は温度 2.0 で平坦化</td></tr>
+    <tr><th>自陣回避</th><td>なし</td><td>あり（自分の地で 1/10）</td></tr>
+    <tr><th>局面記憶</th><td>なし（毎手ステートレス）</td><td>ターゲットをノードに保存し追撃に使う</td></tr>
+    <tr><th>スコア適応</th><td>なし</td><td>劣勢で上限 4.0／勝勢で最善手抑制</td></tr>
+    <tr><th>盤面</th><td>19路・13路（9路は未校正で動く）</td><td>19路・13路（<strong>9路はパス</strong>）</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="prose">
+<p>
+ひとことで言えば、<strong>攻城は「先に損をして後で取り返す」時間軸の戦略</strong>、
+<strong>狩猟は「常に相手の弱いところを叩く」空間軸の戦略</strong>である。
+攻城の損は序盤に前払いされて上限が低く、狩猟の損は攻めの代償として全局に薄く広がり上限が高い。
+</p>
+</div>
+
+<h2><span class="num">08</span>パラメータ一覧（19路）</h2>
+
+<div class="tablewrap">
+<table>
+  <caption>力戦派 — ai:p:fighting</caption>
+  <thead><tr><th>キー</th><th class="num">既定</th><th class="num">現在値</th><th>意味</th></tr></thead>
+  <tbody>
+    <tr><th>fighting_mode</th><td class="num">classic</td><td class="num">human</td><td>classic / scoreloss / human / complex</td></tr>
+    <tr><th>fighting_max_loss</th><td class="num">3.0</td><td class="num">4.3</td><td>scoreloss モード専用の上限（目）</td></tr>
+    <tr><th>fighting_invasion_bonus</th><td class="num">1.0</td><td class="num">3.0</td><td>相手地に隣接する点の重み倍率</td></tr>
+    <tr><th>fighting_contact_boost</th><td class="num">1.0</td><td class="num">3.0</td><td>相手石に接する点の重み倍率</td></tr>
+    <tr><th>fighting_chaos_relax</th><td class="num">0.0</td><td class="num">0.0</td><td>human: 相手地への接触手だけ閾値を緩める目数</td></tr>
+    <tr><th>unsettled_power</th><td class="num">2.0</td><td class="num">2.0</td><td>未確定度の指数。大きいほど中間値に集中</td></tr>
+    <tr><th>proximity_stddev</th><td class="num">3.0</td><td class="num">3.0</td><td>近接ガウスの σ。最小 2.0</td></tr>
+    <tr><th>force_tengen_opening</th><td class="num">false</td><td class="num">true</td><td>黒番初手を天元に固定</td></tr>
+    <tr><th>complexity_cut_boost</th><td class="num">2.0</td><td class="num">2.0</td><td>切り点の重み倍率</td></tr>
+    <tr><th>complexity_lead_threshold</th><td class="num">15.0</td><td class="num">5.0</td><td>この目数リードからランプ開始</td></tr>
+    <tr><th>complexity_base_max_loss</th><td class="num">5.6</td><td class="num">6.1</td><td>リード無関係に常時開く帯の上限</td></tr>
+    <tr><th>complexity_max_loss</th><td class="num">10.0</td><td class="num">10.0</td><td>ランプの到達点</td></tr>
+    <tr><th>complexity_sharpness_min</th><td class="num">3.0</td><td class="num">3.0</td><td>ゲート通過に要る scoreStdev</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="tablewrap">
+<table>
+  <caption>攻城 — ai:siege</caption>
+  <thead><tr><th>キー</th><th class="num">コード既定</th><th class="num">現在値</th><th>意味</th></tr></thead>
+  <tbody>
+    <tr><th>siege_transition_move</th><td class="num">40</td><td class="num">35</td><td>Attack へ移れる最小手数</td></tr>
+    <tr><th>siege_min_group_size</th><td class="num">5</td><td class="num">5</td><td>ターゲットにする最小石数</td></tr>
+    <tr><th>concede_max_loss</th><td class="num">4.0</td><td class="num">4.5</td><td>Concede の損失上限（目）</td></tr>
+    <tr><th>siege_max_loss</th><td class="num">5.0</td><td class="num">4.5</td><td>Attack の損失上限（目）</td></tr>
+    <tr><th>siege_proximity_stddev</th><td class="num">3.0</td><td class="num">3.0</td><td>ターゲット近接ガウスの σ</td></tr>
+    <tr><th>siege_instability_min</th><td class="num">0.3</td><td class="num">0.3</td><td>ターゲット判定の最小不安定度</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="tablewrap">
+<table>
+  <caption>狩猟 — ai:hunt</caption>
+  <thead><tr><th>キー</th><th class="num">コード既定</th><th class="num">現在値</th><th>意味</th></tr></thead>
+  <tbody>
+    <tr><th>hunt_max_loss</th><td class="num">6.0</td><td class="num">6.0</td><td>石群攻撃時の損失上限（目）</td></tr>
+    <tr><th>hunt_invasion_max_loss</th><td class="num">8.0</td><td class="num">8.0</td><td>侵入時の損失上限（目）</td></tr>
+    <tr><th>hunt_min_group_size</th><td class="num">5</td><td class="num">5</td><td>ターゲットにする最小石数</td></tr>
+    <tr><th>hunt_instability_min</th><td class="num">0.3</td><td class="num">0.3</td><td>ターゲット判定の最小不安定度</td></tr>
+    <tr><th>hunt_invasion_min / max</th><td class="num">0.2 / 0.7</td><td class="num">0.2 / 0.7</td><td>侵入対象とする相手 ownership の帯</td></tr>
+    <tr><th>hunt_proximity_stddev</th><td class="num">3.0</td><td class="num">3.0</td><td>石群への近接 σ</td></tr>
+    <tr><th>hunt_invasion_proximity_stddev</th><td class="num">3.0</td><td class="num">3.0</td><td>侵入点への近接 σ</td></tr>
+    <tr><th>hunt_invasion_temperature</th><td class="num">1.5</td><td class="num">2.0</td><td>Invade の抽選温度。高い＝散る</td></tr>
+    <tr><th>hunt_focus_stddev</th><td class="num">7.0</td><td class="num">7.0</td><td>注意フォーカスの広がり</td></tr>
+    <tr><th>hunt_endgame_move</th><td class="num">200</td><td class="num">200</td><td>ヨセ切替手数（19路のみ設定可）</td></tr>
+    <tr><th>hunt_pursue_enabled</th><td class="num">true</td><td class="num">true</td><td>攻め合い追撃</td></tr>
+    <tr><th>hunt_dead_stone_avoid_enabled</th><td class="num">true</td><td class="num">true</td><td>死石周辺の無駄手抑制</td></tr>
+    <tr><th>hunt_winning_suppress_enabled</th><td class="num">false</td><td class="num">true</td><td>15目リードで最善手 weight×0.3</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="prose">
+<div class="note">
+  <b>ドキュメントとのズレ。</b><code>.claude/rules/ai-parameters.md</code> の攻城テーブルは 19路の
+  <code>concede_max_loss</code> を 4.5、<code>siege_max_loss</code> を 6.0 と記載しているが、
+  実際のコード <code>SiegeStrategy.BOARD_PARAMS</code> とパッケージ <code>config.json</code> はどちらも
+  <strong>4.0 / 5.0</strong>。上表の「コード既定」が実体。
+</div>
+</div>
+
+<h2><span class="num">09</span>ログでの確認</h2>
+
+<div class="prose">
+<p><code>~/.katrain/config.json</code> の <code>debug_level</code> を 1 にして対局し、ログを Grep する。</p>
+</div>
+
+<div class="formula">
+<span class="lead"># フェーズと着手結果</span>
+grep -aE "Phase:|Mode:|Selected:|Endgame: played|Tiebreak"
+
+<span class="lead"># フィルタが何手通したか（上限が効きすぎていないか）</span>
+grep -a "moves pass score filter out of"
+
+<span class="lead"># 安全弁の発動とクロスチェックの却下</span>
+grep -aE "Safety valve|Safety v2:|cross-check FAILED|Post-temp safety"
+
+<span class="lead"># 狩猟の付属機構</span>
+grep -aE "Focus: anchors=|Pursue:|Dead stone avoid:|Winning suppress:|Losing restrict:"
+
+<span class="lead"># 力戦派 complex の損失予算</span>
+grep -aE "complexity filter|Sacrifice floor:"
+</div>
+
+<div class="prose">
+<div class="note">
+  <b>CLI で1局面だけ試す。</b><code>python -m katrain_debug --sgf FILE --move N --strategy hunt --output text</code>。
+  <code>--batch</code> は per-move の判定ログを抑制するので、フィルタやフォールバックの挙動を見たいときは
+  必ず <code>--move N</code> の単発実行を使う。パラメータの比較は温度サンプリングの分散に埋もれるため 3回平均を取ること。
+</div>
+
+<hr>
+
+<p style="color: var(--muted); font-size: 13px;">
+出典: <code>katrain/core/ai.py</code>（<code>FightingStrategy</code> L5085 / <code>SiegeStrategy</code> L6681 / <code>HuntStrategy</code> L7379、
+共有ヘルパー <code>find_targets</code> L223・<code>evaluate_pursuit_targets</code> L136・<code>is_dead_zone_move</code> L47）、
+<code>katrain/config.json</code>、<code>~/.katrain/config.json</code>（2026-08-06 時点）。
+</p>
+</div>
+
+</div>
