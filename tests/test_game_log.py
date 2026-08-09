@@ -89,6 +89,45 @@ def test_tsumego_logs_do_not_evict_game_logs(tmp_path, monkeypatch):
     assert len(logs(tmp_path, "game")) == 1
 
 
+def test_kept_tsumego_log_survives_rotation(tmp_path, monkeypatch):
+    """回答帳に保存した問題のログは上限を超えても消えないこと（再出題の検証コーパス）。"""
+    app = make_app(tmp_path, monkeypatch, debug_level=1)
+    app.start_game_log(kind="tsumego")
+    app.log("回答帳に記録した問題")
+    kept = app.keep_current_log(key="deadbeef", note="answer_book 3手")
+    assert kept == app._game_log_path
+    for _ in range(bk.KaTrainBase.LOG_KINDS["tsumego"][1] + 5):
+        app.start_game_log(kind="tsumego")
+    assert os.path.exists(kept), "保護したログが自動削除されている"
+    assert "回答帳に記録した問題" in open(kept, encoding="utf-8").read()
+    assert open(kept + bk.KaTrainBase.KEEP_MARKER_SUFFIX, encoding="utf-8").read().startswith("deadbeef")
+
+
+def test_kept_logs_do_not_consume_rotation_slots(tmp_path, monkeypatch):
+    """保護済みは本数に数えない＝溜めても直近の通常ログを押し出さないこと。"""
+    app = make_app(tmp_path, monkeypatch, debug_level=1)
+    limit = bk.KaTrainBase.LOG_KINDS["tsumego"][1]
+    for _ in range(5):
+        app.start_game_log(kind="tsumego")
+        app.keep_current_log(key="k")
+    for _ in range(limit):
+        app.start_game_log(kind="tsumego")
+    unprotected = [
+        f
+        for f in logs(tmp_path, "tsumego")
+        if not os.path.exists(os.path.join(str(tmp_path), "logs", f + bk.KaTrainBase.KEEP_MARKER_SUFFIX))
+    ]
+    assert len(unprotected) == limit, "保護したぶんだけ通常ログの枠が削られている"
+    assert len(logs(tmp_path, "tsumego")) == limit + 5
+
+
+def test_keep_current_log_without_open_log(tmp_path, monkeypatch):
+    """ログが開いていない（debug_level 0 の対局等）ときは何もせず None を返すこと。"""
+    app = make_app(tmp_path, monkeypatch, debug_level=0)
+    app.start_game_log()
+    assert app.keep_current_log(key="k") is None
+
+
 def test_new_game_closes_tsumego_log_even_at_debug_level_0(tmp_path, monkeypatch):
     """詰碁ログは debug_level 0 でも開くので、その後の対局開始で必ず閉じること。
 

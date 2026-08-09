@@ -535,6 +535,13 @@ class KaTrainGui(Screen, KaTrainBase):
         book = answer_book.get_book(lambda msg: self.log(msg, OUTPUT_INFO))
         added = book.add_line(key, bk_size, "B", canonical_black, canonical_white, line)
         game.tsumego_book_entry = book.lookup(key)  # 保存直後から再生可能（root に戻して検証できる）
+        # 回答帳に入った問題のログは自動削除の対象から外す（誤答した問題も、解析が長かったので
+        # 次から即答させたい正解済みの問題も同じく残す）。認識盤面・キャプチャ設定
+        # （komi/ko/margin/black_to_attack/枠なし）と各手の判定が揃っているこのファイルが、
+        # 後から回答帳なしで出題し直して正解／誤答を比べるときの入力になる
+        kept = self.keep_current_log(key=key, note=f"answer_book {len(line)}手 {' '.join(line)}")
+        if kept:
+            self.log(f"tsumego_answer_book: このログを保護しました（自動削除しません）: {kept}", OUTPUT_INFO)
         if added:
             self._tsumego_message(f"正解手順を回答帳に保存しました（{len(line)}手）", kind="save")
         else:
@@ -1301,7 +1308,8 @@ class KaTrainGui(Screen, KaTrainBase):
 
             bl, wh, (sz, _) = grid_to_stones(grid)
             self.log(
-                f"tsumego_capture: 認識盤面 {sz}路 ko={ko} margin={margin} black_to_attack={black_to_attack}"
+                f"tsumego_capture: 認識盤面 {sz}路 komi={komi} ko={ko} margin={margin}"
+                f" black_to_attack={black_to_attack}"
                 + (
                     f" 枠なし指定=True（ホットキー。解析リージョンは region_pad={settings.get('region_pad')}）"
                     if frameless
@@ -1438,6 +1446,9 @@ class KaTrainGui(Screen, KaTrainBase):
             self.game.tsumego_book_stones = (bk_black, bk_white, bk_size)
             entry = answer_book.get_book(lambda msg: self.log(msg, OUTPUT_INFO)).lookup(key)
             self.game.tsumego_book_entry = entry
+            # キーはログと回答帳（~/.katrain/tsumego_answers.json）を join する唯一の手掛かり。
+            # 保護したログから正解手順を引くために、ヒットの有無に関係なく必ず出す
+            self.log(f"tsumego_capture: 回答帳キー {key}", OUTPUT_INFO)
             if entry is not None:
                 self.log(
                     f"tsumego_capture: 回答帳にヒット（記録 {len(entry['lines'])} 手順）。"

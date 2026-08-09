@@ -101,6 +101,29 @@ class KaTrainBase:
 
     # ログの種別ごとの (ファイル名の接頭辞, 残す本数)。詰碁は1問1ファイルなので本数を多めに取る
     LOG_KINDS = {"game": ("game", 10), "tsumego": ("tsumego", 30)}
+    # 保護マーカーの接尾辞（`tsumego_<日時>.log.keep`）。これが隣にあるログは本数に数えず、
+    # 自動削除もしない。回答帳に保存した問題のログを恒久保存するために使う（回答帳には誤答した
+    # 問題だけでなく、解析に時間がかかったので次から即答させたい問題も入る＝**正解した問題も
+    # 含む**。正解／誤答の別は後から回答帳の手順と突き合わせて決めるので、ここでは区別せず
+    # 全部残す。中身は `<回答帳キー>\n<メモ>` で entry と join できる）。
+    # ログ本体を open したまま改名/移動すると Windows で失敗するので、別ファイルで印を付ける
+    KEEP_MARKER_SUFFIX = ".keep"
+
+    def keep_current_log(self, key="", note=""):
+        """いま開いているログを自動削除の対象から外す。保護したパスを返す（できなければ None）。
+
+        ログが開いている間しか呼べない（`start_game_log` が次を開くとパスは失われる）。
+        """
+        path = self._game_log_path
+        if not path:
+            return None
+        try:
+            with open(path + self.KEEP_MARKER_SUFFIX, "w", encoding="utf-8") as f:
+                f.write(f"{key}\n{note}\n")
+        except Exception as e:
+            self.log(f"ログの保護に失敗（{e}）: {path}", OUTPUT_INFO)
+            return None
+        return path
 
     def start_game_log(self, kind="game"):
         """新しいログファイルを開く。kind="tsumego" は詰碁1問ぶんのログ。
@@ -145,8 +168,14 @@ class KaTrainBase:
         log_dir = os.path.join(os.path.expanduser(DATA_FOLDER), "logs")
         os.makedirs(log_dir, exist_ok=True)
 
-        # 種別ごとに独立して古い順に消す（詰碁ログが対局ログを押し出さない）
-        existing = sorted(glob.glob(os.path.join(log_dir, f"{prefix}_*.log")))
+        # 種別ごとに独立して古い順に消す（詰碁ログが対局ログを押し出さない）。
+        # 保護済み（.keep が隣にある）は本数からも外す＝保護したぶんだけ通常ログの枠が
+        # 減るのを避ける（回答帳に溜めた誤答コーパスが最近のログを押し出さない）
+        existing = [
+            p
+            for p in sorted(glob.glob(os.path.join(log_dir, f"{prefix}_*.log")))
+            if not os.path.exists(p + self.KEEP_MARKER_SUFFIX)
+        ]
         for old_file in existing[: max(0, len(existing) - max_logs + 1)]:
             try:
                 os.remove(old_file)
