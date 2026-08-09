@@ -168,3 +168,6 @@ dmypy.json
 
 # Rust build artifacts (tsumego solver)
 native/tsumego/target/
+
+# 回答帳リプレイの計測成果物（再生成可能・4MB規模。集計値は spec に記録する）
+docs/superpowers/specs/calibration-data/tsumego/answer-book-*.jsonl
