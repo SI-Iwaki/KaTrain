@@ -365,7 +365,7 @@ Spec: `docs/superpowers/specs/2026-07-29-tsumego-ownership-design.md`（誤答�
 | パラメータ | デフォルト | 備考 |
 |---|---|---|
 | solver_enabled | true | ソルバモードの有効化（false で常に現行経路） |
-| solver_time_limit_ms | 30000 | 1手の solve 時間上限。超過は現行経路へフォールバック（スペック §9.3 の 3000 は P4 完了後に再検討） |
+| solver_time_limit_ms | **5000** | 1手の solve 時間上限。超過は現行経路へフォールバック。**旧既定 30000 は「1手で1問20秒の予算を丸ごと超えられる」値**で、白が証明ストアに無い分岐へ入ると 30 秒フル探索してから ai:tsumego に落ちていた（実測 2026-08-09: 1問 67〜79 秒が2件）。ソルバ経路90手順の A/B: 30000→5000 で **>20秒が 2件→0件（最大 67.7s→17.4s）・合計 758s→637s・correct 66→65（ノイズ水準 3/90 の内側）**。スペック §9.3 の初期案 3000 に近い値へ戻したことになる |
 | solver_node_limit | 20000000 | ノード上限 |
 | solver_ko_refine | true | コウの細分 n*（§4.4） |
 | solver_ko_budget_max | 2 | n* の探索上限（超えたら ko_level=3=ヨセコウ深い扱い） |
@@ -377,6 +377,7 @@ Spec: `docs/superpowers/specs/2026-07-29-tsumego-ownership-design.md`（誤答�
 | solver_fallback | true | フォールバックの有効化（false だと未解決時パス） |
 | solver_capture_max_region | 23 | キャプチャ時のソルバモード採用ゲート（region 点数）。P1 実測で**速く**解けたのは region<=23（最大 Q@0 の 11.1 秒）。旧値 26 のマージン帯（24〜26）は実測 29〜59 秒で、初手が df-pn の求解をそのまま待つ＝1問20秒の予算をこの1手で壊す（実測 2026-08-02: region24/空点12 が 29.0s native・着手決定 26.2 秒。spec 追記4）。超過は最初から現行経路（枠張り。1〜3秒/手）＝挙動が完全に従来のまま |
 | solver_capture_max_empties | 12 | 同・空点数ゲート（解けたのは空点<=12、空点23+は1800秒でも未達）。旧値 14 は封筒外のマージンだった |
+| solver_cross_check | true | **ソルバの答えを KataGo と突き合わせる安全網**（`_solver_answer_rejected`）。「厳密解」は**その抽出した問題の**厳密解でしかなく、抽出が画面の詰碁と別問題でも*解けてしまう*ので出題前検算 `problem_is_hopeless`（FAILED を弾く）はすり抜ける＝ここでしか捕まえられない。判定は**役割石の同深さ ownership の絶対値**（`tsumego_success_ownership` >= `ko_success_ownership`、`gain_verify_visits` で撃つ）。**2段構え**: 第1段はソルバ手だけ測り成立していれば解析1本で抜ける、成立していない手番だけ第2段で KataGo の visits 上位 `TSUMEGO_SOLVER_CROSS_CHECK_CANDIDATES`(2) 手を測る。**却下には「対抗馬が実際に成立していること」を要求する**（片側だけの絶対判定＝`tsumego_declass_confirmed` と同じ非対称性）。答えがコウ/セキで ply1 に成否が出ない局面では両方 <閾値 になり却下しない＝ソルバの答えを残す側に倒れる。**却下は sticky**（`game.tsumego_solver_session = False`）＝却下の意味は「抽出が別問題」で手ではなく問題の性質だから、以降その問題ではソルバを使わない（毎手 solve を繰り返すと 30 秒タイムアウトを何度も踏む）。実測 2026-08-09（回答帳リプレイ・spec `2026-08-09-tsumego-answer-book-replay-design.md`）: 曖昧さのない誤答13件は**全件がソルバ経路**で13件すべて記録手が KataGo の visits 順位0か1だった。ソルバ経路90手順の A/B で **correct 56 → 64（62.2%→71.1%）・改善9件/退行1件（退行は3run中2回正解＝run間変動）・合計時間 986s → 755s**（sticky が 30 秒タイムアウトを消すので**速くなる**）。false で従来動作 |
 | solver_verdict_ms | 1000 | **出題前の検算**（`problem_is_hopeless`）の時間予算[ms]。0 以下で検算しない。root を1回解いて **FAILED（手番側は勝てない）と証明されたら抽出が別物**なので solver モードを使わず枠張り経路へ落とす（詰碁は手番側に正解手がある問題＝`frame_destroys_problem` と同じ前提）。**予算内に決まらなければ従来どおり出題**（判定は「間違いだと証明できたか」であって「正しいと確認できたか」ではない＝外し方は現状維持）。1秒で足りるのは壊れた抽出の FAILED は探索するものが無いぶん速く証明されるから（実測 case AD 0.01s / F 0.17s / F2 0.10s＝最遅の約5倍のマージン）。解ける問題（D/E/K/O/Q/V/V2）は予算内に終わらないのでこの秒数がキャプチャに乗る＝上げるほど遅くなる。解けた場合（M 0.07s / Z 0.40s）は永続キャッシュに載り初手が速くなる。実測 2026-08-04 case AD: 出題後に FAILED でフォールバックしても `analysis_region`（4×3の箱）は変えられず正解 C5 を打てなかった＝**出題前でしか救えない**。spec 追記10 |
 
 規模の上限だけでなく**下限**もある（設定キーではなくコード定数。`tsumego_problem.py`）:

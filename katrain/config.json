@@ -74,7 +74,7 @@
         "noframe_region_pad": 3,
         "ponder_replies": 3,
         "solver_enabled": true,
-        "solver_time_limit_ms": 30000,
+        "solver_time_limit_ms": 5000,
         "solver_node_limit": 20000000,
         "solver_ko_refine": true,
         "solver_ko_budget_max": 2,
@@ -84,7 +84,8 @@
         "solver_cache": true,
         "solver_fallback": true,
         "solver_capture_max_region": 23,
-        "solver_capture_max_empties": 12
+        "solver_capture_max_empties": 12,
+        "solver_cross_check": true
     },
     "trainer": {
         "theme": "theme:normal",

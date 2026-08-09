@@ -2739,6 +2739,13 @@ TSUMEGO_KO_REGION_UNTIL_DEPTH = TSUMEGO_TIE_KO_PLIES
 # ままにする（あちらは PV を 6 手しか歩かないので、深くすると偶発コウを拾う側のリスクだけ増える）。
 TSUMEGO_VERDICT_UNTIL_DEPTH = 12
 
+# ソルバの答えを KataGo と突き合わせるときに、**第2段**で測る「本命」の本数
+# （`_solver_answer_rejected`）。第1段（ソルバ手自身の成立確認・解析1本）は**毎手走る**ので、
+# この定数が効くのは第1段が「成立していない」と出た手番だけ。実測 2026-08-09 の真の誤答13件は
+# 記録手の visits 順位が 0位×9 / 1位×4 で、2 にすると 1位止まりの4件も射程に入る
+# （第2段は並列1バッチなので待ちは1本ぶん）。
+TSUMEGO_SOLVER_CROSS_CHECK_CANDIDATES = 2
+
 # コウ「権利」の検出（`tsumego_defender_ko_points`）を歩く深さ。PV が実際にコウを打つことを
 # 要求する既存判定（`tsumego_pv_reaches_region_ko` の1子取り検査）より**短く**切る。
 #
@@ -3768,6 +3775,130 @@ class TsumegoSolverStrategy(AIStrategy):
         settings.update(self.settings or {})
         return settings
 
+    def _solver_answer_rejected(self, coords, settings) -> bool:
+        """ソルバの答えを KataGo の本命と突き合わせ、成立していなければ却下する。
+
+        **「厳密解」は「その抽出した問題の厳密解」でしかない**。抽出が画面の詰碁と別問題に
+        なっていても *解けてしまう* ので、出題前検算 `problem_is_hopeless`（FAILED を弾く＝
+        追記10）では捕まらない。捕まえられるのはここだけ。
+
+        実測 2026-08-09（回答帳 464 entry・420手順・1373判断の再現。spec
+        `2026-08-09-tsumego-answer-book-replay-design.md` §9.5）: 曖昧さのない誤答13件は
+        **全件がソルバ経路**で、13件すべて記録された正解手が KataGo の visits 順位0か1だった。
+        13/13 が決定的に再現し、`solver_cache=false` でも変わらず（case AB のキャッシュ汚染
+        ではない）。`solver_enabled=false` にすると 10/13 が手順まるごと正解に転じた。
+
+        判定は**役割石の同深さ ownership の絶対値**（`tsumego_success_ownership` >=
+        `ko_success_ownership`）。誤答13件では ソルバ手 −0.92〜+0.44 / 記録手 +0.59〜+0.94 と
+        1.5〜1.8 空いて分離する。
+
+        **却下には「対抗馬が実際に成立していること」を要求する**（片側だけの絶対判定）。
+        答えがコウ／セキで ply1 に成否が出ない局面では両方 < 閾値になり、そのときは却下しない
+        ＝「ソルバの答えを残す」に倒れる。`tsumego_declass_confirmed`（格下げ先だけの絶対判定）
+        と同じ非対称性で、これが安全弁になっている。
+
+        **2段構え**にしてコストを抑える: 第1段はソルバ手だけを測り、成立していれば解析1本で
+        抜ける（大半の手番はここで終わる）。成立していないと分かった手番だけ、第2段で KataGo
+        本命を測る。**「ソルバ手が本命と違うとき」だけ測る案は不十分**だった — 実測 2026-08-09
+        の誤答13件のうち3件（e6794025 / 22bfefd9 / bcccd4ca）は**ソルバ手が KataGo の visits
+        最多手そのもの**で、それでも両方外れており、記録手は visits 2位に居た。
+        """
+        if not settings.get("solver_cross_check", True):
+            return False
+        try:
+            if self.cn.analysis.get("root") is None:
+                return False  # 解析がまだ無い＝ソルバの着手を解析待ちでブロックしない
+            solver_gtp = Move(coords).gtp()
+            ranked = [
+                c["move"]
+                for c in sorted(self.cn.candidate_moves, key=lambda c: -(c.get("visits") or 0))
+                if c.get("move") and c["move"].lower() != "pass"
+            ]
+            challengers = [m for m in ranked[:TSUMEGO_SOLVER_CROSS_CHECK_CANDIDATES] if m != solver_gtp]
+            if not challengers:
+                return False
+            ai_settings = dict(self.game.katrain.config(f"ai/{AI_TSUMEGO}") or {})
+            threshold = float(ai_settings.get("ko_success_ownership", TSUMEGO_SUCCESS_OWNERSHIP))
+            visits = int(ai_settings.get("gain_verify_visits", TSUMEGO_GAIN_VERIFY_VISITS))
+            helper = TsumegoOwnershipStrategy(self.game, ai_settings)
+            own_stones, opponent_stones = tsumego_region_stones_by_player(
+                self.game.stones, self.game.region_of_interest, self.cn.next_player
+            )
+            solver_attacks = tsumego_solver_attacks(
+                self.game.stones, self.game.region_of_interest, self.game.board_size, self.cn.next_player
+            )
+            if solver_attacks is None:
+                # **ソルバモードは必ず枠なし盤**（`_do_tsumego_capture_apply` が `board = grid` で
+                # 出題する）なので、リージョン境界線に壁石が無く `tsumego_solver_attacks` は
+                # 常に None を返す。役割不明のヘッジ（自石・相手石の1子平均の**小さいほう**）は
+                # **守り方の問題では必ず負に張り付く**（相手＝攻め方の石が生きているのが正常）ため、
+                # 第1段が常に不成立・第2段も常に空になり、**守る詰碁ではこの安全網が原理的に
+                # 発火しないまま毎手2〜3本の解析だけ走る**。
+                # ソルバモードでは役割を盤から読む必要がない — 抽出した問題そのものが持っている。
+                problem = getattr(self.game, "tsumego_solver_problem", None)
+                problem_type = getattr(problem, "problem_type", None)
+                if problem_type is not None:
+                    from katrain.core.tsumego_problem import ProblemType
+
+                    if problem_type == ProblemType.ATTACK:
+                        solver_attacks = True
+                    elif problem_type == ProblemType.DEFEND:
+                        solver_attacks = False  # SEMEAI は従来どおり None（役割非依存のヘッジ）
+            role_stones = tsumego_role_stones(own_stones, opponent_stones, solver_attacks)
+            player_sign = self.cn.player_sign(self.cn.next_player)
+            verdicts = {}
+
+            def per_stone(move_gtp):
+                verdict = verdicts.get(move_gtp)
+                if verdict is None or verdict.get("ownership") is None:
+                    return None
+                return tsumego_success_ownership(
+                    verdict["ownership"],
+                    own_stones,
+                    opponent_stones,
+                    self.game.board_size,
+                    player_sign,
+                    solver_attacks,
+                )
+
+            # 第1段: ソルバ手だけ測る（解析1本）。成立していれば本命は測らない
+            verdicts = helper._child_verdicts([solver_gtp], role_stones, player_sign, visits)
+            own_solver = per_stone(solver_gtp)
+            if own_solver is None or own_solver >= threshold:
+                return False  # 測れない、または成立している＝ソルバの答えを尊重する
+            # 第2段: 成立していないと分かった手番だけ、KataGo 本命に成立する手があるか見る
+            verdicts.update(helper._child_verdicts(challengers, role_stones, player_sign, visits))
+            succeeded = [(m, per_stone(m)) for m in challengers]
+            succeeded = [(m, v) for m, v in succeeded if v is not None and v >= threshold]
+            scope = (
+                f"役割石{len(role_stones)}子"
+                if solver_attacks is not None
+                else f"自石{len(own_stones)}子・相手石{len(opponent_stones)}子の厳しいほう"
+            )
+            if not succeeded:
+                self.game.katrain.log(
+                    f"[{self.strategy_name}] KataGo 突き合わせ: ソルバ手 {solver_gtp} は"
+                    f"{own_solver:+.2f}/子 で成立していませんが、本命 {', '.join(challengers)} も"
+                    f"成立していないためソルバの答えを残します（{scope}・閾値{threshold}）",
+                    OUTPUT_INFO,
+                )
+                return False
+            best = max(succeeded, key=lambda x: x[1])
+            self.game.katrain.log(
+                f"[{self.strategy_name}] KataGo 突き合わせ: ソルバ手 {solver_gtp} は {own_solver:+.2f}/子 で"
+                f"成立していないのに、KataGo 本命 {best[0]} は {best[1]:+.2f}/子 で成立しています"
+                f"＝抽出が画面の詰碁と別問題になっている疑いが濃いので、{AI_TSUMEGO} へ落とします"
+                f"（{scope}・閾値{threshold}・同深さ{visits}visits）",
+                OUTPUT_INFO,
+            )
+            return True
+        except Exception as e:  # 突き合わせは安全網なので、失敗したらソルバの答えをそのまま使う
+            self.game.katrain.log(
+                f"[{self.strategy_name}] KataGo 突き合わせに失敗（{e}）。ソルバの答えをそのまま使います",
+                OUTPUT_INFO,  # DEBUG だと debug_level 0 の常用ログから消え、安全網が死んでも気づけない
+            )
+            return False
+
     def _generate_move(self) -> Tuple[Move, str]:
         from katrain.core import tsumego_solver_api as solver_api
 
@@ -3776,6 +3907,7 @@ class TsumegoSolverStrategy(AIStrategy):
         def logger(msg, level=None):
             katrain.log(msg, OUTPUT_ERROR if level == "error" else OUTPUT_INFO)
 
+        rejected = False  # 突き合わせがソルバの答えを却下したか（下のパス分岐を塞ぐのに使う）
         book_hit, book_coords = tsumego_book_next_move(self.game)
         if book_hit:
             katrain.log(f"[{self.strategy_name}] 回答帳の記録手順から着手します", OUTPUT_INFO)
@@ -3808,10 +3940,27 @@ class TsumegoSolverStrategy(AIStrategy):
                 pass
             coords, thoughts = session.generate()
             if coords is not None:
-                return Move(coords, player=self.cn.next_player), thoughts
-            if not thoughts.startswith("FALLBACK"):
+                if not self._solver_answer_rejected(coords, settings):
+                    return Move(coords, player=self.cn.next_player), thoughts
+                rejected = True
+                # 却下は**この問題の間ずっと効かせる（sticky）**。却下の意味は「抽出が画面の詰碁と
+                # 別問題」で、それは手ではなく問題の性質だから、次の手番で解き直しても同じ別問題を
+                # 解く。毎手 solve → 突き合わせ3本 → フル ai:tsumego を繰り返すと1問が桁で遅くなる
+                # （実測 2026-08-09: sticky 無しで最大 103.7 秒/問）
+                self.game.tsumego_solver_session = False
+                katrain.log(
+                    f"[{self.strategy_name}] 以降この問題ではソルバを使いません（抽出が別問題の疑い）",
+                    OUTPUT_INFO,
+                )
+                # 却下されたら下のフォールバックへ落とす。**パス分岐には入れない**
+                # （thoughts は FALLBACK で始まらないので、そのまま進むとパスを打つ）
+            elif not thoughts.startswith("FALLBACK"):
                 return Move(coords=None, player=self.cn.next_player), thoughts  # パスが本手 / コウ待ち
-        if not settings.get("solver_fallback", True):
+        if not settings.get("solver_fallback", True) and not rejected:
+            # `rejected` を除くのは、却下は「ソルバの答えが信用できない」という判断だから。
+            # `solver_fallback=false` でここに落とすと**合法なソルバ手がパスに化け**、しかも
+            # 却下は sticky なのでその問題の残り全手番がパスになる（改修前は coords があれば
+            # 無条件 return だったのでこの経路は存在しなかった＝新規の退行）
             return Move(coords=None, player=self.cn.next_player), "ソルバ未解決（フォールバック無効のためパス）"
         katrain.log(f"[{self.strategy_name}] 現行 {AI_TSUMEGO} へフォールバックします", OUTPUT_INFO)
         fallback_settings = dict(katrain.config(f"ai/{AI_TSUMEGO}") or {})

@@ -1491,6 +1491,11 @@ class KaTrainGui(Screen, KaTrainBase):
                             return None
 
                     session.policy_hint_provider = _policy_hint
+                    # 突き合わせの sticky 却下（`_solver_answer_rejected` が False を書く）を
+                    # 上書きしないこと。この投機は別スレッドなので、初手で却下が起きた直後に
+                    # ここが走ると sticky が解除されて次手からソルバが復活する
+                    if getattr(game_ref, "tsumego_solver_session", None) is not None:
+                        return
                     game_ref.tsumego_solver_session = session
                     session.presolve()
 
