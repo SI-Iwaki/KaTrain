@@ -218,4 +218,5 @@ def main():
     print("tally:", dict(sorted(tally.items())))
 
 
-main()
+if __name__ == "__main__":  # 他のプローブが measure() を import するのでガードする
+    main()

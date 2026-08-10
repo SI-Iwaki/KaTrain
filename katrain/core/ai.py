@@ -2746,6 +2746,32 @@ TSUMEGO_VERDICT_UNTIL_DEPTH = 12
 # （第2段は並列1バッチなので待ちは1本ぶん）。
 TSUMEGO_SOLVER_CROSS_CHECK_CANDIDATES = 2
 
+# 「候補が拮抗しているか」の判定（`tsumego_decision_is_ambiguous`）。visits 上位5手を見て、
+# 2位/1位の visits 比と、目数の最良・次点の差の**両方**で1手に集中していれば dominant。
+#
+# 実測 2026-08-10（回答帳420手順・1373判断・spec `2026-08-10-tsumego-ambiguity-analysis.md`）:
+# 誤答は拮抗した手番に集中している。**白の応手後（depth>=2）では dominant 619/624=99.2% に対し
+# ambiguous 252/329=76.6% で、失敗82件のうち77件（94%）が ambiguous 側**。初手も含めた全体で
+# dominant 95.8%(848) / ambiguous 72.4%(525)、chi2(Yates)=152.75。
+# 反実仮想「常に KataGo の visits 1位を打つ」との対比較でも、選択則は ambiguous で有意に有益
+# （+44判断・McNemar p=1.4e-4）、dominant で有意に有害（-15判断・p=0.0041）だった。
+#
+# 閾値はこの計測に使った値そのもの。**判定は root リージョン解析の結果だけで決まる純関数**で、
+# 追加クエリを一切必要としない。
+TSUMEGO_AMBIGUOUS_VISIT_RATIO = 0.15
+TSUMEGO_AMBIGUOUS_POINTS_GAP = 1.0
+TSUMEGO_AMBIGUOUS_TOP_N = 5
+
+# **やってはいけない: 拮抗した手番だけ読みを深くする（実測で却下・2026-08-10）**
+# 「拮抗手番で落ちた145手順を 1800→5000visits で回すと22件（15.2%）が正解に変わる」のは事実だが、
+# それは**既に失敗していた手順だけを測った＝結果で選別した標本**で、手を入れ替える変更なら何であれ
+# 一定割合が「回復」する。同じ 5000visits を**以前正解していた**手順60本に掛けると **9本（15.0%）が
+# 壊れた**（run 間ノイズは 3.3%）。420手順に外挿すると 回復 +27.5 / 破損 −35.9 ＝ **差引 −8.3手順**で、
+# しかも所要時間は倍（中央 4.2→8.3秒・20秒超 1→8件）。深い読みは改善ではなく**シャッフル**。
+# 実装も試した（root 解析を撃ち直してノードにマージ）が、マージは1800v と 5000v の候補が
+# 混ざるぶんさらに悪く、69手順の A/B で 獲得4 / 損失7 だった（うち6件は深掘りした判断そのもので失敗）。
+# **「効いた」を主張する前に、以前正解していた側の破損率を必ず測ること。**
+
 # コウ「権利」の検出（`tsumego_defender_ko_points`）を歩く深さ。PV が実際にコウを打つことを
 # 要求する既存判定（`tsumego_pv_reaches_region_ko` の1子取り検査）より**短く**切る。
 #
@@ -2919,6 +2945,40 @@ def tsumego_candidate_reaches_region_ko(game, node, candidate_gtp, reply_pv, reg
     if max_plies is None:
         max_plies = 1 + TSUMEGO_TIE_KO_PLIES  # 応手 PV の深さは従来どおり、先頭に候補手が乗る分を足す
     return tsumego_pv_reaches_region_ko(sim, node.next_player, pv, region_of_interest, max_plies)
+
+
+def tsumego_decision_is_ambiguous(
+    candidate_moves,
+    visit_ratio=TSUMEGO_AMBIGUOUS_VISIT_RATIO,
+    points_gap=TSUMEGO_AMBIGUOUS_POINTS_GAP,
+    top_n=TSUMEGO_AMBIGUOUS_TOP_N,
+):
+    """この手番は「有力候補が複数ある」か（＝誤答が集中する側か）。追加クエリ不要の純関数。
+
+    dominant（＝1手に集中）の条件は **visits と目数の両方**:
+      - visits 2位/1位 < `visit_ratio`
+      - 目数の最良と次点の差 >= `points_gap`
+    片方だけでは足りない。実測では policy の集中が visits の集中と**直交する第2軸**として
+    存在しており、片側だけで切ると別の帯を測ることになる。
+
+    見るのは **visits 上位 `top_n` 手だけ**。全候補プールで目数差を取ると 1visit の手が次点に
+    入って差が縮み、計測時（`answer-book-replay-results.jsonl` は top5 しか保存していない）と
+    別の集合になる。閾値はその計測に校正されているので、集合の定義も揃える。
+
+    目数は `pointsLost`（root 基準）を使うが、**最良と次点の差**は `relativePointsLost`
+    （最善手基準）と定数ぶんしか違わないので同値。どちらも `candidate_moves` の時点で
+    打つ側視点に符号済み（CLAUDE.md「KataGo 解析結果の扱い」）。
+
+    候補が1手以下なら比較の余地が無いので dominant 扱い（False を返す）。
+    """
+    ranked = sorted((c for c in candidate_moves if c.get("visits")), key=lambda c: -c["visits"])[:top_n]
+    if len(ranked) < 2 or not ranked[0].get("visits"):
+        return False
+    losses = sorted(c["pointsLost"] for c in ranked if c.get("pointsLost") is not None)
+    if len(losses) < 2:
+        return False
+    dominant = (ranked[1]["visits"] / ranked[0]["visits"]) < visit_ratio and (losses[1] - losses[0]) >= points_gap
+    return not dominant
 
 
 def tsumego_eligible_candidates(candidates, max_points_behind, min_visits):
@@ -4244,7 +4304,11 @@ class TsumegoOwnershipStrategy(AIStrategy):
                     # 失敗なので、成立していない clean を採るくらいならコウ経路のほうが上位になる
                     # （格下げの裏返し＝`_ko_promotion_choice`。実測 case V2）
                     chosen, promoted_value = self._ko_promotion_choice(
-                        chosen, candidate_moves, solver_attacks, player_sign
+                        chosen,
+                        candidate_moves,
+                        solver_attacks,
+                        player_sign,
+                        dominant=not tsumego_decision_is_ambiguous(candidate_moves),
                     )
                     if promoted_value is not None:
                         escape_value, escape_label = promoted_value, "クラス格上げ"
@@ -4666,7 +4730,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
             verdicts[move_gtp] = self._child_verdict_from_root(move_gtp, root, stones, player_sign)
         return verdicts
 
-    def _ko_promotion_choice(self, chosen, candidate_moves, solver_attacks, player_sign):
+    def _ko_promotion_choice(self, chosen, candidate_moves, solver_attacks, player_sign, dominant=False):
         """clean な選択手が詰碁を成立させていないとき、上位クラス（無条件 > コウ）へ格上げする。
 
         クラス裁定はこれまで**格下げ方向（コウ → 無条件）しか持っていなかった**。ところが
@@ -4698,6 +4762,11 @@ class TsumegoOwnershipStrategy(AIStrategy):
 
         役割が読めない（枠なし）盤では走らない＝成否を測る尺度が無く、全リージョン石の合計では
         成否が分離できないため（case R）。
+
+        `dominant`（KataGo が visits・目数の両方で1手に確信している手番）のときは、格上げ先が
+        **その手で実際に詰碁が成立している**ことを要求する（採用ループのコメント参照）。この帯では
+        格上げは実測で 6/6（リプレイ）・3/3（実GUI）すべて誤答だった。case V2 は ambiguous 帯なので
+        影響を受けない。
 
         (採用する候補, 検証値) を返す。格上げしなければ (chosen, None)。
         """
@@ -4758,6 +4827,16 @@ class TsumegoOwnershipStrategy(AIStrategy):
             visits,
             wide_root_noise=TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE,
         )
+        # KataGo が1手に確信している手番では、成立していない手への格上げを採らない。
+        # `tsumego_result_class` はコウ経路を `succeeds` と無関係に KO クラスへ置くので（それ自体は
+        # 正しい＝コウ手の ownership は「コウに勝った前提」で高く出るため成立の読みでクラスを
+        # 繰り上げてはいけない）、**incumbent も shortlist も全員が閾値未満**の局面では ownership が
+        # 「どの手が解くか」を一切表現しておらず、順位を決めているのはコウ検出の二値だけになる。
+        # 実測 2026-08-10（回答帳420手順 + 実GUIログ59本）: dominant 帯の格上げ採用は
+        # **リプレイ 6/6・実GUI 3/3 が全部この状態（採用手が -1.00〜+0.17/子）で全部誤答**、
+        # 一方 正答した2件は採用手が +0.94/+0.99＝成立していた。校正ケース case V2 は
+        # v2/v1=0.63・pl_gap=0.01 で **ambiguous 帯**なのでこのゲートは構造的に掛からない。
+        require_success = dominant and bool(settings.get("promotion_dominant_requires_success", True))
         best = None
         for cand in shortlist:
             verdict = verdicts.get(cand["move"])
@@ -4771,11 +4850,15 @@ class TsumegoOwnershipStrategy(AIStrategy):
                 TSUMEGO_CLASS_KO: f"コウ経路（{verdict['ko_reply']}）",
                 TSUMEGO_CLASS_FAILED: "成立していない（選択手と同じ最下位クラス）",
             }[result_class]
+            if require_success and not succeeds:
+                label += "／visits が1手に集中しているため、成立していない手へは格上げしません"
             self.game.katrain.log(
                 f"[{self.strategy_name}] クラス格上げ: {cand['move']} 検証値{verdict['value']:+.2f}"
                 f"（{per_stone:+.2f}/子） 目数{verdict['lead']:+.2f} → {label}",
                 OUTPUT_INFO,
             )
+            if require_success and not succeeds:
+                continue
             if result_class < TSUMEGO_CLASS_FAILED and (best is None or result_class < best[0]):
                 best = (result_class, cand, verdict)
             if best is not None and best[0] == TSUMEGO_CLASS_UNCONDITIONAL:

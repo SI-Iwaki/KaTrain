@@ -171,3 +171,6 @@ native/tsumego/target/
 
 # 回答帳リプレイの計測成果物（再生成可能・4MB規模。集計値は spec に記録する）
 docs/superpowers/specs/calibration-data/tsumego/answer-book-*.jsonl
+docs/superpowers/specs/calibration-data/tsumego/diag-*.jsonl
+docs/superpowers/specs/calibration-data/tsumego/promo8.jsonl
+docs/superpowers/specs/calibration-data/tsumego/dominant-override-probe.jsonl

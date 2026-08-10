@@ -217,7 +217,8 @@
             "ko_success_ownership": 0.5,
             "ko_escape_candidates": 4,
             "ko_escape_min_prior": 0.001,
-            "ko_escape_tolerance": 0.5
+            "ko_escape_tolerance": 0.5,
+            "promotion_dominant_requires_success": true
         },
         "ai:p:weighted": {
             "weaken_fac": 1.25,
