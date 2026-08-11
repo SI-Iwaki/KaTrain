@@ -534,3 +534,112 @@ lead +2.07 → wr 80.3% の対応から逆算）。**9路 komi 7 の黒は開始
 
 **残る制約**: 30判断中19が `no safe deviation`。この局は AI のリードが 0.07〜5.9目の接戦なので
 勝率フロア（60%）が正しく効いている。**接戦で一致率が上がるのは「必ず勝つ」の帰結**で仕様。
+
+## Enigma9Strategy（`ai:enigma9` / 難解（9路））
+
+9路専用。序盤〜中盤は損失上限と勝率フロアの内側で「**相手が正しく応じることが最も難しい手**」
+へ積極的に外し、相手の研究した定跡・手筋を無効化する。ヨセは lead − target の余剰だけを
+外し予算にし、余剰が無ければ最善手で **2目勝ち〜持碁**を確保する。劣勢時は最善手で粘るだけ
+（勝てない碁は僅差の負けでよい、が要件）。設計: `2026-08-10-enigma9-strategy-design.md`。
+
+**難解さの尺度（目数スケールで合算）**: 候補ごとに子局面をプローブ（クリーン500visits +
+humanSL 9段 humanPolicy 8visits・全並列）し、
+`net = E + reply_rare + own_rare − max(0, 検証済み損失)` の最大の手を打つ
+（最善手も同じ尺度でスコアし、`enigma9_net_margin` 以上上回る挑戦者だけ外す）。
+
+- **E（期待お仕置き）** = humanSL 9段の応手分布で重みづけた相手の期待損失
+  （応手損失は子局面解析から応手側視点・基準は visits>=10 の最善応手・1応手 8.0 目 cap）
+- **reply_rare** = 「損失 0.3 目以下の十分な応手のうち hp 最大」の意外さ（hp 0.25 以上で 0）
+  ＝要件「相手の最善応手の humanPolicy が低い手」の実装（十分な別解の見落とし防止つき）
+- **own_rare** = 自手の humanPolicy の意外さ＝要件「humanPolicy が低い高スコア手」の実装
+- **攻め合い1手差の積極形成**は専用検出なし＝「相手の並みの応手が大損する」局面は E が
+  構造的に高く、安全ゲート（cap + 勝率フロア、どちらも相手最善応手込みの探索値）が
+  「間違えなければ勝てる場合のみ」を担保する
+
+| キー | 意味 | 候補値 | 既定 |
+|---|---|---|---|
+| `enigma9_max_loss` | 1手あたり損失上限（目）。**互角では候補値の天井 1.8＝2目以上の損失手を封じる** | 0.3〜1.8 | 1.0 |
+| `enigma9_large_lead_max_loss` | **勝勢時の勝負手損失上限（目）**。budget = lead − target が max_loss を超える間だけ cap をここまで緩和し、net の損失項を cost_weight = max_loss/budget に割引（`enigma9_spending_plan`）。ヨセに入ると無効 | 2/3/4/5/6/8 | **5.0** |
+| `enigma9_min_winrate` | 着手後の勝率フロア（打つ側視点） | 20〜50% | 0.3 |
+| `enigma9_net_margin` | 外しに要求する難解さの差（0=同点でも外す） | 0.0/0.2/0.3/0.5/1.0 | **0.0** |
+| `enigma9_target_score` | ヨセの目標差（目）。勝勢予算とヨセ予算の両方の基準 | 0/1/2/3 | 2.0 |
+| `enigma9_endgame_move` | ヨセ切替手数（AND の片側・sticky） | 22/26/30/34/38 | 30 |
+| `enigma9_unsettled_max` | ヨセ判定の未確定点上限（AND の片側） | 4/6/8/10/12 | 8 |
+
+**勝勢時の消費モード（追記1・2026-08-10）**: 初戦の実戦ログ `game_20260810_193156`（白番）で、
+リード +6〜+38 の中盤後半が **cap 1.2 で admissible=0 の連続＝強制最善手**になり「一致率が
+異常に高い・2目以上の損失手ゼロ」というユーザー報告が出た。対処は lead 予算の cap 緩和＋
+**損失項の予算比例割引**（cap を広げるだけでは `net = 難解さ − 損失` の等価コストで 3〜5目の
+勝負手が必ず負けるため）。`net = E + rarities − (max_loss/budget)·vloss`、cap =
+clamp(budget, max_loss, large_cap)。budget→max_loss で cost_weight は連続的に 1 へ戻り、毎手
+消費すると lead は target+max_loss 近傍へ収束＝2目差勝ちへ向かって余剰を難解さに変換する。
+実測（復元 SGF `calibration-data/enigma9/enigma9-vs-human-20260810-white.sgf`）: move 21
+（lead +12.6）で admissible 1→15・**F3（vloss 2.16・E=1.38・応手発見率 5.9%・wr 99.8%）へ外し**、
+move 15 では 3目の候補が「高くても難解でない」（E 0.06・find 0.92）と正しく却下され最善
+（それ自体 E 2.23 の罠手）を維持。互角（parity9 校正局 move 2）は Spend 非発火で従来どおり。
+
+モジュール定数: `ENIGMA9_SHORTLIST=8` / `ENIGMA9_CHILD_VISITS=500` /
+`ENIGMA9_HP_CHILD_VISITS=8` / `ENIGMA9_HUMAN_PROFILE=rank_9d` /
+`ENIGMA9_POOL_MIN_VISITS=1` / `ENIGMA9_TRUSTED_VISITS=10` /
+`ENIGMA9_REPLY_REF_MIN_VISITS=10` / `ENIGMA9_REPLY_MIN_VISITS=2` /
+`ENIGMA9_PUNISH_CAP=8.0` / `ENIGMA9_ADEQUATE_LOSS=0.3` / `ENIGMA9_HP_BOOK=0.25` /
+`ENIGMA9_W_REPLY_RARE=1.0` / `ENIGMA9_W_OWN_RARE=1.0` / `ENIGMA9_MIN_BUDGET=0.05` /
+`ENIGMA9_PONDER_REPLIES=3`（着手後の先読み応手数・0で無効） /
+`PRIORITY_ENIGMA_PONDER=-50`（constants.py）
+
+**着手時間の短縮（2026-08-11・精度不変・9路/13路共通・spec 追記3）**:
+(1) **親 humanSL クエリの 8visits 化＋バッチ統合**＝`_probe_children(parent_hp=True)` で
+子局面プローブと同時発行（旧実装は既定 visits=config max_visits(1000) の humanSL 解析を
+逐次で待っていた。humanPolicy は root NN の出力で visits に依らないが **run 間では
+TensorRT バッチ非決定性で揺れる**〈別プロセス実測: 1000v 同士でも max|Δ|=0.086・
+上位10手の順位入替。8v vs 1000v の差はそのレンジ内〉＝visits を落としても既存分散に
+上乗せなし)。
+(2) **着手後の先読み（ponder）**＝`_start_ponder`/`_ponder_worker`。着手を返す直前に
+選択手の clean プローブから相手の応手 top-3（KataGo 本命 visits 最多 1 手＋humanSL 直感順）を
+選び、使い捨て複製ゲームで wave1: 応手後局面を GUI の通常解析と同条件（visits/ownership=
+config 解決）で解析 → wave2: その top-8 候補（order 順）の子プローブ（clean 500v +
+humanSL 8v）を `_probe_children` と同条件で発行。**結果は全部捨てる＝判定影響ゼロ**。
+発火は 自分=AI かつ 相手=人間 のときだけ（`_ponder_applies`。デバッグスタブ／バッチ評価／
+AI 同士では発火しない）。残骸の掃除は2段: 主経路 `Game._cancel_enigma_ponder`（**相手の
+着手が入った瞬間**に terminate。相手が消化前に応手すると実クエリが温めと GPU を取り合い
+1.6→4.4 秒に伸びた実測への対処）＋保険 `_cancel_ponder`（generate 冒頭・GUI を経ない経路用）。
+(3) **per-move 時間ログ** `[Enigma13Strategy] 着手決定に X.X 秒`（OUTPUT_INFO＝debug_level 0 でも
+ゲームログに残る）。
+実測（13路・校正13路局の白番・NN ウォーム）: generate 8局面×2run 平均 1.04→0.89 秒、
+先読み**的中時**は次手番の 通常解析+generate 0.92〜1.09 → **0.35〜0.48 秒**
+（プローブバッチ 0.45〜0.64 → 0.08〜0.09 秒）。外れた場合は従来どおり。
+
+**二段の漏斗と同深さ検証**（2026-08-10 実測で確定）: 9路の通常解析は visits を 1〜3 手に
+集中させるため、`visits>=10` のプールでは外し候補が 0〜1 手しか残らない（実測 move 8:
+74手中2手）。プールは `visits>=1` まで広げ、**採否と net の損失は子局面プローブの検証値**
+（最善手の子局面 root との scoreLead 差）で確定する。浅い候補の生 loss は打つ側に楽観的
+＝「生 loss > cap ⇒ 真 loss > cap」なので事前足切りの向きは安全、偽に安い蜃気楼は検証
+cap が落とす（実測 move 2: 生 0.15 → 検証 0.29）。**1visit の生 loss が悲観側に壊れて
+足切りされる手は救えない**（全手プローブは 15〜20 秒/手で却下）＝既知の限界。
+
+**検証（2026-08-10・校正局黒25判断のバッチ）**: Top1 56%（=44% 外し）・Top5 96%・
+平均損失 **0.03目**（1局合計 ~0.75目）・acc 99.0。単一局面: move 2 で F7
+（own_hp 10%・応手見つけやすさ 17%・検証損失 0.29）へ外し / move 8 は見合う手が無く最善 /
+move 40（+4.4 リード）はヨセ予算内に候補なしで最善 / move 39（劣勢白）は即 securing。
+
+## Enigma13Strategy（`ai:enigma13` / 難解（13路））
+
+13路専用。**実装は Enigma9Strategy と共有**（`ai.py` の `Enigma13Strategy` は
+`BOARD_LEN` / `KEY_PREFIX` / `LABEL` / `SETTING_DEFAULTS` を差し替えたサブクラスで、
+`generate_move` はオーバーライドしない＝選択パイプライン・二段の漏斗・同深さ検証・
+勝勢時の消費モード・ヨセ予算・フェイルセーフ・モジュール定数（`ENIGMA9_*`）は
+すべて 9 路版と同一）。sticky ヨセフラグは `game._enigma13_endgame`、ログタグは
+`[Enigma13Strategy]`。設計: `2026-08-10-enigma9-strategy-design.md` **追記2**。
+
+| キー | 意味 | 候補値 | 既定 |
+|---|---|---|---|
+| `enigma13_max_loss` | 1手あたり損失上限（目）。「2目以上打たない」は挽回が難しい9路の要件で、13路は悪手フィルタ比（3.3→5.6）に合わせ候補天井 3.0 | 0.5〜3.0 | **1.5** |
+| `enigma13_large_lead_max_loss` | 勝勢時の勝負手損失上限（目）。jigo の 13/19 路既定と同値 | 3/4/5/6/8/10 | **8.0** |
+| `enigma13_min_winrate` | 着手後の勝率フロア（打つ側視点） | 20〜50% | 0.3 |
+| `enigma13_net_margin` | 外しに要求する難解さの差（0=同点でも外す） | 0.0/0.2/0.3/0.5/1.0 | 0.0 |
+| `enigma13_target_score` | ヨセの目標差（目）。勝勢予算とヨセ予算の両方の基準 | 0/1/2/3/5 | 2.0 |
+| `enigma13_endgame_move` | ヨセ切替手数（AND の片側・sticky）。13路の対局長（〜120手）へスケール | 55/65/75/85/95 | **75** |
+| `enigma13_unsettled_max` | ヨセ判定の未確定点上限（≒169点の10%） | 8/12/16/20/24 | **16** |
+
+CLI: `python -m katrain_debug --sgf <13路SGF> --move N --strategy enigma13`（batch 可）。
+**13路の実戦校正は未実施**（GUI 実戦ログ `[Enigma13Strategy]` と batch 3-run 平均で行う）。

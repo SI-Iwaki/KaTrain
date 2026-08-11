@@ -3,6 +3,7 @@ import copy
 import heapq
 import math
 import random
+import threading
 import time
 from typing import Dict, List, Optional, Tuple
 
@@ -14,7 +15,8 @@ from katrain.core.constants import (
     AI_TENUKI, AI_TENUKI_ELO_GRID, AI_TERRITORY, AI_TERRITORY_ELO_GRID,
     AI_FIGHTING, AI_FIGHTING_SCORELOSS_ELO,
     AI_WEIGHTED, AI_WEIGHTED_ELO, CALIBRATED_RANK_ELO, OUTPUT_DEBUG,
-    OUTPUT_ERROR, OUTPUT_INFO, PRIORITY_EXTRA_AI_QUERY, PRIORITY_TSUMEGO_SPECULATION, ADDITIONAL_MOVE_ORDER, AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE, AI_PARITY_9
+    OUTPUT_ERROR, OUTPUT_INFO, PLAYER_AI, PLAYER_HUMAN, PRIORITY_ENIGMA_PONDER,
+    PRIORITY_EXTRA_AI_QUERY, PRIORITY_TSUMEGO_SPECULATION, ADDITIONAL_MOVE_ORDER, AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE, AI_PARITY_9, AI_ENIGMA_9, AI_ENIGMA_13
 )
 from katrain.core.engine import KataGoEngine
 from katrain.core.game import (
@@ -1952,6 +1954,847 @@ class Parity9Strategy(AIStrategy):
             f"rate mine={mine}/{counted} vs eff target {eff_target:.0%}, "
             f"lead={lead:.2f}.",
         )
+
+
+# ===== 「難解」戦略 ai:enigma9（9路）/ ai:enigma13（13路）の純関数群 =====
+# 設計: docs/superpowers/specs/2026-08-10-enigma9-strategy-design.md（追記2 = 13路版）
+# 定数・純関数の ENIGMA9_ / enigma9_ プレフィックスは初出（9路版）の歴史的な名前で、
+# 盤サイズ非依存＝Enigma13Strategy とそのまま共有する
+#
+# 「難解さ」の中心尺度は E（期待お仕置き）＝候補手を打った後の局面で、相手が
+# humanSL 9段の直感分布どおりに応手したときに落とす目数の期待値。ユーザー要件の
+# 2案（(a) humanPolicy が低い高スコア手 / (b) 相手の十分な応手の humanPolicy が
+# 低くなる手）はそれぞれ own_rare / reply_rare の加点項として E と同じ目数
+# スケールで合算し、自分の損失を引いた正味で KataGo 最善手と比較する。
+
+ENIGMA9_SHORTLIST = 8              # E スコアリングにかける候補数（最善手込み）
+ENIGMA9_CHILD_VISITS = 500         # 応手テーブル用の子局面クリーン解析 visits
+ENIGMA9_HP_CHILD_VISITS = 8        # 子局面 humanPolicy 取得 visits（root NN 出力なので少なくてよい）
+ENIGMA9_HUMAN_PROFILE = "rank_9d"  # 相手の直感のモデル（humanSLProfile）
+ENIGMA9_POOL_MIN_VISITS = 1        # プールに入れる最小 visits（下記「二段の漏斗」参照）
+ENIGMA9_TRUSTED_VISITS = 10        # 生の loss をそのまま信用してよい visits（PARITY9_MIN_VISITS と同値）
+ENIGMA9_REPLY_REF_MIN_VISITS = 10  # 応手損失の基準（最善応手）に要求する visits
+ENIGMA9_REPLY_MIN_VISITS = 2       # E に算入する応手の最小 visits
+ENIGMA9_PUNISH_CAP = 8.0           # 1応手の損失を E に算入する上限（目）
+ENIGMA9_ADEQUATE_LOSS = 0.3        # この損失以下の応手は「十分な応手」（見つけやすさの対象）
+ENIGMA9_HP_BOOK = 0.25             # これ以上の humanPolicy は「本に載っている手」＝意外さ 0
+ENIGMA9_W_REPLY_RARE = 1.0         # 十分な応手の見つけにくさの重み（目相当）
+ENIGMA9_W_OWN_RARE = 1.0           # 自手の意外さの重み（目相当）
+ENIGMA9_MIN_BUDGET = 0.05          # ヨセの余剰予算がこれ以下なら外さない（目）
+ENIGMA9_PONDER_REPLIES = 3         # 着手後に温める相手の有力応手数（0 で無効・結果は捨てるだけ）
+
+# 「二段の漏斗」: 9路の通常解析（1000visits・wRN=0.04）は visits を1〜3手に集中させる
+# ため、visits >= 10 の候補だけでは外し候補が 0〜1 手しか残らない（実測 2026-08-10・
+# 校正局 move 8: moveInfos 74手のうち visits>=10 は 2手・visits>=2 でも 3手）。そこで
+# プールは visits >= 1（＝KataGo が一瞥した全手）まで広げ、最終的な損失と勝率は
+# **子局面プローブ（全候補 500visits の独立解析）の検証値**で確定させる。浅い候補の
+# 生 loss は打つ側に楽観的（過小評価）なので、「生 loss > cap なら真の loss も > cap」
+# ＝事前足切りの向きは安全、逆に「生 loss <= cap だが真は超える」1visit の蜃気楼は
+# プローブ後の検証 cap が落とす。スコアの真偽を分離できるのは同深さ検証だけ、という
+# ai:tsumego の教訓と同じ形（あちらは gain、こちらは loss/勝率）。
+
+
+def enigma9_hp_lookup(human_policy, board_size):
+    """humanPolicy のフラット配列を gtp -> 値の関数に変換する（盤サイズ指定版）。
+
+    KataGo の humanPolicy は非合法点に -1 を入れるので 0 にクランプして返す。
+    """
+    bx, by = board_size
+
+    def lookup(gtp):
+        if gtp == "pass":
+            return max(0.0, human_policy[-1]) if len(human_policy) > bx * by else 0.0
+        try:
+            move = Move.from_gtp(gtp)
+        except Exception:
+            return 0.0
+        if move.coords is None:
+            return 0.0
+        x, y = move.coords
+        idx = (by - 1 - y) * bx + x
+        return max(0.0, human_policy[idx]) if 0 <= idx < len(human_policy) else 0.0
+
+    return lookup
+
+
+def enigma9_admissible(candidates, best_gtp, cap, min_winrate):
+    """予算内で安全に外せる非最善候補を返す（humanPolicy 不要の足切り）。
+
+    candidates は `parity9_build_candidates` が作る {"gtp","loss","visits","wr"}。
+    loss は relativePointsLost（打つ側視点に符号済み）、wr は打つ側視点の
+    着手後勝率（探索値＝相手の最善応手込み）なので、cap と min_winrate の
+    2条件がそのまま「明らかな悪手を打たない」「間違えなければ勝てる形を保つ」
+    の安全ゲートになる。pass は外し候補にしない（対局終了に直結するため）。
+    """
+    return [
+        c for c in candidates
+        if c["gtp"] != best_gtp and c["gtp"] != "pass"
+        and c["loss"] <= cap
+        and (c.get("wr") is None or c["wr"] >= min_winrate)
+    ]
+
+
+def enigma9_shortlist(pool, k, trusted_visits=ENIGMA9_TRUSTED_VISITS):
+    """子局面をプローブする挑戦者を k 手まで返す（二段の漏斗）。
+
+    第1段: visits >= trusted_visits の候補（生 loss が信用できる）を損失の
+    安い順（同着は visits 多い順）。第2段: それ未満の浅い候補を visits の
+    多い順（同着は生 loss の安い順）で残り枠に詰める。浅い候補の生 loss は
+    楽観バイアスがあり順位づけに使えないため、探索が深い（＝KataGo が
+    多少は見込んだ）順を優先する。最終採否は子局面プローブの検証値が決める。
+    """
+    tier1 = sorted(
+        [c for c in pool if c.get("visits", 0) >= trusted_visits],
+        key=lambda c: (c["loss"], -c.get("visits", 0)),
+    )
+    tier2 = sorted(
+        [c for c in pool if c.get("visits", 0) < trusted_visits],
+        key=lambda c: (-c.get("visits", 0), c["loss"]),
+    )
+    return (tier1 + tier2)[:k]
+
+
+def enigma9_verified_metrics(child_analysis, player):
+    """子局面 root から (lead_after, wr_after)（どちらも打つ側視点）を返す。
+
+    child_analysis は候補手を1手進めた局面の KataGo 生レスポンス。root の
+    scoreLead / winrate は常に黒視点なので打つ側視点へ変換する。子局面 root は
+    相手の応手を実際に探索した後の値＝「この手を打って最善で返されたときの
+    形勢」で、親解析で浅くしか読まれなかった候補の生 loss（楽観的）より信用
+    できる。候補同士は同 visits の独立解析なので、最善手の子局面との差を
+    検証済み損失として使える（系統誤差が差分で相殺される）。
+    """
+    root = (child_analysis or {}).get("rootInfo", {})
+    lead = root.get("scoreLead")
+    wr = root.get("winrate")
+    lead_after = None if lead is None else (lead if player == "B" else -lead)
+    wr_after = None if wr is None else (wr if player == "B" else 1.0 - wr)
+    return lead_after, wr_after
+
+
+def enigma9_reply_table(move_infos, opponent,
+                        ref_min_visits=ENIGMA9_REPLY_REF_MIN_VISITS,
+                        include_min_visits=ENIGMA9_REPLY_MIN_VISITS):
+    """子局面（候補手を打った後）の解析から相手の応手損失テーブルを作る。
+
+    move_infos は KataGo 生レスポンスの moveInfos（scoreLead は常に黒視点）。
+    返り値は (replies, best_reply_gtp)。replies は [{"gtp","loss","visits"}] で、
+    loss は**応手側（相手）視点**の目損（最善応手基準・0 クランプ）。
+
+    基準（最善応手のスコア）は visits >= ref_min_visits の応手から取る:
+    浅い visits の scoreLead は応手側に楽観的に出るため、基準に混ぜると
+    全応手の損失が一律にかさ上げされて E が膨らむ（1visit の蜃気楼が
+    基準を乗っ取る、`PARITY9_MIN_VISITS` と同じ理由の基準側）。E に算入する
+    側は include_min_visits まで緩める: 浅い応手の損失は過小評価側に
+    倒れるので E は保守的になるだけで安全。
+    """
+    opp_sign = 1 if opponent == "B" else -1
+    entries = [
+        {"gtp": d["move"], "score": opp_sign * d.get("scoreLead", 0.0), "visits": d.get("visits", 0)}
+        for d in move_infos
+    ]
+    reliable = [e for e in entries if e["visits"] >= ref_min_visits]
+    ref_pool = reliable if reliable else entries
+    if not ref_pool:
+        return [], None
+    best_entry = max(ref_pool, key=lambda e: (e["score"], e["visits"]))
+    ref = best_entry["score"]
+    replies = [
+        {"gtp": e["gtp"], "loss": max(0.0, ref - e["score"]), "visits": e["visits"]}
+        for e in entries
+        if e["visits"] >= include_min_visits
+    ]
+    return replies, best_entry["gtp"]
+
+
+def enigma9_expected_punish(replies, hp_of, punish_cap=ENIGMA9_PUNISH_CAP):
+    """humanSL 応手分布で重みづけた相手の期待損失（目）とカバレッジを返す。
+
+    E = Σ hp(r)·min(loss_r, cap) / Σ hp(r)。カバレッジ（Σ hp(r)、正規化前）が
+    小さいときは「人間が打ちそうな応手が KataGo に探索されていない」＝E の
+    信頼度が低いが、その質量は多くの場合『自然に見えるが読む価値がない手』＝
+    むしろ罠が効いている状況なので、E を膨らませる方向には使わず
+    renormalize に留める（見つけにくさは reply_rare 項が別途拾う）。
+    """
+    total = sum(hp_of(r["gtp"]) for r in replies)
+    if total <= 0.0:
+        return 0.0, 0.0
+    e = sum(hp_of(r["gtp"]) * min(r["loss"], punish_cap) for r in replies) / total
+    return e, total
+
+
+def enigma9_reply_findability(replies, hp_of, adequate_loss=ENIGMA9_ADEQUATE_LOSS):
+    """「十分な応手（損失 adequate_loss 以下）」のうち最も見つけやすい手の hp を返す。
+
+    ユーザー要件 (b) は「相手の**最善手**の humanPolicy が低い手」だが、最善手の
+    hp だけを見ると『hp の高い十分な別解』がある局面（＝実は簡単）を難解と
+    誤認する。十分な応手の hp 最大値なら「人間がどれかは見つけられるか」を
+    直接測れる。基準応手自身が loss 0 で必ず含まれるので、応手が1つでも
+    あれば空にならない。
+    """
+    return max((hp_of(r["gtp"]) for r in replies if r["loss"] <= adequate_loss), default=0.0)
+
+
+def enigma9_rarity(hp, book=ENIGMA9_HP_BOOK):
+    """humanPolicy を「意外さ」0〜1 に変換する（book 以上は 0＝定跡・本の手）。"""
+    if hp is None:
+        return 0.0
+    return max(0.0, 1.0 - max(0.0, hp) / book)
+
+
+def enigma9_spending_plan(lead, target, max_loss, large_cap):
+    """勝勢時の外し予算を (cap, cost_weight, budget) で返す（ヨセ前専用）。
+
+    budget = lead − target が max_loss を超えている（＝通常 cap いっぱい外しても
+    目標差 2.0 目より内側に縮まらない勝勢）とき、cap を min(large_cap, budget)
+    まで緩和し、net スコアの損失項の重みを cost_weight = max_loss / budget に
+    割り引く。**cap を広げるだけでは帯は使われない** — 選択則
+    `net = 難解さ − 損失` は損失を等価で引くので、E が典型 0.2〜2 目のなかで
+    3〜5 目の勝負手は net で必ず負ける（実測 2026-08-10 実戦ログ
+    game_20260810_193156: リード +8〜+38 の中盤後半が cap 1.2 で admissible=0 の
+    連続＝強制最善手になり、一致率が異常に高くなった）。余剰リードは「安く使える」
+    のが勝勢の意味なので、損失の実効単価を予算に反比例させる。budget が max_loss
+    へ縮むと cost_weight は連続的に 1.0 へ戻る（モード境界の不連続なし）。
+
+    lead が None（root 解析なし）や budget <= max_loss では従来どおり
+    (max_loss, 1.0, budget)。cap は max_loss を下回らない（large_cap の誤設定guard）。
+    勝敗の安全は従来どおり検証済み損失 <= cap と着手後勝率フロアが担保し、
+    毎手 budget を使うと lead は target + max_loss 近傍へ単調収束する＝
+    「2目差で勝つ」に向かって余剰を難解さへ変換する設計。
+    """
+    if lead is None:
+        return max_loss, 1.0, None
+    budget = lead - target
+    if budget <= max_loss or max_loss <= 0.0:
+        return max_loss, 1.0, budget
+    cap = max(max_loss, min(large_cap, budget))
+    return cap, max_loss / budget, budget
+
+
+def enigma9_net_score(loss, e_punish, reply_findability, own_hp,
+                      w_reply=ENIGMA9_W_REPLY_RARE, w_own=ENIGMA9_W_OWN_RARE,
+                      cost_weight=1.0):
+    """難解さの正味スコア（目相当）＝ E + 応手の見つけにくさ + 自手の意外さ − 損失×重み。
+
+    cost_weight は勝勢時の損失割引（`enigma9_spending_plan`）。通常は 1.0。
+    """
+    return (
+        e_punish
+        + w_reply * enigma9_rarity(reply_findability)
+        + w_own * enigma9_rarity(own_hp)
+        - cost_weight * max(0.0, loss)
+    )
+
+
+def enigma9_choose(scored, best_gtp, margin):
+    """net 最大の挑戦者を選ぶ。最善手を margin 以上上回るときだけ外す。
+
+    scored には最善手のエントリが含まれていること（プローブ失敗などで
+    無ければ比較の基準が無いので None＝外さない、のフェイルセーフ）。
+    margin=0 は「同点なら外す」＝要件の『積極的に打つ』側に倒す。
+    返り値: 外す候補の dict、外さないなら None。
+    """
+    best_entry = next((c for c in scored if c["gtp"] == best_gtp), None)
+    if best_entry is None:
+        return None
+    challengers = [c for c in scored if c["gtp"] != best_gtp]
+    if not challengers:
+        return None
+    top = max(challengers, key=lambda c: (c["net"], -c["loss"]))
+    if top["net"] >= best_entry["net"] + margin:
+        return top
+    return None
+
+
+@register_strategy(AI_ENIGMA_9)
+class Enigma9Strategy(AIStrategy):
+    """9路専用「難解」戦略。
+
+    序盤〜中盤は、損失上限（既定 1.0 目・2 目未満に制限）と着手後勝率フロアの
+    内側で「相手が正しく応じることが最も難しい手」へ積極的に外し、相手の
+    研究した定跡・手筋の記憶を無効化する。難解さは E（humanSL 9段の応手分布で
+    重みづけた相手の期待損失）＋十分な応手の見つけにくさ＋自手の意外さで測り、
+    自分の損失を差し引いた正味で KataGo 最善手と比較する。攻め合いを1手差で
+    制する形は「相手の並みの応手が大きく損をする」局面そのものなので E が
+    自然に最上位へ押し上げる（安全条件＝損失 cap と勝率フロア（候補の探索値
+    ＝相手最善応手込み）が「間違えなければ勝てる」を担保する）。
+
+    ヨセ（手数 AND 未確定点で判定・sticky）は lead − target_score の余剰だけを
+    外し予算にし、余剰が無ければ KataGo 最善手で 2 目勝ち〜持碁を確保しにいく。
+    劣勢時に無理をする分岐は無い（最善手に倒れるだけ）＝「相手がほぼ最善で
+    応じ切った対局は勝てなくてもよい」というモードの前提どおり。
+
+    すべての分岐は「KataGo 最善手を打つ」に倒れる（フェイルセーフ＝外さない）。
+    設計: docs/superpowers/specs/2026-08-10-enigma9-strategy-design.md
+
+    13路版は `Enigma13Strategy`＝本クラスの盤サイズ・設定キー接頭辞・既定値だけを
+    差し替えたサブクラス（選択パイプライン・消費モード・ヨセ予算・フェイルセーフは共通）。
+    """
+
+    BOARD_LEN = 9              # 対応する正方盤の一辺（それ以外の盤では常に最善手）
+    KEY_PREFIX = "enigma9"     # 設定キーの接頭辞（GUI スライダーは盤サイズごとに独立）
+    LABEL = "Enigma9"          # ai_thoughts に出す表示名
+    SETTING_DEFAULTS = {       # settings に無いときの既定値（サブクラスで丸ごと差し替え）
+        "max_loss": 1.0,
+        "large_lead_max_loss": 5.0,
+        "min_winrate": 0.3,
+        "net_margin": 0.0,
+        "endgame_move": 30,
+        "unsettled_max": 8,
+        "target_score": 2.0,
+    }
+
+    def _setting(self, suffix):
+        return self.settings.get(f"{self.KEY_PREFIX}_{suffix}", self.SETTING_DEFAULTS[suffix])
+
+    def _log(self, msg):
+        self.game.katrain.log(f"[{type(self).__name__}] {msg}", OUTPUT_DEBUG)
+
+    def _best_move(self, reason):
+        """KataGo 最善手（無ければ policy 最上位 → pass）を返す。"""
+        cands = self.cn.candidate_moves
+        if cands:
+            return Move.from_gtp(cands[0]["move"], player=self.cn.next_player), reason
+        pol = self.cn.policy_ranking
+        if pol:
+            return pol[0][1], f"{reason} (policy fallback)"
+        return Move(None, player=self.cn.next_player), f"{reason} (no candidates)"
+
+    def _run_query(self, label, **kwargs):
+        """追加クエリを1本撃って完了まで待つ。失敗時は None。"""
+        analysis, error = None, False
+
+        def on_result(a, partial_result):
+            nonlocal analysis
+            if not partial_result:
+                analysis = a
+
+        def on_error(a):
+            nonlocal error
+            error = True
+            self.game.katrain.log(f"[{type(self).__name__}] {label} error: {a}", OUTPUT_ERROR)
+
+        engine = self.game.engines[self.cn.player]
+        engine.request_analysis(
+            self.cn,
+            callback=on_result,
+            error_callback=on_error,
+            priority=PRIORITY_EXTRA_AI_QUERY,
+            **kwargs,
+        )
+        while not (error or analysis):
+            time.sleep(0.01)
+            engine.check_alive(exception_if_dead=True)
+        return None if error else analysis
+
+    def _probe_children(self, gtps, player, parent_hp=False):
+        """候補手ごとの子局面クエリ（クリーン解析 + humanPolicy）を全部発行してから待つ。
+
+        返り値: ({gtp: {"clean": analysis|None, "hp": analysis|None}},
+        親局面の humanSL 解析 | None)。エラーは None（その候補はスコアリングから
+        外す）。1本ずつ待たずまとめて発行する（KataGo は numAnalysisThreads=12 で
+        並列処理する）。`next_move` クエリの結果はノードに書き戻されない
+        （コールバックだけが受け取る）ので本譜の解析を汚さず、ownership も
+        要らないので強制 OFF の制約に当たらない。クリーン解析の wideRootNoise は
+        通常解析と同じ既定値のまま＝応手側の候補の広がりが要る（wRN=0 だと
+        非最善応手が読まれず損失テーブルが痩せる）。
+
+        parent_hp=True で親局面（cn そのもの）の humanSL クエリ（own_hp 用）も
+        同じバッチに混ぜて並列化する。humanPolicy は root NN の出力で visits に
+        依存しない（子局面 hp プローブが 8visits で済んでいるのと同じ理由）ので
+        ENIGMA9_HP_CHILD_VISITS で撃ち、既定 visits（config max_visits）の
+        humanSL 探索の完了を逐次で待っていた壁時間をバッチに畳む
+        （実測 2026-08-11・13路: 逐次 0.05〜0.27 秒 → 実質 0。spec 追記3）。
+        """
+        engine = self.game.engines[self.cn.player]
+        results = {}
+        expected = 0
+
+        def start(key, **kwargs):
+            nonlocal expected
+            expected += 1
+
+            def on_result(a, partial_result):
+                if not partial_result:
+                    results[key] = a
+
+            def on_error(a):
+                self.game.katrain.log(f"[{type(self).__name__}] probe {key} error: {a}", OUTPUT_ERROR)
+                results[key] = None
+
+            engine.request_analysis(
+                self.cn,
+                callback=on_result,
+                error_callback=on_error,
+                priority=PRIORITY_EXTRA_AI_QUERY,
+                **kwargs,
+            )
+
+        if parent_hp:
+            start(
+                (None, "parent_hp"),
+                include_policy=True,
+                ownership=False,
+                visits=ENIGMA9_HP_CHILD_VISITS,
+                extra_settings={
+                    "humanSLProfile": ENIGMA9_HUMAN_PROFILE,
+                    "ignorePreRootHistory": False,
+                },
+            )
+        for gtp in gtps:
+            mv = Move.from_gtp(gtp, player=player)
+            start(
+                (gtp, "clean"),
+                next_move=mv,
+                include_policy=False,
+                visits=ENIGMA9_CHILD_VISITS,
+                extra_settings={"ignorePreRootHistory": False},
+            )
+            start(
+                (gtp, "hp"),
+                next_move=mv,
+                include_policy=True,
+                visits=ENIGMA9_HP_CHILD_VISITS,
+                extra_settings={
+                    "humanSLProfile": ENIGMA9_HUMAN_PROFILE,
+                    "ignorePreRootHistory": False,
+                },
+            )
+        while len(results) < expected:
+            time.sleep(0.01)
+            engine.check_alive(exception_if_dead=True)
+        return (
+            {gtp: {"clean": results.get((gtp, "clean")), "hp": results.get((gtp, "hp"))} for gtp in gtps},
+            results.get((None, "parent_hp")) if parent_hp else None,
+        )
+
+    # ---- 着手後の先読み（相手考慮時間中の NN キャッシュ温め・判定影響ゼロ）----
+    # tsumego の `_maybe_region_prefetch`（game.py）と同じ設計: **結果は使わず捨てる**。
+    # 着手を返した後、人間の相手が考えている間エンジンは遊んでいるので、
+    #   wave1: 選択手への相手の有力応手 top-K の局面を、相手の着手後に GUI が撃つ
+    #          通常解析と同条件（visits=config・ownership=config 解決）で先に探索し、
+    #   wave2: その解析が返り次第、次の自分の手番で撃つことになる子局面プローブ
+    #          （clean 500v + humanSL 8v）を `_probe_children` と同条件で先回りする。
+    # KataGo の NN キャッシュは局面（+ownerMap 有無）単位なので、応手が的中した
+    # 手番は通常解析もプローブバッチもキャッシュヒットで数分の一に縮む。外れても
+    # コストは遊んでいた GPU 時間だけ（PRIORITY_ENIGMA_PONDER=-50 は実クエリ・
+    # 新規ノード解析より必ず下）。残骸の掃除は2段: 主経路は Game.play の
+    # `_cancel_enigma_ponder`（相手の着手が入った瞬間＝root 解析より先に打ち切る。
+    # 相手が先読みの消化前に応手すると実クエリが温めと GPU を取り合うため）、
+    # 保険が次の generate_move 冒頭の `_cancel_ponder`（GUI を経ない経路用）。
+    # どちらもノード単位 terminate（先読みは使い捨て複製ゲームのノードに
+    # 紐づくので、本譜ノードのクエリを巻き込まない）。
+
+    def _cancel_ponder(self):
+        """前手番の先読みの残骸を打ち切る（結果はもともと捨てるだけなので副作用なし）。
+
+        gen を進めるのが本体＝未発行のワーカー・在庫の wave2 コールバックは gen 不一致で
+        自己回収する（発行済みクエリの terminate はその補助）。
+        """
+        game = self.game
+        setattr(game, "_enigma_ponder_gen", getattr(game, "_enigma_ponder_gen", 0) + 1)
+        game._enigma_ponder_owner = None
+        state = getattr(game, "_enigma_ponder", None)
+        if not state:
+            return
+        game._enigma_ponder = None
+        engine, nodes = state[0], state[1]
+        for node in nodes:
+            engine.terminate_queries(only_for_node=node)
+
+    def _ponder_applies(self):
+        """自分が AI・次番（相手）が人間のときだけ先読みする。
+
+        デバッグスタブ／バッチ評価は両者 human 扱いなので発火しない（バッチの
+        次局面解析と GPU を取り合わない）。AI 同士の対局も発火しない（相手側の
+        クエリでエンジンが遊んでいないため温めても実クエリを圧迫するだけ）。
+        """
+        if ENIGMA9_PONDER_REPLIES <= 0:
+            return False
+        players_info = getattr(self.game.katrain, "players_info", None)
+        if not players_info:
+            return False
+        me = self.cn.next_player
+        opp = "W" if me == "B" else "B"
+        try:
+            return (
+                players_info[me].player_type == PLAYER_AI
+                and players_info[opp].player_type == PLAYER_HUMAN
+            )
+        except (KeyError, AttributeError):
+            return False
+
+    def _start_ponder(self, gtp, probe, player):
+        """着手 gtp を返す直前に呼ぶ。probe はその手の子局面プローブ結果（clean+hp）。
+
+        重い処理（複製ゲームの再生・クエリ発行）はデーモンスレッドに逃がすので
+        着手を返すのは遅れない。cn は play() で進む前にここでスナップショットする。
+        gen と発行者の色は**このメインスレッドで同期的に**記録する＝相手の着手
+        （Game.play の `_cancel_enigma_ponder`）が gen を進めた時点より前に必ず
+        捕獲されているので、ワーカーがどれだけ遅れて発行しても gen 不一致で
+        自己回収できる（実測 2026-08-11: ワーカーの sim 構築約0.1秒より速く相手が
+        応手すると、状態未設定のため terminate が空振りして温めクエリが漏れ、
+        次局面の実クエリが 1.6→4.4 秒に伸びた）。
+        """
+        clean = (probe or {}).get("clean") or {}
+        if not clean.get("moveInfos") or not self._ponder_applies():
+            return
+        node = self.cn
+        game = self.game
+        game._enigma_ponder_owner = player
+        gen = getattr(game, "_enigma_ponder_gen", 0)
+        threading.Thread(
+            target=self._ponder_worker, args=(node, gtp, probe, player, gen), daemon=True
+        ).start()
+
+    def _ponder_worker(self, node, gtp, probe, player, gen):
+        try:
+            opponent = "W" if player == "B" else "B"
+            clean = probe.get("clean") or {}
+            hp_analysis = probe.get("hp") or {}
+            human_policy = hp_analysis.get("humanPolicy")
+            hp_of = (
+                enigma9_hp_lookup(human_policy, self.game.board_size)
+                if human_policy else (lambda _g: 0.0)
+            )
+            entries = [
+                d for d in clean.get("moveInfos", [])
+                if d.get("move") and d["move"] != "pass"
+                and d.get("visits", 0) >= ENIGMA9_REPLY_MIN_VISITS
+            ]
+            if not entries:
+                return
+            # KataGo 本命（visits 最多）は強い相手が見つける手、残り枠は humanSL の
+            # 直感順＝人間が実際に打ちやすい手。両方の外れ方をカバーする
+            picks = [max(entries, key=lambda d: d.get("visits", 0))["move"]]
+            for d in sorted(entries, key=lambda d: -hp_of(d["move"])):
+                if d["move"] not in picks:
+                    picks.append(d["move"])
+                if len(picks) >= ENIGMA9_PONDER_REPLIES:
+                    break
+            sim = tsumego_simulation_game(self.game, node)
+            if sim is None:
+                return
+            sim.play(Move.from_gtp(gtp, player=player), ignore_ko=True)
+            base = sim.current_node
+            engine = self.game.engines[player]
+
+            def discard(*_args, **_kwargs):
+                return None
+
+            reply_nodes = []
+            for reply in picks:
+                if getattr(self.game, "_enigma_ponder_gen", 0) != gen:
+                    return  # 相手が既に着手した（発行前に気づけた分は発行しない）
+                sim.set_current_node(base)
+                try:
+                    child = sim.play(Move.from_gtp(reply, player=opponent), ignore_ko=True)
+                except IllegalMoveException:
+                    continue
+
+                def wave2(analysis, partial_result, child=child):
+                    # 応手局面の解析が返り次第、その top 候補（order 順＝次手番の
+                    # shortlist の近似）の子局面プローブも同条件で温める。gen が
+                    # 進んでいたら相手は既に着手済み＝発行しない
+                    if partial_result or getattr(self.game, "_enigma_ponder_gen", 0) != gen:
+                        return
+                    infos = sorted(
+                        (analysis or {}).get("moveInfos") or [],
+                        key=lambda d: d.get("order", 10 ** 6),
+                    )
+                    for d in infos[:ENIGMA9_SHORTLIST]:
+                        g2 = d.get("move")
+                        if not g2 or g2 == "pass":
+                            continue
+                        mv2 = Move.from_gtp(g2, player=player)
+                        engine.request_analysis(
+                            child, next_move=mv2, callback=discard, error_callback=discard,
+                            include_policy=False, visits=ENIGMA9_CHILD_VISITS,
+                            extra_settings={"ignorePreRootHistory": False},
+                            priority=PRIORITY_ENIGMA_PONDER,
+                        )
+                        engine.request_analysis(
+                            child, next_move=mv2, callback=discard, error_callback=discard,
+                            include_policy=True, visits=ENIGMA9_HP_CHILD_VISITS,
+                            extra_settings={
+                                "humanSLProfile": ENIGMA9_HUMAN_PROFILE,
+                                "ignorePreRootHistory": False,
+                            },
+                            priority=PRIORITY_ENIGMA_PONDER,
+                        )
+
+                # visits / ownership は渡さない＝GUI の通常解析と同じ config 解決に
+                # なり、実クエリと同一条件で温まる（ownerMap 有無はキャッシュキー）
+                engine.request_analysis(
+                    child, callback=wave2, error_callback=discard,
+                    priority=PRIORITY_ENIGMA_PONDER,
+                )
+                reply_nodes.append(child)
+            if reply_nodes:
+                self.game._enigma_ponder = (engine, reply_nodes)
+                self._log(f"Ponder: warming replies {picks} to {gtp}")
+                if getattr(self.game, "_enigma_ponder_gen", 0) != gen:
+                    # 発行中に相手の着手（Game.play）や次の generate の cancel と
+                    # 交錯した＝共有属性を経由せずローカルのリストを直接 terminate
+                    # する（tsumego の prefetch と同じ後始末。二重 terminate は無害）
+                    self.game._enigma_ponder = None
+                    for child in reply_nodes:
+                        engine.terminate_queries(only_for_node=child)
+        except Exception as e:
+            self.game.katrain.log(
+                f"[{type(self).__name__}] ponder error: {e!r}", OUTPUT_DEBUG
+            )
+
+    def generate_move(self) -> Tuple[Move, str]:
+        # per-move 時間の常時ログ（tsumego と同形式）。体感時間はこれに
+        # 直前の通常解析（GUI 側の待ち）が乗る
+        started = time.time()
+        try:
+            return self._generate_move()
+        finally:
+            self.game.katrain.log(
+                f"[{type(self).__name__}] 着手決定に {time.time() - started:.1f} 秒", OUTPUT_INFO
+            )
+
+    def _generate_move(self) -> Tuple[Move, str]:
+        self._cancel_ponder()  # 前手番の先読みの残骸を最初に打ち切る
+        self.wait_for_analysis()
+        player = self.cn.next_player
+        sign = 1 if player == "B" else -1
+        opponent = "W" if player == "B" else "B"
+
+        # ---- ゲート1: 対応盤サイズ専用（9路版=9 / 13路版=13） ----
+        side = self.BOARD_LEN
+        if max(self.game.board_size) != side:
+            self.game.katrain.log(
+                f"[{type(self).__name__}] board size {self.game.board_size} is not {side}x{side}; "
+                f"this mode is {side}x{side}-only, playing KataGo best move",
+                OUTPUT_INFO,
+            )
+            return self._best_move(f"{self.LABEL}: not a {side}x{side} board, playing best move.")
+
+        cands = self.cn.candidate_moves
+        if not cands:
+            return self._best_move(f"{self.LABEL}: no candidate moves.")
+        best_gtp = cands[0]["move"]
+        if best_gtp == "pass":
+            # パスが最善＝終局処理。ダメ詰め・終局判定はエンジンに委ねる
+            return self._best_move(f"{self.LABEL}: best move is pass, playing it.")
+
+        max_loss = float(self._setting("max_loss"))
+        large_cap = float(self._setting("large_lead_max_loss"))
+        min_wr = float(self._setting("min_winrate"))
+        margin = float(self._setting("net_margin"))
+        endgame_move = int(self._setting("endgame_move"))
+        unsettled_max = int(self._setting("unsettled_max"))
+        target = float(self._setting("target_score"))
+
+        # ---- ゲート2: ヨセ判定と外し予算（parity9 と同じ 手数 AND 未確定点・sticky）----
+        # ヨセ前は Probe を撃たない（parity9_is_endgame は depth < endgame_move で
+        # 常に False なので ownership が要らない）＝序盤〜中盤はクエリ1本節約
+        endgame_flag = f"_{self.KEY_PREFIX}_endgame"
+        in_yose = bool(getattr(self.game, endgame_flag, False))
+        cap = max_loss
+        if in_yose or self.cn.depth >= endgame_move:
+            # ownership=True を明示するのはユーザーのローカル設定が
+            # _enable_ownership=false でも未確定度を測れるようにするため。
+            # wideRootNoise=0 は root の scoreLead の精度用（この moveInfos を
+            # 候補の損失判定に使ってはいけない＝プールは通常解析から作る）
+            probe = self._run_query(
+                "Probe",
+                include_policy=False,
+                ownership=True,
+                extra_settings={"ignorePreRootHistory": False, "wideRootNoise": 0.0},
+            )
+            ownership = probe.get("ownership") if probe else None
+            n_unsettled = (
+                None if ownership is None
+                else sum(1 for o in ownership if abs(o) < PARITY9_UNSETTLED_ABS)
+            )
+            if not in_yose and parity9_is_endgame(self.cn.depth, ownership, endgame_move, unsettled_max):
+                setattr(self.game, endgame_flag, True)  # sticky
+                in_yose = True
+            self._log(
+                f"Endgame check: depth={self.cn.depth} thr={endgame_move} "
+                f"unsettled={n_unsettled} max={unsettled_max} -> {'yose' if in_yose else 'not yet'}"
+            )
+            if in_yose:
+                root_lead = (probe or {}).get("rootInfo", {}).get("scoreLead")
+                if root_lead is None:
+                    self._log("Endgame: lead unavailable -> best move")
+                    return self._best_move(f"{self.LABEL}: endgame, lead unavailable, playing best move.")
+                lead = root_lead * sign
+                budget = lead - target
+                cap = min(max_loss, budget)
+                self._log(
+                    f"Endgame budget: lead={lead:.2f} target={target:.1f} cap={cap:.2f}"
+                )
+                if cap <= ENIGMA9_MIN_BUDGET:
+                    return self._best_move(
+                        f"{self.LABEL}: endgame, securing result (lead {lead:.2f} vs "
+                        f"target {target:.1f}), playing best move."
+                    )
+
+        # ---- ゲート2b: 勝勢時の消費モード（ヨセ前のみ）----
+        # 通常 cap いっぱい外しても目標差まで縮まらない勝勢では、余剰リード
+        # budget = lead − target を予算に cap を enigma9_large_lead_max_loss まで
+        # 緩和し、net の損失項を cost_weight = max_loss / budget に割り引く
+        # （cap を広げるだけでは E が損失に見合わず帯が使われない。詳細は
+        # enigma9_spending_plan の docstring）。lead は通常解析 root の scoreLead
+        # （クエリ0本。budget の閾値判定に wRN=0.04 の root ノイズは十分小さい）
+        cost_weight = 1.0
+        if not in_yose:
+            root_info = self.cn.analysis.get("root") or {}
+            root_lead = root_info.get("scoreLead")
+            lead_now = None if root_lead is None else root_lead * sign
+            cap, cost_weight, sp_budget = enigma9_spending_plan(
+                lead_now, target, max_loss, large_cap
+            )
+            if cost_weight < 1.0:
+                self._log(
+                    f"Spend: lead={lead_now:.2f} budget={sp_budget:.2f} cap={cap:.2f} "
+                    f"cost_weight={cost_weight:.2f}"
+                )
+
+        # ---- ゲート3: 安全な外し候補があるか（クエリ0本）----
+        # プールは visits >= ENIGMA9_POOL_MIN_VISITS まで広げる（二段の漏斗）。
+        # 生 loss の cap 判定は浅い候補でも安全側（楽観バイアス＝過小評価なので
+        # 生 loss > cap なら真の loss も cap 超え）。真の採否はプローブ検証値で決める
+        candidates, n_searched = parity9_build_candidates(
+            cands, player=player, min_visits=ENIGMA9_POOL_MIN_VISITS
+        )
+        pool = enigma9_admissible(candidates, best_gtp, cap, min_wr)
+        n_trusted = sum(1 for c in pool if c.get("visits", 0) >= ENIGMA9_TRUSTED_VISITS)
+        self._log(
+            f"Pool: cap={cap:.2f} min_wr={min_wr:.0%} admissible={len(pool)} "
+            f"(trusted={n_trusted}, of {len(candidates)}, searched>={ENIGMA9_POOL_MIN_VISITS}: {n_searched})"
+        )
+        if not pool:
+            return self._best_move(
+                f"{self.LABEL}: no admissible deviation (cap {cap:.2f}), playing best move."
+            )
+        shortlist = enigma9_shortlist(pool, ENIGMA9_SHORTLIST - 1)
+
+        # ---- 子局面プローブ + 親局面 humanSL（自手の意外さ用）を1バッチで並列発行 ----
+        # 親 humanSL を逐次で待ってからプローブを発行する旧形は、humanPolicy が
+        # root NN の出力で visits に依存しない以上まるごと無駄（詳細は
+        # _probe_children の docstring）。判定に使う値は不変
+        best_cand = next((c for c in candidates if c["gtp"] == best_gtp), None)
+        probe_items = ([best_cand] if best_cand else []) + shortlist
+        probes, stage_hp = self._probe_children(
+            [c["gtp"] for c in probe_items], player, parent_hp=True
+        )
+        if not stage_hp or "humanPolicy" not in stage_hp:
+            self._log("HumanSL unavailable -> best move")
+            return self._best_move(f"{self.LABEL}: humanSL unavailable, playing best move.")
+        own_hp_of = enigma9_hp_lookup(stage_hp["humanPolicy"], self.game.board_size)
+
+        # ---- スコアリング（損失・勝率は子局面プローブの検証値で確定）----
+        # 親解析で浅くしか読まれなかった候補の生 loss は楽観的なので、採否は
+        # 同 visits の独立子局面解析同士の差（検証済み損失）と着手後勝率で決める
+        best_pr = probes.get(best_gtp) or {}
+        best_lead_after, _ = enigma9_verified_metrics(best_pr.get("clean"), player)
+        if best_lead_after is None:
+            self._log("Best-move probe unavailable -> best move")
+            return self._best_move(f"{self.LABEL}: best-move probe unavailable, playing best move.")
+
+        scored = []
+        for c in probe_items:
+            pr = probes.get(c["gtp"]) or {}
+            clean, hp_child = pr.get("clean"), pr.get("hp")
+            if not clean or not clean.get("moveInfos") or not hp_child or "humanPolicy" not in hp_child:
+                self._log(f"Probe incomplete for {c['gtp']} -> dropped")
+                continue
+            lead_after, wr_after = enigma9_verified_metrics(clean, player)
+            if lead_after is None:
+                self._log(f"No verified lead for {c['gtp']} -> dropped")
+                continue
+            vloss = best_lead_after - lead_after
+            if c["gtp"] != best_gtp:
+                if vloss > cap:
+                    self._log(
+                        f"Drop {c['gtp']}: verified loss {vloss:.2f} > cap {cap:.2f} "
+                        f"(raw {c['loss']:.2f}, v{c.get('visits', 0)})"
+                    )
+                    continue
+                if wr_after is not None and wr_after < min_wr:
+                    self._log(
+                        f"Drop {c['gtp']}: verified wr {wr_after:.1%} < floor {min_wr:.0%}"
+                    )
+                    continue
+            replies, best_reply = enigma9_reply_table(clean["moveInfos"], opponent)
+            if not replies:
+                self._log(f"No reply table for {c['gtp']} -> dropped")
+                continue
+            hp_of = enigma9_hp_lookup(hp_child["humanPolicy"], self.game.board_size)
+            e_punish, coverage = enigma9_expected_punish(replies, hp_of)
+            findability = enigma9_reply_findability(replies, hp_of)
+            own_hp = own_hp_of(c["gtp"])
+            net = enigma9_net_score(vloss, e_punish, findability, own_hp, cost_weight=cost_weight)
+            scored.append(
+                {**c, "loss": vloss, "raw_loss": c["loss"], "wr_after": wr_after,
+                 "e": e_punish, "cov": coverage, "find": findability,
+                 "own_hp": own_hp, "reply": best_reply, "net": net}
+            )
+            wr_txt = "n/a" if wr_after is None else f"{wr_after:.1%}"
+            self._log(
+                f"Score {c['gtp']}: vloss={vloss:.2f} (raw {c['loss']:.2f}) wr={wr_txt} "
+                f"E={e_punish:.2f} cov={coverage:.2f} find_hp={findability:.3f} "
+                f"own_hp={own_hp:.3f} reply={best_reply} net={net:.2f}"
+            )
+
+        chosen = enigma9_choose(scored, best_gtp, margin)
+        if chosen is None:
+            self._log("Best move wins the confusion race -> best move")
+            self._start_ponder(best_gtp, probes.get(best_gtp), player)
+            return self._best_move(
+                f"{self.LABEL}: best move is also the most confusing in budget, playing it."
+            )
+
+        wr_txt = "n/a" if chosen.get("wr_after") is None else f"{chosen['wr_after']:.1%}"
+        self._log(
+            f"Deviate: played {chosen['gtp']} (net={chosen['net']:.2f}, vloss={chosen['loss']:.2f}, "
+            f"E={chosen['e']:.2f}, find_hp={chosen['find']:.3f}, wr={wr_txt}) instead of {best_gtp}"
+        )
+        self._start_ponder(chosen["gtp"], probes.get(chosen["gtp"]), player)
+        return (
+            Move.from_gtp(chosen["gtp"], player=player),
+            f"{self.LABEL}: deviated to {chosen['gtp']} (verified loss {chosen['loss']:.2f}, "
+            f"expected punish {chosen['e']:.2f}, reply findability {chosen['find']:.1%}, "
+            f"own hp {chosen['own_hp']:.1%}, wr {wr_txt}) instead of {best_gtp} "
+            f"to deny the opponent familiar shapes.",
+        )
+
+
+@register_strategy(AI_ENIGMA_13)
+class Enigma13Strategy(Enigma9Strategy):
+    """13路専用「難解」戦略（Enigma9Strategy の盤サイズ・設定キー・既定値差し替え版）。
+
+    選択パイプライン（二段の漏斗 → 子局面プローブの同深さ検証 → net 比較）・
+    勝勢時の消費モード・ヨセの余剰予算・フェイルセーフはすべて 9 路版と共通。
+    差分は既定値だけ:
+
+    - max_loss 1.5（GUI 候補値の天井 3.0）: 「2目以上の損失手は打たない」は挽回が
+      難しい 9 路の要件で、13 路は悪手フィルタの盤サイズ比（NORMAL 3.3→5.6 ≒ ×1.7）に
+      合わせて上限を広げる
+    - large_lead_max_loss 8.0: jigo の 13/19 路既定（`jigo_large_lead_max_loss`）と同値
+    - endgame_move 75 / unsettled_max 16: 13 路の対局長（〜120手）と盤点数
+      （169 ≒ 9 路の 2.1 倍・未確定点 ≒ 盤の 10%）へのスケール。ヨセ判定は
+      手数 AND 未確定点なので、手数側が早めでも未確定点条件が早すぎる切替を防ぐ
+    """
+
+    BOARD_LEN = 13
+    KEY_PREFIX = "enigma13"
+    LABEL = "Enigma13"
+    SETTING_DEFAULTS = {
+        "max_loss": 1.5,
+        "large_lead_max_loss": 8.0,
+        "min_winrate": 0.3,
+        "net_margin": 0.0,
+        "endgame_move": 75,
+        "unsettled_max": 16,
+        "target_score": 2.0,
+    }
 
 
 @register_strategy(AI_SCORELOSS)

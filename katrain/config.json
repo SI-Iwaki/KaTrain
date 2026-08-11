@@ -185,6 +185,24 @@
             "parity9_yose_max_loss": 0.1,
             "parity9_min_human_policy": 0.005
         },
+        "ai:enigma9": {
+            "enigma9_max_loss": 1.0,
+            "enigma9_large_lead_max_loss": 5.0,
+            "enigma9_min_winrate": 0.3,
+            "enigma9_net_margin": 0.0,
+            "enigma9_target_score": 2.0,
+            "enigma9_endgame_move": 30,
+            "enigma9_unsettled_max": 8
+        },
+        "ai:enigma13": {
+            "enigma13_max_loss": 1.5,
+            "enigma13_large_lead_max_loss": 8.0,
+            "enigma13_min_winrate": 0.3,
+            "enigma13_net_margin": 0.0,
+            "enigma13_target_score": 2.0,
+            "enigma13_endgame_move": 75,
+            "enigma13_unsettled_max": 16
+        },
         "ai:scoreloss": {
             "strength": 0.2
         },

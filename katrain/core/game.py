@@ -568,6 +568,7 @@ class Game(BaseGame):
         # リージョンを解除した直後の着手でも残骸を掃除するため、region 分岐の外で呼ぶ
         self._cancel_region_prefetch()
         self._cancel_early_speculation()
+        self._cancel_enigma_ponder(move)
         if analyze:
             if self.region_of_interest:
                 played_node.analyze(self.engines[played_node.next_player], analyze_fast=True)
@@ -588,6 +589,33 @@ class Game(BaseGame):
             else:
                 played_node.analyze(self.engines[played_node.next_player])
         return played_node
+
+    def _cancel_enigma_ponder(self, move):
+        """難解（enigma）戦略の着手後先読みを、相手の着手が入った時点で打ち切る。
+
+        先読み（ai.py `Enigma9Strategy._start_ponder`）は AI が着手を返す直前に
+        `_enigma_ponder_owner`（発行者の色）と gen を**同期的に**記録してからワーカーを
+        起こす。play() は直後の AI 自身の着手でも呼ばれるため、**発行者と同じ色の着手では
+        打ち切らない**。相手の着手では gen を進める＝(a) 発行済みクエリの terminate、
+        (b) まだ発行前のワーカー・在庫の wave2 コールバックも gen 不一致で自己回収する
+        （ワーカーの sim 構築約0.1秒より速い応手では `_enigma_ponder` が未設定で terminate
+        だけでは空振りする）。実測 2026-08-11: この掃除が無いと相手が先読み消化前に
+        応手したとき実クエリ（root 解析＋プローブバッチ）が最大51本の温めクエリと GPU を
+        取り合い 1.6→4.4 秒に伸びた（次の generate_move 冒頭の cancel では root 解析に
+        間に合わない）。応手が的中していた場合も同一局面の実クエリが直後に走るので、
+        温め済み NN キャッシュは失われない（結果はもともと捨てるだけ）。
+        """
+        owner = getattr(self, "_enigma_ponder_owner", None)
+        if owner is None or move is None or move.player == owner:
+            return
+        self._enigma_ponder_owner = None
+        self._enigma_ponder_gen = getattr(self, "_enigma_ponder_gen", 0) + 1
+        state = getattr(self, "_enigma_ponder", None)
+        self._enigma_ponder = None
+        if state:
+            engine, nodes = state[0], state[1]
+            for node in nodes:
+                engine.terminate_queries(only_for_node=node)
 
     def _cancel_region_prefetch(self):
         """発行済みの先読みクエリを打ち切る（結果はもともと捨てるだけなので副作用なし）。

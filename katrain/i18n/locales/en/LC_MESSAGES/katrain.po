@@ -874,6 +874,60 @@ msgstr "[9x9] Max unsettled points for endgame"
 msgid "parity9_min_human_policy"
 msgstr "[9x9] humanPolicy floor for candidates"
 
+msgid "ai:enigma9"
+msgstr "Enigma (9x9)"
+
+msgid "aihelp:enigma9"
+msgstr "9x9 only. From the opening through the middle game it actively deviates from KataGo's top move - within a strict loss cap - toward the move whose correct answer is hardest for a human to find, denying the opponent their studied openings and tesuji. Difficulty is measured per candidate by analyzing the position after the move: E = the expected points a 9-dan human reply distribution gives away there, plus a bonus when every adequate reply has low humanPolicy (the only good answer is invisible) and when the move itself is off-book (low own humanPolicy); the candidate maximizing this net of its own loss is played. One-move-difference capturing races score high automatically - the opponent's natural replies lose the race - and the safety gates (loss cap + winrate floor, both search values that already include the opponent's best reply) ensure they are only created while correct play keeps the game won. enigma9_max_loss: per-move loss cap in points (options stop at 1.8, so a move losing 2+ points is never played). enigma9_min_winrate: winrate floor after the move; deviations stop when the game turns bad, so an unwinnable game is lost narrowly instead of thrown away. enigma9_net_margin: how much a deviation must beat the best move by in net difficulty (0 = deviate even on ties). enigma9_large_lead_max_loss: bold-move loss cap when far ahead; while the lead exceeds the target margin plus the normal cap, the surplus (lead minus target) becomes a budget - the loss cap relaxes up to this value and the cost term is discounted in proportion to the budget, so a winning game spends its surplus on confusion instead of grinding out best moves, and returns continuously to the normal cap as the lead shrinks (disabled once the endgame starts). enigma9_target_score: endgame target margin; once the endgame starts (at or past enigma9_endgame_move AND at most enigma9_unsettled_max unsettled points, sticky) only the lead surplus above this target is spent on deviations, otherwise it plays best moves to secure a 2-point win or jigo. On other board sizes it simply plays the best move."
+
+msgid "enigma9_max_loss"
+msgstr "[9x9] Per-move loss cap (pts)"
+
+msgid "enigma9_large_lead_max_loss"
+msgstr "[9x9] Bold-move loss cap when far ahead (pts)"
+
+msgid "enigma9_min_winrate"
+msgstr "[9x9] Winrate floor after the move"
+
+msgid "enigma9_net_margin"
+msgstr "[9x9] Difficulty margin required over best move"
+
+msgid "enigma9_target_score"
+msgstr "[9x9] Endgame target margin (pts)"
+
+msgid "enigma9_endgame_move"
+msgstr "[9x9] Endgame switch move"
+
+msgid "enigma9_unsettled_max"
+msgstr "[9x9] Max unsettled points for endgame"
+
+msgid "ai:enigma13"
+msgstr "Enigma (13x13)"
+
+msgid "aihelp:enigma13"
+msgstr "13x13 only. The 13x13 edition of Enigma (9x9), sharing the same selection logic. From the opening through the middle game it actively deviates from KataGo's top move - within a strict loss cap - toward the move whose correct answer is hardest for a human to find, denying the opponent their studied openings and tesuji. Difficulty is measured per candidate by analyzing the position after the move: E = the expected points a 9-dan human reply distribution gives away there, plus a bonus when every adequate reply has low humanPolicy (the only good answer is invisible) and when the move itself is off-book (low own humanPolicy); the candidate maximizing this net of its own loss is played. One-move-difference capturing races score high automatically - the opponent's natural replies lose the race - and the safety gates (loss cap + winrate floor, both search values that already include the opponent's best reply) ensure they are only created while correct play keeps the game won. enigma13_max_loss: per-move loss cap in points (default 1.5, options stop at 3.0 - wider than the 9x9 cap because the larger board leaves more room to recover). enigma13_min_winrate: winrate floor after the move; deviations stop when the game turns bad, so an unwinnable game is lost narrowly instead of thrown away. enigma13_net_margin: how much a deviation must beat the best move by in net difficulty (0 = deviate even on ties). enigma13_large_lead_max_loss: bold-move loss cap when far ahead; while the lead exceeds the target margin plus the normal cap, the surplus (lead minus target) becomes a budget - the loss cap relaxes up to this value and the cost term is discounted in proportion to the budget, so a winning game spends its surplus on confusion instead of grinding out best moves, and returns continuously to the normal cap as the lead shrinks (disabled once the endgame starts). enigma13_target_score: endgame target margin; once the endgame starts (at or past enigma13_endgame_move AND at most enigma13_unsettled_max unsettled points, sticky) only the lead surplus above this target is spent on deviations, otherwise it plays best moves to secure the target margin or jigo. On other board sizes it simply plays the best move."
+
+msgid "enigma13_max_loss"
+msgstr "[13x13] Per-move loss cap (pts)"
+
+msgid "enigma13_large_lead_max_loss"
+msgstr "[13x13] Bold-move loss cap when far ahead (pts)"
+
+msgid "enigma13_min_winrate"
+msgstr "[13x13] Winrate floor after the move"
+
+msgid "enigma13_net_margin"
+msgstr "[13x13] Difficulty margin required over best move"
+
+msgid "enigma13_target_score"
+msgstr "[13x13] Endgame target margin (pts)"
+
+msgid "enigma13_endgame_move"
+msgstr "[13x13] Endgame switch move"
+
+msgid "enigma13_unsettled_max"
+msgstr "[13x13] Max unsettled points for endgame"
+
 msgid "jigo9_phase1_start"
 msgstr "[9x9] Phase1 start move (begin playing modestly)"
 

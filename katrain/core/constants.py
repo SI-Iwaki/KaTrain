@@ -26,6 +26,9 @@ PRIORITY_SWEEP = -10  # sweep is live, but slow, so deprioritize
 # 詰碁キャプチャの先読み（白番考慮中に有力応手の子局面で NN キャッシュを温める）。実クエリより
 # 必ず下に置く＝キューで追い越されない。実行中の先読みは Game.play が terminate する
 PRIORITY_REGION_PREFETCH = -50
+# 難解（enigma）の着手後先読み（相手考慮中に有力応手の局面＋その子局面プローブで NN キャッシュを
+# 温める）。実クエリ・新規ノード解析より必ず下。残骸は次の generate_move 冒頭が terminate する
+PRIORITY_ENIGMA_PONDER = -50
 PRIORITY_TSUMEGO_SPECULATION = 500  # 手番内投機（温め）: 実クエリ(10_000)・新規ノード解析(1000)より下
 PRIORITY_ALTERNATIVES = 100  # extra analysis, live interaction
 PRIORITY_EQUALIZE = 100
@@ -75,10 +78,16 @@ AI_HUNT_DIVERGE = "ai:hunt_diverge"
 # 9路専用「一致率追随」戦略。相手の AI 最善手一致数を上回っている間だけ、
 # リード連動の損失予算内で humanPolicy 最大の手へ外す
 AI_PARITY_9 = "ai:parity9"
+# 9路専用「難解」戦略。損失上限・勝率フロアの内側で「相手の正しい応手が
+# 最も見つけにくい手」へ積極的に外し、定跡・手筋の記憶を無効化する
+AI_ENIGMA_9 = "ai:enigma9"
+# 上記の13路版。実装は Enigma9Strategy を共有し、盤サイズ・設定キー接頭辞・
+# 既定値だけ差し替え（ai.py の Enigma13Strategy）
+AI_ENIGMA_13 = "ai:enigma13"
 
 AI_CONFIG_DEFAULT = AI_RANK
 
-AI_STRATEGIES_ENGINE = [AI_DEFAULT, AI_HANDICAP, AI_SCORELOSS, AI_SIMPLE_OWNERSHIP, AI_JIGO, AI_JIGO_9, AI_PARITY_9, AI_ANTIMIRROR]
+AI_STRATEGIES_ENGINE = [AI_DEFAULT, AI_HANDICAP, AI_SCORELOSS, AI_SIMPLE_OWNERSHIP, AI_JIGO, AI_JIGO_9, AI_PARITY_9, AI_ENIGMA_9, AI_ENIGMA_13, AI_ANTIMIRROR]
 AI_STRATEGIES_PICK = [AI_PICK, AI_LOCAL, AI_TENUKI, AI_INFLUENCE, AI_TERRITORY, AI_FIGHTING, AI_RANK]
 AI_STRATEGIES_POLICY = [AI_WEIGHTED, AI_POLICY] + AI_STRATEGIES_PICK
 AI_STRATEGIES = AI_STRATEGIES_ENGINE + AI_STRATEGIES_POLICY + [AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE, AI_TSUMEGO, AI_TSUMEGO_SOLVER]
@@ -96,6 +105,8 @@ AI_STRATEGIES_RECOMMENDED_ORDER = [
     AI_JIGO,
     AI_JIGO_9,
     AI_PARITY_9,
+    AI_ENIGMA_9,
+    AI_ENIGMA_13,
     AI_ANTIMIRROR,
     AI_PICK,
     AI_LOCAL,
@@ -117,6 +128,8 @@ AI_STRENGTH = {  # dan ranks, backup if model is missing. TODO: remove some?
     AI_JIGO: float("nan"),
     AI_JIGO_9: float("nan"),
     AI_PARITY_9: float("nan"),
+    AI_ENIGMA_9: float("nan"),
+    AI_ENIGMA_13: float("nan"),
     AI_SCORELOSS: -4,
     AI_WEIGHTED: -4,
     AI_PICK: -7,
@@ -272,6 +285,27 @@ AI_OPTION_VALUES = {
     "parity9_endgame_move": [22, 26, 30, 34, 38],
     "parity9_unsettled_max": [4, 6, 8, 10, 12],
     "parity9_min_human_policy": [(0.0, "0%"), (0.005, "0.5%"), (0.01, "1%"), (0.02, "2%")],
+    # ===== Enigma9Strategy（9路専用・難解） =====
+    # 上限 1.8 目まで＝互角では「2目以上の損失手は打たない」を候補値レベルで保証する
+    "enigma9_max_loss": [0.3, 0.5, 0.8, 1.0, 1.2, 1.5, 1.8],
+    # 勝勢時（budget = lead - target > max_loss）だけ解禁される勝負手の損失上限
+    "enigma9_large_lead_max_loss": [2.0, 3.0, 4.0, 5.0, 6.0, 8.0],
+    "enigma9_min_winrate": [(0.2, "20%"), (0.25, "25%"), (0.3, "30%"), (0.35, "35%"), (0.4, "40%"), (0.5, "50%")],
+    "enigma9_net_margin": [0.0, 0.2, 0.3, 0.5, 1.0],
+    "enigma9_target_score": [0.0, 1.0, 2.0, 3.0],
+    "enigma9_endgame_move": [22, 26, 30, 34, 38],
+    "enigma9_unsettled_max": [4, 6, 8, 10, 12],
+    # ===== Enigma13Strategy（13路専用・難解） =====
+    # 9路の「2目以上の損失手は打たない」は挽回が難しい9路向けの締め方。13路は
+    # 悪手フィルタの盤サイズ比（NORMAL 3.3→5.6 ≒ ×1.7）に合わせて天井 3.0 まで開ける
+    "enigma13_max_loss": [0.5, 0.8, 1.0, 1.5, 2.0, 2.5, 3.0],
+    # 勝勢時（budget = lead - target > max_loss）だけ解禁される勝負手の損失上限
+    "enigma13_large_lead_max_loss": [3.0, 4.0, 5.0, 6.0, 8.0, 10.0],
+    "enigma13_min_winrate": [(0.2, "20%"), (0.25, "25%"), (0.3, "30%"), (0.35, "35%"), (0.4, "40%"), (0.5, "50%")],
+    "enigma13_net_margin": [0.0, 0.2, 0.3, 0.5, 1.0],
+    "enigma13_target_score": [0.0, 1.0, 2.0, 3.0, 5.0],
+    "enigma13_endgame_move": [55, 65, 75, 85, 95],
+    "enigma13_unsettled_max": [8, 12, 16, 20, 24],
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）
@@ -364,6 +398,20 @@ AI_OPTION_ORDER = {
     "parity9_unsettled_max": 5,
     "parity9_yose_max_loss": 6,
     "parity9_min_human_policy": 7,
+    "enigma9_max_loss": 0,
+    "enigma9_large_lead_max_loss": 1,
+    "enigma9_min_winrate": 2,
+    "enigma9_net_margin": 3,
+    "enigma9_target_score": 4,
+    "enigma9_endgame_move": 5,
+    "enigma9_unsettled_max": 6,
+    "enigma13_max_loss": 0,
+    "enigma13_large_lead_max_loss": 1,
+    "enigma13_min_winrate": 2,
+    "enigma13_net_margin": 3,
+    "enigma13_target_score": 4,
+    "enigma13_endgame_move": 5,
+    "enigma13_unsettled_max": 6,
 }
 
 AI_KEY_PROPERTIES = {
