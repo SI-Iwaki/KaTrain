@@ -24,15 +24,20 @@ paths:
 
 ## エンジン設定（maxVisits）
 
-揃えるのはStage1とGUIの2箇所（パッケージ側 `analysis_config.cfg` のデフォルト値は、クエリが毎回
-`maxVisits` を明示送信するため明示指定のないクエリにしか効かず揃える対象外）。Stage2は独立値。
+**`extra_settings`（overrideSettings）に置いた `maxVisits` は効かない**。`request_analysis` は
+top-level の `maxVisits` を `visits` 引数（既定 `config["max_visits"]`）から必ず入れ、KataGo は
+top-level を優先する（実測 2026-08-06）。歴史的に各戦略の Stage1/Stage2 は dict に 800/600 を
+書いていたが**すべて dead キーで、実効は常に GUI の `max_visits`（現在 1000）**だった。
+2026-08-11 に dead キーを全戦略から除去（挙動不変・parity9 の 0ef0f32 と同じ扱い）。
+悪手フィルタ等の閾値校正はこの実態（config visits）に対して行われてきたので、
+**「文書上の 800/600 を効かせる」方向の修正は挙動変更＝再校正が要る。やらないこと**。
 
-| 場所 | 現在値 | 役割 |
+| 場所 | 実効値 | 役割 |
 |---|---|---|
-| ai.py `override_settings["maxVisits"]` (HumanStyle/Fighting/Siege/Hunt) | 800 | Stage1: HumanSL着手選択 |
-| ai.py `stage1_override["maxVisits"]` (Jigo) | 1 | Stage1: humanPolicy 取得のみ（humanSL NN の root policy 出力で visits 不変） |
-| ai.py `clean_override_settings["maxVisits"]` | 600 | Stage2: クリーンスコア検証（独立値） |
-| GUI `max_visits`（`~/.katrain/config.json`） | 800 | 事後分析クエリ（Stage1と揃える設計値） |
+| Stage1（HumanStyle/Fighting/Siege/Hunt/Divergence・humanSL 着手選択） | config `max_visits`（1000） | humanPolicy + moveInfos。**事後分析と自動で同値**（同じ config キーを共有）＝「Stage1 と GUI を揃える」は構造的に常時成立 |
+| Stage1（Jigo/Jigo9・humanPolicy 取得のみ） | **1**（`visits=1` を引数で明示・2026-08-11 修正） | humanPolicy のみ（root NN 出力＝visits 非依存）。旧実装は dead キーのため実際は 1000visits の humanSL 探索を毎手待っていた（実測 0.14〜0.27 秒/手）。**Stage2 失敗時のフォールバックは biased な Stage1 moveInfos → KataGo 最善手に変更**（1visit の moveInfos では代替不能。稀なエンジンエラー経路の failsafe 統一） |
+| Stage2（クリーンスコア検証・wRN=0・全戦略） | config `max_visits`（1000） | scoreLead（「独立値 600」は dead キーの想定値で、実際に 600 で走ったことはない） |
+| GUI `max_visits`（`~/.katrain/config.json`） | 1000 | 事後分析クエリ。Stage1/Stage2 も同じ値で走る |
 | `katrain/KataGo/analysis_config.cfg`（**パッケージ側**。エンジンが実際に読むのはこちら。`~/.katrain/analysis_config.cfg` は参照されない） | 500 | `maxVisits` デフォルト値。個々のクエリは毎回 maxVisits を明示送信するため、cfg 側のデフォルトが効く場面は限定的 |
 
 ## 力戦派モード（FightingStrategy）

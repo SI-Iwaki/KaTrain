@@ -1073,7 +1073,7 @@ class JigoStrategy(AIStrategy):
             "selected_score": None,
             "filter_relaxed": False,  # bool, not None — absence means "no fallback", not "unknown"
             "score_lead": None,
-            "score_lead_biased": False,  # True when Stage2 failed and Stage1 (biased) was used
+            "score_lead_biased": False,  # 旧: Stage2失敗でStage1(biased)を使った印。フォールバックを最善手に変えた2026-08-11以降は常にFalse（batch_eval互換のため残置）
         }
         self.game.katrain.log(f"[JigoStrategy] Starting move generation", OUTPUT_DEBUG)
         self.wait_for_analysis()
@@ -1248,7 +1248,6 @@ class JigoStrategy(AIStrategy):
         stage1_override = {
             "humanSLProfile": human_profile,
             "ignorePreRootHistory": False,
-            "maxVisits": 1,
         }
         self.last_decision_info["rank_used"] = human_profile
         stage1_analysis = None
@@ -1264,9 +1263,16 @@ class JigoStrategy(AIStrategy):
             stage1_error = True
             self.game.katrain.log(f"[JigoStrategy] Stage1 error: {a}", OUTPUT_ERROR)
 
+        # Stage1 は humanPolicy（root NN の出力＝visits 非依存・run 間分散のみ）の取得専用
+        # なので 1visit で撃つ。visits は**引数で**渡す＝extra_settings の maxVisits は
+        # top-level に負けて効かない（旧実装はここが dead キーで実際は config max_visits
+        # ＝1000visits の humanSL 探索を毎手待っていた。実測 2026-08-11・13路ウォームで
+        # 0.14〜0.27 秒/手）。1visit の moveInfos はほぼ空になるため、Stage2 失敗時の
+        # フォールバックは Stage1 moveInfos ではなく KataGo 最善手（下記）
         engine.request_analysis(
             self.cn, callback=_set_stage1, error_callback=_err_stage1,
             priority=PRIORITY_EXTRA_AI_QUERY, include_policy=True,
+            visits=1,
             extra_settings=stage1_override,
         )
         while not (stage1_error or stage1_analysis):
@@ -1309,7 +1315,6 @@ class JigoStrategy(AIStrategy):
         # ---- Stage 2: クリーンクエリ（scoreLead 用） ----
         stage2_override = {
             "ignorePreRootHistory": False,
-            "maxVisits": 600,
             "wideRootNoise": 0.0,
         }
         stage2_analysis = None
@@ -1334,15 +1339,20 @@ class JigoStrategy(AIStrategy):
             time.sleep(0.01)
             engine.check_alive(exception_if_dead=True)
 
-        # Stage 2 失敗時は Stage 1 にフォールバック
+        # Stage 2 失敗時は KataGo 最善手へフォールバック（Stage1 失敗時と同じ形）。
+        # 旧実装は Stage1（humanSL バイアス済み）の moveInfos で選択を続けていたが、
+        # Stage1 を 1visit（humanPolicy 取得のみ）にしたため moveInfos の代替には
+        # 使えない。稀なエンジンエラー経路なので最善手フェイルセーフに揃える
         if stage2_error or not stage2_analysis:
-            self.last_decision_info["score_lead_biased"] = True
             self.game.katrain.log(
-                "[JigoStrategy] Stage2 failed, using Stage1 moveInfos (biased)", OUTPUT_DEBUG
+                "[JigoStrategy] Stage2 failed, falling back to KataGo top move", OUTPUT_DEBUG
             )
-            score_analysis = stage1_analysis
-        else:
-            score_analysis = stage2_analysis
+            candidate_moves = self.cn.candidate_moves
+            if not candidate_moves:
+                return Move(None, player=self.cn.next_player), "Stage2 failed, no candidates"
+            top = Move.from_gtp(candidate_moves[0]["move"], player=self.cn.next_player)
+            return top, "Stage2 failed — using KataGo top move"
+        score_analysis = stage2_analysis
         move_infos = score_analysis.get("moveInfos", [])
         if not move_infos:
             self.game.katrain.log("[JigoStrategy] No moveInfos, passing", OUTPUT_DEBUG)
@@ -6786,7 +6796,6 @@ class FightingStrategy(PickBasedStrategy):
         override_settings = {
             "humanSLProfile": human_profile,
             "ignorePreRootHistory": False,
-            "maxVisits": 800,
         }
         self.game.katrain.log(f"[FightingStrategy:human] Stage 1: requesting humanSL analysis ({human_profile})", OUTPUT_DEBUG)
 
@@ -6827,7 +6836,6 @@ class FightingStrategy(PickBasedStrategy):
         # --- Stage 2: クリーンクエリ（正確なスコア取得） ---
         clean_override_settings = {
             "ignorePreRootHistory": False,
-            "maxVisits": 600,
             "wideRootNoise": 0.0,
         }
         clean_analysis = None
@@ -7584,11 +7592,12 @@ class HumanStyleStrategy(AIStrategy):
         self.game.katrain.log(f"[HumanStyleStrategy] Human profile string: {human_profile}", OUTPUT_DEBUG)
         
         # Define override settings (separate from includePolicy)
-        # maxVisits should match analysis setting (800) for consistent score evaluation
+        # visits はここ（overrideSettings）では指定できない: request_analysis が top-level の
+        # maxVisits を visits 引数（既定 config max_visits）から必ず入れ、そちらが優先される。
+        # Stage1/Stage2 の実効 visits は config max_visits＝事後分析と常に同値（自動で揃う）
         override_settings = {
             "humanSLProfile": human_profile,
             "ignorePreRootHistory": False,
-            "maxVisits": 800,
         }
         self.game.katrain.log(f"[HumanStyleStrategy] Override settings for engine: {override_settings}", OUTPUT_DEBUG)
         
@@ -7671,7 +7680,6 @@ class HumanStyleStrategy(AIStrategy):
         # 正確なスコアでフィルタリングするためにクリーンクエリを送信
         clean_override_settings = {
             "ignorePreRootHistory": False,
-            "maxVisits": 600,
             "wideRootNoise": 0.0,
         }
 
@@ -8066,7 +8074,6 @@ class DivergenceStrategy(AIStrategy):
             extra_settings={
                 "humanSLProfile": human_profile,
                 "ignorePreRootHistory": False,
-                "maxVisits": 800,
             },
         )
 
@@ -8110,7 +8117,6 @@ class DivergenceStrategy(AIStrategy):
             include_policy=False,
             extra_settings={
                 "ignorePreRootHistory": False,
-                "maxVisits": 600,
                 "wideRootNoise": 0.0,
             },
         )
@@ -8298,7 +8304,6 @@ class SiegeStrategy(AIStrategy):
         override_settings = {
             "humanSLProfile": human_profile,
             "ignorePreRootHistory": False,
-            "maxVisits": 800,
         }
         self.game.katrain.log(f"[SiegeStrategy] Stage 1: requesting humanSL analysis ({human_profile})", OUTPUT_DEBUG)
 
@@ -8353,7 +8358,6 @@ class SiegeStrategy(AIStrategy):
         # --- Stage 2: クリーンクエリ（正確なスコア取得） ---
         clean_override_settings = {
             "ignorePreRootHistory": False,
-            "maxVisits": 600,
             "wideRootNoise": 0.0,
         }
         clean_analysis = None
@@ -9104,7 +9108,6 @@ class HuntStrategy(AIStrategy):
         override_settings = {
             "humanSLProfile": human_profile,
             "ignorePreRootHistory": False,
-            "maxVisits": 800,
         }
         self.game.katrain.log(
             f"[HuntStrategy] Stage 1: requesting humanSL analysis ({human_profile})",
@@ -9147,7 +9150,6 @@ class HuntStrategy(AIStrategy):
         # --- Stage 2: クリーンクエリ（正確なスコア取得） ---
         clean_override_settings = {
             "ignorePreRootHistory": False,
-            "maxVisits": 600,
             "wideRootNoise": 0.0,
         }
         clean_analysis = None

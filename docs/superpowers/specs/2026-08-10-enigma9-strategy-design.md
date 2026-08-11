@@ -327,9 +327,10 @@ NN キャッシュを共有するためほぼ無料）。**測ってから削る
 ＝TensorRT のバッチ非決定性による run 間固有分散で、**8visits 化はそのレンジに
 何も上乗せしない＝精度中立**（同一プロセス内の比較は NN キャッシュが同値を返す
 ため、この分散は見えないことに注意）。なお Jigo Stage1 の `extra_settings`
-`maxVisits: 1` は top-level の visits 引数に負けて実際は config visits で走っている
-（既知の「extra_settings の maxVisits は無視される」の実例。NN キャッシュのため
-実害は小さい）。
+`maxVisits: 1` は top-level の visits 引数に負けて実際は config visits で走っていた
+（既知の「extra_settings の maxVisits は無視される」の実例）→ **同日の fix(jigo) で
+`visits=1` を引数化して修正済み**（全戦略の dead な maxVisits キーも除去。詳細は
+ai-parameters.md「エンジン設定（maxVisits）」）。
 
 A/B（8局面×2run 平均・別プロセス）: **generate 1.04 → 0.89 秒/手**。着手は
 baseline 自身の run 間分散（mv53/77/79 は baseline 同士でも入替）の範囲内で一致。

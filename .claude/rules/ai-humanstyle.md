@@ -14,10 +14,13 @@ paths:
 
 `humanSLProfile`付きクエリの`scoreLead`はバイアスされ、人間モデルが高確率を与える手のスコアが楽観的に歪められる。そのため二段階でクエリを送信する:
 
-1. **Stage 1（humanSLProfile付き・800 visits）**: `humanPolicy`を取得するためのクエリ
-2. **Stage 2（humanSLProfileなし・600 visits・wideRootNoise=0）**: 正確な`scoreLead`を取得するためのクリーンクエリ
+1. **Stage 1（humanSLProfile付き）**: `humanPolicy`を取得するためのクエリ
+2. **Stage 2（humanSLProfileなし・wideRootNoise=0）**: 正確な`scoreLead`を取得するためのクリーンクエリ
 
-悪手フィルタ・first_impression_deviation・green_blendのスコア判定はすべてStage 2のクリーンな`moveInfos`を使用する。Stage 2が失敗した場合はStage 1の`moveInfos`にフォールバック。
+**両ステージの実効 visits は config `max_visits`（現在 1000）**。旧コードは dict に
+800/600 を書いていたが extra_settings の maxVisits は top-level に負けて効かない
+dead キーだった（2026-08-11 に除去・挙動不変。詳細は ai-parameters.md「エンジン設定」）。
+悪手フィルタ・first_impression_deviation・green_blendのスコア判定はすべてStage 2のクリーンな`moveInfos`を使用する。Stage 2が失敗した場合はStage 1の`moveInfos`にフォールバック（HumanStyle系。**Jigo は 2026-08-11 から Stage1 が 1visit の humanPolicy 取得専用になったため、Stage2 失敗は KataGo 最善手へフォールバック**）。
 
 ### スコア計算の注意点
 
@@ -72,22 +75,22 @@ paths:
 
 ### `maxVisits` を変更する場合
 
-**揃えるのはStage1（HumanSL）とGUIの2箇所**（不一致だとフィルタが不安定になる）。パッケージ側
-`analysis_config.cfg` のデフォルト値はクエリが毎回 `maxVisits` を明示送信するため明示指定のない
-クエリにしか効かず、揃える対象ではない。
-Stage2（クリーンクエリ）は独立した値（現在600）で、これらと揃える必要はない。
+**Stage1/Stage2 の visits は GUI の `max_visits`（config）がそのまま実効値**（2026-08-11 判明・
+dead キー除去済み）。`extra_settings` に `maxVisits` を書いても top-level（`visits` 引数＝既定
+`config["max_visits"]`）に負けて効かないので、GUI の `max_visits` を変えれば Stage1・Stage2・
+事後分析がすべて連動する＝「Stage1 と GUI を揃える」は構造的に常時成立。特定クエリだけ
+visits を変えたいときは `request_analysis(..., visits=N)` を**引数で**渡す（Jigo Stage1 の
+`visits=1` がその例）。
 
-| 場所 | 設定項目 | 役割 |
-|------|----------|------|
-| `katrain/core/ai.py` `override_settings["maxVisits"]` | Stage1: HumanSL着手選択クエリ | 800 |
-| `katrain/core/ai.py` `clean_override_settings["maxVisits"]` | Stage2: クリーンスコア検証クエリ | 600 |
-| KaTrain GUI → `C:\Users\iwaki\.katrain\config.json` | `max_visits` — 事後分析クエリ | 800 |
-| `katrain/KataGo/analysis_config.cfg` 51行目（**パッケージ側**。エンジンが実際に読むのはこちら） | `maxVisits` — デフォルト値 | 500 |
+| 場所 | 実効値 | 役割 |
+|------|--------|------|
+| KaTrain GUI → `C:\Users\iwaki\.katrain\config.json` `max_visits` | 1000 | 事後分析・Stage1・Stage2 すべての実効 visits |
+| `katrain/core/ai.py` Jigo Stage1 `visits=1`（引数） | 1 | humanPolicy 取得のみ（例外的な明示指定） |
+| `katrain/KataGo/analysis_config.cfg` 51行目（**パッケージ側**。エンジンが実際に読むのはこちら） | 500 | デフォルト値（明示指定のないクエリのみ） |
 
-エンジンが読む cfg は `config.json` の `engine.config` が解決する**パッケージ側** `katrain/KataGo/analysis_config.cfg` で、`C:\Users\iwaki\.katrain\analysis_config.cfg` は**参照されない**。なお個々のクエリは毎回 `maxVisits` を明示送信する（Stage1=800 / Stage2=600）ため、cfg 側のデフォルト値が効く場面は明示指定のないクエリに限られ限定的。
+エンジンが読む cfg は `config.json` の `engine.config` が解決する**パッケージ側** `katrain/KataGo/analysis_config.cfg` で、`C:\Users\iwaki\.katrain\analysis_config.cfg` は**参照されない**。個々のクエリは毎回 `maxVisits` を明示送信するため、cfg 側のデフォルト値が効く場面は明示指定のないクエリに限られ限定的。
 
-- [ ] `katrain/core/ai.py` — `override_settings` の `"maxVisits": XXX`（Stage1）
-- [ ] KaTrain GUI「エンジン設定 → 分析時の最大探索手数」→「設定を更新」
+- [ ] KaTrain GUI「エンジン設定 → 分析時の最大探索手数」→「設定を更新」（Stage1/2 も連動）
 - [ ] `katrain/KataGo/analysis_config.cfg` — `maxVisits = XXX`（パッケージ側。`C:\Users\iwaki\.katrain\analysis_config.cfg` を編集しても反映されない）
 
 ## GREEN_MOVE_THRESHOLD 調整メモ（13路盤）
