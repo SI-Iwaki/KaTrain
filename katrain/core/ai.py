@@ -16,7 +16,7 @@ from katrain.core.constants import (
     AI_FIGHTING, AI_FIGHTING_SCORELOSS_ELO,
     AI_WEIGHTED, AI_WEIGHTED_ELO, CALIBRATED_RANK_ELO, OUTPUT_DEBUG,
     OUTPUT_ERROR, OUTPUT_INFO, PLAYER_AI, PLAYER_HUMAN, PRIORITY_ENIGMA_PONDER,
-    PRIORITY_EXTRA_AI_QUERY, PRIORITY_TSUMEGO_SPECULATION, ADDITIONAL_MOVE_ORDER, AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE, AI_PARITY_9, AI_ENIGMA_9, AI_ENIGMA_13
+    PRIORITY_EXTRA_AI_QUERY, PRIORITY_TSUMEGO_SPECULATION, ADDITIONAL_MOVE_ORDER, AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE, AI_PARITY_9, AI_ENIGMA_9, AI_ENIGMA_13, AI_ENIGMA_19
 )
 from katrain.core.engine import KataGoEngine
 from katrain.core.game import (
@@ -2803,6 +2803,40 @@ class Enigma13Strategy(Enigma9Strategy):
         "net_margin": 0.0,
         "endgame_move": 75,
         "unsettled_max": 16,
+        "target_score": 2.0,
+    }
+
+
+@register_strategy(AI_ENIGMA_19)
+class Enigma19Strategy(Enigma9Strategy):
+    """19路専用「難解」戦略(Enigma9Strategy の盤サイズ・設定キー・既定値差し替え版)。
+
+    選択パイプライン(二段の漏斗 → 子局面プローブの同深さ検証 → net 比較)・
+    勝勢時の消費モード・ヨセの余剰予算・フェイルセーフはすべて 9/13 路版と共通。
+    差分は既定値だけ:
+
+    - max_loss 2.0(GUI 候補値の天井 4.0): 悪手フィルタは 13 路と同じ NORMAL=5.6 だが、
+      19 路は盤が広く対局も長い(〜250手)ぶん1手の損失の挽回機会が多いので、
+      13 路(1.5/天井3.0)から一段だけ広げる。5.6(悪手フィルタ)までは開けない=
+      「難解だが悪手ではない」帯に留める
+    - large_lead_max_loss 8.0: jigo の 13/19 路既定(`jigo_large_lead_max_loss`)と同値
+    - endgame_move 150 / unsettled_max 36: 19 路の対局長へのスケール。150 は
+      jigo の 19 路ヨセ委譲既定(`jigo_endgame_move`)・deception phase3 開始と同じ
+      手数で、盤点数比(361 ≒ 13路の 2.1 倍)とも整合する。未確定点は
+      ≒ 361 点の 10%。ヨセ判定は手数 AND 未確定点なので、手数側が早めでも
+      未確定点条件が早すぎる切替を防ぐのは 9/13 路と同じ
+    """
+
+    BOARD_LEN = 19
+    KEY_PREFIX = "enigma19"
+    LABEL = "Enigma19"
+    SETTING_DEFAULTS = {
+        "max_loss": 2.0,
+        "large_lead_max_loss": 8.0,
+        "min_winrate": 0.3,
+        "net_margin": 0.0,
+        "endgame_move": 150,
+        "unsettled_max": 36,
         "target_score": 2.0,
     }
 

@@ -1,5 +1,5 @@
 # tests/test_ai_enigma9.py
-"""「難解」戦略 ai:enigma9（9路）/ ai:enigma13（13路）の純関数テスト（KataGo/Kivy 不要）。"""
+"""「難解」戦略 ai:enigma9（9路）/ ai:enigma13（13路）/ ai:enigma19（19路）の純関数テスト（KataGo/Kivy 不要）。"""
 import json
 from pathlib import Path
 
@@ -10,6 +10,7 @@ from katrain.core.ai import (
     ENIGMA9_HP_BOOK,
     ENIGMA9_PUNISH_CAP,
     Enigma13Strategy,
+    Enigma19Strategy,
     Enigma9Strategy,
     enigma9_admissible,
     enigma9_choose,
@@ -354,28 +355,45 @@ class TestStrategyRegistration:
         assert STRATEGY_REGISTRY[AI_ENIGMA_13] is Enigma13Strategy
         assert issubclass(Enigma13Strategy, Enigma9Strategy)
 
+    def test_enigma19_registered(self):
+        from katrain.core.ai import STRATEGY_REGISTRY
+        from katrain.core.constants import AI_ENIGMA_19
+
+        assert STRATEGY_REGISTRY[AI_ENIGMA_19] is Enigma19Strategy
+        assert issubclass(Enigma19Strategy, Enigma9Strategy)
+
 
 class TestBoardSizeParametrization:
-    """13路版は Enigma9Strategy の盤サイズ・設定キー・既定値の差し替えだけであること。"""
+    """13/19路版は Enigma9Strategy の盤サイズ・設定キー・既定値の差し替えだけであること。"""
 
     def test_class_attributes(self):
         assert (Enigma9Strategy.BOARD_LEN, Enigma9Strategy.KEY_PREFIX) == (9, "enigma9")
         assert (Enigma13Strategy.BOARD_LEN, Enigma13Strategy.KEY_PREFIX) == (13, "enigma13")
-        assert Enigma9Strategy.LABEL != Enigma13Strategy.LABEL
+        assert (Enigma19Strategy.BOARD_LEN, Enigma19Strategy.KEY_PREFIX) == (19, "enigma19")
+        assert len({Enigma9Strategy.LABEL, Enigma13Strategy.LABEL, Enigma19Strategy.LABEL}) == 3
 
     def test_same_setting_suffixes(self):
         # 片方にだけ設定を足すと GUI と SETTING_DEFAULTS がずれるのでキー集合を揃える
         assert set(Enigma13Strategy.SETTING_DEFAULTS) == set(Enigma9Strategy.SETTING_DEFAULTS)
+        assert set(Enigma19Strategy.SETTING_DEFAULTS) == set(Enigma9Strategy.SETTING_DEFAULTS)
 
     def test_generate_move_not_overridden(self):
         # 選択パイプラインは共通（サブクラスは既定値の差し替えのみ）
         assert Enigma13Strategy.generate_move is Enigma9Strategy.generate_move
+        assert Enigma19Strategy.generate_move is Enigma9Strategy.generate_move
 
 
 class TestGuiConfigConsistency:
     """SETTING_DEFAULTS・AI_OPTION_VALUES（スライダー候補値）・パッケージ config.json の整合。"""
 
-    @pytest.mark.parametrize("cls,ai_key", [(Enigma9Strategy, "ai:enigma9"), (Enigma13Strategy, "ai:enigma13")])
+    @pytest.mark.parametrize(
+        "cls,ai_key",
+        [
+            (Enigma9Strategy, "ai:enigma9"),
+            (Enigma13Strategy, "ai:enigma13"),
+            (Enigma19Strategy, "ai:enigma19"),
+        ],
+    )
     def test_defaults_in_gui_options_and_package_config(self, cls, ai_key):
         from katrain.core.constants import AI_OPTION_ORDER, AI_OPTION_VALUES
 

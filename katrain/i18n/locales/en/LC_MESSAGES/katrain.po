@@ -928,6 +928,33 @@ msgstr "[13x13] Endgame switch move"
 msgid "enigma13_unsettled_max"
 msgstr "[13x13] Max unsettled points for endgame"
 
+msgid "ai:enigma19"
+msgstr "Enigma (19x19)"
+
+msgid "aihelp:enigma19"
+msgstr "19x19 only. The 19x19 edition of Enigma (9x9/13x13), sharing the same selection logic. From the opening through the middle game it actively deviates from KataGo's top move - within a strict loss cap - toward the move whose correct answer is hardest for a human to find, denying the opponent their studied openings and tesuji. Difficulty is measured per candidate by analyzing the position after the move: E = the expected points a 9-dan human reply distribution gives away there, plus a bonus when every adequate reply has low humanPolicy (the only good answer is invisible) and when the move itself is off-book (low own humanPolicy); the candidate maximizing this net of its own loss is played. One-move-difference capturing races score high automatically - the opponent's natural replies lose the race - and the safety gates (loss cap + winrate floor, both search values that already include the opponent's best reply) ensure they are only created while correct play keeps the game won. enigma19_max_loss: per-move loss cap in points (default 2.0, options stop at 4.0 - wider than the 13x13 cap because the full board leaves even more room to recover, but still below the 5.6 blunder-filter level so deviations stay puzzling rather than bad). enigma19_min_winrate: winrate floor after the move; deviations stop when the game turns bad, so an unwinnable game is lost narrowly instead of thrown away. enigma19_net_margin: how much a deviation must beat the best move by in net difficulty (0 = deviate even on ties). enigma19_large_lead_max_loss: bold-move loss cap when far ahead; while the lead exceeds the target margin plus the normal cap, the surplus (lead minus target) becomes a budget - the loss cap relaxes up to this value and the cost term is discounted in proportion to the budget, so a winning game spends its surplus on confusion instead of grinding out best moves, and returns continuously to the normal cap as the lead shrinks (disabled once the endgame starts). enigma19_target_score: endgame target margin; once the endgame starts (at or past enigma19_endgame_move AND at most enigma19_unsettled_max unsettled points, sticky) only the lead surplus above this target is spent on deviations, otherwise it plays best moves to secure the target margin or jigo. On other board sizes it simply plays the best move."
+
+msgid "enigma19_max_loss"
+msgstr "[19x19] Per-move loss cap (pts)"
+
+msgid "enigma19_large_lead_max_loss"
+msgstr "[19x19] Bold-move loss cap when far ahead (pts)"
+
+msgid "enigma19_min_winrate"
+msgstr "[19x19] Winrate floor after the move"
+
+msgid "enigma19_net_margin"
+msgstr "[19x19] Difficulty margin required over best move"
+
+msgid "enigma19_target_score"
+msgstr "[19x19] Endgame target margin (pts)"
+
+msgid "enigma19_endgame_move"
+msgstr "[19x19] Endgame switch move"
+
+msgid "enigma19_unsettled_max"
+msgstr "[19x19] Max unsettled points for endgame"
+
 msgid "jigo9_phase1_start"
 msgstr "[9x9] Phase1 start move (begin playing modestly)"
 

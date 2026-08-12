@@ -84,10 +84,12 @@ AI_ENIGMA_9 = "ai:enigma9"
 # 上記の13路版。実装は Enigma9Strategy を共有し、盤サイズ・設定キー接頭辞・
 # 既定値だけ差し替え（ai.py の Enigma13Strategy）
 AI_ENIGMA_13 = "ai:enigma13"
+# 上記の19路版。同じく Enigma9Strategy のサブクラス（ai.py の Enigma19Strategy）
+AI_ENIGMA_19 = "ai:enigma19"
 
 AI_CONFIG_DEFAULT = AI_RANK
 
-AI_STRATEGIES_ENGINE = [AI_DEFAULT, AI_HANDICAP, AI_SCORELOSS, AI_SIMPLE_OWNERSHIP, AI_JIGO, AI_JIGO_9, AI_PARITY_9, AI_ENIGMA_9, AI_ENIGMA_13, AI_ANTIMIRROR]
+AI_STRATEGIES_ENGINE = [AI_DEFAULT, AI_HANDICAP, AI_SCORELOSS, AI_SIMPLE_OWNERSHIP, AI_JIGO, AI_JIGO_9, AI_PARITY_9, AI_ENIGMA_9, AI_ENIGMA_13, AI_ENIGMA_19, AI_ANTIMIRROR]
 AI_STRATEGIES_PICK = [AI_PICK, AI_LOCAL, AI_TENUKI, AI_INFLUENCE, AI_TERRITORY, AI_FIGHTING, AI_RANK]
 AI_STRATEGIES_POLICY = [AI_WEIGHTED, AI_POLICY] + AI_STRATEGIES_PICK
 AI_STRATEGIES = AI_STRATEGIES_ENGINE + AI_STRATEGIES_POLICY + [AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE, AI_TSUMEGO, AI_TSUMEGO_SOLVER]
@@ -107,6 +109,7 @@ AI_STRATEGIES_RECOMMENDED_ORDER = [
     AI_PARITY_9,
     AI_ENIGMA_9,
     AI_ENIGMA_13,
+    AI_ENIGMA_19,
     AI_ANTIMIRROR,
     AI_PICK,
     AI_LOCAL,
@@ -130,6 +133,7 @@ AI_STRENGTH = {  # dan ranks, backup if model is missing. TODO: remove some?
     AI_PARITY_9: float("nan"),
     AI_ENIGMA_9: float("nan"),
     AI_ENIGMA_13: float("nan"),
+    AI_ENIGMA_19: float("nan"),
     AI_SCORELOSS: -4,
     AI_WEIGHTED: -4,
     AI_PICK: -7,
@@ -306,6 +310,17 @@ AI_OPTION_VALUES = {
     "enigma13_target_score": [0.0, 1.0, 2.0, 3.0, 5.0],
     "enigma13_endgame_move": [55, 65, 75, 85, 95],
     "enigma13_unsettled_max": [8, 12, 16, 20, 24],
+    # ===== Enigma19Strategy（19路専用・難解） =====
+    # 悪手フィルタは13路と同じ NORMAL=5.6 だが、19路は挽回機会が多いぶん天井 4.0 まで開ける
+    # （5.6=悪手フィルタまでは開けない＝「難解だが悪手ではない」帯に留める）
+    "enigma19_max_loss": [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0],
+    # 勝勢時（budget = lead - target > max_loss）だけ解禁される勝負手の損失上限
+    "enigma19_large_lead_max_loss": [3.0, 4.0, 5.0, 6.0, 8.0, 10.0],
+    "enigma19_min_winrate": [(0.2, "20%"), (0.25, "25%"), (0.3, "30%"), (0.35, "35%"), (0.4, "40%"), (0.5, "50%")],
+    "enigma19_net_margin": [0.0, 0.2, 0.3, 0.5, 1.0],
+    "enigma19_target_score": [0.0, 1.0, 2.0, 3.0, 5.0],
+    "enigma19_endgame_move": [120, 135, 150, 165, 180],
+    "enigma19_unsettled_max": [24, 30, 36, 42, 48],
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）
@@ -412,6 +427,13 @@ AI_OPTION_ORDER = {
     "enigma13_target_score": 4,
     "enigma13_endgame_move": 5,
     "enigma13_unsettled_max": 6,
+    "enigma19_max_loss": 0,
+    "enigma19_large_lead_max_loss": 1,
+    "enigma19_min_winrate": 2,
+    "enigma19_net_margin": 3,
+    "enigma19_target_score": 4,
+    "enigma19_endgame_move": 5,
+    "enigma19_unsettled_max": 6,
 }
 
 AI_KEY_PROPERTIES = {

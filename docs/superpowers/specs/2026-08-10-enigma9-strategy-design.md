@@ -405,3 +405,50 @@ tsumego `_maybe_region_prefetch` の enigma 版。着手を返す直前（Deviat
 - **GUI 実戦での確認ポイント**: ゲームログに `着手決定に X.X 秒`（毎手）と
   `Ponder: warming replies [...]`（debug_level 1）が出る。相手の考慮が短い連打でも
   `着手決定` が伸びないこと
+
+## 追記4（2026-08-12）: 19路版 `ai:enigma19`（難解（19路））
+
+ユーザー要望「難解の19路盤も追加」。追記2（13路版）とまったく同じ方式＝
+`Enigma9Strategy` のクラス属性差し替えサブクラス `Enigma19Strategy` を追加した
+（`AI_ENIGMA_19 = "ai:enigma19"`・GUI スライダーも 19路独立）。`generate_move` は
+非オーバーライド＝選択パイプライン・二段の漏斗・同深さ検証・勝勢時の消費モード・
+ヨセ予算・フェイルセーフ・先読み（追記3）・per-move 時間ログはすべて共有。
+sticky ヨセフラグは `game._enigma19_endgame`、ログタグは `[Enigma19Strategy]`。
+
+### 19路の既定値（13路との差分と根拠）
+
+| キー | 13路 | 19路 | 根拠 |
+|---|---|---|---|
+| max_loss | 1.5（候補天井 3.0） | **2.0**（候補天井 4.0） | 悪手フィルタは13路と同じ NORMAL=5.6 だが、盤が広く対局も長い（〜250手）ぶん1手の損失の挽回機会が多いので一段だけ開ける。5.6（悪手フィルタ相当）までは開けない＝「難解だが悪手ではない」帯に留める |
+| large_lead_max_loss | 8.0 | 8.0 | jigo の 13/19路共通既定 `jigo_large_lead_max_loss` と同値 |
+| min_winrate / net_margin | 0.3 / 0.0 | 0.3 / 0.0 | 盤サイズ非依存 |
+| target_score | 2.0（候補 0–5） | 2.0（候補 0–5） | 「最小の勝ちで十分」は共通の成功基準 |
+| endgame_move | 75（候補 55–95） | **150**（候補 120–180） | 19路の対局長へのスケール。150 は `jigo_endgame_move`（19路ヨセ委譲既定）・deception phase3 開始と同じ手数で、13路 75 の盤点数比（361/169 ≒ 2.1）換算 160 とも近い。判定は手数 AND 未確定点なので手数側が早めでも未確定点条件が早すぎる切替を防ぐ |
+| unsettled_max | 16（≒169点の10%） | **36**（候補 24–48） | 361点の10% ≒ 36 |
+
+### クエリコスト
+
+モジュール定数は共有のまま（SHORTLIST=8 / CHILD_VISITS=500 / HP_CHILD_VISITS=8）。
+19路の子局面クリーン解析（500visits）は13路よりさらに重いが、発行は同じ全並列＋
+追記3 の先読みが載る。体感が重い場合に絞るなら SHORTLIST / CHILD_VISITS を
+クラス属性へ昇格して19路だけ変える（現状は未実施＝共有）。
+
+### 変更ファイル（追記4）
+
+| ファイル | 変更 |
+|---|---|
+| `katrain/core/ai.py` | `Enigma19Strategy` 追加（サブクラスのみ・共有コード不変） |
+| `katrain/core/constants.py` | `AI_ENIGMA_19`・戦略リスト2つ・`AI_STRENGTH`・`AI_OPTION_VALUES`/`AI_OPTION_ORDER` 各7件 |
+| `katrain/config.json` + `~/.katrain/config.json` | `ai:enigma19` ブロック（7キー） |
+| `katrain/i18n/locales/{en,jp}/.../katrain.po` + `.mo` | `ai:enigma19` / `aihelp:enigma19` / ラベル7件 |
+| `katrain_debug/runner.py` | `STRATEGY_NAME_MAP["enigma19"]` |
+| `tests/test_ai_enigma9.py` | 19路の登録・属性・GUI/config 整合を追加 |
+
+### 検証（追記4）
+
+- `pytest tests/test_ai_enigma9.py`（19路分を含めて PASS）
+- `python -m katrain_debug --sgf <19路SGF> --move N --strategy enigma19` で
+  盤サイズゲート通過・パイプライン動作を確認
+- **19路の実戦校正は未実施**。次のステップは GUI 実戦（ログの
+  `[Enigma19Strategy] (Spend|Pool|Score|Drop|Deviate|Endgame)`）と
+  `--batch` 3-run 平均での一致率・実損失の確認

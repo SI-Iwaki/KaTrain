@@ -648,3 +648,25 @@ move 40（+4.4 リード）はヨセ予算内に候補なしで最善 / move 39�
 
 CLI: `python -m katrain_debug --sgf <13路SGF> --move N --strategy enigma13`（batch 可）。
 **13路の実戦校正は未実施**（GUI 実戦ログ `[Enigma13Strategy]` と batch 3-run 平均で行う）。
+
+## Enigma19Strategy（`ai:enigma19` / 難解（19路））
+
+19路専用。**実装は Enigma9Strategy と共有**（`ai.py` の `Enigma19Strategy` は
+`BOARD_LEN`=19 / `KEY_PREFIX`="enigma19" / `LABEL`="Enigma19" / `SETTING_DEFAULTS` を
+差し替えたサブクラスで、`generate_move` はオーバーライドしない＝選択パイプライン・
+二段の漏斗・同深さ検証・勝勢時の消費モード・ヨセ予算・フェイルセーフ・モジュール定数
+（`ENIGMA9_*`）はすべて 9/13 路版と同一）。sticky ヨセフラグは `game._enigma19_endgame`、
+ログタグは `[Enigma19Strategy]`。設計: `2026-08-10-enigma9-strategy-design.md` **追記4**。
+
+| キー | 意味 | 候補値 | 既定 |
+|---|---|---|---|
+| `enigma19_max_loss` | 1手あたり損失上限（目）。悪手フィルタは13路と同じ NORMAL=5.6 だが、盤が広く挽回機会が多いので13路（1.5/天井3.0）から一段開ける。5.6 までは開けない＝「難解だが悪手ではない」帯 | 0.5〜4.0 | **2.0** |
+| `enigma19_large_lead_max_loss` | 勝勢時の勝負手損失上限（目）。jigo の 13/19 路既定と同値 | 3/4/5/6/8/10 | **8.0** |
+| `enigma19_min_winrate` | 着手後の勝率フロア（打つ側視点） | 20〜50% | 0.3 |
+| `enigma19_net_margin` | 外しに要求する難解さの差（0=同点でも外す） | 0.0/0.2/0.3/0.5/1.0 | 0.0 |
+| `enigma19_target_score` | ヨセの目標差（目）。勝勢予算とヨセ予算の両方の基準 | 0/1/2/3/5 | 2.0 |
+| `enigma19_endgame_move` | ヨセ切替手数（AND の片側・sticky）。jigo の19路ヨセ委譲既定・deception phase3 開始と同じ150 | 120/135/150/165/180 | **150** |
+| `enigma19_unsettled_max` | ヨセ判定の未確定点上限（≒361点の10%） | 24/30/36/42/48 | **36** |
+
+CLI: `python -m katrain_debug --sgf <19路SGF> --move N --strategy enigma19`（batch 可）。
+**19路の実戦校正は未実施**（GUI 実戦ログ `[Enigma19Strategy]` と batch 3-run 平均で行う）。
