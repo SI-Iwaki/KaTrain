@@ -881,7 +881,7 @@ class KaTrainGui(Screen, KaTrainBase):
     def _tsumego_capture_trigger(self, black_to_attack=None, frameless=False):
         # ホットキースレッドが起こした作業スレッドで実行される。
         # 認識までここで行い、盤面への反映はメッセージループに投げる
-        from katrain.core.tsumego_capture import CaptureError, capture_tsumego_grid
+        from katrain.core.tsumego_capture import CaptureError, capture_board_view
 
         now = time.time()
         if now - getattr(self, "_tsumego_capture_last_trigger", 0.0) < 2.0:
@@ -893,7 +893,7 @@ class KaTrainGui(Screen, KaTrainBase):
         try:
             settings = self._config.get("tsumego_capture") or {}
             try:
-                grid = capture_tsumego_grid(settings)
+                view = capture_board_view(settings)
                 ko = settings.get("frame_ko", False)
                 margin = int(settings.get("frame_margin", 4))
             except CaptureError as e:
@@ -902,7 +902,17 @@ class KaTrainGui(Screen, KaTrainBase):
             except Exception as e:
                 self._tsumego_capture_failed(f"詰碁キャプチャで予期しないエラー: {e}")
                 return
-            self("tsumego-capture-apply", grid, ko, margin, black_to_attack, frameless)
+            if view.kind == "web_full":
+                # Web サイトの全体表示は詰碁ではなく盤面把握（最善手）問題なので、枠・リージョン・
+                # 詰碁戦略を通さず通常モードの解析に回す（ユーザー要件 2026-08-13）
+                self("capture-fullboard-apply", view.grid)
+                return
+            capture_note = None
+            if view.kind == "web_partial":
+                capture_note = "Web盤面認識（部分表示）: 切れている辺=" + ",".join(view.cropped_sides) + (
+                    "・盤サイズは候補からのフォールバック推定" if view.size_fallback else ""
+                )
+            self("tsumego-capture-apply", view.grid, ko, margin, black_to_attack, frameless, capture_note=capture_note)
         finally:
             self._tsumego_capture_busy = False
 
@@ -1281,7 +1291,39 @@ class KaTrainGui(Screen, KaTrainBase):
         self.log(message, OUTPUT_ERROR)
         Clock.schedule_once(lambda _dt: self.controls.set_status(message, STATUS_ERROR, check_level=False), 0)
 
-    def _do_tsumego_capture_apply(self, grid, ko, margin, black_to_attack=None, frameless=False):
+    def _do_capture_fullboard_apply(self, grid):
+        # Web サイトの全体表示（盤全体が写っている）キャプチャ: 詰碁パイプライン（枠・解析リージョン・
+        # ai:tsumego・回答帳・ソルバ）を一切通さず、局面を通常の解析モードで読み込むだけ。
+        # 全体表示の問題は「盤面把握して最善手手順を答える」タイプなので、通常解析の候補手表示が回答になる
+        from katrain.core.tsumego_capture import CaptureError, grid_to_sgf
+
+        komi = self.config("game/komi", 6.5)
+        try:
+            move_tree = KaTrainSGF.parse_sgf(grid_to_sgf(grid, komi=komi))
+        except (ParseError, CaptureError) as e:
+            self.log(f"盤面キャプチャSGF解析失敗: {e}", OUTPUT_ERROR)
+            return
+        self._do_new_game(move_tree=move_tree)  # move_tree ありの new-game は解析モードに入る
+        self.log(f"tsumego_capture: 全体表示の盤面（{len(grid)}路）を通常解析モードで取り込みました", OUTPUT_INFO)
+        # 直前が詰碁キャプチャだと B=AI(ai:tsumego) のままで、プレイモードに切り替えた瞬間に
+        # AI が勝手に打ち出す。全体表示は読むだけの局面なので両者を人間に戻す
+        self.update_player("B", player_type=PLAYER_HUMAN, player_subtype=PLAYING_NORMAL)
+        self.update_player("W", player_type=PLAYER_HUMAN, player_subtype=PLAYING_NORMAL)
+        self.controls.set_status("盤面を取り込みました（全体表示のため通常解析モード・黒番）", STATUS_INFO)
+
+        def finish_gui(_dt):
+            try:
+                user32 = ctypes.windll.user32
+                hwnd = user32.FindWindowW(None, Window.title)
+                if hwnd and user32.IsIconic(hwnd):
+                    Window.restore()
+                Window.raise_window()
+            except Exception as e:
+                self.log(f"tsumego_capture: ウィンドウ前面化失敗: {e}", OUTPUT_DEBUG)
+
+        Clock.schedule_once(finish_gui, 0.1)
+
+    def _do_tsumego_capture_apply(self, grid, ko, margin, black_to_attack=None, frameless=False, capture_note=None):
         # メッセージループスレッドで実行。既定は枠あり（use_frame: false で枠なし運用も選択可能）。
         # 枠なしを既定にしなかった理由: 実機検証で二律背反が判明したため。空いた盤面を放置すると
         # 地合いが支配し詰碁を読む動機が消える（実測: ある局面で-53目/勝率0%、別の局面で+37目/勝率100%）。
@@ -1321,6 +1363,10 @@ class KaTrainGui(Screen, KaTrainBase):
                 self.log(f"tsumego_capture: {label} {' '.join(sorted(Move(p).gtp() for p in pts))}", OUTPUT_INFO)
         except Exception as e:
             self.log(f"tsumego_capture: 認識盤面のログ出力に失敗（{e}）", OUTPUT_INFO)
+        if capture_note:
+            # Web 盤面認識（格子線＋座標ラベル）で来たキャプチャはその素性もログに残す
+            # （部分表示は切れた辺の先の石が原理的に見えないので、誤答調査で最初に確認する）
+            self.log(f"tsumego_capture: {capture_note}", OUTPUT_INFO)
         board, analysis_region = None, None
         # 死活ソルバモード（スペック 2026-08-01-tsumego-solver-design.md）: KataGo を使わず問題を
         # 静的に抽出できたら、枠を張らず盤面をそのまま出題する（§3。枠の採否判定 KataGo 最大5本が消える）。

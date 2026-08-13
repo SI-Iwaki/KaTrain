@@ -565,3 +565,127 @@ def test_frameless_capture_reaches_answer_outside_the_frame_wall():
     assert imin <= mi <= imax and jmin <= mj <= jmax, (
         f"枠なしキャプチャの解析リージョンが M4 を含んでいない: i[{imin},{imax}] j[{jmin},{jmax}]"
     )
+
+
+# ============================================================
+# Web 盤面認識（格子線＋座標ラベル方式）の回帰テスト
+# 実スクリーンショット2枚（PlayGo.gg）での実測検証は
+# docs/superpowers/specs/calibration-data/tsumego-web/ を参照。ここでは合成盤で
+# 「全体表示→web_full」「部分表示→web_partial＋絶対座標復元」「従来盤→app 経路不変」を固定する
+# ============================================================
+
+
+def _draw_web_board(visible_rows, visible_cols, size, stones, label_sides, cell=48):
+    """Web サイト風の盤面画像を合成する。visible_rows は上から下へ降順（例 [9,8,...,2]）、
+    visible_cols は左から右へ昇順の列番号（1=A）。label_sides の辺に 1 セル幅のラベル帯を作り、
+    座標ラベルは埋め込みグリフテンプレート自身を 1:1 で描画する（フォント再現不要でOCRを回帰できる）"""
+    from PIL import ImageDraw
+
+    from katrain.core.tsumego_capture import COL_LETTERS
+    from katrain.core.tsumego_capture_glyphs import GLYPH_TEMPLATES
+
+    yellow, line_col, glyph_col = (229, 195, 109), (100, 88, 60), (51, 51, 51)
+    n_r, n_c = len(visible_rows), len(visible_cols)
+    margin = {s: cell if s in label_sides else int(cell * 0.3) for s in ("left", "right", "top", "bottom")}
+    bw = margin["left"] + (n_c - 1) * cell + margin["right"]
+    bh = margin["top"] + (n_r - 1) * cell + margin["bottom"]
+    pad = 60
+    img = Image.new("RGB", (bw + 2 * pad, bh + 2 * pad), (25, 25, 25))
+    draw = ImageDraw.Draw(img)
+    bx, by = pad, pad
+    draw.rectangle((bx, by, bx + bw - 1, by + bh - 1), fill=yellow)
+    xs = [bx + margin["left"] + k * cell for k in range(n_c)]
+    ys = [by + margin["top"] + k * cell for k in range(n_r)]
+    # 格子線: 見えている端（ラベルあり）は最外線で止め、切れている端は盤領域の縁まで伸ばす
+    x_lo = xs[0] if "left" in label_sides else bx
+    x_hi = xs[-1] if "right" in label_sides else bx + bw - 1
+    y_lo = ys[0] if "top" in label_sides else by
+    y_hi = ys[-1] if "bottom" in label_sides else by + bh - 1
+    for x in xs:
+        draw.rectangle((x, y_lo, x + 1, y_hi), fill=line_col)
+    for y in ys:
+        draw.rectangle((x_lo, y, x_hi, y + 1), fill=line_col)
+
+    def draw_glyphs(text, cx, cy):
+        w_total = len(text) * 10 + (len(text) - 1) * 2
+        gx = int(cx - w_total / 2)
+        gy = int(cy - 7)
+        for ch in text:
+            bmp = GLYPH_TEMPLATES[ch][0].split("/")
+            for r, row in enumerate(bmp):
+                for c, v in enumerate(row):
+                    if v == "#":
+                        img.putpixel((gx + c, gy + r), glyph_col)
+            gx += 12
+
+    # ラベルは実サイト同様に外縁寄りへ描く（帯の内側境界=最外線から0.55セルの内側だと
+    # 境界接触フィルタに落ちる）
+    for side in label_sides:
+        if side in ("left", "right"):
+            cx = bx + margin["left"] // 4 if side == "left" else bx + bw - margin["right"] // 4
+            for y, row in zip(ys, visible_rows):
+                draw_glyphs(str(row), cx, y)
+        else:
+            cy = by + margin["top"] // 4 if side == "top" else by + bh - margin["bottom"] // 4
+            for x, col in zip(xs, visible_cols):
+                draw_glyphs(COL_LETTERS[col - 1], x, cy)
+    rad = int(cell * 0.45)
+    for (row, col), color in stones.items():
+        i, j = visible_rows.index(row), visible_cols.index(col)
+        fill = (45, 45, 45) if color == "B" else (242, 242, 242)
+        draw.ellipse((xs[j] - rad, ys[i] - rad, xs[j] + rad, ys[i] + rad), fill=fill)
+    return img
+
+
+def test_web_full_view_recognized_as_fullboard():
+    from katrain.core.tsumego_capture import recognize_board
+
+    stones = {(9, 3): "W", (8, 4): "B", (5, 5): "B", (1, 9): "W"}
+    img = _draw_web_board(list(range(9, 0, -1)), list(range(1, 10)), 9, stones,
+                          label_sides=("left", "right", "top", "bottom"))
+    view = recognize_board(img)
+    assert view.kind == "web_full"
+    assert view.cropped_sides == ()
+    assert not view.size_fallback
+    assert len(view.grid) == 9
+    assert view.grid[0][2] == "W"  # C9
+    assert view.grid[1][3] == "B"  # D8
+    assert view.grid[4][4] == "B"  # E5
+    assert view.grid[8][8] == "W"  # J1
+    assert sum(v != "." for row in view.grid for v in row) == 4
+
+
+def test_web_partial_view_maps_absolute_coordinates():
+    # 実スクショ1（PlayGo 9路ボス問題）と同じ構図: 上端・左端だけ見えていて右端(J列)と下端(1の線)が
+    # 画面外。盤サイズは最上行のラベル「9」から確定し、石は 9x9 の絶対座標に配置される
+    from katrain.core.tsumego_capture import recognize_board
+
+    stones = {(9, 6): "B", (8, 4): "B", (8, 6): "B", (9, 3): "W", (8, 3): "W", (8, 5): "W"}
+    img = _draw_web_board(list(range(9, 1, -1)), list(range(1, 9)), 9, stones, label_sides=("left", "top"))
+    view = recognize_board(img)
+    assert view.kind == "web_partial"
+    assert set(view.cropped_sides) == {"right", "bottom"}
+    assert not view.size_fallback
+    assert len(view.grid) == 9
+    assert view.grid[0][5] == "B"  # F9
+    assert view.grid[1][3] == "B"  # D8
+    assert view.grid[0][2] == "W"  # C9
+    assert view.grid[1][4] == "W"  # E8
+    assert all(v == "." for v in view.grid[8])  # 画面外の 1 の線は空点のまま
+    assert all(row[8] == "." for row in view.grid)  # 画面外の J 列も空点のまま
+
+
+def test_app_sample_still_uses_app_path():
+    # BlueStacks 型の全面盤は従来方式が先に成立するので Web 認識に入らない（既存経路の不変性）
+    from katrain.core.tsumego_capture import recognize_board
+
+    view = recognize_board(Image.open(SAMPLE))
+    assert view.kind == "app"
+    assert len(view.grid) == 13
+
+
+def test_find_window_rect_multi_title_prefers_first():
+    # カンマ区切りの window_title は先に書いた候補を優先する（BlueStacks 優先の従来挙動を保つ）
+    import katrain.core.tsumego_capture as tc
+
+    assert [t.strip() for t in "BlueStacks,Puzzle Run,PlayGo".split(",")][0] == "BlueStacks"
