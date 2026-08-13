@@ -4831,6 +4831,14 @@ class TsumegoSolverStrategy(AIStrategy):
                 )
                 return False
             best = max(succeeded, key=lambda x: x[1])
+            # 測定済みの成立/不成立をフォールバック先へ引き継ぐ。この判定は「ソルバ手は解いて
+            # いない・本命は解いている」を役割石 ownership で確定させた直後なのに、フォールバック
+            # 先の ai:tsumego はそれを知らず**同じ不成立の手を目数最善として選び直す**ことがある
+            # （実測 2026-08-13 回答帳リプレイ e6794025: C2 却下→ ai:tsumego が C2 を再選択、
+            # 救済の全リージョン石スケールでは E2 との差 +0.48 < margin 1.0 で E2 を却下していた）
+            measured = {solver_gtp: own_solver}
+            measured.update({m: per_stone(m) for m in challengers})
+            self._cross_check_measured = {"threshold": threshold, "values": measured}
             self.game.katrain.log(
                 f"[{self.strategy_name}] KataGo 突き合わせ: ソルバ手 {solver_gtp} は {own_solver:+.2f}/子 で"
                 f"成立していないのに、KataGo 本命 {best[0]} は {best[1]:+.2f}/子 で成立しています"
@@ -4855,6 +4863,7 @@ class TsumegoSolverStrategy(AIStrategy):
             katrain.log(msg, OUTPUT_ERROR if level == "error" else OUTPUT_INFO)
 
         rejected = False  # 突き合わせがソルバの答えを却下したか（下のパス分岐を塞ぐのに使う）
+        self._cross_check_measured = None  # この手番の突き合わせの実測値（却下時のみ入る）
         book_hit, book_coords = tsumego_book_next_move(self.game)
         if book_hit:
             katrain.log(f"[{self.strategy_name}] 回答帳の記録手順から着手します", OUTPUT_INFO)
@@ -4911,7 +4920,35 @@ class TsumegoSolverStrategy(AIStrategy):
             return Move(coords=None, player=self.cn.next_player), "ソルバ未解決（フォールバック無効のためパス）"
         katrain.log(f"[{self.strategy_name}] 現行 {AI_TSUMEGO} へフォールバックします", OUTPUT_INFO)
         fallback_settings = dict(katrain.config(f"ai/{AI_TSUMEGO}") or {})
-        return TsumegoOwnershipStrategy(self.game, fallback_settings).generate_move()
+        move, fallback_thoughts = TsumegoOwnershipStrategy(self.game, fallback_settings).generate_move()
+        # 突き合わせが「不成立」と測定済みの手をフォールバックが選び直したら、測定済みの
+        # 成立手（KataGo 本命の visits 上位）へ差し替える。発火条件は3つ全部＝(1) この手番の
+        # 突き合わせが却下していて、(2) フォールバックの選択手がそのとき実測で閾値未満、
+        # (3) 閾値以上と実測された対抗馬がいる。(3) は却下の成立条件なので実質 (1)+(2)。
+        # 測っていない手を選んだ手番・突き合わせが走らなかった手番はビット単位で従来どおり
+        measured = getattr(self, "_cross_check_measured", None) if rejected else None
+        if measured and move.coords is not None:
+            values, cc_threshold = measured["values"], measured["threshold"]
+            move_value = values.get(move.gtp())
+            successes = {m: v for m, v in values.items() if v is not None and v >= cc_threshold}
+            # 差し替えは選択手が**積極的に失敗**（役割石を相手に取られている ≤ −閾値）と実測された
+            # ときだけ。閾値近傍（未決着帯）は答えがコウ等で ply1 ownership が成否を運ばない局面
+            # なので裁定しない（実測 2026-08-13 フルスイープ A/B: 「< 閾値」で発火させると
+            # 125cac90 の正解 E1（コウ経路・−0.05/子）と 210cce8e の正解 D1（+0.20/子）を
+            # 壊した。回復側 e6794025 の C2 は −0.60/子＝積極的失敗で、両帯は分離できる）
+            if move_value is not None and move_value <= -cc_threshold and successes:
+                best_gtp, best_value = max(successes.items(), key=lambda kv: kv[1])
+                katrain.log(
+                    f"[{self.strategy_name}] フォールバックの選択手 {move.gtp()} は突き合わせで"
+                    f"{move_value:+.2f}/子＝不成立と実測済みのため、成立を実測済みの {best_gtp}"
+                    f"（{best_value:+.2f}/子）へ差し替えます",
+                    OUTPUT_INFO,
+                )
+                return (
+                    Move.from_gtp(best_gtp, player=self.cn.next_player),
+                    f"詰碁ソルバ: 突き合わせで成立を実測済みの {best_gtp}（{best_value:+.2f}/子）へ差し替え",
+                )
+        return move, fallback_thoughts
 
 
 @register_strategy(AI_TSUMEGO)
@@ -4966,6 +5003,16 @@ class TsumegoOwnershipStrategy(AIStrategy):
             solver_attacks
         ]
         self.game.katrain.log(f"[{self.strategy_name}] 手番側の役割: {role_text}", OUTPUT_DEBUG)
+        # 同深さ検証（score_best 覆し・救済）の役割石ブロック用コンテキスト（`_verified_choice` 参照）
+        _ctx_own, _ctx_opp = tsumego_region_stones_by_player(
+            self.game.stones, self.game.region_of_interest, self.cn.next_player
+        )
+        verify_role_context = (
+            _ctx_own,
+            _ctx_opp,
+            solver_attacks,
+            float((self.settings or {}).get("ko_success_ownership", TSUMEGO_SUCCESS_OWNERSHIP)),
+        )
         ko_move = self._pick_ko_win_move(candidate_moves, min_visits, player_sign, solver_attacks)
         if ko_move is not None:
             return ko_move
@@ -5058,7 +5105,9 @@ class TsumegoOwnershipStrategy(AIStrategy):
                         + f"（目数最善 {score_best['move']} が incumbent）",
                         OUTPUT_DEBUG,
                     )
-                chosen = self._verified_choice(score_best, challengers, stones, player_sign, fallback=chosen)
+                chosen = self._verified_choice(
+                    score_best, challengers, stones, player_sign, fallback=chosen, role_context=verify_role_context
+                )
             if (self.settings or {}).get("gain_verify", True):
                 # 救済: gain 争いに参加できなかった候補（目数ガード外・深さゲート外）でも gain が
                 # 明確に上回る手は同深さ検証にかける。検証なしでは絶対に採用しない（ガード外の
@@ -5101,6 +5150,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
                         incumbent_label="選択手",
                         margin=rescue_margin,
                         fallback=chosen,
+                        role_context=verify_role_context,
                     )
             if (self.settings or {}).get("tie_ko_screen", True):
                 # クラスの裁定（詰碁の順序 無条件 > コウ）は選択パイプラインの最後に置く。
@@ -5696,6 +5746,25 @@ class TsumegoOwnershipStrategy(AIStrategy):
             )
             return chosen, None
         shortlist = tsumego_ko_escape_candidates(candidate_moves, {chosen["move"]}, min_prior, max_candidates)
+        # prior 上位だけだと「root が実際に読んだ（visits が付いている）のに prior が低い」正解手を
+        # 測り落とす（実測 2026-08-13 回答帳リプレイ 15fafed5: 正解 C2 は visits 2位 v282 なのに
+        # prior 6位で shortlist 外＝probe 4手が全部不成立で誤答）。case O（正解が v1＝prior しか
+        # 信号が無い）の探索先はそのままに、visits 上位を**和集合**で足す。採否は従来どおり
+        # 1手ずつの成立検証（役割石の絶対判定）なので、増えるのは probe の本数だけ
+        promo_seen = {c["move"] for c in shortlist} | {chosen["move"]}
+        visits_extras = sorted(
+            [
+                c
+                for c in candidate_moves
+                if c.get("move")
+                and c["move"] != "pass"
+                and c["move"] not in promo_seen
+                and c.get("prior", 0.0) >= min_prior
+                and c.get("visits", 0) >= 10  # root が実際に読んだ手だけ（min_visits の既定と同じ床）
+            ],
+            key=lambda c: -(c.get("visits") or 0),
+        )[:max_candidates]
+        shortlist = shortlist + visits_extras
         if not shortlist:
             return chosen, None
         listed = " ".join("{}(p{:.4f})".format(c["move"], c.get("prior", 0.0)) for c in shortlist)
@@ -5864,7 +5933,15 @@ class TsumegoOwnershipStrategy(AIStrategy):
         return best[1], best[0]
 
     def _verified_choice(
-        self, incumbent, challengers, stones, player_sign, incumbent_label="目数最善", margin=None, fallback=None
+        self,
+        incumbent,
+        challengers,
+        stones,
+        player_sign,
+        incumbent_label="目数最善",
+        margin=None,
+        fallback=None,
+        role_context=None,
     ):
         """incumbent と挑戦者たちを同じ深さで測り直し、margin 超えで上回る最良の挑戦者に覆す。
 
@@ -5908,6 +5985,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
             handles[cand["move"]] = self._start_region_root(node, visits, ownership=True)
         self._wait_region_roots(handles.values())
         values = {}
+        owners = {}
         for move_gtp, handle in handles.items():
             root = handle.get("root")
             if root is None or root.get("ownership") is None:
@@ -5915,15 +5993,49 @@ class TsumegoOwnershipStrategy(AIStrategy):
             values[move_gtp] = tsumego_absolute_ownership(
                 root["ownership"], stones, self.game.board_size, player_sign
             )
+            owners[move_gtp] = root["ownership"]
         if incumbent["move"] not in values:
             return fallback
         incumbent_value = values[incumbent["move"]]
+        # 役割石の成立判定（覆しのブロック専用）: 全リージョン石の合計（values）は「どの手が
+        # 詰碁を解くか」を表現しない（spec 追記36）ため、**incumbent が役割石で成立していて
+        # 挑戦者が成立していない**ときだけ覆しを止める。片側（挑戦者の成立要求）だけのゲートは
+        # 実測でレンジが重なり却下済み（CLAUDE.md「救済の採用に…ゲートを掛けない」）だが、
+        # この両側条件は方向が逆＝**新しい覆しを許可することは決してなく**、既に成立している
+        # 選択を捨てる覆しだけを止める（実測 2026-08-13 回答帳リプレイ 62a94083: 正解 A7
+        # +0.99/子 を合計スケール差 +5.33 の B4 −0.56/子 が置き換えて誤答 ／ fad4fe69: B8
+        # +0.53/子 → C10 +0.39/子）。校正済みの正しい覆し（G2/H/F2 等）は incumbent 側が
+        # 失敗している（だから覆しが要る）のでこのゲートを素通りする
+        role_success = None
+        ctx_own = ctx_opp = ctx_attacks = ctx_threshold = None
+        if role_context is not None and incumbent["move"] in owners:
+            ctx_own, ctx_opp, ctx_attacks, ctx_threshold = role_context
+            role_success = tsumego_success_ownership(
+                owners[incumbent["move"]], ctx_own, ctx_opp, self.game.board_size, player_sign, ctx_attacks
+            )
         best = None
         for cand in challengers:
             value = values.get(cand["move"])
             if value is None:
                 continue
             confirmed = tsumego_override_confirmed(value, incumbent_value, margin)
+            if confirmed and role_success is not None and role_success >= ctx_threshold:
+                cand_success = (
+                    tsumego_success_ownership(
+                        owners[cand["move"]], ctx_own, ctx_opp, self.game.board_size, player_sign, ctx_attacks
+                    )
+                    if cand["move"] in owners
+                    else None
+                )
+                if cand_success is not None and cand_success < ctx_threshold:
+                    self.game.katrain.log(
+                        f"[{self.strategy_name}] 同深さ検証: {cand['move']} は合計スケールで上回るが、"
+                        f"{incumbent_label} {incumbent['move']} は役割石で{role_success:+.2f}/子＝成立、"
+                        f"{cand['move']} は{cand_success:+.2f}/子＝不成立のため覆しません"
+                        f"（成立している選択をクラス下位の手に差し替えない）",
+                        OUTPUT_INFO,
+                    )
+                    confirmed = False
             self.game.katrain.log(
                 f"[{self.strategy_name}] 同深さ検証({visits}visits): {cand['move']} {value:+.2f} "
                 f"vs {incumbent_label} {incumbent['move']} {incumbent_value:+.2f}"
@@ -6046,6 +6158,39 @@ class TsumegoOwnershipStrategy(AIStrategy):
             )
             return None
         value, move, cand = best
+        # 採用直前の最終確認: 通常評価の最善手が**子局面の同深さ検証**で既に成立しているなら、
+        # コウは慣習上の格下げなので採らない（攻め: 無条件死 > コウ ／ 守り: セキ > コウ）。
+        # 冒頭の成功判定は root のスコア＋root ownership で振るうが、枠の代償地帯が未決着の
+        # 局面では root のスコアが詰碁から切り離されて**負に出る**ため素通りする（実測
+        # 2026-08-13 回答帳リプレイ b5553318・守り方 d8: 通常最善 B2 の root lead −5.78目で
+        # スキップされず、コウ勝ち前提 +23.96目の A1 を採って誤答。B2 の子局面は役割石
+        # +0.99/子＝無条件で生きていた）。コウ採用が確定した手番だけ解析1本増える。校正済みの
+        # コウ採用（case H/M/Q）は通常最善が本当に失敗している＝子局面でも成立せず挙動不変。
+        # 役割が読めない盤では走らせない（own+opp の合算平均はどちらの成功も表現しないため）
+        if solver_attacks is not None:
+            best_normal_cand = max(searched, key=lambda c: player_sign * c["scoreLead"])
+            role_stones = tsumego_role_stones(own_stones, opponent_stones, solver_attacks)
+            if role_stones:
+                verify_visits = int(settings.get("gain_verify_visits", TSUMEGO_GAIN_VERIFY_VISITS))
+                verdict = self._region_child_verdict(
+                    best_normal_cand["move"],
+                    role_stones,
+                    player_sign,
+                    verify_visits,
+                    wide_root_noise=TSUMEGO_KO_SCREEN_WIDE_ROOT_NOISE,
+                )
+                if verdict is not None and tsumego_ko_escape_succeeds(
+                    verdict["value"], len(role_stones), success_own_threshold
+                ):
+                    self.game.katrain.log(
+                        f"[{self.strategy_name}] コウ判定: 通常最善 {best_normal_cand['move']} は"
+                        f"子局面の同深さ{verify_visits}visitsで役割石{len(role_stones)}子 "
+                        f"{verdict['value'] / len(role_stones):+.2f}/子＝無条件に成立しているため"
+                        f"コウ {move.gtp()} は採用しません（root スコア{best_normal:+.2f}目は"
+                        f"枠の代償地帯が未決着で詰碁から切り離されている）",
+                        OUTPUT_INFO,
+                    )
+                    return None
         self.game.katrain.log(
             f"[{self.strategy_name}] Final decision: {move.gtp()} "
             f"（コウ勝ち前提{value:+.2f}目 > 通常最善{best_normal:+.2f}目、差{value - best_normal:+.2f}目 > "
