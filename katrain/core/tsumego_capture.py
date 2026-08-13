@@ -71,6 +71,11 @@ def _classify_patch(rgb, cx, cy, rad):
         return "W", (mr, mg, mb)
     if spread > 90 and mr > mb:
         return ".", (mr, mg, mb)
+    if 95 <= brightness <= 150 and spread >= 35 and (mr - mb) >= 35:
+        # 盤色に半透明の黒が乗った茶色＝Web サイトのホバー石（マウス位置のプレビュー、実測
+        # (130,115,79)）。着手済みの石ではないので空点扱い。黒石(<90)・白石・素の盤色より暗く
+        # 彩度が落ちた帯だけを拾う
+        return ".", (mr, mg, mb)
     return "?", (mr, mg, mb)
 
 
@@ -227,8 +232,8 @@ WEB_THIN_GAP = 6  # 「細い暗線」判定: 両側 gap px が非暗なら線�
 WEB_LINE_MIN_FRACTION = 0.25  # 盤範囲のこの割合以上が線画素なら格子線とみなす
 WEB_LINE_DARK = 145  # 格子線の暗判定閾値（等重み輝度。実測: 1線目の薄い線 114・木地 178）
 WEB_GLYPH_DARK = 90  # ラベル文字の暗判定閾値（実測: 文字色 51、木目の暗い筋の大半は 90 超）
-WEB_GLYPH_MIN_H, WEB_GLYPH_MAX_H = 8, 30  # ラベルはズーム非依存の固定UIフォント（実測 h=13-14px）
-WEB_GLYPH_MAX_W = 30
+WEB_GLYPH_MIN_H, WEB_GLYPH_MAX_H = 8, 40  # ラベルは盤ズーム非依存のUIフォント（実測 h=13-14px、モバイル風レイアウトは 19-30px）
+WEB_GLYPH_MAX_W = 36
 WEB_GLYPH_MIN_PX = 12  # これ未満の暗画素数の成分は木目ノイズ
 WEB_GLYPH_MAX_DISTANCE = 45  # 正規化ビットマップ 10x14=140bit 中の許容ハミング距離（実測は 15 以下）
 WEB_GLYPH_NORM_W, WEB_GLYPH_NORM_H = 10, 14
@@ -349,18 +354,46 @@ def _web_detect_lines(rgb, board_rect):
     return vpos, hpos, vsp, hsp
 
 
-def _web_band_boxes(board_rect, vpos, hpos, vsp, hsp):
-    """4辺のラベル帯領域 {side: box or None}。帯幅 0.55 セル未満なら None（そちら側は切れている）。
-    帯の内側境界も最外線から 0.55 セル（石の半径の外）に取り、1線の石のはみ出しを帯に入れない"""
+def _web_band_boxes(board_rect, vpos, hpos, vsp, hsp, img_size):
+    """4辺のラベル帯領域 {side: box or None}。帯幅 0.45 セル未満なら None（そちら側は切れている）。
+
+    - 内側境界は最外線から 0.45 セル＝1線の石（半径約 0.5 セル）が帯に届かないぎりぎりまで広げる
+      （0.55 だと盤に寄ったラベルが境界に接触し、境界接触フィルタで落ちる。実測: 9路全体表示の
+      左帯の数字が最外線から約 0.55 セルの位置にかかっていた）
+    - 外側境界は盤領域（黄色 bbox）の縁より 4px 外まで広げる。ラベルは盤画像の縁ぴったりまで
+      描かれることがあり（実測: 右帯の数字の右端が bbox 右端と同座標）、bbox を境界にすると
+      境界接触フィルタでグリフごと落ちる。外側の暗い UI 領域は巨大成分としてサイズフィルタが落とす"""
     x0, y0, x1, y1 = board_rect
+    iw, ih = img_size
+    pad = 4
     out = {}
     for side, box, width, cell in (
-        ("left", (x0, int(hpos[0] - hsp / 2), int(vpos[0] - vsp * 0.55), int(hpos[-1] + hsp / 2)), vpos[0] - x0, vsp),
-        ("right", (int(vpos[-1] + vsp * 0.55), int(hpos[0] - hsp / 2), x1, int(hpos[-1] + hsp / 2)), x1 - vpos[-1], vsp),
-        ("top", (int(vpos[0] - vsp / 2), y0, int(vpos[-1] + vsp / 2), int(hpos[0] - hsp * 0.55)), hpos[0] - y0, hsp),
-        ("bottom", (int(vpos[0] - vsp / 2), int(hpos[-1] + hsp * 0.55), int(vpos[-1] + vsp / 2), y1), y1 - hpos[-1], hsp),
+        (
+            "left",
+            (max(0, x0 - pad), int(hpos[0] - hsp / 2), int(vpos[0] - vsp * 0.45), int(hpos[-1] + hsp / 2)),
+            vpos[0] - x0,
+            vsp,
+        ),
+        (
+            "right",
+            (int(vpos[-1] + vsp * 0.45), int(hpos[0] - hsp / 2), min(iw - 1, x1 + pad), int(hpos[-1] + hsp / 2)),
+            x1 - vpos[-1],
+            vsp,
+        ),
+        (
+            "top",
+            (int(vpos[0] - vsp / 2), max(0, y0 - pad), int(vpos[-1] + vsp / 2), int(hpos[0] - hsp * 0.45)),
+            hpos[0] - y0,
+            hsp,
+        ),
+        (
+            "bottom",
+            (int(vpos[0] - vsp / 2), int(hpos[-1] + hsp * 0.45), int(vpos[-1] + vsp / 2), min(ih - 1, y1 + pad)),
+            y1 - hpos[-1],
+            hsp,
+        ),
     ):
-        out[side] = box if width >= cell * 0.55 else None
+        out[side] = box if width >= cell * 0.45 else None
     return out
 
 
@@ -476,12 +509,34 @@ def _web_fit_axis(votes, what):
     return c
 
 
+def _web_trim_phantom_lines(pos, labeled):
+    """ラベルの付かない端の線を落とす（最大片側2本）。
+
+    縦に並んだ座標ラベルの列（数字が大きいレイアウトでは1本の細い暗線に見える）が
+    幻の格子線として検出されることがある（実測: 19路部分表示の右帯の 19..9 が12本目の
+    縦線に化けて右帯そのものを潰した／9路全体表示の左帯で列が0起点にずれた）。
+    幻はラベル帯の中にいるので必ず端＝「本物の線はその帯のラベルが指している」ことを使い、
+    ラベルが1本も付かない端の線だけを落とす。ラベルの読み損ね1件で本物を落とさないよう、
+    ラベルが線の大半（2/3）をカバーしているときだけ発動する"""
+    if not labeled:
+        return pos, 0
+    lo, hi = min(labeled), max(labeled)
+    if len(labeled) < max(2, ((hi - lo + 1) * 2 + 2) // 3):
+        return pos, 0  # ラベルがまばら＝読み取り自体が怪しいので線は触らない
+    if lo > 2 or (len(pos) - 1 - hi) > 2:
+        return pos, 0  # 端から3本以上落とすのは幻ではなく別の異常
+    trimmed = pos[lo : hi + 1]
+    return trimmed, lo
+
+
 def recognize_web_board(img, board_rect, sizes=DEFAULT_BOARD_SIZES):
     """Web 盤面（格子線＋座標ラベル）を認識し BoardView を返す。失敗は CaptureError。
 
     - 格子線を検出し、ラベル帯の有無で「どの辺が盤の端か」を判定する（ラベルのある辺＝端が
       見えている。ラベルなしで線が縁まで届く辺＝そこで切れている）
-    - 行番号（左右帯の数字）・列文字（上下帯の文字）を読んで可視域の絶対座標を確定する
+    - 行番号（左右帯の数字）・列文字（上下帯の文字）を読んで可視域の絶対座標を確定する。
+      数字が無い構図（下端だけ見えている等）は辺アンカー＝「文字帯のある下端の最下線は 1 の線」
+      「数字帯のある左端の最左線は A の線」で補う
     - 盤サイズは「上端が見えていれば最上行の番号」「右端が見えていれば最右列の文字」から決まる。
       どちらも切れている場合は可視域が収まる最小の候補サイズに倒す（size_fallback=True）
     - 石は盤サイズの全面グリッドに絶対座標で配置して返す（可視域の外は空点）。これにより
@@ -489,12 +544,23 @@ def recognize_web_board(img, board_rect, sizes=DEFAULT_BOARD_SIZES):
     """
     rgb = img.convert("RGB")
     vpos, hpos, vsp, hsp = _web_detect_lines(rgb, board_rect)
-    bands = _web_band_boxes(board_rect, vpos, hpos, vsp, hsp)
     reads = {}
+    for _pass in range(3):
+        bands = _web_band_boxes(board_rect, vpos, hpos, vsp, hsp, rgb.size)
+        reads = {
+            side: (_web_read_band(rgb, side, bands[side], vpos, hpos, vsp, hsp) if bands[side] else {})
+            for side in ("left", "right", "top", "bottom")
+        }
+        # 幻線トリム: 列文字（上下帯）が指す縦線・行数字（左右帯）が指す横線だけを残す。
+        # トリムすると帯領域が変わる（潰れていた帯が現れる）ので、変化があれば読み直す
+        vpos2, _ = _web_trim_phantom_lines(vpos, set(reads["top"]) | set(reads["bottom"]))
+        hpos2, _ = _web_trim_phantom_lines(hpos, set(reads["left"]) | set(reads["right"]))
+        if len(vpos2) == len(vpos) and len(hpos2) == len(hpos):
+            break
+        vpos, hpos = vpos2, hpos2
     edge = {}
     for side in ("left", "right", "top", "bottom"):
         n_lines = len(vpos if side in ("top", "bottom") else hpos)
-        reads[side] = _web_read_band(rgb, side, bands[side], vpos, hpos, vsp, hsp) if bands[side] else {}
         edge[side] = len(reads[side]) >= max(2, n_lines // 3)
     digits = set("0123456789")
     row_votes = []
@@ -508,7 +574,14 @@ def recognize_web_board(img, board_rect, sizes=DEFAULT_BOARD_SIZES):
             num = int("".join(chars))
             if 1 <= num <= 19:
                 row_votes.append(num + i)  # 行番号は上から下へ1ずつ減る: num + index = 一定
-    row_c = _web_fit_axis(row_votes, "行")
+    if row_votes:
+        row_c = _web_fit_axis(row_votes, "行")
+    elif edge["bottom"]:
+        # 行番号が1つも見えない構図（実測: 下辺の文字ラベルだけの下寄せクロップ）。
+        # 文字帯は盤の端にしか描かれないので、下帯があるなら最下線は 1 の線
+        row_c = len(hpos)
+    else:
+        raise CaptureError("行の座標ラベルが読めません（盤の端が画面内にあるか確認してください）")
     letters = set(COL_LETTERS)
     col_votes = []
     for side in ("top", "bottom"):
@@ -518,7 +591,12 @@ def recognize_web_board(img, board_rect, sizes=DEFAULT_BOARD_SIZES):
             ch = _web_classify_glyph(rgb, comps[0], letters)
             if ch is not None:
                 col_votes.append(COL_LETTERS.index(ch) + 1 - i)  # 列は左から右へ1ずつ増える
-    col_c = _web_fit_axis(col_votes, "列")
+    if col_votes:
+        col_c = _web_fit_axis(col_votes, "列")
+    elif edge["left"]:
+        col_c = 1  # 列文字が見えない構図でも、左帯（数字）があるなら最左線は A の線
+    else:
+        raise CaptureError("列の座標ラベルが読めません（盤の端が画面内にあるか確認してください）")
 
     def row_of(i):
         return row_c - i
@@ -548,6 +626,12 @@ def recognize_web_board(img, board_rect, sizes=DEFAULT_BOARD_SIZES):
             f"座標ラベルの読み取りが不整合です（行 {row_of(0)}..{row_of(len(hpos) - 1)} / "
             f"列 {col_of(0)}..{col_of(len(vpos) - 1)} / 盤 {size}路）"
         )
+    # 辺アンカーとラベル読みの突き合わせ: 帯のある辺は盤の端なので、そこの最外線の座標は 1/size で
+    # なければならない（ずれているなら幻線かラベルの誤読が残っている＝黙って誤った盤を出さない）
+    if edge["bottom"] and row_of(len(hpos) - 1) != 1:
+        raise CaptureError(f"下端が見えているのに最下線が {row_of(len(hpos) - 1)} の線と読めています")
+    if edge["left"] and col_of(0) != 1:
+        raise CaptureError(f"左端が見えているのに最左線が {COL_LETTERS[col_of(0) - 1]} の線と読めています")
     cropped_sides = tuple(side for side in ("left", "right", "top", "bottom") if not edge[side])
     if not cropped_sides and not (size == len(vpos) == len(hpos)):
         raise CaptureError(f"格子線の本数（{len(vpos)}x{len(hpos)}）が盤サイズ（{size}路）と一致しません")

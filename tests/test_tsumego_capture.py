@@ -686,6 +686,24 @@ def test_app_sample_still_uses_app_path():
 
 def test_find_window_rect_multi_title_prefers_first():
     # カンマ区切りの window_title は先に書いた候補を優先する（BlueStacks 優先の従来挙動を保つ）
-    import katrain.core.tsumego_capture as tc
-
     assert [t.strip() for t in "BlueStacks,Puzzle Run,PlayGo".split(",")][0] == "BlueStacks"
+
+
+def test_web_partial_bottom_anchor_without_row_labels():
+    # 実スクショ（モバイル風レイアウトの下寄せクロップ）と同じ構図: 行番号ラベルが1つも無く、
+    # 下辺の文字ラベルだけが見えている。「文字帯のある下端の最下線は 1 の線」の辺アンカーで
+    # 行を確定し、盤サイズは可視域が収まる最小候補（13路）へフォールバックする
+    from katrain.core.tsumego_capture import recognize_board
+
+    stones = {(1, 5): "B", (2, 4): "W", (3, 6): "B", (6, 3): "W"}
+    img = _draw_web_board(list(range(7, 0, -1)), list(range(3, 11)), 13, stones, label_sides=("bottom",))
+    view = recognize_board(img)
+    assert view.kind == "web_partial"
+    assert set(view.cropped_sides) == {"left", "right", "top"}
+    assert view.size_fallback
+    assert len(view.grid) == 13
+    assert view.grid[12][4] == "B"  # E1
+    assert view.grid[11][3] == "W"  # D2
+    assert view.grid[10][5] == "B"  # F3
+    assert view.grid[7][2] == "W"  # C6
+    assert sum(v != "." for row in view.grid for v in row) == 4

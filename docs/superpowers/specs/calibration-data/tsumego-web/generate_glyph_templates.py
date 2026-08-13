@@ -31,7 +31,7 @@ def main():
     board_rect = detect_board(rgb)
     vpos, hpos, vsp, hsp = _web_detect_lines(rgb, board_rect)
     assert len(vpos) == len(hpos) == 19, f"19路の全体表示が前提です（検出 {len(vpos)}x{len(hpos)}）"
-    bands = _web_band_boxes(board_rect, vpos, hpos, vsp, hsp)
+    bands = _web_band_boxes(board_rect, vpos, hpos, vsp, hsp, rgb.size)
     samples = {}  # char -> [bitmap, ...]
     for side in ("left", "right"):
         for i, comps in _web_read_band(rgb, side, bands[side], vpos, hpos, vsp, hsp).items():
