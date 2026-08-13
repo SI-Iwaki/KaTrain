@@ -902,9 +902,11 @@ class KaTrainGui(Screen, KaTrainBase):
             except Exception as e:
                 self._tsumego_capture_failed(f"詰碁キャプチャで予期しないエラー: {e}")
                 return
-            if view.kind == "web_full":
-                # Web サイトの全体表示は詰碁ではなく盤面把握（最善手）問題なので、枠・リージョン・
-                # 詰碁戦略を通さず通常モードの解析に回す（ユーザー要件 2026-08-13）
+            if view.kind == "web_full" and len(view.grid) == 19:
+                # Web サイトの 19 路全体表示は詰碁ではなく盤面把握（最善手）問題なので、枠・リージョン・
+                # 詰碁戦略を通さず通常モードの解析に回す（ユーザー要件 2026-08-13）。9/13 路は盤が小さく
+                # モバイル風レイアウトでは詰碁でも全体表示になるため、全体表示でも詰碁経路に回す
+                # （ユーザー要件 2026-08-13 追記2）
                 self("capture-fullboard-apply", view.grid)
                 return
             capture_note = None
@@ -912,6 +914,8 @@ class KaTrainGui(Screen, KaTrainBase):
                 capture_note = "Web盤面認識（部分表示）: 切れている辺=" + ",".join(view.cropped_sides) + (
                     "・盤サイズは候補からのフォールバック推定" if view.size_fallback else ""
                 )
+            elif view.kind == "web_full":
+                capture_note = f"Web盤面認識（全体表示・{len(view.grid)}路）: 19路ではないため詰碁経路で出題"
             self("tsumego-capture-apply", view.grid, ko, margin, black_to_attack, frameless, capture_note=capture_note)
         finally:
             self._tsumego_capture_busy = False
