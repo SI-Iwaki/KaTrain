@@ -452,3 +452,59 @@ sticky ヨセフラグは `game._enigma19_endgame`、ログタグは `[Enigma19S
 - **19路の実戦校正は未実施**。次のステップは GUI 実戦（ログの
   `[Enigma19Strategy] (Spend|Pool|Score|Drop|Deviate|Endgame)`）と
   `--batch` 3-run 平均での一致率・実損失の確認
+
+## 追記5（2026-08-14）: `aim_jigo` オプション＝持碁〜2目以内の負けを狙う（9/13/19路共通）
+
+ユーザー要望「持碁もしくは2.0目以内で負けることを目指すオプション。優先度は
+持碁 > 2.0目以内の負け > 2.0目を超える負け。ただし大差で勝っている場合に
+わざと明らかな大損失手を打たない（わざと悪手を打っているとバレないように）」。
+
+### 設計
+
+チェックボックス `enigma{9,13,19}_aim_jigo`（既定 OFF）。ON のとき:
+
+1. **target を `ENIGMA9_JIGO_TARGET`(-1.0) に固定**（`target_score` は無視）。
+   -1.0 は許容帯 [-2, 0] の中心＝**唯一パリティに依存しない狙い点**: 9路 area
+   scoring の整数コミ（komi 7 ⇒ 最終目差は偶数 0/±2/…）では両隣の到達点 0 と -2 が
+   どちらも許容帯、半目コミ（±0.5/±1.5）でも両隣が帯の内側。0 を狙うと収束ノイズ
+   （検証済み損失の ±0.3 程度）の上振れがそのまま「勝ち」＝帯の外に出る。
+2. **勝率フロアを無効化**（`min_wr = 0.0`）し、安全条件を
+   「**検証済み損失 <= cap <= lead − target**＝着手後も target を割らない」に一本化。
+   意図して勝率 50% を割りに行くモードでは勝率で安全を測れない — ヨセで lead が
+   僅かに負（＝設計どおりの局面）ほど探索値の勝率が急落し、正当な外しを全部
+   ブロックする（parity9 改修 2026-08-08 の「予算 → 勝率フロア」のちょうど逆向き）。
+3. **中盤 cap をヨセ予算と同じ式で頭打ち**＝新純関数 `enigma9_aim_cap(lead, target,
+   cap) = min(cap, max(0, lead − target))`。通常モードの中盤 cap は lead と無関係
+   （max_loss / 勝勢時は spending_plan が緩和）だが、aim では lead <= target で 0
+   ＝**最善手で維持/挽回**。これが優先度の「2目超の負けを避ける（挽回）」と
+   「持碁へ寄せる（下から 0 に近づく）」を同じ1本で実装する。lead が None
+   （root 解析なし）はフェイルセーフ＝最善手。
+4. **勝勢の削りは既存の消費モードをそのまま流用**（budget = lead − (-1)）。1手の
+   損失は `large_lead_max_loss` で頭打ち・選択は難解さ net 最大＝「一番もっともらしく
+   見える紛れ手」から順に削るので、**大差でも露骨な大損失手は打たない**（要件の
+   バレ対策は通常の難解モードと同じ機構が担保）。そのぶん**削り切れないほどの
+   大差は僅差勝ちで終わりうる**（仕様として明記・ヘルプにも記載）。
+5. ヨセは既存コードのまま（budget = lead − target が target=-1 で動くだけ）。
+   sticky・手数 AND 未確定点の判定も不変。
+
+**変更が発火しない場合のビット同一性**: OFF のとき新コードは `aim_jigo` の bool 読取
+だけで、cap・min_wr・target とも従来値＝解析条件も採用判断も不変（シャッフルなし）。
+
+### 変更ファイル（追記5）
+
+| ファイル | 変更 |
+|---|---|
+| `katrain/core/ai.py` | `ENIGMA9_JIGO_TARGET`・純関数 `enigma9_aim_cap`・`_generate_move` の aim 分岐・3クラスの `SETTING_DEFAULTS` に `aim_jigo: False` |
+| `katrain/core/constants.py` | `AI_OPTION_VALUES`（"bool"）・`AI_OPTION_ORDER` 各3件 |
+| `katrain/config.json` + `~/.katrain/config.json` | `enigma{9,13,19}_aim_jigo: false` |
+| `katrain/i18n/locales/{en,jp}/.../katrain.po` + `.mo` | ラベル3件＋ `aihelp:enigma{9,13,19}` 追記 |
+| `tests/test_ai_enigma9.py` | `TestAimCap`（4件）＋ GUI 整合テストの bool 分岐対応 |
+
+### 検証（追記5）
+
+- `pytest tests/test_ai_enigma9.py` 67 passed
+- CLI 単一局面（`--settings enigma9_aim_jigo=true`）: リード +12 の勝勢局面で
+  Spend（budget = lead+1）→ 難解手への削りを確認（校正 SGF move 21）
+- **実戦校正は未実施**。GUI 実戦での確認観点: (a) 終局目差が 0〜-2 に入るか、
+  (b) `AimJigo: lead ... -> best move` が劣勢で出るか、(c) ヨセの
+  `Endgame budget` が target=-1.0 で出るか

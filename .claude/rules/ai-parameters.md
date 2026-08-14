@@ -585,6 +585,7 @@ humanSL 9段 humanPolicy 8visits・全並列）し、
 | `enigma9_min_winrate` | 着手後の勝率フロア（打つ側視点） | 20〜50% | 0.3 |
 | `enigma9_net_margin` | 外しに要求する難解さの差（0=同点でも外す） | 0.0/0.2/0.3/0.5/1.0 | **0.0** |
 | `enigma9_target_score` | ヨセの目標差（目）。勝勢予算とヨセ予算の両方の基準 | 0/1/2/3 | 2.0 |
+| `enigma9_aim_jigo` | **ON で狙いを「持碁〜2目以内の負け」に差し替え**（優先度 持碁 > 2目以内の負け > それ超。target_score は無視・内部 target=`ENIGMA9_JIGO_TARGET`(-1.0) 固定＝許容帯 [-2,0] の中心でパリティ非依存。勝率フロア無効化＝安全条件は「cap <= lead−target＝着手後も target を割らない」の1本（中盤は `enigma9_aim_cap`・ヨセは既存予算）。lead<=target は最善手で維持/挽回。勝勢の削りは既存消費モード流用＝大差でも露骨な大損失手は打たない。削り切れない大差は僅差勝ちで終わりうる。spec 追記5） | bool | **false** |
 | `enigma9_endgame_move` | ヨセ切替手数（AND の片側・sticky） | 22/26/30/34/38 | 30 |
 | `enigma9_unsettled_max` | ヨセ判定の未確定点上限（AND の片側） | 4/6/8/10/12 | 8 |
 
@@ -660,6 +661,7 @@ move 40（+4.4 リード）はヨセ予算内に候補なしで最善 / move 39�
 | `enigma13_min_winrate` | 着手後の勝率フロア（打つ側視点） | 20〜50% | 0.3 |
 | `enigma13_net_margin` | 外しに要求する難解さの差（0=同点でも外す） | 0.0/0.2/0.3/0.5/1.0 | 0.0 |
 | `enigma13_target_score` | ヨセの目標差（目）。勝勢予算とヨセ予算の両方の基準 | 0/1/2/3/5 | 2.0 |
+| `enigma13_aim_jigo` | ON で狙いを「持碁〜2目以内の負け」に差し替え（9路版 `enigma9_aim_jigo` と同一機構・spec 追記5） | bool | **false** |
 | `enigma13_endgame_move` | ヨセ切替手数（AND の片側・sticky）。13路の対局長（〜120手）へスケール | 55/65/75/85/95 | **75** |
 | `enigma13_unsettled_max` | ヨセ判定の未確定点上限（≒169点の10%） | 8/12/16/20/24 | **16** |
 
@@ -682,6 +684,7 @@ CLI: `python -m katrain_debug --sgf <13路SGF> --move N --strategy enigma13`（b
 | `enigma19_min_winrate` | 着手後の勝率フロア（打つ側視点） | 20〜50% | 0.3 |
 | `enigma19_net_margin` | 外しに要求する難解さの差（0=同点でも外す） | 0.0/0.2/0.3/0.5/1.0 | 0.0 |
 | `enigma19_target_score` | ヨセの目標差（目）。勝勢予算とヨセ予算の両方の基準 | 0/1/2/3/5 | 2.0 |
+| `enigma19_aim_jigo` | ON で狙いを「持碁〜2目以内の負け」に差し替え（9路版 `enigma9_aim_jigo` と同一機構・spec 追記5） | bool | **false** |
 | `enigma19_endgame_move` | ヨセ切替手数（AND の片側・sticky）。jigo の19路ヨセ委譲既定・deception phase3 開始と同じ150 | 120/135/150/165/180 | **150** |
 | `enigma19_unsettled_max` | ヨセ判定の未確定点上限（≒361点の10%） | 24/30/36/42/48 | **36** |
 

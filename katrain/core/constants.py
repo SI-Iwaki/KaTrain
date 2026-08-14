@@ -297,6 +297,8 @@ AI_OPTION_VALUES = {
     "enigma9_min_winrate": [(0.2, "20%"), (0.25, "25%"), (0.3, "30%"), (0.35, "35%"), (0.4, "40%"), (0.5, "50%")],
     "enigma9_net_margin": [0.0, 0.2, 0.3, 0.5, 1.0],
     "enigma9_target_score": [0.0, 1.0, 2.0, 3.0],
+    # ON で狙いを「持碁〜2目以内の負け」に差し替え（target_score は無視・内部 target=-1.0 固定）
+    "enigma9_aim_jigo": "bool",
     "enigma9_endgame_move": [22, 26, 30, 34, 38],
     "enigma9_unsettled_max": [4, 6, 8, 10, 12],
     # ===== Enigma13Strategy（13路専用・難解） =====
@@ -308,6 +310,7 @@ AI_OPTION_VALUES = {
     "enigma13_min_winrate": [(0.2, "20%"), (0.25, "25%"), (0.3, "30%"), (0.35, "35%"), (0.4, "40%"), (0.5, "50%")],
     "enigma13_net_margin": [0.0, 0.2, 0.3, 0.5, 1.0],
     "enigma13_target_score": [0.0, 1.0, 2.0, 3.0, 5.0],
+    "enigma13_aim_jigo": "bool",
     "enigma13_endgame_move": [55, 65, 75, 85, 95],
     "enigma13_unsettled_max": [8, 12, 16, 20, 24],
     # ===== Enigma19Strategy（19路専用・難解） =====
@@ -319,6 +322,7 @@ AI_OPTION_VALUES = {
     "enigma19_min_winrate": [(0.2, "20%"), (0.25, "25%"), (0.3, "30%"), (0.35, "35%"), (0.4, "40%"), (0.5, "50%")],
     "enigma19_net_margin": [0.0, 0.2, 0.3, 0.5, 1.0],
     "enigma19_target_score": [0.0, 1.0, 2.0, 3.0, 5.0],
+    "enigma19_aim_jigo": "bool",
     "enigma19_endgame_move": [120, 135, 150, 165, 180],
     "enigma19_unsettled_max": [24, 30, 36, 42, 48],
 }
@@ -418,22 +422,25 @@ AI_OPTION_ORDER = {
     "enigma9_min_winrate": 2,
     "enigma9_net_margin": 3,
     "enigma9_target_score": 4,
-    "enigma9_endgame_move": 5,
-    "enigma9_unsettled_max": 6,
+    "enigma9_aim_jigo": 5,
+    "enigma9_endgame_move": 6,
+    "enigma9_unsettled_max": 7,
     "enigma13_max_loss": 0,
     "enigma13_large_lead_max_loss": 1,
     "enigma13_min_winrate": 2,
     "enigma13_net_margin": 3,
     "enigma13_target_score": 4,
-    "enigma13_endgame_move": 5,
-    "enigma13_unsettled_max": 6,
+    "enigma13_aim_jigo": 5,
+    "enigma13_endgame_move": 6,
+    "enigma13_unsettled_max": 7,
     "enigma19_max_loss": 0,
     "enigma19_large_lead_max_loss": 1,
     "enigma19_min_winrate": 2,
     "enigma19_net_margin": 3,
     "enigma19_target_score": 4,
-    "enigma19_endgame_move": 5,
-    "enigma19_unsettled_max": 6,
+    "enigma19_aim_jigo": 5,
+    "enigma19_endgame_move": 6,
+    "enigma19_unsettled_max": 7,
 }
 
 AI_KEY_PROPERTIES = {

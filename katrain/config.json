@@ -191,6 +191,7 @@
             "enigma9_min_winrate": 0.3,
             "enigma9_net_margin": 0.0,
             "enigma9_target_score": 2.0,
+            "enigma9_aim_jigo": false,
             "enigma9_endgame_move": 30,
             "enigma9_unsettled_max": 8
         },
@@ -200,6 +201,7 @@
             "enigma13_min_winrate": 0.3,
             "enigma13_net_margin": 0.0,
             "enigma13_target_score": 2.0,
+            "enigma13_aim_jigo": false,
             "enigma13_endgame_move": 75,
             "enigma13_unsettled_max": 16
         },
@@ -209,6 +211,7 @@
             "enigma19_min_winrate": 0.3,
             "enigma19_net_margin": 0.0,
             "enigma19_target_score": 2.0,
+            "enigma19_aim_jigo": false,
             "enigma19_endgame_move": 150,
             "enigma19_unsettled_max": 36
         },

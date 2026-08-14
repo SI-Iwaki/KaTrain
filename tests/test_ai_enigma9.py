@@ -8,11 +8,13 @@ import pytest
 import katrain
 from katrain.core.ai import (
     ENIGMA9_HP_BOOK,
+    ENIGMA9_JIGO_TARGET,
     ENIGMA9_PUNISH_CAP,
     Enigma13Strategy,
     Enigma19Strategy,
     Enigma9Strategy,
     enigma9_admissible,
+    enigma9_aim_cap,
     enigma9_choose,
     enigma9_expected_punish,
     enigma9_hp_lookup,
@@ -341,6 +343,34 @@ class TestChoose:
         assert enigma9_choose(scored, "E5", margin=0.0)["gtp"] == "D4"
 
 
+class TestAimCap:
+    """aim_jigo モードの中盤 cap 締め（enigma9_aim_cap）。target は既定 -1.0。"""
+
+    def test_lead_none_fails_safe(self):
+        # root lead が取れない手番は None ＝呼び出し側が最善手に倒す
+        assert enigma9_aim_cap(None, ENIGMA9_JIGO_TARGET, 1.0) is None
+
+    def test_surplus_tightens_cap(self):
+        # lead +0.5・target -1.0 ⇒ 余剰 1.5 だが cap 1.0 が先に効く
+        assert enigma9_aim_cap(0.5, -1.0, 1.0) == pytest.approx(1.0)
+        # 余剰 0.4 < cap ⇒ 予算で頭打ち＝着手後も target を割らない
+        assert enigma9_aim_cap(-0.6, -1.0, 1.0) == pytest.approx(0.4)
+
+    def test_at_or_below_target_returns_zero(self):
+        # target 以下（持碁狙いを下回っている）⇒ 0 ＝最善手で維持/挽回
+        assert enigma9_aim_cap(-1.0, -1.0, 1.0) == 0.0
+        assert enigma9_aim_cap(-3.5, -1.0, 1.0) == 0.0
+
+    def test_spending_cap_still_bounded_by_budget(self):
+        # 勝勢時（spending_plan が cap を緩和した後）も budget が上限
+        cap, cw, budget = enigma9_spending_plan(3.0, -1.0, 1.0, 5.0)
+        assert cap == pytest.approx(4.0) and budget == pytest.approx(4.0)
+        assert enigma9_aim_cap(3.0, -1.0, cap) == pytest.approx(4.0)
+        # 大勝勢では large_cap(5.0) 側が効き、aim_cap は締めない（budget 21 > cap）
+        cap, _, _ = enigma9_spending_plan(20.0, -1.0, 1.0, 5.0)
+        assert enigma9_aim_cap(20.0, -1.0, cap) == pytest.approx(5.0)
+
+
 class TestStrategyRegistration:
     def test_registered(self):
         from katrain.core.ai import STRATEGY_REGISTRY
@@ -408,6 +438,10 @@ class TestGuiConfigConsistency:
             key = f"{cls.KEY_PREFIX}_{suffix}"
             assert package_ai_conf[key] == default, key
             assert key in AI_OPTION_ORDER, key
+            if AI_OPTION_VALUES[key] == "bool":
+                # チェックボックス（aim_jigo 等）は候補値リストを持たない
+                assert isinstance(default, bool), key
+                continue
             # 既定値がスライダー候補値に含まれていること（(値, ラベル) 形式も許容）
             plain = [v[0] if isinstance(v, tuple) else v for v in AI_OPTION_VALUES[key]]
             assert default in plain, key

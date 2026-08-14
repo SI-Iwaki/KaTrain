@@ -1992,6 +1992,13 @@ ENIGMA9_W_REPLY_RARE = 1.0         # 十分な応手の見つけにくさの重�
 ENIGMA9_W_OWN_RARE = 1.0           # 自手の意外さの重み（目相当）
 ENIGMA9_MIN_BUDGET = 0.05          # ヨセの余剰予算がこれ以下なら外さない（目）
 ENIGMA9_PONDER_REPLIES = 3         # 着手後に温める相手の有力応手数（0 で無効・結果は捨てるだけ）
+# aim_jigo（持碁〜2目以内の負けを狙うオプション）の狙い点。許容帯 [-2, 0]（持碁 >
+# 2目以内の負け > それ超の負け）の中心 -1.0 を狙う: 9路 area scoring の整数コミ
+# （komi 7 ⇒ 最終目差は偶数パリティ = 0 / ±2 / …）では -1 の両隣 0 と -2 がどちらも
+# 許容帯、半目コミ（±0.5 / ±1.5 / …）でも両隣が帯の内側に落ちる＝パリティに依存せず
+# 「勝ってしまう」「2目超で負ける」の両側から最も遠い唯一の狙い点。0 を狙うと
+# 収束ノイズ（検証済み損失の ±0.3 程度）の上振れがそのまま勝ち（帯の外）になる
+ENIGMA9_JIGO_TARGET = -1.0
 
 # 「二段の漏斗」: 9路の通常解析（1000visits・wRN=0.04）は visits を1〜3手に集中させる
 # ため、visits >= 10 の候補だけでは外し候補が 0〜1 手しか残らない（実測 2026-08-10・
@@ -2181,6 +2188,21 @@ def enigma9_spending_plan(lead, target, max_loss, large_cap):
     return cap, max_loss / budget, budget
 
 
+def enigma9_aim_cap(lead, target, cap):
+    """aim_jigo モードの中盤 cap 締め（ヨセ予算 `min(max_loss, lead - target)` の中盤版）。
+
+    通常モードの中盤 cap は lead と無関係（max_loss、勝勢時は spending_plan が緩和）
+    だが、aim_jigo は「target（既定 -1.0）を着手後も割らない」が唯一の安全条件なので、
+    cap を余剰 budget = lead - target で頭打ちにする。lead <= target なら 0＝
+    呼び出し側が最善手に倒れて維持/挽回する（優先度 持碁 > 2目以内の負け > それ超、
+    の「それ超を避ける」と「持碁へ寄せる」を同じ1本で実装）。lead が None
+    （root 解析なし）は None を返し、呼び出し側がフェイルセーフ（最善手）に倒す。
+    """
+    if lead is None:
+        return None
+    return min(cap, max(0.0, lead - target))
+
+
 def enigma9_net_score(loss, e_punish, reply_findability, own_hp,
                       w_reply=ENIGMA9_W_REPLY_RARE, w_own=ENIGMA9_W_OWN_RARE,
                       cost_weight=1.0):
@@ -2234,6 +2256,14 @@ class Enigma9Strategy(AIStrategy):
     劣勢時に無理をする分岐は無い（最善手に倒れるだけ）＝「相手がほぼ最善で
     応じ切った対局は勝てなくてもよい」というモードの前提どおり。
 
+    aim_jigo オプション（既定 OFF）は狙いを「持碁〜2目以内の負け」（優先度
+    持碁 > 2目以内の負け > それ超の負け）に差し替える: target を
+    ENIGMA9_JIGO_TARGET(-1.0) に固定し、勝率フロアの代わりに
+    「cap <= lead − target＝着手後も target を割らない」を中盤にも課す
+    （enigma9_aim_cap）。lead <= target なら最善手で維持/挽回。勝勢の余剰は
+    既存の消費モード（per-move 損失は large_lead_max_loss で頭打ち・選択は
+    難解さ net 最大）で削るので、大差でも露骨な大損失手は打たない。
+
     すべての分岐は「KataGo 最善手を打つ」に倒れる（フェイルセーフ＝外さない）。
     設計: docs/superpowers/specs/2026-08-10-enigma9-strategy-design.md
 
@@ -2252,6 +2282,7 @@ class Enigma9Strategy(AIStrategy):
         "endgame_move": 30,
         "unsettled_max": 8,
         "target_score": 2.0,
+        "aim_jigo": False,
     }
 
     def _setting(self, suffix):
@@ -2598,6 +2629,21 @@ class Enigma9Strategy(AIStrategy):
         endgame_move = int(self._setting("endgame_move"))
         unsettled_max = int(self._setting("unsettled_max"))
         target = float(self._setting("target_score"))
+        aim_jigo = bool(self._setting("aim_jigo"))
+        if aim_jigo:
+            # 持碁〜2目以内の負け（優先度 持碁 > 2目以内の負け > それ超の負け）を
+            # 狙うオプション。狙い点は許容帯 [-2, 0] の中心 ENIGMA9_JIGO_TARGET
+            # （定数の docコメント参照）。target_score は無視する。
+            # 勝率フロアは無効化する＝意図して勝率 50% を割りに行くモードなので
+            # 勝率では安全を測れない（ヨセで lead が僅かに負＝設計どおりの局面ほど
+            # 探索値の勝率が急落し、正当な外しを全部ブロックする）。安全は
+            # 「検証済み損失 <= cap <= lead - target」＝着手後も target を割らない、
+            # が引き受ける（中盤は enigma9_aim_cap、ヨセは既存の余剰予算がそのまま）。
+            # 勝勢時の削りは既存の消費モードを target=-1 で流用＝1手の損失は
+            # large_lead_max_loss で頭打ち・選択は難解さ net 最大なので、
+            # 「大差でもバレる大損失手は打たない」は通常の難解モードと同じ機構が担保
+            target = ENIGMA9_JIGO_TARGET
+            min_wr = 0.0
 
         # ---- ゲート2: ヨセ判定と外し予算（parity9 と同じ 手数 AND 未確定点・sticky）----
         # ヨセ前は Probe を撃たない（parity9_is_endgame は depth < endgame_move で
@@ -2665,6 +2711,25 @@ class Enigma9Strategy(AIStrategy):
                     f"Spend: lead={lead_now:.2f} budget={sp_budget:.2f} cap={cap:.2f} "
                     f"cost_weight={cost_weight:.2f}"
                 )
+            if aim_jigo:
+                # 中盤も cap を余剰 budget = lead - target で頭打ちにする（ヨセ予算の
+                # 中盤版）。lead <= target（持碁狙いを下回っている）なら最善手で
+                # 維持/挽回＝「2目超の負け」への滑落をここで止める。lead が取れない
+                # 手番は狙いようがないのでフェイルセーフ（最善手）
+                cap = enigma9_aim_cap(lead_now, target, cap)
+                if cap is None:
+                    self._log("AimJigo: lead unavailable -> best move")
+                    return self._best_move(
+                        f"{self.LABEL}: aim-jigo, lead unavailable, playing best move."
+                    )
+                if cap <= ENIGMA9_MIN_BUDGET:
+                    self._log(
+                        f"AimJigo: lead {lead_now:.2f} <= target {target:.1f} -> best move"
+                    )
+                    return self._best_move(
+                        f"{self.LABEL}: aim-jigo, holding at target (lead {lead_now:.2f} vs "
+                        f"{target:.1f}), playing best move."
+                    )
 
         # ---- ゲート3: 安全な外し候補があるか（クエリ0本）----
         # プールは visits >= ENIGMA9_POOL_MIN_VISITS まで広げる（二段の漏斗）。
@@ -2804,6 +2869,7 @@ class Enigma13Strategy(Enigma9Strategy):
         "endgame_move": 75,
         "unsettled_max": 16,
         "target_score": 2.0,
+        "aim_jigo": False,
     }
 
 
@@ -2838,6 +2904,7 @@ class Enigma19Strategy(Enigma9Strategy):
         "endgame_move": 150,
         "unsettled_max": 36,
         "target_score": 2.0,
+        "aim_jigo": False,
     }
 
 
