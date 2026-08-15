@@ -3330,6 +3330,16 @@ TSUMEGO_SUCCESS_LEAD = 0.0
 # `tsumego_frame.FRAME_SOLVER_ALIVE_OWNERSHIP` と同じ「その石群は生きているか」の閾値。
 TSUMEGO_SUCCESS_OWNERSHIP = 0.5
 
+# コウ脱出（`_ko_escape_choice`）が**コウの選択手を捨てて** clean 対抗馬を採用するのに要求する
+# 成立の確認レベル。採用バーが `ko_success_ownership`(0.5) ちょうどだと、閾値すれすれの
+# ノイズ成立が「答えが本当にコウの詰碁では clean 候補が成立判定を通らないので脱出は何もしない」
+# という安全弁を素通りする（実測 2026-08-15 回答帳 92ef635c45 d2: アプリの正解 A6＝コウ経路
+# 〈手順末尾がコウの取り合い〉を、E1 検証値 **+0.51/子** が 0.5 を紙一重で通って差し替え誤答）。
+# 校正済みの正しい脱出採用は O A11 +0.99 / T L1 +1.00＝全部 0.9 の上、正しく落とす側は
+# F −0.97〜−0.99＝はるか下で、0.5〜0.9 の帯に校正ケースは1つも無い。外し方は「採用しない＝
+# コウを維持」で従来の安全側
+TSUMEGO_KO_ESCAPE_ADOPT_CONFIRM = 0.9
+
 # クラス格上げ（`_ko_promotion_choice`）の root movesOwnership 事前ふるいで「解析0本のまま
 # 省略してよい」と信じる下限。事前ふるいは軽量な副産物シグナルで、校正済みの正解 clean 手は
 # +0.98〜+1.00 に張り付く一方、**+0.37〜+0.5 の閾値近傍で run ごとに flip する**
@@ -5990,8 +6000,11 @@ class TsumegoOwnershipStrategy(AIStrategy):
                 continue
             # 相対条件（コウの incumbent に劣りすぎない）の前に、**その手で詰碁が成立して
             # いるか**を絶対値で見る。incumbent 自身が失敗していると相対条件は退化して
-            # ノイズ幅で1手を選んでしまう（`tsumego_ko_escape_succeeds` 参照＝case F）
-            succeeds = tsumego_ko_escape_succeeds(verdict["value"], len(stones), success_ownership)
+            # ノイズ幅で1手を選んでしまう（`tsumego_ko_escape_succeeds` 参照＝case F）。
+            # 採用バーは確認レベル（`TSUMEGO_KO_ESCAPE_ADOPT_CONFIRM`）＝閾値すれすれの
+            # ノイズ成立でコウの選択手を捨てない（校正済みの正しい採用は +0.99/+1.00）
+            adopt_bar = max(success_ownership, TSUMEGO_KO_ESCAPE_ADOPT_CONFIRM)
+            succeeds = tsumego_ko_escape_succeeds(verdict["value"], len(stones), adopt_bar)
             accepted = (
                 not verdict["ko"]
                 and succeeds
@@ -6000,7 +6013,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
             if verdict["ko"]:
                 reason = f"コウ経路（{verdict['ko_reply']}）"
             elif not succeeds:
-                reason = f"詰碁が成立していない（ko_success_ownership={success_ownership}）"
+                reason = f"詰碁が成立していない（採用バー={adopt_bar}＝確認レベル）"
             elif accepted:
                 reason = "採用候補"
             else:

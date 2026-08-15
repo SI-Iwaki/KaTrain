@@ -32,6 +32,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument("key10")
 ap.add_argument("wrn", type=float)
 ap.add_argument("moves")
+ap.add_argument("--prefix", default="", help="カンマ区切りの手順 prefix（d2 以降の判断を測るとき）")
 args = ap.parse_args()
 
 book = json.load(open(os.path.expanduser("~/.katrain/tsumego_answers.json"), encoding="utf-8"))["entries"]
@@ -52,11 +53,12 @@ try:
         ko=settings.get("frame_ko", False), margin=int(settings.get("frame_margin", 4)),
     )
     region = region4(analysis_region, entry["size"])
+    prefix = [g for g in args.prefix.split(",") if g.strip()]
     game = build_game(
         host, engine, board, komi, region,
         int(settings.get("analysis_visits", 1800)) or None,
         float(settings.get("region_wide_root_noise", 0.04)),
-        solver_problem, [],
+        solver_problem, prefix,
     )
     analyse(engine, game)
     cn = game.current_node
