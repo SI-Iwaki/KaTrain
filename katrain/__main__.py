@@ -1379,7 +1379,11 @@ class KaTrainGui(Screen, KaTrainBase):
         if settings.get("solver_enabled", True):
             started = time.time()
             try:
-                from katrain.core.tsumego_problem import extract_problem, DEFAULT_MAX_REGION_POINTS
+                from katrain.core.tsumego_problem import (
+                    extract_problem,
+                    solver_capture_within_gates,
+                    DEFAULT_MAX_REGION_POINTS,
+                )
 
                 solver_problem = extract_problem(
                     grid=grid,
@@ -1398,17 +1402,12 @@ class KaTrainGui(Screen, KaTrainBase):
                 # df-pn の求解をそのまま待たされた（実測 2026-08-02: region24/空点12 が
                 # 29.0s native・着手決定 26.2 秒＝1問20秒の予算をこの1手で壊す。spec 追記4）。
                 # 規模超過を枠なしで出題してからフォールバックすると従来の枠あり経路より
-                # 弱くなるため、ここで従来経路（枠張り）に譲る＝挙動は完全に現行のまま（G5）
-                n_stones = sum(
-                    1 for p in solver_problem.region if p in solver_problem.black or p in solver_problem.white
-                )
-                n_empties = len(solver_problem.region) - n_stones
-                max_region = int(settings.get("solver_capture_max_region", 23))
-                max_empties = int(settings.get("solver_capture_max_empties", 12))
-                if len(solver_problem.region) > max_region or n_empties > max_empties:
+                # 弱くなるため、ここで従来経路（枠張り）に譲る＝挙動は完全に現行のまま（G5）。
+                # 判定は共有ヘルパー（空点<=9 の拡張帯込み＝2026-08-15 実測。tsumego_problem 参照）
+                gates_ok, gates_detail = solver_capture_within_gates(solver_problem, settings)
+                if not gates_ok:
                     self.log(
-                        f"tsumego_capture: region {len(solver_problem.region)}点/空点{n_empties} は"
-                        f"ソルバで解ける規模（{max_region}点/空点{max_empties}）を超えるため、"
+                        f"tsumego_capture: {gates_detail} はソルバで解ける規模を超えるため、"
                         f"現行経路（枠張り）で出題します",
                         OUTPUT_INFO,
                     )

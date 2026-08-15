@@ -53,7 +53,11 @@ from katrain.core.game import KaTrainSGF, region_analysis_extra_settings  # noqa
 from katrain.core.sgf_parser import Move  # noqa: E402
 from katrain.core.tsumego_answer_book import DEFAULT_PATH as BOOK_PATH, gtp_to_point  # noqa: E402
 from katrain.core.tsumego_capture import capture_settings_for_frame_mode, grid_to_sgf  # noqa: E402
-from katrain.core.tsumego_problem import DEFAULT_MAX_REGION_POINTS, extract_problem  # noqa: E402
+from katrain.core.tsumego_problem import (  # noqa: E402
+    DEFAULT_MAX_REGION_POINTS,
+    extract_problem,
+    solver_capture_within_gates,
+)
 from katrain_debug.katrain_stub import KaTrainStub  # noqa: E402
 from katrain_debug.runner import DebugGame  # noqa: E402
 
@@ -131,11 +135,8 @@ def choose_board(host, grid, komi, settings, ko, margin, black_to_attack=None, f
         except Exception:
             solver_problem = None
         if solver_problem is not None:
-            n_stones = sum(1 for p in solver_problem.region if p in solver_problem.black or p in solver_problem.white)
-            n_empties = len(solver_problem.region) - n_stones
-            if len(solver_problem.region) > int(settings.get("solver_capture_max_region", 23)) or n_empties > int(
-                settings.get("solver_capture_max_empties", 12)
-            ):
+            gates_ok, _detail = solver_capture_within_gates(solver_problem, settings)
+            if not gates_ok:
                 solver_problem = None
         if solver_problem is not None and solver_api.problem_is_hopeless(
             solver_problem, settings, lambda msg, level=None: host.log(msg, OUTPUT_INFO)
@@ -170,11 +171,7 @@ def static_solver_eligible(grid, settings):
         return False
     if p is None:
         return False
-    n_stones = sum(1 for q in p.region if q in p.black or q in p.white)
-    n_empties = len(p.region) - n_stones
-    return len(p.region) <= int(settings.get("solver_capture_max_region", 23)) and n_empties <= int(
-        settings.get("solver_capture_max_empties", 12)
-    )
+    return solver_capture_within_gates(p, settings)[0]
 
 
 def warm_up_engine(host, engine, entry, komi, timeout=300.0):

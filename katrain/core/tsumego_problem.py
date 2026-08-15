@@ -36,6 +36,30 @@ DEFAULT_MAX_REGION_POINTS = 72  # §8.4 solver_max_region_points（P1 の実測�
 OPEN_RECT_MAX_POINTS = 84  # 矩形 region モード（枠なし・開いた盤）の上限。閉包モードより広くなる
 MIN_TARGET_SPACE = 3  # target が眼を作れる余地（region − target の点数）の下限
 
+def solver_capture_within_gates(problem, settings) -> Tuple[bool, str]:
+    """キャプチャ時にソルバモードを採ってよい規模か。(採否, ログ用の規模文字列) を返す。
+
+    採用 = region <= solver_capture_max_region(23) かつ 空点 <= solver_capture_max_empties(12)。
+    規模超過を枠なしで出題してからフォールバックすると従来の枠あり経路より弱くなるため、
+    「予算内に解ける確度が高い問題だけ採る」が原則（spec 追記4）。
+
+    **「空点<=9 なら region 32 まで緩める」拡張帯は実装して A/B の上で却下した**
+    （2026-08-15・spec `2026-08-15-tsumego-followup-hypothesis.md` §5）。回答帳のゲート外
+    58問の全数 solve では拡張帯の 7/7 が root を 3.0〜4.5 秒で解けたが、該当キーの
+    標的リプレイ（×3run）は **回復1 / 破損1（どちらも決定的）＝差し引きゼロのトレード**。
+    破損の構造: root が速く解けても**手順の途中で相手が証明範囲外の応手をすると
+    ソルバは枠なし盤の KataGo フォールバックに落ち、枠なしは枠あり経路より弱い**
+    （実測 eaef4cb07f d4: 救済が全リージョン石スケールで誤採用）。「root の solve 時間」は
+    「手順全体のカバレッジ」を保証しない＝ゲートを緩める判断材料として不十分。
+    """
+    n_stones = sum(1 for p in problem.region if p in problem.black or p in problem.white)
+    n_empties = len(problem.region) - n_stones
+    max_region = int(settings.get("solver_capture_max_region", 23))
+    max_empties = int(settings.get("solver_capture_max_empties", 12))
+    ok = len(problem.region) <= max_region and n_empties <= max_empties
+    detail = f"region {len(problem.region)}点/空点{n_empties}（許容: {max_region}点/空点{max_empties}）"
+    return ok, detail
+
 
 def predetermined_reason(problem: Problem) -> Optional[str]:
     """開始時点で結果が決まっている（＝解くべき詰碁ではない）なら理由を返す。

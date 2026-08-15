@@ -304,3 +304,32 @@ def test_cache_hit_reranks_equal_alternatives_with_katago_order(tmp_path, monkey
     coords_c, thoughts_c = session_c.generate()
     assert coords_c == coords_a, thoughts_c
     assert "キャッシュ" in thoughts_c, thoughts_c
+
+
+def test_solver_capture_gates_match_legacy_envelope():
+    """キャプチャゲート（共有ヘルパー化・2026-08-15）は従来の封筒と完全一致すること。
+
+    「空点<=9 なら region 32 まで緩める」拡張帯は**実装して A/B の上で却下した**
+    （回復1/破損1＝差し引きゼロ。root が速く解けても手順の途中で相手が証明範囲外の
+    応手をするとソルバは枠なし盤へフォールバックし、枠なしは枠あり経路より弱い。
+    詳細はヘルパーの docstring と spec 2026-08-15 §5）。このテストは
+    従来帯（region<=23 かつ 空点<=12）が過不足なく固定されていることを確認する。
+    """
+    from katrain.core.tsumego_problem import solver_capture_within_gates
+
+    class _P:
+        def __init__(self, region_n, stones_n):
+            self.region = {(i, 0) for i in range(region_n)}
+            self.black = {(i, 0) for i in range(stones_n)}
+            self.white = set()
+
+    # 従来帯: 通る
+    assert solver_capture_within_gates(_P(23, 11), {})[0]
+    assert solver_capture_within_gates(_P(23, 12), {})[0]
+    # region 超過は空点が少なくても通らない（拡張帯の却下を固定）
+    assert not solver_capture_within_gates(_P(24, 15), {})[0]  # region24/空点9
+    assert not solver_capture_within_gates(_P(32, 27), {})[0]  # region32/空点5
+    # 空点超過は region が小さくても通らない
+    assert not solver_capture_within_gates(_P(20, 6), {})[0]  # 空点14
+    # 設定で上書きできる
+    assert solver_capture_within_gates(_P(24, 15), {"solver_capture_max_region": 24})[0]
