@@ -254,7 +254,13 @@ class TsumegoSolverSession:
     # 永続キャッシュの版数。答えの決まり方が変わったら上げて旧エントリを無効化する。
     # 2: 証明ストア即答にクラス格上げ確認を追加（case AB）。旧版は KO gate の決め手を
     #    そのまま保存しており、上位クラスが成立する局面の誤答（N11）が焼き付いている
-    CACHE_VERSION = 2
+    # 3: 同格別解リスト（alternatives）を保存し、ヒット時に現セッションの KataGo 本命順で
+    #    並べ替える（fresh solve と同じ §6.5.1-3 タイブレークの遅延適用）。旧版は
+    #    **KataGo ランキング無しのセッション**（キャプチャ時の投機実行など）が最初に証明
+    #    できた手を1手だけ焼き付け、以後の全セッションがタイブレークを素通りしていた
+    #    （実測 2026-08-15 回答帳 13333f79df: E2/C3/D2 が同格の無条件殺しで、投機実行が
+    #    E2 を保存 → 本番は KataGo 本命 D2(v1145) vs E2(v155) なのに E2 を即答して誤答）
+    CACHE_VERSION = 3
 
     def _cache_path(self):
         import hashlib
@@ -334,6 +340,28 @@ class TsumegoSolverSession:
             try:
                 data = json.load(open(cache_path, encoding="utf-8"))
                 coords = tuple(data["move"]) if data.get("move") else None
+                # 同格別解のタイブレークはヒット時に現セッションの KataGo 順で適用する
+                # （fresh solve の §6.5.1-3 並べ替えの遅延版。保存時のランキングは投機実行
+                # など解析の無いセッションだと存在せず、決め手を1手だけ信じると
+                # アプリの解答樹の本手（KataGo 本命と一致しやすい）から外れる）
+                alts = [tuple(a) for a in (data.get("alternatives") or [])]
+                ranker = getattr(self, "move_ranker", None)
+                if coords is not None and ranker is not None and len(alts) >= 2:
+                    try:
+                        for pt in sorted(alts, key=lambda p: ranker(p)):
+                            if pt == self.ban_point or self.board.stones[self.board.index(pt)] != EMPTY:
+                                continue
+                            if pt != coords:
+                                self.log(
+                                    f"tsumego_solver: キャッシュの同格別解 "
+                                    f"{[gtp_coord(a) for a in alts]} を KataGo policy で並べ替え"
+                                    f" → {gtp_coord(pt)}（保存時の決め手 {gtp_coord(coords)}）",
+                                    "info",
+                                )
+                            coords = pt
+                            break
+                    except Exception:
+                        pass  # 並べ替えは最適化であって正しさの条件ではない
                 if coords != self.ban_point or coords is None:
                     self.log(f"tsumego_solver: 永続キャッシュにヒット（{data.get('summary', '')}）", "info")
                     return coords, f"キャッシュ: {data.get('summary', '')}"
@@ -467,6 +495,15 @@ class TsumegoSolverSession:
                 root_moves = ranked
             except Exception:
                 pass
+        # 同格タイ（optimize でも順位が付かなかった複数の本手）はキャッシュにも保存し、
+        # ヒット時に現セッションの KataGo 順で並べ替えられるようにする（CACHE_VERSION 3）。
+        # このセッションに move_ranker が無くても（投機実行など）、別解の存在自体は
+        # ソルバの証明で確定しているので保存してよい
+        tie_alts = (
+            [m for m in root_moves if m is not None]
+            if len(root_moves) > 1 and solution.value.plies == 0
+            else None
+        )
         # 実対局のコウ禁止に当たる手は打たない（§9.1）
         for move in root_moves:
             if move is None:
@@ -475,7 +512,7 @@ class TsumegoSolverSession:
             if move == self.ban_point:
                 self.log(f"tsumego_solver: 本手 {gtp_coord(move)} は実対局のコウ禁止。コウ待ちします", "info")
                 continue
-            self._cache_store(cache_path, move, summary)
+            self._cache_store(cache_path, move, summary, alternatives=tie_alts)
             return move, f"{summary} 手順={[gtp_coord(m) for m in solution.principal_line[:8]]}"
         # 同格の手が全部コウ禁止（実用上ほぼ来ない）→ パスでコウ待ち
         self.log("tsumego_solver: 同格の本手が全てコウ禁止のためパスします（コウ待ち）", "info")
@@ -568,8 +605,12 @@ class TsumegoSolverSession:
             pass  # 差し替えは最適化であって正しさの条件ではない。失敗したら決め手のまま
         return chosen
 
-    def _cache_store(self, cache_path, move, summary):
-        """root Solution の永続キャッシュ（§6.6。同じ詰碁の再出題で 0 秒）。"""
+    def _cache_store(self, cache_path, move, summary, alternatives=None):
+        """root Solution の永続キャッシュ（§6.6。同じ詰碁の再出題で 0 秒）。
+
+        `alternatives` は同格タイの本手リスト（証明済み・順不同）。ヒット時に現セッションの
+        KataGo 順で並べ替えるために保存する。単独の本手・証明ストア即答では None。
+        """
         if not cache_path:
             return
         import json
@@ -577,8 +618,11 @@ class TsumegoSolverSession:
 
         try:
             os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+            payload = {"move": list(move) if move else None, "summary": summary}
+            if alternatives and len(alternatives) >= 2:
+                payload["alternatives"] = [list(m) for m in alternatives]
             with open(cache_path, "w", encoding="utf-8") as f:
-                json.dump({"move": list(move) if move else None, "summary": summary}, f, ensure_ascii=False)
+                json.dump(payload, f, ensure_ascii=False)
         except Exception:
             pass  # キャッシュ書き込み失敗は無害
 

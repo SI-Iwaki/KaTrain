@@ -257,3 +257,50 @@ def test_hopeless_check_is_budget_bounded():
     white = {from_gtp_coord(s) for s in "K13 K12 K11 M11 K10 L10 M10".split()}
     prob = extract_problem(stones=(black, white), board_size=(13, 13), to_play="B")
     assert not solver_api.problem_is_hopeless(prob, {"solver_cache": False, "solver_verdict_ms": 1})
+
+
+def test_cache_hit_reranks_equal_alternatives_with_katago_order(tmp_path, monkeypatch):
+    """実測 2026-08-15 回答帳 13333f79df: E2/C3/D2 が同格の無条件殺しの詰碁で、
+    KataGo ランキングを持たないセッション（キャプチャ時の投機実行）が最初に証明できた手を
+    キャッシュに焼き付けると、以後の全セッションが §6.5.1-3 タイブレークを素通りして
+    アプリの解答樹の本手 D2（KataGo 本命 v1145）ではない手を即答していた。
+
+    CACHE_VERSION 3: 同格別解リストを保存し、ヒット時に現セッションの KataGo 順で
+    並べ替える（fresh solve と同じタイブレークの遅延適用）。
+    """
+    from katrain.core.tsumego_problem import extract_problem
+    from katrain.core.tsumego_solver.model import from_gtp_coord
+
+    b_stones = "A2 A3 A4 A5 B2 B5 B6 C6 D6 E5 F1 F5 G2 G3 G4 G5 H2"
+    w_stones = "B3 B4 C2 C5 D4 D5 E1 E4 F2 F3 F4"
+    black = {from_gtp_coord(s) for s in b_stones.split()}
+    white = {from_gtp_coord(s) for s in w_stones.split()}
+    prob = extract_problem(stones=(black, white), board_size=(13, 13), to_play="B")
+    cache_file = str(tmp_path / "entry.json")
+    monkeypatch.setattr(solver_api.TsumegoSolverSession, "_cache_path", lambda self: cache_file)
+    settings = {"solver_cache": True, "solver_time_limit_ms": 60000}
+
+    # セッションA: ランキング無し（投機実行相当）。解いて同格別解ごとキャッシュされる
+    session_a = solver_api.TsumegoSolverSession(prob, settings)
+    coords_a, thoughts_a = session_a.generate()
+    assert coords_a is not None, thoughts_a
+    import json as _json
+
+    data = _json.load(open(cache_file, encoding="utf-8"))
+    alts = {tuple(a) for a in data.get("alternatives") or []}
+    assert from_gtp_coord("D2") in alts and coords_a in alts, data
+
+    # セッションB: KataGo ランキングあり（D2 が本命）。キャッシュヒットでも D2 に並べ替わる
+    session_b = solver_api.TsumegoSolverSession(prob, settings)
+    order = {from_gtp_coord("D2"): 0, from_gtp_coord("C3"): 1, from_gtp_coord("E2"): 2}
+    session_b.move_ranker = lambda pt: order.get(pt, 10**6)
+    session_b.move_visits = {from_gtp_coord("D2"): 1145, from_gtp_coord("C3"): 249, from_gtp_coord("E2"): 155}
+    coords_b, thoughts_b = session_b.generate()
+    assert coords_b == from_gtp_coord("D2"), thoughts_b
+    assert "キャッシュ" in thoughts_b, thoughts_b  # 解き直しではなくヒット経路で並べ替えたこと
+
+    # セッションC: ランキング無しのヒットは従来どおり保存時の決め手を返す（後方互換）
+    session_c = solver_api.TsumegoSolverSession(prob, settings)
+    coords_c, thoughts_c = session_c.generate()
+    assert coords_c == coords_a, thoughts_c
+    assert "キャッシュ" in thoughts_c, thoughts_c
