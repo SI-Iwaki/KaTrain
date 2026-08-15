@@ -3330,6 +3330,16 @@ TSUMEGO_SUCCESS_LEAD = 0.0
 # `tsumego_frame.FRAME_SOLVER_ALIVE_OWNERSHIP` と同じ「その石群は生きているか」の閾値。
 TSUMEGO_SUCCESS_OWNERSHIP = 0.5
 
+# クラス格上げ（`_ko_promotion_choice`）の root movesOwnership 事前ふるいで「解析0本のまま
+# 省略してよい」と信じる下限。事前ふるいは軽量な副産物シグナルで、校正済みの正解 clean 手は
+# +0.98〜+1.00 に張り付く一方、**+0.37〜+0.5 の閾値近傍で run ごとに flip する**
+# （実測 2026-08-15 回答帳 4d3f678f77: root は +0.37〜+0.47 近傍で揺れて格上げ自体が走らない
+# run があるが、子局面 verdict は別プロセス3回とも D5 +0.11〜+0.21＝不成立 / 正解 B5
+# +0.95〜+0.98＝成立と毎回正しく指す）。`FRAME_SOLVER_CONFIRM_OWNERSHIP` と同じ発想＝
+# 閾値近傍の「成立」は信頼できる測定（子局面 verdict・wRN=0・ud12）で確かめてから省略する。
+# この帯（0.5〜0.9）に入るのは閾値近傍の手番だけなので、通常手番のコスト0本は不変。
+TSUMEGO_PROMOTION_ROOT_CONFIRM = 0.9
+
 
 def tsumego_region_stones_by_player(stones, region_of_interest, player):
     """リージョン内の石を (手番側, 相手側) の座標リストに分ける。リージョンが無ければ全石。"""
@@ -5788,14 +5798,29 @@ class TsumegoOwnershipStrategy(AIStrategy):
         if not role_stones:
             return chosen, None
         # 解析を撃つ前に root の movesOwnership で振るう。成立していると読めているならクラス裁定は
-        # 不要で、通常の手番のコストは 0 本のまま（実測の正解手は +0.98〜+1.00 でここを通らない）
+        # 不要で、通常の手番のコストは 0 本のまま（実測の正解手は +0.98〜+1.00 でここを通らない）。
+        # **省略のバーは threshold(0.5) ではなく確認レベル**（`TSUMEGO_PROMOTION_ROOT_CONFIRM`）:
+        # movesOwnership は軽量な副産物で閾値近傍（+0.37〜+0.5）が run ごとに flip する。
+        # 閾値近傍の「成立」で省略すると、子局面 verdict なら毎回正しく測れる手番
+        # （実測 4d3f678f77: D5 +0.11〜+0.21 vs 正解 B5 +0.95〜+0.98）が run 依存で素通りする。
+        # 0.5〜0.9 の帯は下の incumbent 子局面 verdict（wRN=0・ud12）が成立していれば従来どおり
+        # 省略するので、増えるのは閾値近傍の手番の解析1本だけ＝採用規則は不変
+        confirm_band = False  # 確認帯（threshold〜confirm）から入った格上げか
         if chosen.get("ownership"):
             root_per_stone = (
                 tsumego_absolute_ownership(chosen["ownership"], role_stones, self.game.board_size, player_sign)
                 / len(role_stones)
             )
-            if root_per_stone >= threshold:
+            if root_per_stone >= TSUMEGO_PROMOTION_ROOT_CONFIRM:
                 return chosen, None
+            # 確認帯で開けた格上げは「決定的に成立する対抗馬」への差し替えに限る（下の
+            # require_success）。root は「たぶん成立」と言っているので、成立を測れない
+            # コウ経路（二値の検出だけ）への差し替えまで許すと、正解が ply1 不成立の
+            # clean 手である問題で「たまたま省略」が「誤った格上げ」に化ける
+            # （実測 2026-08-15 フルスイープ A/B 4e7d6932f4: 正解 D10〈−0.97/子＝ply1 で
+            # 成否が出ない〉をコウ経路 B9〈−0.95/子〉へ差し替えて誤答。回復側の
+            # 4d3f678f77 の B5 は +0.95〜+0.98＝成立なのでこの締めの影響を受けない）
+            confirm_band = root_per_stone >= threshold
         incumbent = self._region_child_verdict(
             chosen["move"],
             role_stones,
@@ -5859,7 +5884,9 @@ class TsumegoOwnershipStrategy(AIStrategy):
         # **リプレイ 6/6・実GUI 3/3 が全部この状態（採用手が -1.00〜+0.17/子）で全部誤答**、
         # 一方 正答した2件は採用手が +0.94/+0.99＝成立していた。校正ケース case V2 は
         # v2/v1=0.63・pl_gap=0.01 で **ambiguous 帯**なのでこのゲートは構造的に掛からない。
-        require_success = dominant and bool(settings.get("promotion_dominant_requires_success", True))
+        require_success = (
+            dominant and bool(settings.get("promotion_dominant_requires_success", True))
+        ) or confirm_band
         best = None
         for cand in shortlist:
             verdict = verdicts.get(cand["move"])
@@ -5874,7 +5901,8 @@ class TsumegoOwnershipStrategy(AIStrategy):
                 TSUMEGO_CLASS_FAILED: "成立していない（選択手と同じ最下位クラス）",
             }[result_class]
             if require_success and not succeeds:
-                label += "／visits が1手に集中しているため、成立していない手へは格上げしません"
+                reason = "visits が1手に集中している" if dominant else "root は選択手を閾値近傍の成立と読んでいる"
+                label += f"／{reason}ため、成立していない手へは格上げしません"
             self.game.katrain.log(
                 f"[{self.strategy_name}] クラス格上げ: {cand['move']} 検証値{verdict['value']:+.2f}"
                 f"（{per_stone:+.2f}/子） 目数{verdict['lead']:+.2f} → {label}",
