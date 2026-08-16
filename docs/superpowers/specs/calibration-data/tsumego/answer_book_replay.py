@@ -27,7 +27,12 @@
 usage:
   python docs/superpowers/specs/calibration-data/tsumego/answer_book_replay.py \
       [--out PATH] [--limit N] [--min-line 5] [--route all|frame|solver] \
-      [--keys k1,k2] [--start N] [--resume] [--repeats 1] [--debug]
+      [--keys k1,k2] [--start N] [--resume] [--debug] [--no-solver-cache]
+
+`--keys` は entry キーの**前方一致**（`--keys 25d208df` でよい）。`--repeats` は無い＝
+A/B の 3run は**ケースごとに新規プロセス**で回すこと（1プロセス反復だと KataGo の NN
+キャッシュとソルバ永続キャッシュの両方が run2 以降に効いて独立標本にならない。
+`2026-08-03-tsumego-stage3-early-speculation-design.md` と同じ運用）。
 
 出力は JSONL（1行 = 1手順）。1件ごとに flush するので、走行中でも集計できる。
 ASCII output only（cp932 端末で落ちないように）。
@@ -446,7 +451,7 @@ def main():
     ap.add_argument("--start", type=int, default=0)
     ap.add_argument("--min-line", type=int, default=5, help="この手数未満の記録手順は飛ばす")
     ap.add_argument("--route", choices=["all", "frame", "solver"], default="all", help="静的ゲートでの事前フィルタ")
-    ap.add_argument("--keys", default=None, help="カンマ区切りの entry キー（デバッグ用）")
+    ap.add_argument("--keys", default=None, help="カンマ区切りの entry キー（前方一致。ログの key[:8] をそのまま渡せる）")
     ap.add_argument("--resume", action="store_true", help="--out に既にある (key,line) を飛ばす")
     ap.add_argument("--debug", action="store_true", help="戦略の判定ログを出す")
     ap.add_argument(
@@ -487,6 +492,20 @@ def main():
         settings["solver_cache"] = False
     if args.no_solver:
         settings["solver_enabled"] = False
+    if args.no_solver_cache or args.no_solver:
+        # **戦略側にも届かせる**（下の --capture-settings :503 とまったく同じ理由）。
+        # `TsumegoSolverStrategy._solver_settings`（ai.py:4803-4810）は
+        # `katrain.config("tsumego_capture")` を自分で引き直すので、ローカルの settings dict を
+        # 書き換えるだけでは **choose_board の板選択にしか効かない**。--no-solver-cache は
+        # 出題前検算（problem_is_hopeless）だけを cold にして、**手番ごとの solve は永続
+        # キャッシュを引いたまま**だった＝「cold で測った」と記録した過去の A/B は手番側が warm。
+        # --no-solver は solver_problem が None になり subtype が ai:tsumego に落ちるので
+        # 実害は無いが、同じ取りこぼしを繰り返さないよう対称に伝播させる
+        capture_cfg = host._config.setdefault("tsumego_capture", {})
+        for flag, requested in (("solver_cache", args.no_solver_cache), ("solver_enabled", args.no_solver)):
+            if requested:
+                capture_cfg[flag] = False
+                print(f"override: {flag}=False")
     for pair in (args.capture_settings or "").split(","):
         key, _, raw = pair.partition("=")
         if not key.strip():
@@ -504,10 +523,12 @@ def main():
         print(f"override: {key.strip()}={value!r}")
 
     entries = json.load(open(args.book, encoding="utf-8"))["entries"]
-    wanted_keys = set(args.keys.split(",")) if args.keys else None
+    # 前方一致で受ける（進捗ログ・結果集計はどちらも key[:8] を出すので、その形のまま
+    # 投げ返せないと 40 桁を回答帳から引き直す羽目になる）。完全一致キーもそのまま通る
+    wanted_keys = [k.strip() for k in args.keys.split(",") if k.strip()] if args.keys else None
     cases = []
     for key, entry in entries.items():
-        if wanted_keys and key not in wanted_keys:
+        if wanted_keys and not any(key.startswith(w) for w in wanted_keys):
             continue
         lines = [ln for ln in (entry.get("lines") or []) if len(ln) >= args.min_line]
         if not lines:

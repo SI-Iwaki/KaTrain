@@ -135,6 +135,9 @@ Clock・controls・board_gui・play_mode は1つも出てこない（実測: 909
 - **ソルバ経路の永続キャッシュ**（`~/.katrain/tsumego_cache/`）は本番と共有している。
   過去の誤答が焼き付いていればそれも再現される（case AB）。これは仕様どおりだが、
   「現在のコードの実力」を測りたいときは `solver_cache=false` で A/B すること。
+  **`--no-solver-cache` は 2026-08-16 まで部分 no-op**（出題前検算にしか効かず、手番ごとの solve は
+  キャッシュを引いていた）。**それ以前に「cold で測った」と書かれた記録は warm として読むこと**
+  （実際に影響したのは §9.5 の1行だけ＝§9.5.1 で cold 再走済み・結論は不変）。
 
 ## 8. 使い方
 
@@ -232,12 +235,47 @@ frame 経路の `alternative` は「別解と確認できた」ではなく**「
 | 条件 | 結果 |
 |---|---|
 | 同条件で再走 | **13/13 が不一致で再現**（フレークではない） |
-| `solver_cache=false` | **13/13 変わらず**（case AB のキャッシュ汚染ではない） |
+| `solver_cache=false` | **13/13 変わらず**（case AB のキャッシュ汚染ではない）。**この行は部分 no-op のフラグで測っている → §9.5.1 で cold 再走・結論は同じ** |
 | `solver_enabled=false`（KataGo経路で出題） | **10/13 が手順まるごと正解に転じる** |
 
 原因は**抽出が画面の詰碁と別問題になっている**（case AA/AC/AD/AE/AF 系）。
 `problem_is_hopeless` は「解けないと証明できた抽出」しか弾かないので、
 **「解けるが別問題」は素通りする**。
+
+#### 9.5.1 追記（2026-08-16）— 上の `solver_cache=false` は cold になっていなかった。測り直しても結論は同じ
+
+上の追試は `--no-solver-cache` で走らせたが、**当時のこのフラグはローカルの settings dict しか
+書き換えていなかった**。`TsumegoSolverStrategy._solver_settings`（`ai.py`）は
+`katrain.config("tsumego_capture")` を自分で引き直すので、cold になっていたのは**出題前検算
+（`problem_is_hopeless`）だけ**で、**手番ごとの solve は永続キャッシュ（当時 1673 件）を引いたまま**
+だった（修正は 2026-08-16。経緯は `2026-08-15-tsumego-extraction-expansion-design.md` §0.8 の
+「§0.6-3」）。`--capture-settings solver_cache=false` のほうは 2026-08-09 の時点で `host._config` へ
+伝播済み＝効いていたので、**どちらで測ったかで意味が変わる**。実際に使われたのは前者。
+
+修正後のハーネスで 13 件を**ケースごとに新規プロセス**で cold / warm 対に走らせ直した
+（違いは `--no-solver-cache` の有無だけ。両アームとも `solver_cross_check=false` にして
+2026-08-09 当時＝突き合わせゲート実装前の判定経路に揃えた。生データ 40 run は
+`calibration-data/tsumego/answer-book-truemiss13-coldwarm-20260816.jsonl`）:
+
+| | cold | warm |
+|---|---|---|
+| 手順の判定 | mismatch 10 / correct 3 | mismatch 10 / correct 3 |
+| 永続キャッシュのヒット | **0**（cold 25 run すべて） | 15 run すべてで発生 |
+
+アーム間の一致は **判定 13/13・初手 12/13**（キャッシュのヒット有無だけが違う対で、出力が動かない）。
+
+**キャッシュ汚染ではない、という結論は変わらない。** 唯一 cold と warm で着手が割れた d79abbaa も
+アーム間差ではなく**run 間分散**だった（cold 3run = G7 / G7 / G5、warm 3run = G5×3。6/6 とも不一致）。
+
+一方**「13/13 不一致」自体は今日のコードでは再現しない**（キャッシュとは無関係＝2026-08-09 以降の
+ソルバ側の変更ぶん。突き合わせゲートは両アームで off なのでその効果でもない）:
+
+- **当時と同じ深さ・同じ手で外す: 7/13**（e6794025 / bcccd4ca / 41e5cd7f / 5c45fb84 / 86363318 /
+  402f938d / 0dffe0bd）
+- 同じ深さで外すが手が違う: 1（d79abbaa）
+- **初手が正解に転じた: 5/13**（22bfefd9 / 8ddb8b5b / 3eb79f02 / 6b3b01b1 / 19c3101b。いずれも
+  cold 3run で安定）。うち **3 件は手順まるごと正解**（8ddb8b5b / 3eb79f02 / 6b3b01b1）、
+  残り 2 件は不一致が depth4 へ移っただけ
 
 ### 9.6 KataGo 本命から外すことの損得（最重要）
 

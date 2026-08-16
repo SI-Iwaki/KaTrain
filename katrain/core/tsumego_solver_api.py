@@ -688,14 +688,28 @@ def build_session_from_game(game, settings: dict, logger=None) -> Optional[Tsume
             return None
     session = TsumegoSolverSession(problem, settings, logger)
     # 再抽出用の関心領域は GUI の region_of_interest を優先（無ければ __init__ の
-    # region 外接矩形のまま）。ここを配線しないと途中の再抽出が hint なしで走る
+    # region 外接矩形＝`_problem_hint` のまま）。
+    #
+    # **この分岐は呼ばれた時点で ROI が入っているかに依存する**（挙動の分岐であって
+    # 設定ではない）。キャプチャ経路では投機 presolve のスレッド起動（__main__.py:1551）が
+    # `_apply_tsumego_region`（同 :1572）より**前**にあるため、presolve が先に読んだ run では
+    # ROI=None ＝閉包 bbox の hint でセッションが作られ、そのセッションを ai.py:4960 が
+    # 全手番で再利用する。一方オフラインのハーネス（answer_book_replay.py の build_game・
+    # generate_move_e2e.py）は先に ROI を設定してから戦略に作らせるので必ず ROI 側になる
+    # ＝**本番とハーネスで hint の出所が食い違いうる**。どちらの hint が正しいかは未測定
+    # （狭い既定 hint は :95-99 のとおり意図的な安全策で、広げると `_open_rect_problem`
+    # 経由で region が膨らむ向きの力も同時に入る）なので、まず出所を観測可能にする。
+    # 再抽出は `_needs_reextract`（着手が region の外）のときだけ走るので、この行が
+    # 効いてくるのは詰碁ログの中でも稀な手番に限られる
     roi = getattr(game, "region_of_interest", None)
+    hint_source = "GUI ROI" if roi else "閉包 bbox（ROI 未設定）"
     if roi:
         session.region_hint = list(roi)
     if logger:
         logger(
             f"tsumego_solver: 問題を抽出 type={problem.problem_type.value} target={len(problem.target)}子"
-            f" region={len(problem.region)}点 target_color={problem.target_color}",
+            f" region={len(problem.region)}点 target_color={problem.target_color}"
+            f" 再抽出hint={session.region_hint}（{hint_source}）",
             "info",
         )
     return session
