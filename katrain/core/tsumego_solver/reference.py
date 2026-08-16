@@ -691,7 +691,15 @@ class ReferenceSolver:
         # 燃やしてタイムアウトし成果ゼロ（実測 2026-08-02: 実戦2件とも plies=0 mat=0 で3秒浪費）。
         # クラス・本手は第1段階で確定済みなので正しさは不変（SolverLimits.opt_skip_after_ms 参照）
         stage1_ms = (time.time() - t0) * 1000.0
-        allow_opt = self.limits.optimize_line and stage1_ms <= self.limits.opt_skip_after_ms
+        # `opt_skip_after_ms <= 0` は「常にスキップ」の番兵（SolverLimits の docstring）。
+        # `stage1_ms <= 0` の比較だけに任せると **Windows の `time.time()` は分解能が約 15.6ms**
+        # なので速い第1段階が 0.0ms と測れて番兵が効かない（実測 2026-08-16: 既存の
+        # `test_opt_skip_after_slow_stage1_keeps_class_and_moves` が run ごとに落ちる）。
+        allow_opt = (
+            self.limits.optimize_line
+            and self.limits.opt_skip_after_ms > 0
+            and stage1_ms <= self.limits.opt_skip_after_ms
+        )
         final: List[Tuple[tuple, Optional[int], SolutionValue, dict, List[Optional[int]]]] = []
         for m, info in tie:
             plies, mat = 0, 0

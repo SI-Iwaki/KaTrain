@@ -670,6 +670,32 @@ def test_opt_skip_after_slow_stage1_keeps_class_and_moves(solver_cls):
     assert skipped.value.plies == 0  # opt が走っていない
 
 
+@pytest.mark.skipif(not HAVE_NATIVE, reason="ネイティブカーネル（DLL）が無い")
+def test_opt_time_budget_is_capped_by_fraction_only_for_short_budgets():
+    """opt 1本の時間上限は「予算の 30% まで」で頭打ちする（`opt_time_budget_ms`）。
+
+    下限 3000ms は短い予算では下限として効きすぎ、GUI 実効の 5000ms 予算では opt 1本に
+    予算の 60% を渡していた。締める側にしか動かさないので**予算 10000ms 以上は現行と同一式**
+    ＝ P1 スイート（300000ms）も上の 60000ms のテスト群も挙動が変わらないことをここで固定する。
+    """
+    from katrain.core.tsumego_solver.native import (
+        OPT_TIME_MAX_MS,
+        OPT_TIME_MIN_MS,
+        opt_time_budget_ms,
+    )
+
+    def legacy(b):
+        return min(OPT_TIME_MAX_MS, max(OPT_TIME_MIN_MS, b * 0.1))
+
+    for budget in (10000, 30000, 60000, 300000, 1000000):
+        assert opt_time_budget_ms(budget) == legacy(budget), budget  # 長予算は不変
+    assert opt_time_budget_ms(5000) == 1500  # GUI 実効: 3000（予算の60%）→ 1500
+    assert opt_time_budget_ms(1000) == 300  # 出題前検算（solver_verdict_ms）
+    for budget in (100, 1000, 5000, 9999):
+        assert opt_time_budget_ms(budget) < legacy(budget), budget  # 短予算は必ず締まる
+        assert opt_time_budget_ms(budget) <= 0.3 * budget + 1e-9, budget
+
+
 if __name__ == "__main__":
     import sys
 

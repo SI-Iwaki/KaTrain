@@ -2158,3 +2158,68 @@ visits 上位 `TSUMEGO_SOLVER_CROSS_CHECK_CANDIDATES`(2) 手を同じ尺度で�
 **残る4件**: `d79abbaa` / `5c45fb84` は `solver_enabled=false` でも外れる＝ai:tsumego 側でも
 解けない問題。`e6794025` / `bcccd4ca` は突き合わせが却下しなかった（第1段でソルバ手が
 成立と読まれた）。
+
+---
+
+## 追記15（2026-08-16）opt の時間上限が短い予算を食い潰していた — 下限 3000ms は「予算の 60%」だった
+
+### 症状
+
+GUI 実効の `solver_time_limit_ms=5000` で、ソルバ経路の初手が体感 3〜5 秒かかる。
+`solver_opt_skip_after_ms`（追記5 で入れた「第1段階が遅かったら opt を省く」ゲート）は
+**既定 5000 が予算と同値なので構造的に発火しない** — `stage1_ms > opt_skip_after_ms` は
+`stage1_ms > time_limit_ms` を意味し、その場合 `_classify_after` は `SolverTimeout` を
+そのまま外へ投げるので line 694 に到達しない。
+
+### 実測（`calibration-data/tsumego/opt_budget_probe.py`・KataGo 不要）
+
+route=solver の実問題 **134 問**（回答帳センサス由来＝GUI が実際にソルバで出題している問題）を
+5000ms 予算・native・コールドで解く。arm は **1問ぶんを続けて**回す（背景負荷の時間変動で
+arm 間の比較が歪まないように）。`base2` は base と同条件の2本目＝run 間ノイズの物差し。
+
+| arm | 総所要 | opt 所要 | クラス差 | `root_moves` 差 | plies/material 差 |
+|---|---|---|---|---|---|
+| base（現行） | 452.6s | **247.9s＝55%**（108回中 **90回タイムアウト**） | — | — | — |
+| base2（同条件） | 452.9s | 247.6s | **0** | **0** | **0** |
+| skip50（`opt_skip` を予算比例） | 435.4s（−3.8%） | 230.6s | 0 | 0 | 0 |
+| **time30（opt 上限 0.3×予算）** | **335.7s（−26%）** | 130.3s | **0** | **0** | **0** |
+| time20（0.2×予算） | 294.3s（−35%） | 89.5s | 0 | 0 | 0 |
+| time10（0.1×予算） | 251.6s（−44%） | 46.4s | 0 | 0 | **2件** |
+
+- 解けた 114 問のうち **103 問が plies=0**＝opt は成果ゼロで予算だけ燃やしている。
+- opt が**成功した**のは 12 問だけで、その所要は **最大 989ms・中央値 19ms**。
+  → **上限 1000ms 以上なら成功 opt を1つも切らない**（cap 500ms は2件切る＝time10 の差分）。
+- **真犯人は `opt_skip_after_ms` ではない**。燃えているのは第1段階が**速い**問題で、
+  例 `0dffe0bd` は stage1 140ms → opt 3005ms タイムアウト → plies=0（総 3146ms）。
+  stage1 の遅さを見るゲートでは原理的に捕まらない（だから skip50 は −3.8% しか効かない）。
+  実体は `NativeSolver.OPT_TIME_MS = clamp(0.1×予算, 3000, 30000)` の**下限 3000ms** で、
+  5000ms 予算では opt 1本に予算の 60% を渡していた。
+
+### 修正
+
+`native.opt_time_budget_ms(time_limit_ms) = min(現行式, 0.3 × 予算)`（純関数に切り出し）。
+**締める側にしか動かさない**ので **予算 10000ms 以上は現行と同一式**＝P1 スイート（300000ms）も
+既存テスト（60000ms）も挙動不変（`test_opt_time_budget_is_capped_by_fraction_only_for_short_budgets`
+で固定）。効くのは GUI の 5000ms（3000→1500ms）と出題前検算 `solver_verdict_ms` の 1000ms（→300ms）。
+0.2 ではなく 0.3 を採るのは、成功 opt の最遅 989ms に対し 1000ms は余裕が 11ms しかなく
+タイミングの揺れで切れるため（1500ms なら 1.5 倍の余裕）。
+
+あわせて `reference.solve()` の `allow_opt` に `opt_skip_after_ms > 0` を明示した。
+`<= 0` は SolverLimits の docstring では「常にスキップ」の番兵だが、**Windows の
+`time.time()` は分解能が約 15.6ms** なので速い第1段階が `0.0ms` と測れて
+`stage1_ms <= 0` が真になり番兵が効かない（既存テスト
+`test_opt_skip_after_slow_stage1_keeps_class_and_moves` が run ごとに落ちていた＝
+実測 2026-08-16 に**未修正のコードでも**再現。修正後は 3run 連続で 50 passed）。
+既定 5000 の本番経路は `> 0` なので挙動不変。
+
+### 回帰
+
+- `pytest tests/test_tsumego_solver.py tests/test_tsumego_solver_strategy.py` → **50 passed ×3run**
+  （修正前は上記の番兵バグで run ごとに1件失敗していた）。
+- `solver_p1_suite.py --native --time 5000`（＝改修が効く予算での per-move 回帰）:
+  **判定は全ケース同一**（9/25 PASS）で、**solve 合計 40.0s → 21.6s（−46%）・最遅 3.6s → 2.1s**。
+- 300000ms 既定の `e2e_suite.py --solver` は上記のとおり**式が同一**なので回していない
+  （単体テストが 10000ms 以上の不変を固定している）。
+- KataGo リプレイの A/B は不要と判断した: 134 問すべてでソルバの出力（クラス・`root_moves` の
+  全リスト・plies・material）が**ビット一致**で、変わるのは所要時間とログ用 `principal_line` だけ。
+  GUI の判断はソルバ出力の純関数なので、KataGo を回しても測れるのは KataGo のノイズだけになる。
