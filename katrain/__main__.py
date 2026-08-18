@@ -64,6 +64,7 @@ from kivy.properties import BooleanProperty, NumericProperty, ObjectProperty, St
 from kivy.clock import Clock
 from kivy.metrics import dp
 from katrain.core.ai import generate_ai_move, tsumego_book_status as compute_tsumego_book_status
+from katrain.core.board_watch import STATUS_WARN as BW_STATUS_WARN
 
 from katrain.core.lang import DEFAULT_LANGUAGE, i18n
 from katrain.core.constants import (
@@ -130,6 +131,11 @@ class KaTrainGui(Screen, KaTrainBase):
     tsumego_book_status = StringProperty("")
     tsumego_banner_flash = StringProperty("")  # 同バナーへの一時メッセージ（保存完了など。空で解除）
     tsumego_banner_flash_kind = StringProperty("save")  # 一時メッセージの色（save / info / warn）
+    # 盤面監視モードの状態（"" = OFF）。status は色トークン、detail は自由文の理由。
+    # 既存の tsumego_book_status に相乗りできない（update_gui が毎回上書きする）し、
+    # 既存バナーの status は i18n と色辞書の列挙キーなので可変文言を載せられない
+    board_watch_status = StringProperty("")
+    board_watch_detail = StringProperty("")
     controls = ObjectProperty(None)
 
     def __init__(self, **kwargs):
@@ -577,6 +583,37 @@ class KaTrainGui(Screen, KaTrainBase):
 
         except IllegalMoveException as e:
             self.controls.set_status(f"Illegal Move: {str(e)}", STATUS_ERROR)
+
+    def _do_board_watch_play(self, coords, color, expect_move_number):
+        """盤面監視が検出した相手の着手を反映する。
+
+        "play" を流用しないのは、_do_play が色を引数に取らず「その時点の」
+        next_player_info.player で打つため。ワーカーが検査した手番はキュー投入前の
+        スナップショットで、投入から実行までの間にホイール undo（:1737-1739）や
+        キーボード undo（:1833）が1手ぶん parity を反転させると、空点への合法手として
+        **例外もログも無しに逆色の石が入る**。ここで再検証して不一致なら捨てる。
+        """
+        node = self.game.current_node
+        if node.depth != expect_move_number or node.next_player != color:
+            self.log(
+                f"board_watch: 注入を破棄しました（手数 {node.depth}!={expect_move_number} / "
+                f"手番 {node.next_player}!={color}）",
+                OUTPUT_INFO,
+            )
+            self._board_watch_status(BW_STATUS_WARN, "着手の直前に局面が変わったため注入を取り消しました")
+            return
+        self.board_gui.animating_pv = None
+        try:
+            old_prisoner_count = self.game.prisoner_count["W"] + self.game.prisoner_count["B"]
+            self.game.play(Move(coords, player=color))
+            if old_prisoner_count < self.game.prisoner_count["W"] + self.game.prisoner_count["B"]:
+                play_sound(Theme.CAPTURING_SOUND)
+            else:
+                self._play_stone_sound()
+            self.log(f"board_watch: 相手の着手 {Move(coords, player=color).gtp()} を反映しました", OUTPUT_INFO)
+        except IllegalMoveException as e:
+            self.log(f"board_watch: 注入した手が非合法でした: {e}", OUTPUT_INFO)
+            self._board_watch_status(BW_STATUS_WARN, f"注入した手が非合法でした: {e}")
 
     def _do_analyze_extra(self, mode, **kwargs):
         self.game.analyze_extra(mode, **kwargs)
@@ -1320,6 +1357,15 @@ class KaTrainGui(Screen, KaTrainBase):
         """失敗をターミナルと GUI の両方に出す（作業スレッドから呼ばれるため GUI 更新は Clock 経由）"""
         self.log(message, OUTPUT_ERROR)
         Clock.schedule_once(lambda _dt: self.controls.set_status(message, STATUS_ERROR, check_level=False), 0)
+
+    def _board_watch_status(self, kind, text):
+        """監視バナーを更新する（ワーカースレッドから呼ばれるため Clock 経由）"""
+
+        def _set(_dt):
+            self.board_watch_status = kind
+            self.board_watch_detail = text
+
+        Clock.schedule_once(_set, 0)
 
     def _do_capture_fullboard_apply(self, grid):
         # Web サイトの全体表示（盤全体が写っている）キャプチャ: 詰碁パイプライン（枠・解析リージョン・
