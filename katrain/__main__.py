@@ -589,9 +589,9 @@ class KaTrainGui(Screen, KaTrainBase):
 
         "play" を流用しないのは、_do_play が色を引数に取らず「その時点の」
         next_player_info.player で打つため。ワーカーが検査した手番はキュー投入前の
-        スナップショットで、投入から実行までの間にホイール undo（:1737-1739）や
-        キーボード undo（:1833）が1手ぶん parity を反転させると、空点への合法手として
-        **例外もログも無しに逆色の石が入る**。ここで再検証して不一致なら捨てる。
+        スナップショットで、投入から実行までの間にホイール undo/redo（on_touch_up、
+        :1940-1943）やキーボード undo（:2037）が1手ぶん parity を反転させると、空点への
+        合法手として**例外もログも無しに逆色の石が入る**。ここで再検証して不一致なら捨てる。
         """
         node = self.game.current_node
         if node.depth != expect_move_number or node.next_player != color:
@@ -614,6 +614,68 @@ class KaTrainGui(Screen, KaTrainBase):
         except IllegalMoveException as e:
             self.log(f"board_watch: 注入した手が非合法でした: {e}", OUTPUT_INFO)
             self._board_watch_status(BW_STATUS_WARN, f"注入した手が非合法でした: {e}")
+
+    def _do_board_watch_start(self, reader, grid, size):
+        """監視の開始。前提チェック → 必要なら局面取り込み → プレイモード → スレッド起動。
+
+        既存の capture-fullboard-apply は流用しない（両者を人間に戻す・raise_window で
+        フォーカスを奪う・解析モードに入る、の3つが監視モードに不都合）。
+        new-game と後続を分けると game_id 更新で後続メッセージが黙って破棄されるため、
+        ここで1メッセージ内に完結させる（_do_tsumego_capture_apply と同じ作法）。
+        """
+        from katrain.core.board_watch import (
+            BoardWatcher,
+            board_sgf,
+            grid_to_move,
+            stones_to_grid,
+            watch_settings_from_config,
+        )
+
+        ai_players = [bw for bw, info in self.players_info.items() if info.ai]
+        if len(ai_players) != 1:
+            self._board_watch_status(
+                BW_STATUS_WARN, "片方を AI・片方を人間に設定してから開始してください"
+            )
+            return
+        human_color = "W" if ai_players[0] == "B" else "B"
+        if self.game.region_of_interest is not None:
+            self.game.set_region_of_interest([0, 0, 0, 0])  # 解除（詰碁キャプチャの残骸）
+        size_x, size_y = self.game.board_size
+        current = stones_to_grid(((s.coords, s.player) for s in self.game.stones), size_x) if size_x == size_y else None
+        if current != grid or size_x != size:
+            # 取り込み: 手番は「人間側（アプリ AI）の色」に固定する。石数パリティでは決まらない
+            # （盤上石数 b,w と取られた石数 cb,cw は b-w = cw-cb なので、取りが1回でも入ると
+            # パリティは手番を表さない）。人間側に倒すのは安全側＝KaTrain が誤った色で
+            # 勝手に打ち出す事故が構造的に起きない
+            komi = self.config("game/komi", 6.5)
+            rules = self.config("game/rules", "japanese")
+            try:
+                move_tree = KaTrainSGF.parse_sgf(board_sgf(grid, komi, rules, human_color))
+            except ParseError as e:
+                self.log(f"board_watch: 取り込み SGF の解析に失敗: {e}", OUTPUT_ERROR)
+                self._board_watch_status(BW_STATUS_WARN, f"局面を取り込めません: {e}")
+                return
+            self._do_new_game(move_tree=move_tree)
+            self.log(f"board_watch: アプリの局面（{size}路）を取り込みました（手番={human_color}）", OUTPUT_INFO)
+            # move_tree ありの new-game は解析モードに入るので、プレイモードへ戻す。
+            # switch_ui_mode のトグルは他所の予約済みクリックと競合して mode の読み値が狂う
+            Clock.schedule_once(lambda _dt: self.play_mode.play.trigger_action(duration=0), 0)
+        elif self.play_analyze_mode != MODE_PLAY:
+            Clock.schedule_once(lambda _dt: self.play_mode.play.trigger_action(duration=0), 0)
+
+        def on_move(i, j, color, move_number, board_size):
+            self("board-watch-play", grid_to_move(i, j, board_size), color, move_number)
+
+        watcher = BoardWatcher(
+            capture_fn=reader.read,
+            get_state_fn=self._board_watch_state,
+            on_move=on_move,
+            on_status=self._board_watch_status,
+            settings=watch_settings_from_config(self._config.get("board_watch")),
+        )
+        self._board_watcher = watcher
+        watcher.start()
+        self.log("board_watch: 監視を開始しました", OUTPUT_INFO)
 
     def _do_analyze_extra(self, mode, **kwargs):
         self.game.analyze_extra(mode, **kwargs)
@@ -1366,6 +1428,76 @@ class KaTrainGui(Screen, KaTrainBase):
             self.board_watch_detail = text
 
         Clock.schedule_once(_set, 0)
+
+    def _board_watch_state(self):
+        """監視スレッドが読む KaTrain 側のスナップショット（判定は board_watch 側で行う）"""
+        from katrain.core.board_watch import WatchState, move_to_grid, stones_to_grid
+
+        game = self.game
+        if game is None:
+            return None
+        size_x, size_y = game.board_size
+        if size_x != size_y:
+            return None  # 長方形の盤は監視対象外
+        node = game.current_node
+        # game.stones はプロパティ自身が _lock を取る（呼び出し側でロックを取らない）
+        grid = stones_to_grid(((s.coords, s.player) for s in game.stones), size_x)
+        last_move = None
+        move = node.move
+        if move is not None and move.coords is not None:  # パスは coords=None の Move
+            i, j = move_to_grid(move.coords, size_x)
+            last_move = (i, j, move.player)
+        to_play = node.next_player
+        return WatchState(
+            current_grid=grid,
+            last_move=last_move,
+            to_play=to_play,
+            to_play_is_human=self.players_info[to_play].human,
+            # AI が構造的に応手できない状態（分岐・終局・解析モード・リージョン残り）は
+            # 盤面が一致していても無症状のデッドロックになるので、判定側へ渡して警告させる
+            ai_can_respond=(
+                self.play_analyze_mode == MODE_PLAY
+                and not node.children
+                and not game.end_result
+                and game.region_of_interest is None
+            ),
+            move_number=node.depth,
+            board_size=size_x,
+        )
+
+    def _board_watch_trigger(self):
+        """ctrl+alt+b のワーカースレッド。OFF なら認識してから開始、ON なら停止する"""
+        from katrain.core.board_watch import AppBoardReader
+
+        now = time.time()
+        if now - getattr(self, "_board_watch_last_trigger", 0.0) < 2.0:
+            return
+        self._board_watch_last_trigger = now
+        if getattr(self, "_board_watch_busy", False):
+            return
+        watcher = getattr(self, "_board_watcher", None)
+        if watcher is not None:
+            watcher.stop()
+            self._board_watcher = None
+            self._board_watch_status("", "")
+            self.log("board_watch: 監視を停止しました", OUTPUT_INFO)
+            return
+        self._board_watch_busy = True
+        try:
+            settings = self._config.get("board_watch") or {}
+            tsumego = self._config.get("tsumego_capture") or {}
+            title = settings.get("window_title") or tsumego.get("window_title", "BlueStacks")
+            sizes = [int(s) for s in (tsumego.get("board_sizes") or [9, 13, 19])]
+            reader = AppBoardReader(title, sizes)
+            try:
+                grid = reader.read()
+            except Exception as e:
+                self.log(f"board_watch: 盤面を認識できないため開始しません: {e}", OUTPUT_ERROR)
+                self._board_watch_status(BW_STATUS_WARN, f"盤面を認識できません: {e}")
+                return
+            self("board-watch-start", reader, grid, reader.size)
+        finally:
+            self._board_watch_busy = False
 
     def _do_capture_fullboard_apply(self, grid):
         # Web サイトの全体表示（盤全体が写っている）キャプチャ: 詰碁パイプライン（枠・解析リージョン・
