@@ -14,6 +14,8 @@ EMPTY = "."
 BLACK = "B"
 WHITE = "W"
 
+_SGF_COORD = "abcdefghijklmnopqrstuvwxyz"
+
 
 def stones_to_grid(stones, size):
     """(coords, player) の列（coords は KaTrain の下origin (x, y)）を上origin グリッドにする"""
@@ -37,6 +39,23 @@ def move_to_grid(coords, size):
 def grid_to_move(i, j, size):
     """グリッド座標 (i, j) → KaTrain の Move.coords (x, y)"""
     return (j, size - 1 - i)
+
+
+def board_sgf(grid, komi, rules, next_player):
+    """監視モード用の SGF（配置のみ）。石が0個でも成立する。
+
+    tsumego_capture.grid_to_sgf を流用しないのは、あれが石0個で CaptureError を投げ
+    （詰碁向けの文言が出る）、PL[B] 固定でもあるため（spec §3.2）。
+    """
+    size = len(grid)
+    black = [_SGF_COORD[j] + _SGF_COORD[i] for i, row in enumerate(grid) for j, v in enumerate(row) if v == BLACK]
+    white = [_SGF_COORD[j] + _SGF_COORD[i] for i, row in enumerate(grid) for j, v in enumerate(row) if v == WHITE]
+    sgf = f"(;GM[1]FF[4]CA[UTF-8]SZ[{size}]KM[{komi}]RU[{rules}]PL[{next_player}]"
+    if black:
+        sgf += "AB" + "".join(f"[{p}]" for p in black)
+    if white:
+        sgf += "AW" + "".join(f"[{p}]" for p in white)
+    return sgf + ")"
 
 
 def _neighbours(i, j, size):

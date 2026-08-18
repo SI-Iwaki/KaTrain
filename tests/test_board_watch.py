@@ -1,4 +1,4 @@
-from katrain.core.board_watch import EMPTY, BLACK, WHITE, apply_move_to_grid, grid_to_move, move_to_grid, stones_to_grid, WatchState, reconcile
+from katrain.core.board_watch import EMPTY, BLACK, WHITE, apply_move_to_grid, grid_to_move, move_to_grid, stones_to_grid, WatchState, reconcile, board_sgf
 
 
 def test_stones_to_grid_uses_top_origin_rows():
@@ -207,3 +207,25 @@ def test_reconcile_single_noise_stone_removed_is_mismatch():
     observed = _grid([".B.", "...", "..."])
     state = _state(current, to_play="B", last_move=(0, 1, "B"))
     assert reconcile(state, observed).kind == "mismatch"
+
+
+def test_board_sgf_empty_board_is_valid():
+    sgf = board_sgf(_grid(["...", "...", "..."]), komi=6.5, rules="japanese", next_player="B")
+    assert "SZ[3]" in sgf and "KM[6.5]" in sgf and "PL[B]" in sgf
+    assert "AB" not in sgf and "AW" not in sgf
+
+
+def test_board_sgf_places_stones_with_top_origin_rows():
+    sgf = board_sgf(_grid(["B..", "...", "..W"]), komi=7.5, rules="chinese", next_player="W")
+    assert "AB[aa]" in sgf
+    assert "AW[cc]" in sgf
+    assert "PL[W]" in sgf
+    assert "RU[chinese]" in sgf
+
+
+def test_board_sgf_parses_with_katrain_sgf_parser():
+    from katrain.core.game import KaTrainSGF
+
+    root = KaTrainSGF.parse_sgf(board_sgf(_grid(["B..", "...", "..W"]), 6.5, "japanese", "W"))
+    assert root.board_size == (3, 3)
+    assert root.next_player == "W"
