@@ -225,7 +225,7 @@ class KaTrainGui(Screen, KaTrainBase):
             self.last_focus_event = time.time()
 
         MDApp.get_running_app().root_window.bind(focus=set_focus_event)
-        self._setup_tsumego_capture()
+        self._setup_global_hotkeys()
 
     def update_gui(self, cn, redraw_board=False):
         # Handle prisoners and next player display
@@ -791,12 +791,19 @@ class KaTrainGui(Screen, KaTrainBase):
                 return mods, scan & 0xFF  # 上位バイトのシフト状態は使わない（修飾キーは spec 側で指定する）
         raise ValueError(f"未対応のキー指定です: {spec!r}")
 
-    def _setup_tsumego_capture(self):
-        settings = self._config.get("tsumego_capture") or {}
-        if not settings.get("enabled", False):
+    def _setup_global_hotkeys(self):
+        """詰碁キャプチャと盤面監視のグローバルホットキーを1本のメッセージループで登録する。
+
+        2つの機能の enabled は**独立に評価する**。以前は tsumego_capture.enabled が偽だと
+        関数ごと早期 return していたため、詰碁を使わないユーザーでは board_watch の
+        ホットキーも登録されず、ログにも何も出なかった。
+        """
+        tsumego = self._config.get("tsumego_capture") or {}
+        watch = self._config.get("board_watch") or {}
+        if not tsumego.get("enabled", False) and not watch.get("enabled", False):
             return
         if sys.platform != "win32":
-            self.log("tsumego_capture: Windows 専用機能のためホットキーは登録しません", OUTPUT_INFO)
+            self.log("グローバルホットキー: Windows 専用機能のため登録しません", OUTPUT_INFO)
             return
         from katrain.core.tsumego_capture import ensure_dpi_awareness
 
@@ -810,28 +817,37 @@ class KaTrainGui(Screen, KaTrainBase):
         # ある問題では壁がその点を占めて打てない（case AG）。自動では判定できないので、
         # アプリの解答手順を見ているユーザーに押し分けてもらう。枠なしでは役割が読めない
         # （壁の色が無い＝`tsumego_solver_attacks` が None）ので役割指定との組合せは持たない
+        specs = []
+        if tsumego.get("enabled", False):
+            for key, default, role, frameless, label in (
+                ("hotkey", "f4", None, False, "自動推定"),
+                ("hotkey_attack", "shift+f4", True, False, "黒が攻め方(殺す問題)"),
+                ("hotkey_defend", "ctrl+f4", False, False, "黒が守り方(生きる問題)"),
+                ("hotkey_noframe", "shift+ctrl+f4", None, True, "枠なし(正解手が枠の外に出る問題)"),
+            ):
+                specs.append((tsumego, "tsumego_capture", key, default, "_tsumego_capture_trigger", (role, frameless), label))
+        if watch.get("enabled", False):
+            # ホットキーは Theme.KEY_* と重ねないこと（RegisterHotKey はフォーカス窓から
+            # キーを奪うので、重ねると KaTrain 本体のショートカットが黙って死ぬ）
+            specs.append((watch, "board_watch", "hotkey", "ctrl+alt+b", "_board_watch_trigger", (), "盤面監視トグル"))
         hotkeys = []
-        for key, default, role, frameless, label in (
-            ("hotkey", "f4", None, False, "自動推定"),
-            ("hotkey_attack", "shift+f4", True, False, "黒が攻め方(殺す問題)"),
-            ("hotkey_defend", "ctrl+f4", False, False, "黒が守り方(生きる問題)"),
-            ("hotkey_noframe", "shift+ctrl+f4", None, True, "枠なし(正解手が枠の外に出る問題)"),
-        ):
+        for settings, feature, key, default, handler, args, label in specs:
             spec = settings.get(key, default)
             if not spec:
                 continue  # 空文字でそのキーだけ無効化できる
             try:
                 mods, vk = self._parse_hotkey(spec)
             except ValueError as e:
-                self.log(f"tsumego_capture: ホットキー設定({key})が不正です: {e}", OUTPUT_ERROR)
+                self.log(f"{feature}: ホットキー設定({key})が不正です: {e}", OUTPUT_ERROR)
                 continue
-            hotkeys.append((self._TSUMEGO_HOTKEY_ID + len(hotkeys), spec, mods, vk, (role, frameless), label))
+            hotkeys.append((self._TSUMEGO_HOTKEY_ID + len(hotkeys), spec, mods, vk, (handler, args), label, feature))
         if not hotkeys:
             return
         self._tsumego_capture_busy = False
-        threading.Thread(target=self._tsumego_hotkey_loop, args=(hotkeys,), daemon=True).start()
+        self._board_watch_busy = False
+        threading.Thread(target=self._global_hotkey_loop, args=(hotkeys,), daemon=True).start()
 
-    def _tsumego_hotkey_loop(self, hotkeys):
+    def _global_hotkey_loop(self, hotkeys):
         """RegisterHotKey で登録し、専用スレッドのメッセージループで WM_HOTKEY を待つ。
 
         以前は keyboard パッケージの WH_KEYBOARD_LL フックを使っていたが、フックのコールバックが
@@ -848,34 +864,33 @@ class KaTrainGui(Screen, KaTrainBase):
 
         user32 = ctypes.windll.user32
         registered = []
-        for hotkey_id, spec, mods, vk, action, label in hotkeys:
+        for hotkey_id, spec, mods, vk, action, label, feature in hotkeys:
             if not user32.RegisterHotKey(None, hotkey_id, mods | self._MOD_NOREPEAT, vk):
                 self.log(
-                    f"tsumego_capture: ホットキー {spec}（{label}）の登録に失敗しました"
+                    f"{feature}: ホットキー {spec}（{label}）の登録に失敗しました"
                     f"（他のアプリが同じキーを使用している可能性があります）",
                     OUTPUT_ERROR,
                 )
                 continue
-            registered.append((hotkey_id, spec, action, label))
+            registered.append((hotkey_id, spec, action, label, feature))
         if not registered:
             return
-        actions = {hotkey_id: action for hotkey_id, _spec, action, _label in registered}
-        self.log(
-            "tsumego_capture: ホットキー "
-            + " / ".join(f"{spec}={label}" for _id, spec, _action, label in registered)
-            + " を登録しました",
-            OUTPUT_INFO,
-        )
+        actions = {hotkey_id: action for hotkey_id, _spec, action, _label, _feature in registered}
+        for feature in sorted({f for *_rest, f in registered}):
+            entries = [(spec, label) for _id, spec, _action, label, f in registered if f == feature]
+            self.log(
+                f"{feature}: ホットキー " + " / ".join(f"{spec}={label}" for spec, label in entries) + " を登録しました",
+                OUTPUT_INFO,
+            )
         msg = wintypes.MSG()
         try:
             while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
                 if msg.message == self._WM_HOTKEY and msg.wParam in actions:
                     # キャプチャ中もメッセージループを止めないよう、実処理は作業スレッドに投げる
-                    threading.Thread(
-                        target=self._tsumego_capture_trigger, args=actions[msg.wParam], daemon=True
-                    ).start()
+                    handler, args = actions[msg.wParam]
+                    threading.Thread(target=getattr(self, handler), args=args, daemon=True).start()
         finally:
-            for hotkey_id, _spec, _action, _label in registered:
+            for hotkey_id, _spec, _action, _label, _feature in registered:
                 user32.UnregisterHotKey(None, hotkey_id)
 
     def _tsumego_capture_trigger(self, black_to_attack=None, frameless=False):
