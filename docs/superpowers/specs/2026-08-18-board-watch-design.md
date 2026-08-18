@@ -97,8 +97,8 @@ BoardWatcher スレッド (katrain/core/board_watch.py)
 | # | 条件 | 結果 | 動作 |
 |---|---|---|---|
 | 1 | 観測の盤サイズ ≠ `state.board_size` | `Mismatch` | 警告（アプリ側で盤サイズが変わった） |
-| 2 | `state.to_play_is_human` が偽 | `Mismatch` | 警告（KaTrain 側は AI の手番。**色の割り当てが逆の可能性**） |
-| 3 | `observed == current` かつ `state.ai_can_respond` が偽 | `Mismatch` | 警告（AI が構造的に応手できない。§2.5） |
+| 2 | `state.ai_can_respond` が偽 | `Mismatch` | 警告（AI が構造的に応手できない＝分岐・終局・解析モード・ROI 残り） |
+| 3 | `state.to_play_is_human` が偽 | `Waiting` | **無音で待つ**（KaTrain の AI が考えている最中）。注入は絶対にしない |
 | 4 | `observed == current` | `InSync` | 無音 |
 | 5 | `last_move` があり pass でなく、`apply_move_to_grid(observed, last_move) == current` | `Ahead` | **無音で待つ**（KaTrain の AI が打った直後で、ユーザーがまだアプリにタップしていない） |
 | 6 | `observed[i][j] == to_play` かつ `current[i][j] == "."` の点のうち、`apply_move_to_grid(current, i, j, to_play) == observed` が成立するものが1つ | `Move(i, j)` | 注入 |
@@ -106,7 +106,9 @@ BoardWatcher スレッド (katrain/core/board_watch.py)
 
 行6の候補が複数一致することは構造上あり得ない（着手点が異なれば結果盤面も異なる）。
 
-**行2を先頭側に置くのが安全弁の要**。もし色の割り当てが逆なら、アプリ側 AI の石は常に `to_play` と同色になって行6が成立してしまい、`Mismatch` に到達しない。優先順位を明示しないと「静かに逆色で進行する」事故に戻る。
+**行3を行6より前に置くのが安全弁の要**。もし色の割り当てが逆なら、アプリ側 AI の石は常に `to_play` と同色になって行6が成立してしまう。優先順位を明示しないと「静かに逆色で進行する」事故に戻る。
+
+**行3は警告ではなく無音**にする。`to_play_is_human` が偽なのは「KaTrain の AI が考えている最中」という**正常状態**で、AI の思考時間ぶん（数秒）ずっと成立するため、ここを `Mismatch` にすると正常な1手ごとに警告が2〜20回出る（400ms 周期）。色の割り当てが逆で永久にこの状態から出られないケースは、§2.5(c) の進捗ウォッチドッグが20秒で拾う（`Waiting` も無音の終端状態なのでウォッチドッグの対象に含める）。
 
 **行5は `last_move` が `None`（root 局面）または pass のときスキップする**。`current_node.move` は「無ければ `None`」だが、**パスは `coords=None` の `Move` を返す**（`sgf_parser.py:288-293` / `:68-71`）ので `None` チェックだけでは弾けない。この2ケースは通常運用で必ず起きる（KaTrain 側 AI が白＝相手が先着の対局、§0 が運用に組み込んでいる手動パス、§3.2 の取り込み直後の配置のみ局面）。
 
@@ -126,7 +128,7 @@ BoardWatcher スレッド (katrain/core/board_watch.py)
 | `move_number` | 注入時の再検証用（2.5） |
 | `board_size` | `game.board_size`（タプルなので正方形前提で1値に落とす） |
 
-`ai_can_respond` を状態に含めるのは、**AI が応手できない局面が無症状のデッドロックになる**ため。AI 自動応手の条件には `not cn.children`（`__main__.py:302`）があり、`SGFNode.play` は同じ手の既存の子を再利用する（`sgf_parser.py:331-336`）。したがって「AI が応手済み → undo → watcher が同じ手を再注入」の順で、ノードに旧応手が子として残り **AI は二度と打たない**。このとき盤面はアプリと一致しているので `reconcile` は `InSync` を返し、緑バナーのまま対局が止まる。行3はこれを警告として表に出すためにある。ROI（`region_of_interest`）が残っていると AI はリージョン解析完了まで打たず打っても枠内に縛られる（`:306-314`）ので同じ扱いにする。teaching undo（`not (teaching_undo and cn.auto_undo is None)`、`:303-305`）も同経路で AI を止める。
+`ai_can_respond` を状態に含めるのは、**AI が応手できない局面が無症状のデッドロックになる**ため。AI 自動応手の条件には `not cn.children`（`__main__.py:302`）があり、`SGFNode.play` は同じ手の既存の子を再利用する（`sgf_parser.py:331-336`）。したがって「AI が応手済み → undo → watcher が同じ手を再注入」の順で、ノードに旧応手が子として残り **AI は二度と打たない**。このとき盤面はアプリと一致しているので `reconcile` は `InSync` を返し、緑バナーのまま対局が止まる。行2はこれを警告として表に出すためにある。ROI（`region_of_interest`）が残っていると AI はリージョン解析完了まで打たず打っても枠内に縛られる（`:306-314`）ので同じ扱いにする。teaching undo（`not (teaching_undo and cn.auto_undo is None)`、`:303-305`）も同経路で AI を止める。
 
 ### 2.5 安全弁
 
@@ -144,9 +146,9 @@ BoardWatcher スレッド (katrain/core/board_watch.py)
 
 **(c) 進捗ウォッチドッグ。**
 
-`Ahead` と `InSync` は無音の終端状態なので、**誤認識が両者に化けると警告ゼロで機能が止まる**。§8 のとおり白石上の有彩色マーカーは `spread>90 and mr>mb` で「空点」に化けうる（`"?"` と違って `CaptureError` にならない）。マーカーは常に最終手の石の上にあるため、化けたグリッドは「最終手の石だけが欠けた盤」＝行5の成立条件そのものになり、以後 `Ahead` と `InSync` を交互に返して1手も注入しない。黒石上の白マーカーは `"?"`→`CaptureError`→警告に落ちるので、**片方の色だけが黙って死ぬ**。
+`Waiting` / `Ahead` / `InSync` は無音の終端状態なので、**誤認識が両者に化けると警告ゼロで機能が止まる**。§8 のとおり白石上の有彩色マーカーは `spread>90 and mr>mb` で「空点」に化けうる（`"?"` と違って `CaptureError` にならない）。マーカーは常に最終手の石の上にあるため、化けたグリッドは「最終手の石だけが欠けた盤」＝行5の成立条件そのものになり、以後 `Ahead` と `InSync` を交互に返して1手も注入しない。黒石上の白マーカーは `"?"`→`CaptureError`→警告に落ちるので、**片方の色だけが黙って死ぬ**。
 
-対策として、**`state` が変化しないまま `Ahead`/`InSync` が `stall_warn_sec`（既定20秒）続いたら警告**を出す。これは誤認識だけでなく「ユーザーがアプリへのタップを忘れている」場合にも有用。
+対策として、**`state` が変化しないまま `Waiting`/`Ahead`/`InSync` が `stall_warn_sec`（既定20秒）続いたら警告**を出す。これは誤認識だけでなく「ユーザーがアプリへのタップを忘れている」場合と、行3の `Waiting` から永久に出られない場合（色の割り当てが逆）にも効く。
 
 **(d) `Mismatch` からの復帰。**
 
@@ -181,7 +183,7 @@ BoardWatcher スレッド (katrain/core/board_watch.py)
 
 プレイヤー設定は触らない（`sgf_filename` を渡さなければ維持される）。この経路では**手順が失われ配置のみの局面**になる。空盤から始めれば全手が棋譜に残るので通常運用では発生しない。
 
-AI が自動応手する前提条件（`_do_update_state`、`:281`・`:299-314`）: `MODE_PLAY` / nav drawer 閉 / popup なし / `analysis_complete` / `next_player.ai` / `not cn.children` / `not game.end_result` / `not (teaching_undo and cn.auto_undo is None)`、さらに ROI があれば `analysis["region_completed"]`。監視 ON でプレイモードへ入れ、ROI を解除するのはこのため。ユーザーが途中で解析モードへ移った場合は §2.3 行3が警告として拾う。
+AI が自動応手する前提条件（`_do_update_state`、`:281`・`:299-314`）: `MODE_PLAY` / nav drawer 閉 / popup なし / `analysis_complete` / `next_player.ai` / `not cn.children` / `not game.end_result` / `not (teaching_undo and cn.auto_undo is None)`、さらに ROI があれば `analysis["region_completed"]`。監視 ON でプレイモードへ入れ、ROI を解除するのはこのため。ユーザーが途中で解析モードへ移った場合は §2.3 行2が警告として拾う。
 
 ### 3.3 トグル OFF
 
@@ -291,5 +293,5 @@ Windows のグローバルフックが GIL 長時間保持で外された実測�
 - **`game.stones` を読むのに `with game._lock:` を取ると自己デッドロックする**という指摘 → 誤り。`stones` プロパティ自身が `_lock` を取る（`game.py:316-319`）ので**呼び出し側は取らない**。リポジトリに外から `game._lock` を取るコードは0件
 - **`ImageGrab.grab(bbox=...)` で撮影が速くなる** → 誤り。Pillow は Windows で全画面 BitBlt 後に crop する（実測: 暖機後 27〜28ms で同値）。最初にこれを「3倍速い」と測ったのは**1回目の DLL 初期化込みの値と2回目を比べた**方法論エラー
 - **contributing モードで注入が握り潰される** → 別モードで本機能と同時に使わないため無関係
-- **監視中の SGF ロードで AI が応じなくなる** → `load_sgf_file` は必ず `move_tree` を渡すので解析モードへ入り、§2.3 行3が警告として拾う
+- **監視中の SGF ロードで AI が応じなくなる** → `load_sgf_file` は必ず `move_tree` を渡すので解析モードへ入り、§2.3 行2が警告として拾う
 - **監視中に詰碁キャプチャを撮ると詰碁盤へ注入される** → 枠石が約80子乗るので行6の完全一致が成立せず `Mismatch` に落ちる
