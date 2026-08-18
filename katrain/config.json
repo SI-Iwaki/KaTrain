@@ -87,6 +87,20 @@
         "solver_capture_max_empties": 12,
         "solver_cross_check": true
     },
+    "board_watch": {
+        "enabled": true,
+        "hotkey": "ctrl+alt+b",
+        "window_title": "",
+        "poll_interval_ms": 400,
+        "stable_frames": 2,
+        "failure_warn_frames": 8,
+        "inject_timeout_ms": 5000,
+        "stall_warn_sec": 20,
+        "resync_hint_frames": 10,
+        "backoff_after_failures": 3,
+        "backoff_factor": 2.0,
+        "poll_interval_max_ms": 2000
+    },
     "trainer": {
         "theme": "theme:normal",
         "num_undo_prompts": [
