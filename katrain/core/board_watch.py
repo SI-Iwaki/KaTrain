@@ -8,6 +8,8 @@ KaTrain の Move.coords = (x, y) は **y が下origin**（sgf_parser.py:31-39）
 この変換漏れは実測済みのバグ源なので、変換は必ずこのモジュールの純関数を通す。
 """
 
+import threading
+import time
 from typing import NamedTuple, Optional, Tuple
 
 EMPTY = "."
@@ -159,3 +161,188 @@ def reconcile(state, observed):
     if len(matches) == 1:
         return Verdict("move", move=matches[0])
     return Verdict("mismatch", reason="盤面の差が1手で説明できません")
+
+
+class WatchSettings(NamedTuple):
+    poll_interval_ms: int = 400
+    stable_frames: int = 2
+    failure_warn_frames: int = 8
+    inject_timeout_ms: int = 5000
+    stall_warn_sec: float = 20.0
+    resync_hint_frames: int = 10
+    backoff_after_failures: int = 3
+    backoff_factor: float = 2.0
+    poll_interval_max_ms: int = 2000
+
+
+def watch_settings_from_config(cfg):
+    d = cfg or {}
+    default = WatchSettings()
+    return WatchSettings(
+        poll_interval_ms=int(d.get("poll_interval_ms", default.poll_interval_ms)),
+        stable_frames=int(d.get("stable_frames", default.stable_frames)),
+        failure_warn_frames=int(d.get("failure_warn_frames", default.failure_warn_frames)),
+        inject_timeout_ms=int(d.get("inject_timeout_ms", default.inject_timeout_ms)),
+        stall_warn_sec=float(d.get("stall_warn_sec", default.stall_warn_sec)),
+        resync_hint_frames=int(d.get("resync_hint_frames", default.resync_hint_frames)),
+        backoff_after_failures=int(d.get("backoff_after_failures", default.backoff_after_failures)),
+        backoff_factor=float(d.get("backoff_factor", default.backoff_factor)),
+        poll_interval_max_ms=int(d.get("poll_interval_max_ms", default.poll_interval_max_ms)),
+    )
+
+
+STATUS_WATCHING = "bw-watching"
+STATUS_WARN = "bw-warn"
+WATCHING_TEXT = "盤面監視中（相手の手を自動反映）"
+RESYNC_HINT = "（ctrl+alt+b を2回押すと現局面を取り込み直します）"
+
+
+class PermanentCaptureError(Exception):
+    """すぐ直らない失敗（ウィンドウが無い等）。過渡失敗と違い即警告する。
+
+    tsumego_capture の CaptureError は1種類しかなく、app 経路と Web 経路のメッセージを
+    連結して投げ直すため**型では切り分けられない**。そこで「どこで失敗したか」を
+    知っている投げる側（AppBoardReader）に恒久かどうかを表明させる。
+    """
+
+
+def _grid_key(grid):
+    return tuple("".join(row) for row in grid)
+
+
+class BoardWatcher:
+    """アプリ盤面をポーリングして相手の着手を検出する。KaTrain の型は一切知らない。
+
+    外界とはコールバックだけで接する:
+      capture_fn()    -> 観測グリッド（失敗は例外）
+      get_state_fn()  -> WatchState または None
+      on_move(i, j, color, move_number, board_size)
+      on_status(kind, text)   kind: "bw-watching" / "bw-warn" / ""
+    """
+
+    def __init__(self, capture_fn, get_state_fn, on_move, on_status, settings, clock=time.monotonic):
+        self.capture_fn = capture_fn
+        self.get_state_fn = get_state_fn
+        self.on_move = on_move
+        self.on_status = on_status
+        self.settings = settings
+        self.clock = clock
+        self.interval_ms = settings.poll_interval_ms
+        self._stopped = threading.Event()
+        self._stable_move = None
+        self._stable_count = 0
+        self._fail_count = 0
+        self._mismatch_count = 0
+        self._pending = None  # (i, j, move_number, deadline)
+        self._blocked = None  # (i, j, move_number) タイムアウトした手を同じ局面で再注入しない
+        self._quiet_key = None
+        self._quiet_since = None
+
+    # --- 1周ぶんの判断（テストはここを直接叩く） ---
+    def step(self):
+        try:
+            observed = self.capture_fn()
+        except Exception as e:  # CaptureError も未知の例外もここで吸収する
+            self._on_capture_failure(str(e), permanent=isinstance(e, PermanentCaptureError))
+            return
+        self._on_capture_success()
+        state = self.get_state_fn()
+        if state is None:
+            return
+        if self._pending is not None and not self._resolve_pending(state):
+            return
+        verdict = reconcile(state, observed)
+        if verdict.kind == "mismatch":
+            self._on_mismatch(verdict.reason)
+            return
+        self._mismatch_count = 0
+        if verdict.kind == "move":
+            self._on_move_verdict(state, verdict.move)
+            return
+        self._on_quiet(state, observed, verdict.kind)
+
+    def _resolve_pending(self, state):
+        """注入の反映を待っている間の処理。まだ待つなら False を返す。
+
+        spec §2.5(b) は「期待グリッド」または「期待グリッド＋KaTrain の最終手」の
+        いずれかで成立、と書いているが、実装は **move_number（= current_node.depth）が
+        変わったか**で見る。これは spec の2条件を包含する（どちらの盤面になっていても
+        手数は必ず増えている）うえ、期待グリッドが AI の応手で一瞬しか存在しない問題も
+        同時に解ける。KaTrain 側が undo で戻った場合も「変わった」に入り、その後の
+        reconcile が Mismatch として拾う。
+        """
+        i, j, move_number, deadline = self._pending
+        if state.move_number != move_number:  # KaTrain 側で局面が進んだ＝反映された
+            self._pending = None
+            self._blocked = None
+            return True
+        if self.clock() >= deadline:
+            self._pending = None
+            self._blocked = (i, j, move_number)
+            self._warn("着手が反映されませんでした（コウ・非合法手の可能性）" + RESYNC_HINT)
+            return False
+        return False
+
+    def _on_move_verdict(self, state, move):
+        self._quiet_key = None
+        self._quiet_since = None
+        if self._blocked == (move[0], move[1], state.move_number):
+            return  # タイムアウトした手は局面が変わるまで投げ直さない
+        if self._stable_move == move:
+            self._stable_count += 1
+        else:
+            self._stable_move = move
+            self._stable_count = 1
+        if self._stable_count < self.settings.stable_frames:
+            return
+        self._stable_move = None
+        self._stable_count = 0
+        self._pending = (move[0], move[1], state.move_number, self.clock() + self.settings.inject_timeout_ms / 1000.0)
+        self._watching()
+        self.on_move(move[0], move[1], state.to_play, state.move_number, state.board_size)
+
+    def _on_mismatch(self, reason):
+        self._stable_move = None
+        self._stable_count = 0
+        self._quiet_key = None
+        self._quiet_since = None
+        self._mismatch_count += 1
+        message = reason
+        if self._mismatch_count >= self.settings.resync_hint_frames:
+            message += RESYNC_HINT
+        self._warn(message)
+
+    def _on_quiet(self, state, observed, kind):
+        """waiting / ahead / in_sync = 無音の終端状態。長すぎたら警告する（spec §2.5c）"""
+        self._stable_move = None
+        self._stable_count = 0
+        key = (kind, state.move_number, _grid_key(observed))
+        now = self.clock()
+        if key != self._quiet_key:
+            self._quiet_key = key
+            self._quiet_since = now
+            self._watching()
+        elif self._quiet_since is not None and now - self._quiet_since >= self.settings.stall_warn_sec:
+            self._quiet_since = now  # 再警告は stall_warn_sec ごと
+            self._warn("盤面が変化しません（最終手マーカーの誤認識、または色の割り当てが逆の可能性）")
+
+    def _on_capture_failure(self, message, permanent=False):
+        self._fail_count += 1
+        if self._fail_count >= self.settings.backoff_after_failures:
+            self.interval_ms = min(
+                int(self.interval_ms * self.settings.backoff_factor), self.settings.poll_interval_max_ms
+            )
+        # 恒久失敗は即警告、過渡失敗（アニメーション中の "?" 等）は連続 N 回まで黙る。
+        # どちらも監視は止めない（最小化しただけで死なないように）
+        if permanent or self._fail_count >= self.settings.failure_warn_frames:
+            self._warn(f"盤面を認識できません: {message}")
+
+    def _on_capture_success(self):
+        self._fail_count = 0
+        self.interval_ms = self.settings.poll_interval_ms
+
+    def _watching(self):
+        self.on_status(STATUS_WATCHING, WATCHING_TEXT)
+
+    def _warn(self, message):
+        self.on_status(STATUS_WARN, message)

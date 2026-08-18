@@ -1,4 +1,5 @@
 from katrain.core.board_watch import EMPTY, BLACK, WHITE, apply_move_to_grid, grid_to_move, move_to_grid, stones_to_grid, WatchState, reconcile, board_sgf
+from katrain.core.board_watch import BoardWatcher, WatchSettings  # 既存の import 行に足す
 
 
 def test_stones_to_grid_uses_top_origin_rows():
@@ -229,3 +230,186 @@ def test_board_sgf_parses_with_katrain_sgf_parser():
     root = KaTrainSGF.parse_sgf(board_sgf(_grid(["B..", "...", "..W"]), 6.5, "japanese", "W"))
     assert root.board_size == (3, 3)
     assert root.next_player == "W"
+
+
+class FakeClock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, seconds):
+        self.now += seconds
+
+
+class Harness:
+    """BoardWatcher を偽の外界で駆動する"""
+
+    def __init__(self, settings=None):
+        self.frames = []           # capture_fn が順に返すもの（例外インスタンスなら raise）
+        self.state = None
+        self.moves = []
+        self.statuses = []
+        self.clock = FakeClock()
+        self.watcher = BoardWatcher(
+            capture_fn=self._capture,
+            get_state_fn=lambda: self.state,
+            on_move=lambda i, j, color, move_number, size: self.moves.append((i, j, color, move_number)),
+            on_status=lambda kind, text: self.statuses.append((kind, text)),
+            settings=settings or WatchSettings(),
+            clock=self.clock,
+        )
+
+    def _capture(self):
+        frame = self.frames.pop(0)
+        if isinstance(frame, Exception):
+            raise frame
+        return frame
+
+    def step(self, frame, state=None):
+        self.frames.append(frame)
+        if state is not None:
+            self.state = state
+        self.watcher.step()
+
+
+def test_watcher_injects_after_stable_frames():
+    h = Harness(WatchSettings(stable_frames=2))
+    current = _grid(["...", "...", "..."])
+    observed = _grid(["...", ".B.", "..."])
+    state = _state(current, to_play="B", move_number=4)
+    h.step(observed, state)
+    assert h.moves == []           # 1フレーム目では確定しない
+    h.step(observed, state)
+    assert h.moves == [(1, 1, "B", 4)]
+
+
+def test_watcher_resets_stability_when_move_changes():
+    h = Harness(WatchSettings(stable_frames=2))
+    current = _grid(["...", "...", "..."])
+    state = _state(current, to_play="B")
+    h.step(_grid(["...", ".B.", "..."]), state)
+    h.step(_grid(["B..", "...", "..."]), state)
+    assert h.moves == []
+
+
+def test_watcher_does_not_inject_again_while_pending():
+    h = Harness(WatchSettings(stable_frames=1))
+    current = _grid(["...", "...", "..."])
+    observed = _grid(["...", ".B.", "..."])
+    state = _state(current, to_play="B", move_number=4)
+    h.step(observed, state)
+    assert len(h.moves) == 1
+    h.step(observed, state)        # KaTrain 側はまだ反映されていない
+    assert len(h.moves) == 1
+
+
+def test_watcher_clears_pending_when_move_number_changes():
+    h = Harness(WatchSettings(stable_frames=1))
+    current = _grid(["...", "...", "..."])
+    observed = _grid(["...", ".B.", "..."])
+    h.step(observed, _state(current, to_play="B", move_number=4))
+    assert len(h.moves) == 1
+    # KaTrain が着手し、さらに AI が応じた（期待グリッドは一瞬しか存在しない）
+    after = _grid(["W..", ".B.", "..."])
+    h.step(after, _state(after, to_play="B", last_move=(0, 0, "W"), move_number=6))
+    assert h.watcher._pending is None
+
+
+def test_watcher_warns_and_blocks_move_after_inject_timeout():
+    h = Harness(WatchSettings(stable_frames=1, inject_timeout_ms=1000))
+    current = _grid(["...", "...", "..."])
+    observed = _grid(["...", ".B.", "..."])
+    state = _state(current, to_play="B", move_number=4)
+    h.step(observed, state)
+    h.clock.advance(2.0)
+    h.step(observed, state)
+    assert any(kind == "bw-warn" for kind, _text in h.statuses)
+    h.step(observed, state)        # 同じ手を再注入しない
+    assert len(h.moves) == 1
+
+
+def test_watcher_is_silent_while_waiting_and_ahead():
+    h = Harness()
+    board = _grid(["...", "...", "..."])
+    h.step(board, _state(board, human=False))
+    h.step(board, _state(board))
+    assert all(kind == "bw-watching" for kind, _t in h.statuses)
+
+
+def test_watcher_warns_when_quiet_too_long():
+    h = Harness(WatchSettings(stall_warn_sec=20))
+    board = _grid(["...", "...", "..."])
+    state = _state(board, human=False)
+    h.step(board, state)
+    h.clock.advance(25.0)
+    h.step(board, state)
+    assert any(kind == "bw-warn" and "変化しません" in text for kind, text in h.statuses)
+
+
+def test_watcher_quiet_timer_resets_when_state_changes():
+    h = Harness(WatchSettings(stall_warn_sec=20))
+    board = _grid(["...", "...", "..."])
+    h.step(board, _state(board, human=False, move_number=1))
+    h.clock.advance(15.0)
+    h.step(board, _state(board, human=False, move_number=2))
+    h.clock.advance(15.0)
+    h.step(board, _state(board, human=False, move_number=2))
+    assert not any(kind == "bw-warn" for kind, _t in h.statuses)
+
+
+def test_watcher_adds_resync_hint_after_repeated_mismatch():
+    h = Harness(WatchSettings(resync_hint_frames=3))
+    current = _grid(["...", "...", "..."])
+    observed = _grid(["W..", ".B.", "..."])
+    state = _state(current, to_play="B")
+    for _ in range(3):
+        h.step(observed, state)
+    assert any("ctrl+alt+b" in text for _kind, text in h.statuses)
+
+
+def test_watcher_skips_transient_capture_failures_then_warns():
+    h = Harness(WatchSettings(failure_warn_frames=3))
+    for _ in range(2):
+        h.step(RuntimeError("judgement failed"))
+    assert h.statuses == []
+    h.step(RuntimeError("judgement failed"))
+    assert any(kind == "bw-warn" for kind, _t in h.statuses)
+
+
+def test_watcher_backs_off_and_recovers():
+    h = Harness(WatchSettings(poll_interval_ms=400, backoff_after_failures=2, backoff_factor=2.0, poll_interval_max_ms=2000))
+    h.step(RuntimeError("x"))
+    h.step(RuntimeError("x"))
+    assert h.watcher.interval_ms == 800
+    h.step(RuntimeError("x"))
+    assert h.watcher.interval_ms == 1600
+    board = _grid(["...", "...", "..."])
+    h.step(board, _state(board))
+    assert h.watcher.interval_ms == 400
+
+
+def test_watcher_ignores_none_state():
+    h = Harness()
+    board = _grid(["...", "...", "..."])
+    h.step(board, None)
+    assert h.moves == []
+
+
+def test_watcher_warns_immediately_on_permanent_failure():
+    from katrain.core.board_watch import PermanentCaptureError
+
+    h = Harness(WatchSettings(failure_warn_frames=8))
+    h.step(PermanentCaptureError("ウィンドウが見つかりません"))
+    assert any(kind == "bw-warn" for kind, _t in h.statuses)
+
+
+def test_watcher_recovers_after_permanent_failure():
+    from katrain.core.board_watch import PermanentCaptureError
+
+    h = Harness(WatchSettings(failure_warn_frames=8))
+    h.step(PermanentCaptureError("ウィンドウが見つかりません"))
+    board = _grid(["...", "...", "..."])
+    h.step(board, _state(board))
+    assert h.statuses[-1][0] == "bw-watching"
