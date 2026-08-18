@@ -60,6 +60,29 @@ def board_sgf(grid, komi, rules, next_player):
     return sgf + ")"
 
 
+def import_next_player(grid, human_color):
+    """取り込み時の手番を決める（spec §3.2、2026-08-19 修正）。
+
+    石が1つでもある盤では石数パリティから手番を決められない: 盤上石数 b, w と
+    取られた石数 cb, cw の間には b − w = cw − cb が成り立つので、取りが1回でも
+    入るとパリティは手番を表さない（9路で双方6手ずつ・黒が白1子取った局面は
+    黒6/白5 だが手番は黒）。よってこの場合は安全側の human_color に倒す
+    （誤っていても KaTrain が誤った色で勝手に打ち出す事故は起きず、相手の
+    手待ちのまま止まるだけ＝ウォッチドッグが拾う）。
+
+    石が1つも無い盤は「対局の開始」そのもので、直前の手も取りも存在し得ない。
+    これは推測ではなく囲碁のルール＝黒が先手。旧実装は空盤でも一律 human_color
+    に固定していたため、KaTrain 側の AI が黒番で新規対局を始めるケースが
+    到達不能になっていた（実測 game_20260819_012616.log: 9路で新規対局を開始
+    したのに「手番=W」と取り込まれ、黒番の KaTrain AI が一度も着手できず、
+    ユーザーは KaTrain を待ち・KaTrain は人間を待ち・監視はアプリ側 AI の
+    手を待つ三者デッドロックになった）。
+    """
+    if all(cell == EMPTY for row in grid for cell in row):
+        return BLACK
+    return human_color
+
+
 def _neighbours(i, j, size):
     for di, dj in ((-1, 0), (1, 0), (0, -1), (0, 1)):
         ni, nj = i + di, j + dj
@@ -325,7 +348,16 @@ class BoardWatcher:
             self._watching()
         elif self._quiet_since is not None and now - self._quiet_since >= self.settings.stall_warn_sec:
             self._quiet_since = now  # 再警告は stall_warn_sec ごと
-            self._warn("盤面が変化しません（最終手マーカーの誤認識、または色の割り当てが逆の可能性）")
+            # 空盤→黒番の修正（import_next_player）で対局開始時のデッドロックは無くなったが、
+            # 「対局中に、実は KaTrain 側の手番であるタイミングで監視を ON にする」ケースは
+            # 1フレームの盤面（取られた石数が分からない）からは判定できず残る。この場合
+            # ai-move（Enter / numpad-Enter、gui.kv:883）で AI に1手打たせれば動き出す。
+            # もう一方のありふれた原因（アプリへのタップ忘れ）と合わせて両方を案内する。
+            # どちらが実際の原因かは判定しない
+            self._warn(
+                "盤面が変化しません（着手をアプリへ入力し忘れていないか、"
+                "または KaTrain の手番かもしれません。Enter で AI が着手します）"
+            )
 
     def _on_capture_failure(self, message, permanent=False):
         self._fail_count += 1

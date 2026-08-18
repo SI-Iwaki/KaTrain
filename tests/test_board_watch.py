@@ -5,7 +5,7 @@ import threading
 
 import pytest
 
-from katrain.core.board_watch import EMPTY, BLACK, WHITE, apply_move_to_grid, grid_to_move, move_to_grid, stones_to_grid, WatchState, reconcile, board_sgf
+from katrain.core.board_watch import EMPTY, BLACK, WHITE, apply_move_to_grid, grid_to_move, move_to_grid, stones_to_grid, WatchState, reconcile, board_sgf, import_next_player
 from katrain.core.board_watch import BoardWatcher, WatchSettings  # 既存の import 行に足す
 import katrain.core.board_watch as bw  # 既存の import 行の下に足す
 
@@ -238,6 +238,32 @@ def test_board_sgf_parses_with_katrain_sgf_parser():
     root = KaTrainSGF.parse_sgf(board_sgf(_grid(["B..", "...", "..W"]), 6.5, "japanese", "W"))
     assert root.board_size == (3, 3)
     assert root.next_player == "W"
+
+
+def test_import_next_player_empty_board_is_black_regardless_of_human_color():
+    # 空盤＝新規対局そのもの。碁のルールで黒が先手（推測ではない）。
+    # human_color が黒でも白でも、空盤なら必ず黒番を返す
+    empty = _grid(["...", "...", "..."])
+    assert import_next_player(empty, human_color="W") == BLACK
+    assert import_next_player(empty, human_color="B") == BLACK
+
+
+def test_import_next_player_single_stone_falls_back_to_human_color():
+    # 石が1つでもあれば石数パリティは手番を表さない（b-w = cw-cb）ので、
+    # 安全側の human_color に倒す
+    grid = _grid(["B..", "...", "..."])
+    assert import_next_player(grid, human_color="W") == "W"
+    assert import_next_player(grid, human_color="B") == "B"
+
+
+def test_import_next_player_many_stones_falls_back_to_human_color():
+    grid = _grid([
+        "BW.",
+        ".BW",
+        "W.B",
+    ])
+    assert import_next_player(grid, human_color="W") == "W"
+    assert import_next_player(grid, human_color="B") == "B"
 
 
 class FakeClock:

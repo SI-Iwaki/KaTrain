@@ -625,8 +625,10 @@ class KaTrainGui(Screen, KaTrainBase):
         """
         from katrain.core.board_watch import (
             BoardWatcher,
+            EMPTY,
             board_sgf,
             grid_to_move,
+            import_next_player,
             stones_to_grid,
             watch_settings_from_config,
         )
@@ -643,20 +645,29 @@ class KaTrainGui(Screen, KaTrainBase):
         size_x, size_y = self.game.board_size
         current = stones_to_grid(((s.coords, s.player) for s in self.game.stones), size_x) if size_x == size_y else None
         if current != grid or size_x != size:
-            # 取り込み: 手番は「人間側（アプリ AI）の色」に固定する。石数パリティでは決まらない
-            # （盤上石数 b,w と取られた石数 cb,cw は b-w = cw-cb なので、取りが1回でも入ると
-            # パリティは手番を表さない）。人間側に倒すのは安全側＝KaTrain が誤った色で
-            # 勝手に打ち出す事故が構造的に起きない
+            # 取り込み: 手番は原則「人間側（アプリ AI）の色」に固定する。石数パリティでは
+            # 決まらない（盤上石数 b,w と取られた石数 cb,cw は b-w = cw-cb なので、取りが
+            # 1回でも入るとパリティは手番を表さない）。人間側に倒すのは安全側＝KaTrain が
+            # 誤った色で勝手に打ち出す事故が構造的に起きない。
+            # ただし空盤（新規対局そのもの）は例外＝碁のルールで黒が先手。旧実装は空盤でも
+            # 一律 human_color に固定していたため、KaTrain 側 AI が黒番の新規対局が
+            # 到達不能だった（詳細は board_watch.import_next_player の docstring）
             komi = self.config("game/komi", 6.5)
             rules = self.config("game/rules", "japanese")
+            is_empty_board = all(cell == EMPTY for row in grid for cell in row)
+            next_player = import_next_player(grid, human_color)
             try:
-                move_tree = KaTrainSGF.parse_sgf(board_sgf(grid, komi, rules, human_color))
+                move_tree = KaTrainSGF.parse_sgf(board_sgf(grid, komi, rules, next_player))
             except ParseError as e:
                 self.log(f"board_watch: 取り込み SGF の解析に失敗: {e}", OUTPUT_ERROR)
                 self._board_watch_status(BW_STATUS_WARN, f"局面を取り込めません: {e}")
                 return
             self._do_new_game(move_tree=move_tree)
-            self.log(f"board_watch: アプリの局面（{size}路）を取り込みました（手番={human_color}）", OUTPUT_INFO)
+            reason = "空盤なので黒番" if is_empty_board else "人間側に固定"
+            self.log(
+                f"board_watch: アプリの局面（{size}路）を取り込みました（手番={next_player}・{reason}）",
+                OUTPUT_INFO,
+            )
             # move_tree ありの new-game は解析モードに入るので、プレイモードへ戻す。
             # switch_ui_mode のトグルは他所の予約済みクリックと競合して mode の読み値が狂う
             Clock.schedule_once(lambda _dt: self.play_mode.play.trigger_action(duration=0), 0)
