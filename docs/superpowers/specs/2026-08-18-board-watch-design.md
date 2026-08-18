@@ -57,7 +57,7 @@ BoardWatcher スレッド (katrain/core/board_watch.py)
 | `stones_to_grid(stones, size)` | `(coords, player)` のタプル列（下origin）を上origin グリッドへ変換 | なし（純関数） |
 | `apply_move_to_grid(grid, i, j, color)` | グリッドに1手打ち、取りを処理した新グリッドを返す。既石・自殺手は `None` | なし（純関数） |
 | `reconcile(state, observed)` | 観測が「現局面＋打つ側の1手」で説明できるかを判定 | 上2つ（純関数） |
-| `board_sgf(grid, size, komi, rules, next_player)` | 監視用の SGF 生成（**空盤でも成立**・`PL` を指定できる） | なし（純関数） |
+| `board_sgf(grid, komi, rules, next_player)` | 監視用の SGF 生成（**空盤でも成立**・`PL` を指定できる） | なし（純関数） |
 | `BoardWatcher` | ポーリング、盤矩形・盤サイズのキャッシュ、デバウンス、注入ガード、進捗ウォッチドッグ、バックオフ | `tsumego_capture` の認識関数のみ |
 
 `BoardWatcher` は KaTrain の型を一切知らず、**コールバック注入**（`capture_fn` / `get_state_fn` / `on_move` / `on_status`）だけで外界と接する。これによりスレッド挙動まで偽フレーム列で単体テストできる。
