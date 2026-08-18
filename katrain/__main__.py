@@ -639,7 +639,25 @@ class KaTrainGui(Screen, KaTrainBase):
                 BW_STATUS_WARN, "片方を AI・片方を人間に設定してから開始してください"
             )
             return
-        human_color = "W" if ai_players[0] == "B" else "B"
+        ai_color = ai_players[0]
+        ai_subtype = self.players_info[ai_color].player_subtype
+        if ai_subtype in (AI_TSUMEGO, AI_TSUMEGO_SOLVER):
+            # 直前が詰碁キャプチャだと ROI に加えて B=ai:tsumego(_solver) も残る
+            # （_do_capture_fullboard_apply が両方を人間に戻しているのと同じ事故、design §3.2）。
+            # どの戦略に差し替えるかはユーザーの選択なので勝手に選ばず拒否するだけにする。
+            # ただし詰碁専用戦略は tsumego_view=True で対局者パネルごと隠れているため、拒否だけ
+            # だと設定を変える手段が見えない。パネルを復元してから拒否する
+            self.tsumego_view = False
+            self.log(
+                f"board_watch: {ai_color} が詰碁専用戦略（{ai_subtype}）のため開始しません",
+                OUTPUT_INFO,
+            )
+            self._board_watch_status(
+                BW_STATUS_WARN,
+                "AI 側が詰碁専用の戦略のままです。対局用の戦略に変更してから開始してください",
+            )
+            return
+        human_color = "W" if ai_color == "B" else "B"
         if self.game.region_of_interest is not None:
             self.game.set_region_of_interest([0, 0, 0, 0])  # 解除（詰碁キャプチャの残骸）
         size_x, size_y = self.game.board_size
@@ -1491,11 +1509,17 @@ class KaTrainGui(Screen, KaTrainBase):
         if getattr(self, "_board_watch_busy", False):
             return
         watcher = getattr(self, "_board_watcher", None)
-        if watcher is not None:
-            watcher.stop()
-            self._board_watcher = None
+        if watcher is not None or self.board_watch_status:
+            # watcher が None でも banner が残っていることがある（認識失敗・AI判定不成立・
+            # SGF解析失敗の3経路は watcher を作らず warn を出して return するため、次のトグルは
+            # ここではなく START 分岐に落ちてバナーが一生消えなかった＝Finding A）。
+            # banner の有無を停止条件に含めることで、その場合も1押しでクリアできる
+            # （停止時競合が残した緑バナーも同じ経路で拾える）
+            if watcher is not None:
+                watcher.stop()
+                self._board_watcher = None
+                self.log("board_watch: 監視を停止しました", OUTPUT_INFO)
             self._board_watch_status("", "")
-            self.log("board_watch: 監視を停止しました", OUTPUT_INFO)
             return
         self._board_watch_busy = True
         try:

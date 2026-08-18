@@ -217,7 +217,7 @@ def watch_settings_from_config(cfg):
 STATUS_WATCHING = "bw-watching"
 STATUS_WARN = "bw-warn"
 WATCHING_TEXT = "盤面監視中（相手の手を自動反映）"
-RESYNC_HINT = "（ctrl+alt+b を2回押すと現局面を取り込み直します）"
+RESYNC_HINT = "（監視トグルのホットキーで OFF にし、1秒ほどおいてからもう一度押すと現局面を取り込み直します）"
 
 
 class PermanentCaptureError(Exception):
