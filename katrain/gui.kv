@@ -326,7 +326,9 @@
     status: ''
     flash: ''
     flash_kind: 'save'
-    background_color: Theme.TSUMEGO_BOOK_BANNER_COLORS.get(root.flash_kind if root.flash else root.status, Theme.TSUMEGO_BOOK_BANNER_COLORS['playing'])
+    watch_status: ''
+    watch_detail: ''
+    background_color: Theme.TSUMEGO_BOOK_BANNER_COLORS.get(root.flash_kind if root.flash else (root.watch_status if root.watch_status else root.status), Theme.TSUMEGO_BOOK_BANNER_COLORS['playing'])
     Label:
         font_name: i18n.font_name
         font_size: min(sp(20), 0.65 * self.height)
@@ -338,7 +340,7 @@
         valign: 'middle'
         shorten: True
         shorten_from: 'right'
-        text: root.flash if root.flash else (i18n._('tsumego:book-playing') if root.status=='playing' else (i18n._('tsumego:book-done') if root.status=='done' else (i18n._('tsumego:book-off') if root.status=='off' else '')))
+        text: root.flash if root.flash else (root.watch_detail if root.watch_detail else (i18n._('tsumego:book-playing') if root.status=='playing' else (i18n._('tsumego:book-done') if root.status=='done' else (i18n._('tsumego:book-off') if root.status=='off' else ''))))
 
 
 <HamburgerButton@TransparentIconButton>:
@@ -1201,9 +1203,11 @@
                             status: root.tsumego_book_status
                             flash: root.tsumego_banner_flash
                             flash_kind: root.tsumego_banner_flash_kind
+                            watch_status: root.board_watch_status
+                            watch_detail: root.board_watch_detail
                             size_hint_y: None
-                            height: dp(30) if (root.tsumego_book_status or root.tsumego_banner_flash) else 0
-                            opacity: 1 if (root.tsumego_book_status or root.tsumego_banner_flash) else 0
+                            height: dp(30) if (root.tsumego_book_status or root.tsumego_banner_flash or root.board_watch_status) else 0
+                            opacity: 1 if (root.tsumego_book_status or root.tsumego_banner_flash or root.board_watch_status) else 0
                         BadukPanWidget:
                             id: board_gui
                         BadukPanControls:

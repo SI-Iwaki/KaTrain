@@ -673,6 +673,10 @@ class KaTrainGui(Screen, KaTrainBase):
             on_status=self._board_watch_status,
             settings=watch_settings_from_config(self._config.get("board_watch")),
         )
+        existing = getattr(self, "_board_watcher", None)
+        if existing is not None:
+            existing.stop()
+            self.log("board_watch: 開始が重複したため前の監視スレッドを停止しました", OUTPUT_INFO)
         self._board_watcher = watcher
         watcher.start()
         self.log("board_watch: 監視を開始しました", OUTPUT_INFO)

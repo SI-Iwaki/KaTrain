@@ -159,6 +159,8 @@ class Theme:
         "save": GREEN,
         "info": BLUE,
         "warn": ORANGE,
+        "bw-watching": GREEN,  # 盤面監視モード: 監視中
+        "bw-warn": ORANGE,  # 盤面監視モード: 同期できません
     }
     TSUMEGO_BOOK_BANNER_TEXT_COLOR = BLACK
 
