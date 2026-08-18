@@ -1,3 +1,6 @@
+import ast
+import os
+import re
 import threading
 
 from katrain.core.board_watch import EMPTY, BLACK, WHITE, apply_move_to_grid, grid_to_move, move_to_grid, stones_to_grid, WatchState, reconcile, board_sgf
@@ -550,3 +553,90 @@ def test_start_after_stop_restarts_the_loop():
     assert watcher._thread.is_alive()
 
     watcher.stop()
+
+
+def test_all_hotkey_dispatch_handler_names_have_matching_defs():
+    """Task 8 レビューの Critical defect の回帰テスト。
+
+    `katrain/__main__.py` の `_global_hotkey_loop` は、ホットキー登録表に文字列として
+    積まれたハンドラ名を `getattr(self, handler)` で解決してからワーカースレッドを起動する。
+    この解決は `try/finally`（finally は登録済み全ホットキーの UnregisterHotKey）の中で
+    無防備に行われていたため、表に存在しないハンドラ名が1つ紛れ込むだけで
+    AttributeError がメッセージループのスレッドを直撃し、finally が発火して
+    **他の機能（詰碁キャプチャの4本）のホットキーまで巻き添えで unregister され、
+    ループ自体を持つ daemon スレッドが落ちる**＝プロセス再起動までグローバル
+    ホットキーが全滅する。
+
+    このテストは KataGo/Kivy/Win32 いずれにも依存せず、`__main__.py` を ast で静的に
+    解析するだけで検査できる不変条件を確認する: `_setup_global_hotkeys` が組み立てる
+    `specs`（`(settings, feature, key, default, handler, args, label)` の7要素タプル、
+    handler はインデックス4）の `specs.append((...))` 呼び出しから拾える全ハンドラ名
+    文字列リテラルが、同ファイル内に対応する `def` を持つこと。
+
+    実装メモ: 素朴には「ファイル全体で `^_[a-z0-9_]+_trigger$` に一致する文字列リテラル
+    全部」を対象にする実装をまず試したが、`_tsumego_capture_trigger`（詰碁キャプチャの
+    連打防止デバウンス用タイムスタンプを持たせる **instance attribute** 名。
+    `getattr(self, "_tsumego_capture_last_trigger", 0.0)` /
+    `self._tsumego_capture_last_trigger = now`、`_tsumego_capture_trigger` メソッド内）が
+    たまたま同じ命名の形に一致し、かつ def を持たない（メソッドではなく属性なので
+    持つべきでもない）ため、Task 11 が `_board_watch_trigger` を実装した後もこのテストが
+    ずっと red のままになる恒久的な誤検出だった。dispatch table の実際の構造
+    （`specs.append` タプルの5番目の要素が handler 名という、このファイルが自分で
+    定義している契約）に検査対象を絞ることで、この属性名を誤検出せずに済み、かつ
+    元の欠陥（specs テーブルに存在しないハンドラ名が紛れ込む）は変わらず検出できる。
+    """
+    main_path = os.path.join(os.path.dirname(__file__), "..", "katrain", "__main__.py")
+    source = open(main_path, encoding="utf-8").read()
+    tree = ast.parse(source)
+
+    handler_name_pattern = re.compile(r"^_[a-z0-9_]+_trigger$")
+    handler_field_index = 4  # (settings, feature, key, default, handler, args, label)
+
+    dispatch_handler_names = set()
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "append"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "specs"
+            and node.args
+            and isinstance(node.args[0], ast.Tuple)
+            and len(node.args[0].elts) > handler_field_index
+        ):
+            continue
+        handler_elt = node.args[0].elts[handler_field_index]
+        assert isinstance(handler_elt, ast.Constant) and isinstance(handler_elt.value, str), (
+            "specs.append(...) のハンドラ位置(index 4)がリテラル文字列ではありません。"
+            "実装のタプル構造が変わった可能性があり、このテストの前提(handler_field_index)を"
+            "見直す必要があります"
+        )
+        assert handler_name_pattern.match(handler_elt.value), (
+            f"specs.append(...) のハンドラ位置(index 4)の値 {handler_elt.value!r} が想定する"
+            "ハンドラ名の形('_..._trigger')に一致しません。テストの前提(handler_field_index)が"
+            "実装とずれている可能性があります"
+        )
+        dispatch_handler_names.add(handler_elt.value)
+
+    assert dispatch_handler_names, (
+        "specs.append(...) からハンドラ名を1つも抽出できませんでした。"
+        "_setup_global_hotkeys の実装が変わり、このテストの前提とずれている可能性があります"
+    )
+
+    defined_function_names = {
+        node.name for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+    missing = sorted(dispatch_handler_names - defined_function_names)
+    assert not missing, (
+        f"katrain/__main__.py の specs.append(...) ホットキー登録表がハンドラ名 {missing} を"
+        "文字列リテラルとして参照していますが、同ファイル内に対応する def がありません。"
+        "これは Task 8 の Critical defect と全く同じ形です: specs テーブルに存在しない"
+        "ハンドラ名が1つ紛れ込むと、`_global_hotkey_loop` 内の `getattr(self, handler)` が"
+        "その名前を押されたときに AttributeError を送出し、メッセージループのスレッドを"
+        "直撃します。この例外は try/finally の finally 節（登録済み全ホットキーの"
+        "UnregisterHotKey）を発火させてからスレッド外へ伝播するため、無関係な他機能の"
+        "ホットキー（詰碁キャプチャの4本を含む）まで巻き添えで解除され、ループを持つ"
+        "daemon スレッドごと落ちます。結果、プロセスを再起動するまでグローバルホットキーが"
+        "全て無反応になります。"
+    )

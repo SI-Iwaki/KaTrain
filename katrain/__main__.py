@@ -835,6 +835,11 @@ class KaTrainGui(Screen, KaTrainBase):
             spec = settings.get(key, default)
             if not spec:
                 continue  # 空文字でそのキーだけ無効化できる
+            if not hasattr(self, handler):
+                # ハンドラ未実装（実装が別タスクで、それより先にこの表だけ来ている等）。
+                # このホットキーだけ登録せず、他の機能のホットキーは巻き込まない
+                self.log(f"{feature}: ホットキー {spec}（{label}）のハンドラ {handler} が未実装のため登録しません", OUTPUT_INFO)
+                continue
             try:
                 mods, vk = self._parse_hotkey(spec)
             except ValueError as e:
@@ -887,8 +892,14 @@ class KaTrainGui(Screen, KaTrainBase):
             while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
                 if msg.message == self._WM_HOTKEY and msg.wParam in actions:
                     # キャプチャ中もメッセージループを止めないよう、実処理は作業スレッドに投げる
-                    handler, args = actions[msg.wParam]
-                    threading.Thread(target=getattr(self, handler), args=args, daemon=True).start()
+                    # ここは try で囲む: ハンドラ探索/スレッド起動そのものが失敗しても
+                    # このメッセージループ（＝他の全ホットキー）を巻き込まない。
+                    # スレッド本体で起きた例外はここまで届かない（別スレッドなので分離済み）。
+                    try:
+                        handler, args = actions[msg.wParam]
+                        threading.Thread(target=getattr(self, handler), args=args, daemon=True).start()
+                    except Exception as e:
+                        self.log(f"グローバルホットキー: ディスパッチに失敗しました: {e}", OUTPUT_ERROR)
         finally:
             for hotkey_id, _spec, _action, _label, _feature in registered:
                 user32.UnregisterHotKey(None, hotkey_id)
