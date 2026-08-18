@@ -229,6 +229,7 @@ class BoardWatcher:
         self.clock = clock
         self.interval_ms = settings.poll_interval_ms
         self._stopped = threading.Event()
+        self._thread = None  # start() 前に触っても None（AttributeError にしない）
         self._stable_move = None
         self._stable_count = 0
         self._fail_count = 0
@@ -348,7 +349,17 @@ class BoardWatcher:
         self.on_status(STATUS_WARN, message)
 
     # --- スレッド ---
+    # stop() が join() まで面倒を見る＝「停止フラグ＋join のみ」（spec §3.3）。
+    # join のタイムアウトは「一回のポーリングにかかる現実的な時間」より十分大きく取る
+    # （AppBoardReader のキャッシュ有り1周は40〜85ms実測だが、認識器が固まった場合に
+    # stop() の呼び出し元＝ホットキーのワーカースレッドを無期限にブロックしないため）。
+    _STOP_JOIN_TIMEOUT_SEC = 5.0
+
     def start(self):
+        if self._thread is not None and self._thread.is_alive():
+            return  # 二重起動ガード。既に走っているスレッドがあれば何もしない
+        self._stopped.clear()  # 前回の stop() で立てたフラグを下ろす。無いと再 start() 直後の
+        # run() が最初の is_set() チェックで即 True を引き、1周も回らず終了する（無症状の停止）
         self._thread = threading.Thread(target=self.run, daemon=True)
         self._thread.start()
 
@@ -364,6 +375,11 @@ class BoardWatcher:
 
     def stop(self):
         self._stopped.set()
+        if self._thread is not None:
+            # 進行中の1周（撮影・分類）が終わるまでは flag を見に行けないので join は要る。
+            # タイムアウトしても例外にはしない＝daemon スレッドで Event は立ったままなので
+            # 遅かれ早かれ自分で終わる。ここで固まると呼び出し元（ホットキー）まで止まる
+            self._thread.join(self._STOP_JOIN_TIMEOUT_SEC)
 
 
 def _capture_api():

@@ -1,3 +1,5 @@
+import threading
+
 from katrain.core.board_watch import EMPTY, BLACK, WHITE, apply_move_to_grid, grid_to_move, move_to_grid, stones_to_grid, WatchState, reconcile, board_sgf
 from katrain.core.board_watch import BoardWatcher, WatchSettings  # 既存の import 行に足す
 import katrain.core.board_watch as bw  # 既存の import 行の下に足す
@@ -488,3 +490,63 @@ def test_reader_reruns_detection_after_failure(monkeypatch):
     state["fail"] = False
     reader.read()
     assert calls["detect_board"] == 2  # 失敗後は盤矩形からやり直す
+
+
+def _running_watcher(settings=None):
+    """実スレッドで動かす BoardWatcher。capture_fn が呼ばれるたびに polled イベントを立てる"""
+    polled = threading.Event()
+
+    def capture_fn():
+        polled.set()
+        return _grid(["..", ".."])
+
+    watcher = BoardWatcher(
+        capture_fn=capture_fn,
+        get_state_fn=lambda: None,  # None を返せば step() は何もせず即戻る
+        on_move=lambda *a: None,
+        on_status=lambda *a: None,
+        settings=settings or WatchSettings(poll_interval_ms=1),
+    )
+    return watcher, polled
+
+
+def test_start_called_twice_creates_only_one_live_thread():
+    watcher, polled = _running_watcher()
+    watcher.start()
+    assert polled.wait(2.0)  # ループが実際に回っていることを確認してから
+    first_thread = watcher._thread
+    assert first_thread.is_alive()
+
+    watcher.start()  # 2回目は無視されるべき
+    assert watcher._thread is first_thread  # 新しいスレッドに差し替わっていない
+
+    watcher.stop()
+
+
+def test_stop_after_start_leaves_thread_not_alive_and_is_noop_when_never_started():
+    watcher, polled = _running_watcher()
+    watcher.start()
+    assert polled.wait(2.0)
+
+    watcher.stop()
+    assert not watcher._thread.is_alive()  # join 済みなので即座に確認できる
+
+    # 一度も start() していないウォッチャーで stop() を呼んでも例外にならない
+    never_started, _polled = _running_watcher()
+    assert never_started._thread is None
+    never_started.stop()
+
+
+def test_start_after_stop_restarts_the_loop():
+    watcher, polled = _running_watcher()
+    watcher.start()
+    assert polled.wait(2.0)
+    watcher.stop()
+    assert not watcher._thread.is_alive()
+
+    polled.clear()
+    watcher.start()  # stop() 後の再 start() でも本当にループが回ることを確認する
+    assert polled.wait(2.0)  # capture_fn が呼ばれた＝run() が1周以上回った証拠
+    assert watcher._thread.is_alive()
+
+    watcher.stop()
