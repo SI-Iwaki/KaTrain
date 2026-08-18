@@ -361,6 +361,10 @@ msgstr "直近何手のドットを表示"
 msgid "show ai dots"
 msgstr "AIの手にもドットやSGFコメントをつける"
 
+#. show move comments for ai moves in the info panel
+msgid "show ai comments"
+msgstr "AIの着手にもコメントを表示"
+
 #. submit button
 msgid "update teacher"
 msgstr "指導設定を更新"

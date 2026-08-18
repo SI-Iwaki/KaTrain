@@ -534,6 +534,10 @@ msgstr "Show dots for the last <this many> moves"
 msgid "show ai dots"
 msgstr "Show dots/SGF comments for AI players"
 
+#. show move comments for ai moves in the info panel
+msgid "show ai comments"
+msgstr "Show move comments for AI players"
+
 #. point loss precision options
 msgid "show two digits for point loss near zero"
 msgstr "Show two digits for point loss near zero"

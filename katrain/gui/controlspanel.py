@@ -144,6 +144,10 @@ class ControlsPanel(BoxLayout):
 
         lock_ai = katrain.config("trainer/lock_ai") and katrain.play_analyze_mode == MODE_PLAY
         details = self.info.detailed and not lock_ai
+        # AI側の手はパネルに出ない（対人対局では active_comment_node が自分の手に戻され、
+        # かつ teach は人間にしか立たないので comment() が見出し行しか返さない）。
+        # このオプションが有効なら AI の着手にも詳細コメント（最善手・PV・AI thoughts）を出す。
+        show_ai_comment = bool(katrain.config("trainer/eval_show_ai_comment")) and not lock_ai
         info = ""
         if katrain.contributing:
             info += katrain.engine.status()
@@ -163,9 +167,20 @@ class ControlsPanel(BoxLayout):
                         self.players[bw].player_subtype = network
 
         if move or current_node.is_root:
-            info += self.active_comment_node.comment(
-                teach=katrain.players_info[self.active_comment_node.player].being_taught, details=details
+            active_node_is_ai = (
+                bool(self.active_comment_node.move) and katrain.players_info[self.active_comment_node.player].ai
             )
+            info += self.active_comment_node.comment(
+                teach=katrain.players_info[self.active_comment_node.player].being_taught,
+                details=details or (show_ai_comment and active_node_is_ai),
+            )
+            if (
+                show_ai_comment
+                and current_node is not self.active_comment_node
+                and current_node.move
+                and katrain.players_info[current_node.player].ai
+            ):  # 自分の手のコメントは残したまま、AIの応手を続けて表示する
+                info += "\n" + current_node.comment(details=True)
 
         if self.active_comment_node.analysis_exists:
             self.stats.score = self.active_comment_node.format_score() or ""
