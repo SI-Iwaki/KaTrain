@@ -346,3 +346,73 @@ class BoardWatcher:
 
     def _warn(self, message):
         self.on_status(STATUS_WARN, message)
+
+    # --- スレッド ---
+    def start(self):
+        self._thread = threading.Thread(target=self.run, daemon=True)
+        self._thread.start()
+
+    def run(self):
+        while not self._stopped.is_set():
+            try:
+                self.step()
+            except Exception as e:
+                # step() 内で吸収しきれなかった想定外の例外でもスレッドを殺さない。
+                # 落ちると「緑バナーのまま1手も入らない」無症状の停止になる
+                self._warn(f"監視でエラーが発生しました: {e}")
+            self._stopped.wait(self.interval_ms / 1000.0)
+
+    def stop(self):
+        self._stopped.set()
+
+
+def _capture_api():
+    """tsumego_capture の関数群を遅延 import して返す（テストで差し替えられるように関数にする）"""
+    from katrain.core.tsumego_capture import (
+        capture_screen_rect,
+        detect_board,
+        detect_size_and_classify,
+        find_window_rect,
+    )
+
+    return find_window_rect, capture_screen_rect, detect_board, detect_size_and_classify
+
+
+class AppBoardReader:
+    """アプリ窓を撮って観測グリッドを返す。盤矩形と盤サイズをキャッシュする。
+
+    キャッシュ有りの1周は「撮影 27ms ＋ 格子検算 5〜25ms ＋ 分類 7〜29ms」＝40〜85ms（実測）。
+    毎周 detect_size_and_classify をキャッシュしたサイズ1候補で回すのは、これが
+    「盤矩形と規則配置の仮定がまだ合っているか」の検算を兼ねるため。
+    """
+
+    def __init__(self, window_title, board_sizes):
+        self.window_title = window_title
+        self.board_sizes = list(board_sizes)
+        self.size = None
+        self._window_rect = None
+        self._board_rect = None
+
+    def read(self):
+        find_window_rect, capture_screen_rect, detect_board, detect_size_and_classify = _capture_api()
+        try:
+            rect = find_window_rect(self.window_title)
+        except Exception as e:
+            # ウィンドウが無い＝最小化・終了。過渡失敗と違い連続 N 回待たずに即警告させる
+            raise PermanentCaptureError(str(e)) from e
+        if rect != self._window_rect:  # 窓が動いた・リサイズされた
+            self._window_rect = rect
+            self._board_rect = None
+        img = capture_screen_rect(rect)
+        if self._board_rect is None:
+            board_rect = detect_board(img)
+            size, grid = detect_size_and_classify(img, board_rect, self.board_sizes)
+            self._board_rect = board_rect
+            self.size = size
+            return grid
+        try:
+            _size, grid = detect_size_and_classify(img, self._board_rect, [self.size])
+        except Exception:
+            self._board_rect = None  # 次回はフル検出からやり直す
+            raise
+        return grid

@@ -1,5 +1,6 @@
 from katrain.core.board_watch import EMPTY, BLACK, WHITE, apply_move_to_grid, grid_to_move, move_to_grid, stones_to_grid, WatchState, reconcile, board_sgf
 from katrain.core.board_watch import BoardWatcher, WatchSettings  # 既存の import 行に足す
+import katrain.core.board_watch as bw  # 既存の import 行の下に足す
 
 
 def test_stones_to_grid_uses_top_origin_rows():
@@ -413,3 +414,77 @@ def test_watcher_recovers_after_permanent_failure():
     board = _grid(["...", "...", "..."])
     h.step(board, _state(board))
     assert h.statuses[-1][0] == "bw-watching"
+
+
+def test_run_stops_and_survives_unexpected_exceptions():
+    h = Harness(WatchSettings(poll_interval_ms=1))
+    calls = []
+
+    def boom():
+        calls.append(1)
+        if len(calls) >= 3:
+            h.watcher.stop()
+        raise ValueError("boom")
+
+    h.watcher.get_state_fn = boom
+    h.frames = [_grid(["..", ".."])] * 10
+    h.watcher.run()
+    assert len(calls) >= 3
+    assert any(kind == "bw-warn" for kind, _t in h.statuses)
+
+
+def test_reader_caches_board_rect_and_size(monkeypatch):
+    calls = {"detect_board": 0, "classify": 0, "sizes": []}
+
+    def fake_find_window_rect(title):
+        return (0, 0, 100, 100)
+
+    def fake_capture_screen_rect(rect):
+        return "IMG"
+
+    def fake_detect_board(img):
+        calls["detect_board"] += 1
+        return (1, 2, 3, 4)
+
+    def fake_detect_size_and_classify(img, board_rect, sizes):
+        calls["classify"] += 1
+        calls["sizes"].append(list(sizes))
+        return 9, [["."] * 9 for _ in range(9)]
+
+    monkeypatch.setattr(bw, "_capture_api", lambda: (
+        fake_find_window_rect, fake_capture_screen_rect, fake_detect_board, fake_detect_size_and_classify
+    ))
+    reader = bw.AppBoardReader("BlueStacks", [9, 13, 19])
+    reader.read()
+    reader.read()
+    assert calls["detect_board"] == 1          # 2周目は盤矩形を再検出しない
+    assert calls["sizes"] == [[9, 13, 19], [9]]  # 2周目はキャッシュしたサイズ1候補だけ
+    assert reader.size == 9
+
+
+def test_reader_reruns_detection_after_failure(monkeypatch):
+    calls = {"detect_board": 0}
+    state = {"fail": False}
+
+    def fake_detect_size_and_classify(img, board_rect, sizes):
+        if state["fail"]:
+            raise RuntimeError("grid score too low")
+        return 9, [["."] * 9 for _ in range(9)]
+
+    def fake_detect_board(img):
+        calls["detect_board"] += 1
+        return (1, 2, 3, 4)
+
+    monkeypatch.setattr(bw, "_capture_api", lambda: (
+        lambda title: (0, 0, 100, 100), lambda rect: "IMG", fake_detect_board, fake_detect_size_and_classify
+    ))
+    reader = bw.AppBoardReader("BlueStacks", [9])
+    reader.read()
+    state["fail"] = True
+    try:
+        reader.read()
+    except RuntimeError:
+        pass
+    state["fail"] = False
+    reader.read()
+    assert calls["detect_board"] == 2  # 失敗後は盤矩形からやり直す
