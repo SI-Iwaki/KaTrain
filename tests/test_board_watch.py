@@ -3,6 +3,8 @@ import os
 import re
 import threading
 
+import pytest
+
 from katrain.core.board_watch import EMPTY, BLACK, WHITE, apply_move_to_grid, grid_to_move, move_to_grid, stones_to_grid, WatchState, reconcile, board_sgf
 from katrain.core.board_watch import BoardWatcher, WatchSettings  # 既存の import 行に足す
 import katrain.core.board_watch as bw  # 既存の import 行の下に足す
@@ -640,3 +642,108 @@ def test_all_hotkey_dispatch_handler_names_have_matching_defs():
         "daemon スレッドごと落ちます。結果、プロセスを再起動するまでグローバルホットキーが"
         "全て無反応になります。"
     )
+
+
+# ============================================================
+# Task 13: 実スクショによる回帰テスト
+#
+# tests/data/board_watch_before.png / board_watch_after.png は Task 1 のスパイクで
+# 実際の対局アプリ（BlueStacks上の囲碁クエスト、9路・vs :KaasanBot）から保存した2枚。
+# 詳細・生データは docs/superpowers/specs/calibration-data/board-watch/spike-results-20260818.md。
+#
+# この2枚がカバーする範囲（実測済み）:
+#   - 9路盤の rect/size 判定
+#   - 疎な配置（石1〜3個）の石分類（黒/白）
+#   - 最終手マーカーが乗った黒石が "." に化けずに "B" と読めること
+#
+# この2枚がカバーしない範囲（他ケースの回帰にはならない）:
+#   - 13路・19路盤
+#   - 白石に最終手マーカーが乗るケース（今回のペアは両方とも黒番の着手）
+#   - 石が密集した局面
+#   - 石が取られる（capture）局面
+#   - 「観測差がちょうど相手の1手ぶん」という前提（このペアは撮影間隔が数分空き、
+#     実際は2手ぶん＝人間の着手+アプリAIの応手が進んでいた。Test B はそれを
+#     素通しで reconcile するのではなく、人間の着手を before に適用してから
+#     reconcile することで「機能が実際に使われる状況」を再現する）
+#
+# アプリAIはこの対局では黒番（人間が白番）。KaTrain 側の WatchState では
+# 「注入対象（アプリAI）の手番かどうか」を to_play_is_human で表すので、
+# アプリAI（黒）の手番では to_play_is_human=True になる（board_watch.py の
+# WatchState docstring・reconcile の分岐参照）。
+
+_DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+_BEFORE_PNG = os.path.join(_DATA_DIR, "board_watch_before.png")
+_AFTER_PNG = os.path.join(_DATA_DIR, "board_watch_after.png")
+
+# Task 1 スパイクの実測値（spike-results-20260818.md の生データより）
+_EXPECTED_SIZE = 9
+_EXPECTED_BEFORE_STONES = {(4, 5): BLACK}
+_EXPECTED_AFTER_STONES = {(4, 5): BLACK, (4, 3): WHITE, (3, 3): BLACK}
+_HUMAN_MOVE = (4, 3, WHITE)  # 人間（白）の着手: row=4 col=3
+_APP_AI_REPLY = (3, 3)  # アプリAI（黒）の応手: row=3 col=3
+
+
+def _recognize_real_screenshot(path):
+    from PIL import Image
+
+    from katrain.core.tsumego_capture import detect_board, detect_size_and_classify
+
+    img = Image.open(path)
+    board_rect = detect_board(img)
+    size, grid = detect_size_and_classify(img, board_rect, [9, 13, 19])
+    return size, grid
+
+
+def _stones(grid):
+    return {(i, j): v for i, row in enumerate(grid) for j, v in enumerate(row) if v != EMPTY}
+
+
+_SCREENSHOTS_MISSING = not (os.path.exists(_BEFORE_PNG) and os.path.exists(_AFTER_PNG))
+
+
+@pytest.mark.skipif(_SCREENSHOTS_MISSING, reason="スパイクのスクショが未取得")
+def test_real_screenshots_recognized_grids_match_spike_measurement():
+    """認識器単体（board_watch のロジックは一切通さない）の回帰。
+
+    Task 1 スパイクで実測した盤サイズ・石の座標・色をそのまま固定する。
+    期待値は「非空セルの集合」全体で比較する（部分集合の包含チェックだと
+    余計な石が紛れ込んでも通ってしまうため）。この関数が red になったら
+    認識器（detect_board / detect_size_and_classify）がドリフトした証拠で、
+    board_watch 側の変更は無関係。
+    """
+    size_before, before = _recognize_real_screenshot(_BEFORE_PNG)
+    size_after, after = _recognize_real_screenshot(_AFTER_PNG)
+    assert size_before == _EXPECTED_SIZE
+    assert size_after == _EXPECTED_SIZE
+    assert _stones(before) == _EXPECTED_BEFORE_STONES
+    assert _stones(after) == _EXPECTED_AFTER_STONES
+
+
+@pytest.mark.skipif(_SCREENSHOTS_MISSING, reason="スパイクのスクショが未取得")
+def test_real_screenshots_reconcile_detects_app_ai_reply():
+    """実際に使われる状況を再現する end-to-end 回帰: KaTrain が人間の着手を
+    反映した直後の局面に、ウォッチャーがアプリAIの応手を観測する。
+
+    before/after を素通しで reconcile すると差は2手ぶんなので mismatch になる
+    （spike-results 参照）。それは「1手差」の主張として使えないため、ここでは
+    before に人間の着手（White, row=4 col=3）を apply_move_to_grid で適用して
+    from-state を作り、そこに after を reconcile する。
+    """
+    _size_before, before = _recognize_real_screenshot(_BEFORE_PNG)
+    _size_after, after = _recognize_real_screenshot(_AFTER_PNG)
+
+    human_i, human_j, human_color = _HUMAN_MOVE
+    current = apply_move_to_grid(before, human_i, human_j, human_color)
+    assert current is not None  # 人間の着手が合法手として適用できること自体も固定する
+
+    state = _state(
+        current,
+        to_play=BLACK,          # アプリAI（黒）の手番
+        last_move=_HUMAN_MOVE,
+        human=True,              # アプリAI側 = KaTrain 用語の「human」（注入対象）
+        ai_ok=True,
+        move_number=2,
+    )
+    verdict = reconcile(state, after)
+    assert verdict.kind == "move"
+    assert verdict.move == _APP_AI_REPLY
