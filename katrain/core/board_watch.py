@@ -8,6 +8,8 @@ KaTrain の Move.coords = (x, y) は **y が下origin**（sgf_parser.py:31-39）
 この変換漏れは実測済みのバグ源なので、変換は必ずこのモジュールの純関数を通す。
 """
 
+from typing import NamedTuple, Optional, Tuple
+
 EMPTY = "."
 BLACK = "B"
 WHITE = "W"
@@ -85,3 +87,56 @@ def apply_move_to_grid(grid, i, j, color):
     if not liberties:
         return None  # 自殺手（取りを処理した後でも呼吸点が無い）
     return new_grid
+
+
+class WatchState(NamedTuple):
+    """KaTrain 側の局面スナップショット（__main__ が作り、判定はここでだけ行う）"""
+
+    current_grid: list
+    last_move: Optional[Tuple[int, int, str]]  # (i, j, color)。root とパスは None
+    to_play: str
+    to_play_is_human: bool
+    ai_can_respond: bool
+    move_number: int
+    board_size: int
+
+
+class Verdict(NamedTuple):
+    kind: str  # "in_sync" | "waiting" | "ahead" | "move" | "mismatch"
+    move: Optional[Tuple[int, int]] = None
+    reason: str = ""
+
+
+def reconcile(state, observed):
+    """観測グリッドが「現局面＋打つ側の1手」で説明できるかを判定する。
+
+    表は**上から評価する優先順位**（spec §2.3）。特に「AI の手番なら絶対に注入しない」
+    （waiting）を Move 判定より前に置くのが安全弁の要 — 色の割り当てが逆だと相手の石が
+    常に to_play と同色になり、Move 判定が成立してしまう。
+    """
+    if len(observed) != state.board_size:
+        return Verdict(
+            "mismatch",
+            reason=f"盤サイズが違います（アプリ {len(observed)}路 / KaTrain {state.board_size}路）",
+        )
+    if not state.ai_can_respond:
+        return Verdict("mismatch", reason="AI が応手できない局面です（分岐・終局・解析モード・リージョン）")
+    if not state.to_play_is_human:
+        # KaTrain の AI が考えている最中。正常状態なので無音（数秒続くため警告にしてはいけない）。
+        # 色の割り当てが逆でここから永久に出られないケースは BoardWatcher のウォッチドッグが拾う
+        return Verdict("waiting")
+    if observed == state.current_grid:
+        return Verdict("in_sync")
+    if state.last_move is not None:
+        li, lj, lcolor = state.last_move
+        if apply_move_to_grid(observed, li, lj, lcolor) == state.current_grid:
+            return Verdict("ahead")
+    matches = []
+    for i in range(state.board_size):
+        for j in range(state.board_size):
+            if observed[i][j] == state.to_play and state.current_grid[i][j] == EMPTY:
+                if apply_move_to_grid(state.current_grid, i, j, state.to_play) == observed:
+                    matches.append((i, j))
+    if len(matches) == 1:
+        return Verdict("move", move=matches[0])
+    return Verdict("mismatch", reason="盤面の差が1手で説明できません")
