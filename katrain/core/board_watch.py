@@ -61,26 +61,44 @@ def board_sgf(grid, komi, rules, next_player):
 
 
 def import_next_player(grid, human_color):
-    """取り込み時の手番を決める（spec §3.2、2026-08-19 修正）。
+    """取り込み時の手番と、その根拠（ログ用の文字列）を返す（spec §3.2 / §12）。
 
-    石が1つでもある盤では石数パリティから手番を決められない: 盤上石数 b, w と
-    取られた石数 cb, cw の間には b − w = cw − cb が成り立つので、取りが1回でも
-    入るとパリティは手番を表さない（9路で双方6手ずつ・黒が白1子取った局面は
-    黒6/白5 だが手番は黒）。よってこの場合は安全側の human_color に倒す
-    （誤っていても KaTrain が誤った色で勝手に打ち出す事故は起きず、相手の
-    手待ちのまま止まるだけ＝ウォッチドッグが拾う）。
+    石数パリティは一般には手番を表さない: 盤上石数 b, w と取られた石数 cb, cw の
+    間には b − w = cw − cb が成り立つので、取りが1回でも入るとパリティは崩れる
+    （9路で双方6手ずつ・黒が白1子取った局面は 黒6/白5 だが手番は黒）。よって
+    取りが起きうる局面では安全側の human_color に倒す（誤っていても KaTrain が
+    誤った色で勝手に打ち出す事故は起きず、相手の手待ちのまま止まるだけ＝
+    §2.5c のウォッチドッグが拾い、Enter の ai-move が脱出口になる）。
 
-    石が1つも無い盤は「対局の開始」そのもので、直前の手も取りも存在し得ない。
-    これは推測ではなく囲碁のルール＝黒が先手。旧実装は空盤でも一律 human_color
-    に固定していたため、KaTrain 側の AI が黒番で新規対局を始めるケースが
-    到達不能になっていた（実測 game_20260819_012616.log: 9路で新規対局を開始
-    したのに「手番=W」と取り込まれ、黒番の KaTrain AI が一度も着手できず、
-    ユーザーは KaTrain を待ち・KaTrain は人間を待ち・監視はアプリ側 AI の
-    手を待つ三者デッドロックになった）。
+    ただし**盤上2子以内では取りが起き得ない**ので、この範囲のパリティは推測では
+    なく確定である:
+
+    - 空盤は対局の開始そのもの＝囲碁のルールで黒が先手
+    - 最初の取りは3手目より前には起こせない（1手目の石は空盤上で呼吸点2以上を
+      持ち、2手目の1子では詰められない）。その3手目の取り（B, W, B と進んで黒が
+      白1子を取る）が作る盤は 黒2子・白0子＝ b − w = 2 で、下の b − w ∈ {0,1} ガードから
+      外れる。したがって「2子以内 かつ b − w ∈ {0, 1}」を満たす盤は
+      (0,0) / (1,0) / (1,1) の3通りだけで、どれも取りなしの交互着手でしか到達
+      できない（3路・4路の合法手列の総当たりで確認＝
+      tests/test_board_watch.py の test_import_next_player_agrees_with_every_reachable_small_position）
+
+    これは「対局が始まってから監視を ON にする」という最もありふれた手順を救う。
+    旧実装は石が1つでもあれば human_color に倒していたため、アプリ側 AI が初手を
+    打った直後に ON にすると KaTrain 側 AI の手番が来ず対局が始まらなかった
+    （実測 game_20260819_112356.log: 黒1子の9路盤を「手番=B・人間側に固定」で
+    取り込み、白番の KaTrain AI が2手目を打てないまま停止）。
+
+    前提: この2子以内の確定は**最初の2手にパスが無いこと**に依る（パスは盤に
+    現れないので1枚の盤からは区別できない。そもそも監視はパスを検出対象外に
+    している＝§0）。実戦の2手目までのパスは考えなくてよい。
     """
-    if all(cell == EMPTY for row in grid for cell in row):
-        return BLACK
-    return human_color
+    stones = [cell for row in grid for cell in row if cell != EMPTY]
+    if not stones:
+        return BLACK, "空盤なので黒番"
+    black, white = stones.count(BLACK), stones.count(WHITE)
+    if len(stones) <= 2 and black - white in (0, 1):
+        return (BLACK if black == white else WHITE), "2子以内なので石数から確定"
+    return human_color, "人間側に固定"
 
 
 def _neighbours(i, j, size):
@@ -348,9 +366,10 @@ class BoardWatcher:
             self._watching()
         elif self._quiet_since is not None and now - self._quiet_since >= self.settings.stall_warn_sec:
             self._quiet_since = now  # 再警告は stall_warn_sec ごと
-            # 空盤→黒番の修正（import_next_player）で対局開始時のデッドロックは無くなったが、
-            # 「対局中に、実は KaTrain 側の手番であるタイミングで監視を ON にする」ケースは
-            # 1フレームの盤面（取られた石数が分からない）からは判定できず残る。この場合
+            # import_next_player の確定ゾーン（空盤・盤上2子以内）で対局開始まわりの
+            # デッドロックは無くなったが、「対局が進んだ局面で、実は KaTrain 側の手番である
+            # タイミングで監視を ON にする」ケースは1フレームの盤面（取られた石数が
+            # 分からない）からは判定できず残る。この場合
             # ai-move（Enter / numpad-Enter、gui.kv:883）で AI に1手打たせれば動き出す。
             # もう一方のありふれた原因（アプリへのタップ忘れ）と合わせて両方を案内する。
             # どちらが実際の原因かは判定しない

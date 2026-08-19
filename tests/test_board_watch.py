@@ -244,16 +244,32 @@ def test_import_next_player_empty_board_is_black_regardless_of_human_color():
     # 空盤＝新規対局そのもの。碁のルールで黒が先手（推測ではない）。
     # human_color が黒でも白でも、空盤なら必ず黒番を返す
     empty = _grid(["...", "...", "..."])
-    assert import_next_player(empty, human_color="W") == BLACK
-    assert import_next_player(empty, human_color="B") == BLACK
+    assert import_next_player(empty, human_color="W")[0] == BLACK
+    assert import_next_player(empty, human_color="B")[0] == BLACK
 
 
-def test_import_next_player_single_stone_falls_back_to_human_color():
-    # 石が1つでもあれば石数パリティは手番を表さない（b-w = cw-cb）ので、
-    # 安全側の human_color に倒す
+def test_import_next_player_single_black_stone_is_white_to_play():
+    # アプリ側 AI が初手を打った直後に監視を ON にするケース。盤上2子以内では取りが
+    # 起き得ないので手番は石数から確定でき、human_color には依らない。
+    # （実測 game_20260819_112356.log: ここを human_color=B に倒していたため、白番の
+    #  KaTrain AI が2手目を打てず対局が始まらなかった）
     grid = _grid(["B..", "...", "..."])
-    assert import_next_player(grid, human_color="W") == "W"
-    assert import_next_player(grid, human_color="B") == "B"
+    assert import_next_player(grid, human_color="W")[0] == WHITE
+    assert import_next_player(grid, human_color="B")[0] == WHITE
+
+
+def test_import_next_player_one_stone_each_is_black_to_play():
+    grid = _grid(["B..", ".W.", "..."])
+    assert import_next_player(grid, human_color="W")[0] == BLACK
+    assert import_next_player(grid, human_color="B")[0] == BLACK
+
+
+def test_import_next_player_two_black_stones_falls_back_to_human_color():
+    # b-w=2 は取りが起きた証拠（B,W,B と進んで黒が白1子を取ると盤は黒2子・白0子）。
+    # 取りが入るとパリティは手番を表さないので human_color に倒す
+    grid = _grid(["BB.", "...", "..."])
+    assert import_next_player(grid, human_color="W")[0] == "W"
+    assert import_next_player(grid, human_color="B")[0] == "B"
 
 
 def test_import_next_player_many_stones_falls_back_to_human_color():
@@ -262,8 +278,65 @@ def test_import_next_player_many_stones_falls_back_to_human_color():
         ".BW",
         "W.B",
     ])
-    assert import_next_player(grid, human_color="W") == "W"
-    assert import_next_player(grid, human_color="B") == "B"
+    assert import_next_player(grid, human_color="W")[0] == "W"
+    assert import_next_player(grid, human_color="B")[0] == "B"
+
+
+def test_import_next_player_reason_distinguishes_the_three_branches():
+    # 取り込みの根拠はログから切り分けられること（spec §3.2）
+    empty = import_next_player(_grid(["...", "...", "..."]), human_color="B")[1]
+    counted = import_next_player(_grid(["B..", "...", "..."]), human_color="B")[1]
+    fixed = import_next_player(_grid(["BB.", "...", "..."]), human_color="B")[1]
+    assert len({empty, counted, fixed}) == 3
+
+
+def test_import_next_player_agrees_with_every_reachable_small_position():
+    """「盤上2子以内なら取りが起き得ない」を総当たりで確かめる。
+
+    3路・4路の合法手列を全部展開し（パスは除く＝パスはそもそも監視の検出対象外・§0）、
+    到達した (局面, 手番) のうち import_next_player が石数から確定すると言うもの
+    （2子以内かつ b-w in (0,1)）が、実際の手番と必ず一致することを見る。同じ局面が
+    別の手番でも到達できるなら、その時点でどちらかの assert が落ちる。
+
+    実盤は9/13/19路だが、盤が大きいほど石の呼吸点は増えて取りは起きにくくなるので、
+    小さい盤のほうが「早い取り」に対しては最悪ケース側＝3路・4路で成り立てば十分。
+    """
+    for size, depth in ((3, 7), (4, 5)):
+        start = (tuple(tuple(EMPTY for _ in range(size)) for _ in range(size)), BLACK)
+        frontier = {start}
+        seen = {start}
+        for _ in range(depth):
+            nxt = set()
+            for grid_t, to_play in frontier:
+                grid = [list(r) for r in grid_t]
+                for i in range(size):
+                    for j in range(size):
+                        played = apply_move_to_grid(grid, i, j, to_play)
+                        if played is None:
+                            continue
+                        state = (tuple(tuple(r) for r in played), WHITE if to_play == BLACK else BLACK)
+                        if state not in seen:
+                            seen.add(state)
+                            nxt.add(state)
+            frontier = nxt
+
+        confirmed = 0
+        capture_in_small_zone = 0
+        for grid_t, to_play in seen:
+            grid = [list(r) for r in grid_t]
+            stones = [c for row in grid for c in row if c != EMPTY]
+            if len(stones) > 2:
+                continue
+            b, w = stones.count(BLACK), stones.count(WHITE)
+            if b - w not in (0, 1):
+                capture_in_small_zone += 1  # 取りが起きた証拠（b-w が 0/1 から外れる）
+                continue
+            confirmed += 1
+            assert import_next_player(grid, human_color=BLACK)[0] == to_play
+            assert import_next_player(grid, human_color=WHITE)[0] == to_play
+        assert confirmed > 0
+        # b-w ガードが空回りしていないこと＝2子以内でも取りで到達する局面は実在する
+        assert capture_in_small_zone > 0
 
 
 class FakeClock:
@@ -776,3 +849,17 @@ def test_real_screenshots_reconcile_detects_app_ai_reply():
     verdict = reconcile(state, after)
     assert verdict.kind == "move"
     assert verdict.move == _APP_AI_REPLY
+
+
+@pytest.mark.skipif(_SCREENSHOTS_MISSING, reason="スパイクのスクショが未取得")
+def test_real_screenshot_before_imports_as_white_to_play():
+    """実スクショでの取り込み回帰: アプリAI（黒）が初手を打った直後の盤。
+
+    この1枚はユーザーが報告した不具合そのものの局面（アプリで自分が白・AI が黒＝
+    KaTrain では人間=黒/AI=白、黒の初手だけが乗った9路盤）。旧実装は human_color=B に
+    倒していたため KaTrain の白番 AI が2手目を打てず対局が始まらなかった
+    （実測 ~/.katrain/logs/game_20260819_112356.log）。
+    """
+    _size, before = _recognize_real_screenshot(_BEFORE_PNG)
+    next_player, _reason = import_next_player(before, human_color=BLACK)
+    assert next_player == WHITE
