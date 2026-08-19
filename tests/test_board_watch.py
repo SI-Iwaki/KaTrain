@@ -394,7 +394,7 @@ def test_watcher_quiet_timer_resets_when_state_changes():
 
 
 def test_watcher_adds_resync_hint_after_repeated_mismatch():
-    # 具体的なキー名（例: "ctrl+alt+b"）はユーザー設定 board_watch.hotkey で変わりうるので
+    # 具体的なキー名（例: "ctrl+alt+d"）はユーザー設定 board_watch.hotkey で変わりうるので
     # 固定文字列を再ピン留めしない。実際に効くべき性質は「RESYNC_HINT がそのまま
     # 追記されること」なので、モジュール定数を通して検査する
     h = Harness(WatchSettings(resync_hint_frames=3))

@@ -961,7 +961,7 @@ class KaTrainGui(Screen, KaTrainBase):
         if watch.get("enabled", False):
             # ホットキーは Theme.KEY_* と重ねないこと（RegisterHotKey はフォーカス窓から
             # キーを奪うので、重ねると KaTrain 本体のショートカットが黙って死ぬ）
-            specs.append((watch, "board_watch", "hotkey", "ctrl+alt+b", "_board_watch_trigger", (), "盤面監視トグル"))
+            specs.append((watch, "board_watch", "hotkey", "ctrl+alt+d", "_board_watch_trigger", (), "盤面監視トグル"))
         hotkeys = []
         for settings, feature, key, default, handler, args, label in specs:
             spec = settings.get(key, default)
@@ -1499,7 +1499,7 @@ class KaTrainGui(Screen, KaTrainBase):
         )
 
     def _board_watch_trigger(self):
-        """ctrl+alt+b のワーカースレッド。OFF なら認識してから開始、ON なら停止する"""
+        """ctrl+alt+d のワーカースレッド。OFF なら認識してから開始、ON なら停止する"""
         from katrain.core.board_watch import AppBoardReader
 
         now = time.time()

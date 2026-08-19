@@ -89,7 +89,7 @@
     },
     "board_watch": {
         "enabled": true,
-        "hotkey": "ctrl+alt+b",
+        "hotkey": "ctrl+alt+d",
         "window_title": "",
         "poll_interval_ms": 400,
         "stable_frames": 2,

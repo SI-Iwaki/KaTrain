@@ -26,7 +26,7 @@ BlueStacks 上の囲碁**対局**アプリと KaTrain を並べて使い、**ア
 | 不一致時 | 盤面には触らず**警告だけ**出して監視継続 |
 | 色と手番 | 現在の KaTrain のプレイヤー設定をそのまま使う（新設定を増やさない） |
 | 画面配置 | BlueStacks と KaTrain を**並べて表示**できる前提 |
-| ホットキー | `ctrl+alt+b` |
+| ホットキー | `ctrl+alt+d` |
 | ウィンドウタイトル | `tsumego_capture.window_title` を継承（BlueStacks） |
 
 **ホットキー既定を `f9` にしてはいけない**。`RegisterHotKey` はシステムグローバルで、登録するとそのキーは**フォーカス窓に配送されなくなる**。`f9` は `Theme.KEY_CONTRIBUTE_POPUP`（`theme.py:191`）で、F2/F3/F5〜F10/F12 も全部 `Theme.KEY_*` に埋まっている（`theme.py:185-192`, `:233`, `:235`）。詰碁ホットキーが f4 系に寄せてあるのはこの回避の結果。**グローバルホットキーは `Theme.KEY_*` と重ねない**という制約が本機能にも掛かる。
@@ -222,7 +222,7 @@ kv 側で触るのは4系統: ラベルのテキスト式（`detail` を最優�
 | キー | 既定 | 意味 |
 |---|---|---|
 | `enabled` | `true` | 機能ごと無効化（`tsumego_capture.enabled` とは独立。§3.1） |
-| `hotkey` | `ctrl+alt+b` | 監視トグル（`Theme.KEY_*` と重ねないこと。§0） |
+| `hotkey` | `ctrl+alt+d` | 監視トグル（`Theme.KEY_*` と重ねないこと。§0） |
 | `window_title` | `""` | 空なら `tsumego_capture.window_title` を継承 |
 | `poll_interval_ms` | `400` | ポーリング周期 |
 | `stable_frames` | `2` | 同じ `Move(i, j)` が何回連続で出たら確定するか |
