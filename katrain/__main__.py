@@ -1473,7 +1473,8 @@ class KaTrainGui(Screen, KaTrainBase):
 
     def _board_watch_state(self):
         """監視スレッドが読む KaTrain 側のスナップショット（判定は board_watch 側で行う）"""
-        from katrain.core.board_watch import WatchState, move_to_grid, stones_to_grid
+        from katrain.core.board_watch import WatchState, move_to_grid, previous_app_grid, stones_to_grid
+        from katrain.core.tsumego_solver_api import moves_from_node
 
         game = self.game
         if game is None:
@@ -1484,6 +1485,10 @@ class KaTrainGui(Screen, KaTrainBase):
         node = game.current_node
         # game.stones はプロパティ自身が _lock を取る（呼び出し側でロックを取らない）
         grid = stones_to_grid(((s.coords, s.player) for s in game.stones), size_x)
+        # ahead 判定の基準になる1手前の盤（root の配置＋最終手を除く着手列を再生する）。
+        # 現盤と食い違ったら None が返り、board_watch 側が従来の逆再生判定に倒れる
+        root_grid = stones_to_grid(((m.coords, m.player) for m in game.root.move_with_placements), size_x)
+        previous = previous_app_grid(root_grid, moves_from_node(node), size_x, grid)
         last_move = None
         move = node.move
         if move is not None and move.coords is not None:  # パスは coords=None の Move
@@ -1505,6 +1510,7 @@ class KaTrainGui(Screen, KaTrainBase):
             ),
             move_number=node.depth,
             board_size=size_x,
+            previous_grid=previous,
         )
 
     def _stop_board_watcher(self, kinds=None):
@@ -1534,7 +1540,7 @@ class KaTrainGui(Screen, KaTrainBase):
             not node.children は**残す**＝回答帳の記録モードで undo 後に打ち直している間の
             誤注入を止める既存の安全弁。
         """
-        from katrain.core.board_watch import WatchState, move_to_grid, replay_grid
+        from katrain.core.board_watch import WatchState, move_to_grid, previous_app_grid, replay_grid
         from katrain.core.tsumego_solver_api import moves_from_node
 
         game = self.game
@@ -1552,7 +1558,8 @@ class KaTrainGui(Screen, KaTrainBase):
         # moves_from_game(game) のように game.current_node を別途読み直すと、その間に AI が
         # 着手した場合に影グリッドが node より1手遅れ、一過性の誤ったバナー警告が出る
         node = game.current_node
-        current = replay_grid(base_grid, moves_from_node(node), size_x)
+        moves = moves_from_node(node)
+        current = replay_grid(base_grid, moves, size_x)
         if current is None:
             if not getattr(self, "_tsumego_watch_replay_warned", False):
                 self._tsumego_watch_replay_warned = True  # 毎周は出さない（1問1回）
@@ -1578,6 +1585,9 @@ class KaTrainGui(Screen, KaTrainBase):
             ),
             move_number=node.depth,
             board_size=size_x,
+            # ahead 判定の基準（1手前のアプリ盤）。逆再生だけだと「白の応手が黒の最終手を
+            # 取った」局面が ahead に化けて白が永久に注入されない（spec 2026-08-22 追記4）
+            previous_grid=previous_app_grid(base_grid, moves, size_x, current),
         )
 
     def _start_tsumego_watch(self, settings, view_kind):

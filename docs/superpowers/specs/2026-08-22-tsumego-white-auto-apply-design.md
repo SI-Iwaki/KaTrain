@@ -255,3 +255,62 @@ idle（400ms）のまま置いている。
 - `.claude/rules/tsumego.md`（機能の全体像・落とし穴に §1(a) の「KaTrain の盤 ≠ アプリの盤」を追加）
 - `.claude/rules/tsumego-parameters.md`（§6 の新しい2キー）
 - `docs/superpowers/specs/INDEX.md`（詰碁の節に本 spec を実装済みとして追加）
+
+## 追記1（2026-08-22）: 相手の応手が「黒の最終手を取る」と `ahead` に化けて白が入らない
+
+### 症状
+
+回答帳キー `04b0a596ff951b523dd78d072672751a3bc3d3b8`（13路）の再生中、黒 H13 のあとアプリが
+返した**白 G13 が永久に反映されなかった**。警告も出ない（詰碁モードは `stall_kinds=("in_sync",)`
+＝`ahead` を停滞警告の対象から外しているため、§5 のとおり `ahead` はユーザーの思考時間そのもの）。
+それまでの白 J13 / F8 は `board_watch: 相手の着手 … を反映しました` が出ており、
+**この1手だけが黙って落ちた**。
+
+### 根本原因
+
+`reconcile` の `ahead` 判定（spec §2.3 行5、board_watch design）は**逆再生**で書かれていた:
+
+```python
+if apply_move_to_grid(observed, li, lj, lcolor) == state.current_grid:  # 最終手を打ち直す
+    return Verdict("ahead")
+```
+
+この式は「アプリ盤にまだ最終手が無い」ときだけでなく、**相手の応手が最終手を取った**ときにも
+成立する。取られた石を打ち直すと相手の石を取り返して current に戻るからで、
+スナップバック / コウ形が丸ごとこれに当たる。
+
+実測局面: 黒 H13 は W J13・W H12 に接していて呼吸点が G13 だけ。アプリの白 G13 が H13 を取ると
+`observed = current − 黒 H13 + 白 G13`。ここに黒 H13 を打ち直すと白 G13（呼吸点は H13 だけ）を
+取り返して current と一致する ⇒ 行5が成立し、行6（Move）に到達しない。`ahead` は無音の終端
+状態なので、以後ずっと「ユーザーのタップ待ち」として黙る。
+
+盤1枚では **本物のコウ**（盤面が1手前に戻る）と区別できないため、判定には履歴が要る。
+
+### 修正
+
+「アプリの盤 ＝ **1手前の局面**」を直接突き合わせる。`WatchState` に `previous_grid`
+（省略時 None）を足し、渡された場合は `observed == previous_grid` を `ahead` の条件にする
+（None なら従来の逆再生＝後方互換）。
+
+- `board_watch.previous_app_grid(base_grid, moves, size, current_grid)` を追加。
+  `replay_grid(base, moves[:-1])` に最終手を打ち直して `current_grid` と一致することを
+  確かめてから返す（食い違えば None ＝従来判定に倒す）。
+- 詰碁: `_tsumego_watch_state` が影グリッドと同じ `base_grid` / `moves` から作る（構成上必ず整合）。
+- 対局: `_board_watch_state` が root の配置（`game.root.move_with_placements`）＋
+  `moves_from_node` から作る。**同じバグが対局監視にもある**（アプリ側 AI が KaTrain の
+  最終手を取る形）ため、あちらも直す。途中の AB/AE で再生が現盤と食い違う SGF では
+  None が返り従来動作。
+
+**コウは従来どおり `ahead`**（取り返しで局面が1手前に戻るので `observed == previous_grid` が
+成立する）＝注入しない側に倒れる。これは意図した安全側の挙動で、`apply_move_to_grid` が
+コウを判定しない（§2.5b・board_watch design）ことと整合する。
+
+コストは1周につき replay 1回（実測: 19路200手で 1.2ms、詰碁は数手）。
+
+### 回帰
+
+`tests/test_board_watch.py`（+6本）:
+- `test_reconcile_detects_opponent_move_that_captures_our_last_stone` — 本件（`move` を返す）
+- `test_reconcile_without_previous_grid_keeps_legacy_ahead` — 後方互換
+- `test_reconcile_ko_recapture_shape_still_waits_for_the_tap` — 本物のコウは `ahead` のまま
+- `previous_app_grid` の3本（1手戻す / 現盤と食い違えば None / 着手0手なら None）

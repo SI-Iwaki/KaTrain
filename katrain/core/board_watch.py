@@ -183,6 +183,35 @@ def replay_grid(base_grid, moves, size):
     return grid
 
 
+def previous_app_grid(base_grid, moves, size, current_grid):
+    """current_grid の1手前のアプリ盤（`ahead` 判定の基準）。作れないときは None。
+
+    `ahead`（KaTrain が打ったがユーザーがまだアプリへタップしていない）は「アプリの盤 ＝
+    1手前の局面」なので、直前局面そのものと突き合わせるのが正しい。逆再生（observed に
+    最終手を打ち直して current と一致するか）だけでは**相手の応手が最終手を取った局面**
+    でも成立してしまう — 取られた石を打ち直すと相手の石を取り返して current に戻る
+    （スナップバック / コウ形）。実測 2026-08-22（回答帳キー 04b0a596ff・13路）: 黒 H13 の
+    唯一の呼吸点 G13 に白が打って H13 を取った局面が `ahead` に化け、白の着手が永久に
+    注入されなかった（詰碁モードは stall_kinds から ahead を外しているので警告も出ない）。
+
+    再生が現盤と食い違うとき（途中の AB/AE 等）は None を返す＝呼び出し側は従来の
+    逆再生判定に倒れる。**コウの取り返しは盤面が1手前に戻るので、この関数を使っても
+    `ahead` と区別できない**（1枚のグリッドには履歴が無い）＝注入しない側に倒れる。
+    """
+    if not moves:
+        return None
+    coords, color = moves[-1]
+    if coords is None:  # パス（ahead 判定自体が last_move=None でスキップされる）
+        return None
+    previous = replay_grid(base_grid, moves[:-1], size)
+    if previous is None:
+        return None
+    i, j = move_to_grid(coords, size)
+    if apply_move_to_grid(previous, i, j, color) != current_grid:
+        return None  # 再現が現盤と食い違う＝信用しない
+    return previous
+
+
 class WatchState(NamedTuple):
     """KaTrain 側の局面スナップショット（__main__ が作り、判定はここでだけ行う）"""
 
@@ -193,6 +222,8 @@ class WatchState(NamedTuple):
     ai_can_respond: bool
     move_number: int
     board_size: int
+    # 1手前のアプリ盤（previous_app_grid）。None なら従来の逆再生で ahead を判定する
+    previous_grid: Optional[list] = None
 
 
 class Verdict(NamedTuple):
@@ -223,7 +254,13 @@ def reconcile(state, observed):
         return Verdict("in_sync")
     if state.last_move is not None:
         li, lj, lcolor = state.last_move
-        if apply_move_to_grid(observed, li, lj, lcolor) == state.current_grid:
+        if state.previous_grid is not None:
+            # 直前局面そのものと突き合わせる（previous_app_grid のドキュメント参照）。
+            # 逆再生だけだと「相手の応手が最終手を取った」局面が ahead に化ける
+            is_ahead = observed == state.previous_grid
+        else:
+            is_ahead = apply_move_to_grid(observed, li, lj, lcolor) == state.current_grid
+        if is_ahead:
             return Verdict("ahead")
     matches = []
     for i in range(state.board_size):

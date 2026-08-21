@@ -7,6 +7,7 @@ import pytest
 
 from katrain.core.board_watch import EMPTY, BLACK, WHITE, apply_move_to_grid, grid_to_move, move_to_grid, stones_to_grid, WatchState, reconcile, board_sgf, import_next_player, replay_grid
 from katrain.core.board_watch import BoardWatcher, WatchSettings  # 既存の import 行に足す
+from katrain.core.board_watch import previous_app_grid
 import katrain.core.board_watch as bw  # 既存の import 行の下に足す
 
 
@@ -112,7 +113,7 @@ def test_apply_move_capture_frees_own_liberties():
     ])
 
 
-def _state(current, to_play="B", last_move=None, human=True, ai_ok=True, move_number=1):
+def _state(current, to_play="B", last_move=None, human=True, ai_ok=True, move_number=1, previous=None):
     return WatchState(
         current_grid=current,
         last_move=last_move,
@@ -121,6 +122,7 @@ def _state(current, to_play="B", last_move=None, human=True, ai_ok=True, move_nu
         ai_can_respond=ai_ok,
         move_number=move_number,
         board_size=len(current),
+        previous_grid=previous,
     )
 
 
@@ -179,6 +181,71 @@ def test_reconcile_ahead_when_katrain_played_but_app_has_not():
     observed = _grid(["...", "...", "..."])
     state = _state(current, to_play="B", last_move=(1, 1, "W"))
     assert reconcile(state, observed).kind == "ahead"
+
+
+# --- 相手の応手が KaTrain の最終手を取った局面（spec 2026-08-22 追記4） ---
+#
+# 逆再生（observed に最終手を打ち直して current と一致するか）は、取られた石を打ち直すと
+# 相手の石を取り返して current に戻る形（スナップバック/コウ形）でも成立するので、
+# ahead と move を区別できない。実測の誤答局面は 13路の
+# 「黒 H13 の唯一の呼吸点 G13 に白が打って H13 を取る」で、白が永久に注入されなかった。
+
+
+def _capture_of_last_move_case():
+    """列 = F/G/H/J、行0 = 13線。黒 H13(0,2) は G13(0,1) だけが呼吸点"""
+    current = _grid(["B.BW", ".BW.", "....", "...."])
+    observed = _grid(["BW.W", ".BW.", "....", "...."])  # 白 G13 が H13 を取った
+    previous = _grid(["B..W", ".BW.", "....", "...."])  # 黒 H13 を打つ前
+    return current, observed, previous
+
+
+def test_reconcile_detects_opponent_move_that_captures_our_last_stone():
+    current, observed, previous = _capture_of_last_move_case()
+    state = _state(current, to_play="W", last_move=(0, 2, "B"), previous=previous)
+    verdict = reconcile(state, observed)
+    assert verdict.kind == "move"
+    assert verdict.move == (0, 1)
+
+
+def test_reconcile_without_previous_grid_keeps_legacy_ahead():
+    # previous_grid を渡さない呼び出し側は従来どおりの逆再生判定（後方互換）
+    current, observed, _previous = _capture_of_last_move_case()
+    state = _state(current, to_play="W", last_move=(0, 2, "B"))
+    assert reconcile(state, observed).kind == "ahead"
+
+
+def _ko_recapture_case():
+    """本物のコウ: 黒が x=(2,1) で白 y=(2,2) を取った直後（局面が1手前に戻る形）"""
+    previous = _grid([".....", ".WB..", "W.WB.", ".WB..", "....."])
+    current = _grid([".....", ".WB..", "WB.B.", ".WB..", "....."])
+    return current, previous
+
+
+def test_reconcile_ko_recapture_shape_still_waits_for_the_tap():
+    # コウは盤面が1手前に戻るので、1枚のグリッドでは ahead と区別できない。
+    # 「注入しない」側に倒すのが安全（従来どおり）
+    current, previous = _ko_recapture_case()
+    state = _state(current, to_play="W", last_move=(2, 1, "B"), previous=previous)
+    assert reconcile(state, previous).kind == "ahead"
+
+
+def test_previous_app_grid_replays_one_move_back():
+    base = _grid(["B..W", ".BW.", "....", "...."])
+    moves = [((2, 3), "B")]  # H13 = グリッド (0,2)
+    current = replay_grid(base, moves, 4)
+    assert previous_app_grid(base, moves, 4, current) == base
+
+
+def test_previous_app_grid_rejects_a_replay_that_disagrees_with_the_board():
+    base = _grid(["B..W", ".BW.", "....", "...."])
+    moves = [((2, 3), "B")]
+    other = _grid(["B.BW", ".BW.", "....", "..B."])
+    assert previous_app_grid(base, moves, 4, other) is None
+
+
+def test_previous_app_grid_without_moves_is_none():
+    base = _grid(["....", "....", "....", "...."])
+    assert previous_app_grid(base, [], 4, base) is None
 
 
 def test_reconcile_root_position_has_no_last_move():
