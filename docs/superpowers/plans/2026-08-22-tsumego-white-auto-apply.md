@@ -341,13 +341,17 @@ Expected: FAIL（`AttributeError: module 'katrain.core.board_watch' has no attri
 
 - [ ] **Step 3: 最小実装を書く**
 
-`katrain/core/board_watch.py` の末尾（`AppBoardReader` クラスの後ろ）に足す:
+まず**ファイル冒頭の import 群**（`from typing import NamedTuple, Optional, Tuple` の直後）に足す
+（`katrain/core/constants.py` は import 文を1行も持たない葉モジュールなので循環も Kivy 依存も無い）:
+
+```python
+from katrain.core.constants import AI_TSUMEGO, AI_TSUMEGO_SOLVER
+```
+
+そのうえでファイル末尾（`AppBoardReader` クラスの後ろ）に足す:
 
 ```python
 # --- 詰碁モード（白番自動反映。spec 2026-08-22-tsumego-white-auto-apply-design.md） ---
-# constants は Kivy を import していないので、この2定数だけ本モジュールから参照してよい
-from katrain.core.constants import AI_TSUMEGO, AI_TSUMEGO_SOLVER  # noqa: E402
-
 TSUMEGO_AI_SUBTYPES = (AI_TSUMEGO, AI_TSUMEGO_SOLVER)
 
 

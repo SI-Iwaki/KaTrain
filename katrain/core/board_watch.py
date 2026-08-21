@@ -12,6 +12,8 @@ import threading
 import time
 from typing import NamedTuple, Optional, Tuple
 
+from katrain.core.constants import AI_TSUMEGO, AI_TSUMEGO_SOLVER
+
 EMPTY = "."
 BLACK = "B"
 WHITE = "W"
@@ -151,6 +153,36 @@ def apply_move_to_grid(grid, i, j, color):
     return new_grid
 
 
+def replay_grid(base_grid, moves, size):
+    """キャプチャ時の認識グリッドに root からの着手列を再生して「アプリ側の盤」を再現する。
+
+    詰碁では KaTrain の盤とアプリの盤が一致しない。枠は壁と充填を**足す**だけでなく、
+    drop_non_core_stones（tsumego_frame.py）で枠矩形の境界線上・外側の非コア石を
+    **盤から消す**ため、game.stones はアプリの盤と両方向にずれている。そこで監視の
+    比較基準は「キャプチャ時の認識グリッド + root からの着手列」で作り直す。
+
+    moves は (coords, color) の列で、coords は KaTrain の下origin (x, y)（パスは None）。
+    取りはこのグリッド＝アプリの盤の上で計算されるので、枠石を巻き込む KaTrain 側の
+    取りとずれない。
+
+    キャッシュせず毎周 root から再生する前提の関数（13路×20手で apply_move_to_grid 20回＝
+    無視できるコスト）。こうすると undo/redo/分岐が自動的に正しくなる。
+
+    再現できない（アプリ側では既に石がある等）ときは None を返す＝「比較しない」に倒す。
+    """
+    if base_grid is None or len(base_grid) != size:
+        return None
+    grid = [row[:] for row in base_grid]
+    for coords, color in moves:
+        if coords is None:  # パスは盤に石を置かない
+            continue
+        i, j = move_to_grid(coords, size)
+        grid = apply_move_to_grid(grid, i, j, color)
+        if grid is None:
+            return None
+    return grid
+
+
 class WatchState(NamedTuple):
     """KaTrain 側の局面スナップショット（__main__ が作り、判定はここでだけ行う）"""
 
@@ -241,6 +273,12 @@ STATUS_WATCHING = "bw-watching"
 STATUS_WARN = "bw-warn"
 WATCHING_TEXT = "盤面監視中（相手の手を自動反映）"
 RESYNC_HINT = "（監視トグルのホットキーで OFF にし、1秒ほどおいてからもう一度押すと現局面を取り込み直します）"
+# 対局モード向けの既定の停滞警告文（_on_quiet 参照）。詰碁モードは __main__._start_tsumego_watch が
+# 別の文面（stall_text）を渡すので、これは stall_kinds/stall_text 未指定時の既定値として使う。
+STALL_TEXT = (
+    "盤面が変化しません（着手をアプリへ入力し忘れていないか、"
+    "または KaTrain の手番かもしれません。Enter で AI が着手します）"
+)
 
 
 class PermanentCaptureError(Exception):
@@ -266,12 +304,33 @@ class BoardWatcher:
       on_status(kind, text)   kind: "bw-watching" / "bw-warn" / ""
     """
 
-    def __init__(self, capture_fn, get_state_fn, on_move, on_status, settings, clock=time.monotonic):
+    def __init__(
+        self,
+        capture_fn,
+        get_state_fn,
+        on_move,
+        on_status,
+        settings,
+        clock=time.monotonic,
+        active_kinds=("in_sync",),
+        stall_kinds=("in_sync", "ahead", "waiting"),
+        stall_text=STALL_TEXT,
+    ):
         self.capture_fn = capture_fn
         self.get_state_fn = get_state_fn
         self.on_move = on_move
         self.on_status = on_status
         self.settings = settings
+        # 低遅延（poll_interval_active_ms）で回す無音状態の集合。既定は in_sync だけ＝対局
+        # モードの従来どおり。詰碁は ahead（黒を打ったがまだアプリへタップしていない）が
+        # 白の来る直前の状態なので ("in_sync", "ahead") を渡す（spec 2026-08-22 §5）
+        self.active_kinds = tuple(active_kinds)
+        # 停滞警告（_on_quiet）の対象 kind と文面。既定は対局モードの従来どおり
+        # （in_sync/ahead/waiting すべてで20秒後に警告）。詰碁は ahead（ユーザーの思考時間）・
+        # waiting（難問の探索時間）が正常な待ちなので、__main__._start_tsumego_watch は
+        # stall_kinds=("in_sync",) だけを渡す（spec 2026-08-22 §5）
+        self.stall_kinds = tuple(stall_kinds)
+        self.stall_text = stall_text
         self.clock = clock
         self.interval_ms = settings.poll_interval_ms
         self._stopped = threading.Event()
@@ -366,10 +425,11 @@ class BoardWatcher:
         """waiting / ahead / in_sync = 無音の終端状態。長すぎたら警告する（spec §2.5c）"""
         self._stable_move = None
         self._stable_count = 0
-        if kind == "in_sync":
+        if kind in self.active_kinds:
             # 盤がアプリと一致している＝次に変わるのは相手の石。ここだけが低遅延を要する
-            # 局面で、waiting（KaTrain の AI が思考中）と ahead（ユーザーがまだアプリへ
-            # タップしていない）は相手の石が来ようがないので idle のままにする
+            # 局面で、waiting（KaTrain の AI が思考中）は相手の石が来ようがないので idle の
+            # まま。ahead（ユーザーがまだアプリへタップしていない）は対局モードでは同じく
+            # idle だが、詰碁ではタップ直後にアプリが白を返すので active に含める
             self._active()
         key = (kind, state.move_number, _grid_key(observed))
         now = self.clock()
@@ -377,7 +437,11 @@ class BoardWatcher:
             self._quiet_key = key
             self._quiet_since = now
             self._watching()
-        elif self._quiet_since is not None and now - self._quiet_since >= self.settings.stall_warn_sec:
+        elif (
+            kind in self.stall_kinds
+            and self._quiet_since is not None
+            and now - self._quiet_since >= self.settings.stall_warn_sec
+        ):
             self._quiet_since = now  # 再警告は stall_warn_sec ごと
             # import_next_player の確定ゾーン（空盤・盤上2子以内）で対局開始まわりの
             # デッドロックは無くなったが、「対局が進んだ局面で、実は KaTrain 側の手番である
@@ -385,11 +449,9 @@ class BoardWatcher:
             # 分からない）からは判定できず残る。この場合
             # ai-move（Enter / numpad-Enter、gui.kv:883）で AI に1手打たせれば動き出す。
             # もう一方のありふれた原因（アプリへのタップ忘れ）と合わせて両方を案内する。
-            # どちらが実際の原因かは判定しない
-            self._warn(
-                "盤面が変化しません（着手をアプリへ入力し忘れていないか、"
-                "または KaTrain の手番かもしれません。Enter で AI が着手します）"
-            )
+            # どちらが実際の原因かは判定しない（対象 kind・文面は stall_kinds/stall_text 参照＝
+            # 詰碁モードは ahead/waiting を対象から外し文面も専用のものに差し替える）
+            self._warn(self.stall_text)
 
     def _on_capture_failure(self, message, permanent=False):
         self._fail_count += 1
@@ -536,3 +598,39 @@ class AppBoardReader:
     def _forget_frame(self):
         self._fingerprint = None
         self._grid = None
+
+
+# --- 詰碁モード（白番自動反映。spec 2026-08-22-tsumego-white-auto-apply-design.md） ---
+TSUMEGO_AI_SUBTYPES = (AI_TSUMEGO, AI_TSUMEGO_SOLVER)
+
+
+def tsumego_watch_can_start(watch_white, view_kind, auto_ai, black_subtype, white_is_human):
+    """詰碁の白番自動反映を開始してよいか。(可否, 理由) を返す。
+
+    黒が詰碁 AI・白が人間であることを要求するのが**色の割り当てが逆のまま走らせない**ための
+    入口ゲート（reconcile の「AI の手番なら注入しない」行と二重の防御）。
+    """
+    if not watch_white:
+        return False, "設定 watch_white が無効です"
+    if view_kind != "app":
+        return False, f"アプリ盤面以外のキャプチャ（{view_kind}）は監視しません"
+    if not auto_ai:
+        return False, "auto_ai_black が無効です（黒が AI でないと応手が返りません）"
+    if black_subtype not in TSUMEGO_AI_SUBTYPES:
+        return False, f"黒が詰碁戦略ではありません（{black_subtype}）"
+    if not white_is_human:
+        return False, "白が人間ではありません"
+    return True, ""
+
+
+def tsumego_watch_status(kind, text):
+    """詰碁経路のバナー用に監視ステータスを絞る。
+
+    TsumegoBookBanner（gui.kv）は watch_detail を回答帳ステータスより優先して表示するので、
+    正常時の「監視中」を出しっぱなしにすると**回答帳バナーが恒久的に隠れる**（詰碁ビューでは
+    右パネルごと非表示なので、回答帳の再生状況を知る手段がバナーしかない）。警告だけ通し、
+    それ以外は空にして回答帳バナーへ譲る。
+    """
+    if kind == STATUS_WARN:
+        return kind, text
+    return "", ""

@@ -715,12 +715,16 @@ def build_session_from_game(game, settings: dict, logger=None) -> Optional[Tsume
     return session
 
 
-def moves_from_game(game) -> List[Tuple[Optional[Point], str]]:
-    """root から現局面までの着手列。"""
+def moves_from_node(node) -> List[Tuple[Optional[Point], str]]:
+    """指定ノードから root までを遡った着手列（root→node の順に返す）。"""
     nodes = []
-    node = game.current_node
     while node is not None and node.parent is not None:
         if node.move is not None:
             nodes.append((node.move.coords, node.move.player))
         node = node.parent
     return list(reversed(nodes))
+
+
+def moves_from_game(game) -> List[Tuple[Optional[Point], str]]:
+    """root から現局面までの着手列。"""
+    return moves_from_node(game.current_node)

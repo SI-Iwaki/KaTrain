@@ -5,7 +5,7 @@ import threading
 
 import pytest
 
-from katrain.core.board_watch import EMPTY, BLACK, WHITE, apply_move_to_grid, grid_to_move, move_to_grid, stones_to_grid, WatchState, reconcile, board_sgf, import_next_player
+from katrain.core.board_watch import EMPTY, BLACK, WHITE, apply_move_to_grid, grid_to_move, move_to_grid, stones_to_grid, WatchState, reconcile, board_sgf, import_next_player, replay_grid
 from katrain.core.board_watch import BoardWatcher, WatchSettings  # 既存の import 行に足す
 import katrain.core.board_watch as bw  # 既存の import 行の下に足す
 
@@ -1050,3 +1050,215 @@ def test_active_interval_reads_from_config():
     s = bw.watch_settings_from_config({"poll_interval_active_ms": 80})
     assert s.poll_interval_active_ms == 80
     assert bw.watch_settings_from_config({}).poll_interval_active_ms == 50
+
+
+def test_replay_grid_no_moves_returns_copy_of_base():
+    base = _grid(["...", ".B.", "..."])
+    out = replay_grid(base, [], 3)
+    assert out == base
+    assert out is not base          # 呼び出し側が破壊できないようにコピーを返す
+
+
+def test_replay_grid_applies_move_in_katrain_coords():
+    # KaTrain の (x=0, y=0) は盤の左下 = グリッドの最終行の先頭
+    out = replay_grid(_grid(["...", "...", "..."]), [((0, 0), "B")], 3)
+    assert out == _grid(["...", "...", "B.."])
+
+
+def test_replay_grid_skips_pass():
+    base = _grid(["...", "...", "..."])
+    assert replay_grid(base, [(None, "B"), (None, "W")], 3) == base
+
+
+def test_replay_grid_captures_on_the_app_board():
+    # 白1子 (2,2)=グリッド(0,2) の呼吸点はグリッド(0,1) と (1,2)。両方詰めると取れる。
+    # 取りは「アプリの盤」の上で計算される＝KaTrain 側の枠石を巻き込まない
+    base = _grid(["..W", "...", "..."])
+    out = replay_grid(base, [((1, 2), "B"), ((2, 1), "B")], 3)
+    assert out == _grid([".B.", "..B", "..."])
+
+
+def test_replay_grid_returns_none_when_point_is_occupied_on_app_board():
+    # 枠が消した非コア石の位置に AI が打つと、アプリ側では石があるので再現できない
+    base = _grid(["W..", "...", "..."])
+    assert replay_grid(base, [((0, 2), "B")], 3) is None
+
+
+def test_replay_grid_returns_none_on_size_mismatch():
+    assert replay_grid(_grid(["..", ".."]), [], 3) is None
+
+
+def test_replay_grid_returns_none_for_missing_base():
+    assert replay_grid(None, [], 3) is None
+
+
+def _ahead_case():
+    """KaTrain が黒を打ったがアプリにはまだ反映されていない（ahead）状態の一式"""
+    current = _grid(["...", ".B.", "..."])
+    observed = _grid(["...", "...", "..."])
+    state = _state(current, to_play="W", last_move=(1, 1, "B"), move_number=5)
+    return current, observed, state
+
+
+def test_ahead_is_idle_by_default():
+    h = Harness(WatchSettings(poll_interval_ms=400, poll_interval_active_ms=50))
+    _current, observed, state = _ahead_case()
+    h.step(observed, state)
+    assert h.watcher.interval_ms == 400
+
+
+def test_ahead_is_active_when_requested():
+    h = Harness(WatchSettings(poll_interval_ms=400, poll_interval_active_ms=50))
+    h.watcher.active_kinds = ("in_sync", "ahead")
+    _current, observed, state = _ahead_case()
+    h.step(observed, state)
+    assert h.watcher.interval_ms == 50
+
+
+def test_in_sync_stays_active_with_default_active_kinds():
+    h = Harness(WatchSettings(poll_interval_ms=400, poll_interval_active_ms=50))
+    current = _grid(["...", ".B.", "..."])
+    h.step(current, _state(current, to_play="W", move_number=5))
+    assert h.watcher.interval_ms == 50
+
+
+def test_active_kinds_defaults_to_in_sync_only():
+    h = Harness()
+    assert h.watcher.active_kinds == ("in_sync",)
+
+
+def test_active_kinds_can_be_passed_to_constructor():
+    watcher = BoardWatcher(
+        capture_fn=lambda: _grid(["..", ".."]),
+        get_state_fn=lambda: None,
+        on_move=lambda *a: None,
+        on_status=lambda *a: None,
+        settings=WatchSettings(),
+        active_kinds=("in_sync", "ahead"),
+    )
+    assert watcher.active_kinds == ("in_sync", "ahead")
+
+
+def test_can_start_accepts_normal_tsumego_capture():
+    ok, reason = bw.tsumego_watch_can_start(
+        watch_white=True, view_kind="app", auto_ai=True,
+        black_subtype="ai:tsumego", white_is_human=True,
+    )
+    assert ok is True
+    assert reason == ""
+
+
+def test_can_start_accepts_solver_subtype():
+    ok, _reason = bw.tsumego_watch_can_start(
+        watch_white=True, view_kind="app", auto_ai=True,
+        black_subtype="ai:tsumego_solver", white_is_human=True,
+    )
+    assert ok is True
+
+
+def test_can_start_rejects_when_disabled():
+    ok, reason = bw.tsumego_watch_can_start(
+        watch_white=False, view_kind="app", auto_ai=True,
+        black_subtype="ai:tsumego", white_is_human=True,
+    )
+    assert ok is False and "watch_white" in reason
+
+
+def test_can_start_rejects_web_capture():
+    # AppBoardReader は Web 盤面（格子線＋ラベルOCR）を読めない
+    for kind in ("web_full", "web_partial"):
+        ok, reason = bw.tsumego_watch_can_start(
+            watch_white=True, view_kind=kind, auto_ai=True,
+            black_subtype="ai:tsumego", white_is_human=True,
+        )
+        assert ok is False and kind in reason
+
+
+def test_can_start_rejects_when_black_is_not_tsumego_ai():
+    # 色の割り当てが逆のまま走らせない入口ゲート
+    ok, reason = bw.tsumego_watch_can_start(
+        watch_white=True, view_kind="app", auto_ai=True,
+        black_subtype="ai:default", white_is_human=True,
+    )
+    assert ok is False and "ai:default" in reason
+
+
+def test_can_start_rejects_when_auto_ai_off():
+    ok, reason = bw.tsumego_watch_can_start(
+        watch_white=True, view_kind="app", auto_ai=False,
+        black_subtype="ai:tsumego", white_is_human=True,
+    )
+    assert ok is False and "auto_ai_black" in reason
+
+
+def test_can_start_rejects_when_white_is_not_human():
+    ok, reason = bw.tsumego_watch_can_start(
+        watch_white=True, view_kind="app", auto_ai=True,
+        black_subtype="ai:tsumego", white_is_human=False,
+    )
+    assert ok is False and "白" in reason
+
+
+def test_watch_status_passes_warnings_through():
+    assert bw.tsumego_watch_status(bw.STATUS_WARN, "こまった") == (bw.STATUS_WARN, "こまった")
+
+
+def test_watch_status_swallows_watching_so_the_answer_book_banner_stays_visible():
+    assert bw.tsumego_watch_status(bw.STATUS_WATCHING, bw.WATCHING_TEXT) == ("", "")
+    assert bw.tsumego_watch_status("", "") == ("", "")
+
+
+# --- 停滞ウォッチドッグの対象 kind / 文面（stall_kinds / stall_text） ---
+# 詰碁では ahead（黒を打ったがまだアプリへタップしていない）はユーザーの思考時間そのものなので、
+# 対局モード向けの20秒警告をそのまま出すと毎手誤発火する。既定は対局モードの従来どおり
+# （in_sync/ahead/waiting すべてが対象）で、詰碁側だけ __main__._start_tsumego_watch が
+# stall_kinds=("in_sync",) を渡して絞る。
+
+
+def test_stall_warning_fires_for_ahead_by_default():
+    # 現行動作（対局モード）の回帰ガード: 既定では ahead が20秒続くと従来どおり警告が出る
+    h = Harness()
+    _current, observed, state = _ahead_case()
+    h.step(observed, state)
+    h.clock.advance(25.0)
+    h.step(observed, state)
+    assert any(kind == "bw-warn" for kind, _t in h.statuses)
+
+
+def test_stall_warning_suppressed_when_kind_not_in_stall_kinds():
+    # stall_kinds=("in_sync",) を渡すと、ahead が20秒続いても警告が出ない（詰碁モード向け）
+    h = Harness()
+    h.watcher.stall_kinds = ("in_sync",)
+    _current, observed, state = _ahead_case()
+    h.step(observed, state)
+    h.clock.advance(25.0)
+    h.step(observed, state)
+    assert not any(kind == "bw-warn" for kind, _t in h.statuses)
+
+
+def test_stall_warning_still_fires_for_included_kind_with_custom_text():
+    # stall_kinds=("in_sync",) でも in_sync 自体が20秒続けば警告は出る。文面は渡した stall_text
+    h = Harness()
+    h.watcher.stall_kinds = ("in_sync",)
+    h.watcher.stall_text = "アプリが白を返していないようです"
+    board = _grid(["...", "...", "..."])
+    state = _state(board)  # to_play_is_human=True・board==current_grid ＝ in_sync
+    h.step(board, state)
+    h.clock.advance(25.0)
+    h.step(board, state)
+    assert any(
+        kind == "bw-warn" and text == "アプリが白を返していないようです" for kind, text in h.statuses
+    )
+
+
+def test_stall_kinds_defaults_to_in_sync_ahead_waiting():
+    # コンストラクタ経由の既定値確認（Harness は固定引数で作るのでここだけ直接構築する）
+    watcher = BoardWatcher(
+        capture_fn=lambda: _grid(["..", ".."]),
+        get_state_fn=lambda: None,
+        on_move=lambda *a: None,
+        on_status=lambda *a: None,
+        settings=WatchSettings(),
+    )
+    assert watcher.stall_kinds == ("in_sync", "ahead", "waiting")
+    assert watcher.stall_text == bw.STALL_TEXT
