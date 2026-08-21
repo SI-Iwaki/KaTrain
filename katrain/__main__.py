@@ -701,8 +701,12 @@ class KaTrainGui(Screen, KaTrainBase):
             existing.stop()
             self.log("board_watch: 開始が重複したため前の監視スレッドを停止しました", OUTPUT_INFO)
         self._board_watcher = watcher
+        # 相手の応手 top-K の子局面を先読みして NN キャッシュを温める（spec 追記4）。
+        # 監視 OFF まで有効。0 で無効＝先読み導入前と同じ挙動
+        prefetch = int((self._config.get("board_watch") or {}).get("prefetch_replies", 5))
+        self.game.board_watch_prefetch_replies = prefetch
         watcher.start()
-        self.log("board_watch: 監視を開始しました", OUTPUT_INFO)
+        self.log(f"board_watch: 監視を開始しました（応手先読み {prefetch} 手）", OUTPUT_INFO)
 
     def _do_analyze_extra(self, mode, **kwargs):
         self.game.analyze_extra(mode, **kwargs)
@@ -1512,6 +1516,10 @@ class KaTrainGui(Screen, KaTrainBase):
             if watcher is not None:
                 watcher.stop()
                 self._board_watcher = None
+                # 監視を止めたら先読みも止める（通常の対局・検討で GPU を焼かない）
+                if self.game:
+                    self.game.board_watch_prefetch_replies = 0
+                    self.game._cancel_board_watch_prefetch()
                 self.log("board_watch: 監視を停止しました", OUTPUT_INFO)
             self._board_watch_status("", "")
             return

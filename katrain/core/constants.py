@@ -29,6 +29,9 @@ PRIORITY_REGION_PREFETCH = -50
 # 難解（enigma）の着手後先読み（相手考慮中に有力応手の局面＋その子局面プローブで NN キャッシュを
 # 温める）。実クエリ・新規ノード解析より必ず下。残骸は次の generate_move 冒頭が terminate する
 PRIORITY_ENIGMA_PONDER = -50
+# 盤面監視の応手先読み（NN キャッシュ温め）。実クエリ（新規ノード解析 1000）より下に置き、
+# 相手の着手が入ったら terminate される（board_watch spec 追記4）
+PRIORITY_BOARD_WATCH_PREFETCH = -50
 PRIORITY_TSUMEGO_SPECULATION = 500  # 手番内投機（温め）: 実クエリ(10_000)・新規ノード解析(1000)より下
 PRIORITY_ALTERNATIVES = 100  # extra analysis, live interaction
 PRIORITY_EQUALIZE = 100

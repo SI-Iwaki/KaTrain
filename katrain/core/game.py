@@ -28,6 +28,7 @@ from katrain.core.constants import (
     PRIORITY_ALTERNATIVES,
     PRIORITY_EQUALIZE,
     PRIORITY_DEFAULT,
+    PRIORITY_BOARD_WATCH_PREFETCH,
     PRIORITY_REGION_PREFETCH,
     PRIORITY_TSUMEGO_SPECULATION,
 )
@@ -471,6 +472,9 @@ class Game(BaseGame):
         self.region_analysis_wide_root_noise = REGION_ANALYSIS_WIDE_ROOT_NOISE  # 同上: root の探索の広げ方
         self.region_prefetch_replies = 0  # 同上: 人間の応手 top-K の子局面を先読みする本数（0で無効）
         self._region_prefetch_nodes = []  # 先読みクエリを発行した使い捨て子ノード（play 時の terminate 用）
+        # 盤面監視モードの応手先読み（追記4）。__main__ が監視 ON で設定し OFF で 0 に戻す
+        self.board_watch_prefetch_replies = 0
+        self._board_watch_prefetch_nodes = []
         self._early_speculation_nodes = []  # 前倒し投機（段階3）の使い捨て子ノード（terminate 用）
 
         threading.Thread(
@@ -567,6 +571,7 @@ class Game(BaseGame):
         # 未消化の先読みを先に止める＝実クエリ（この着手の解析）が解析スロットを直ちに取れる。
         # リージョンを解除した直後の着手でも残骸を掃除するため、region 分岐の外で呼ぶ
         self._cancel_region_prefetch()
+        self._cancel_board_watch_prefetch()
         self._cancel_early_speculation()
         self._cancel_enigma_ponder(move)
         if analyze:
@@ -588,6 +593,7 @@ class Game(BaseGame):
                 self._maybe_early_speculation(played_node)
             else:
                 played_node.analyze(self.engines[played_node.next_player])
+                self._maybe_board_watch_prefetch(played_node)
         return played_node
 
     def _cancel_enigma_ponder(self, move):
@@ -729,6 +735,99 @@ class Game(BaseGame):
             # リストを直接 terminate する（cancel が先に走って属性が空でも取り漏らさない。
             # 二重 terminate は無害＝未登録 id への terminate は KataGo が無視する）
             self._region_prefetch_nodes = []
+            for child in prefetch_nodes:
+                for child_engine in set(self.engines.values()):
+                    child_engine.terminate_queries(only_for_node=child)
+
+    def _cancel_board_watch_prefetch(self):
+        """盤面監視の応手先読みのうち未消化のものを打ち切る（結果はもともと捨てるだけ）。
+
+        **これを怠ると実クエリと GPU を取り合って逆に遅くなる**（難解戦略で相手の応手が
+        先読み消化前に来たとき 1.6→4.4 秒に伸びた実測がある）。的中していた応手の
+        クエリも一緒に止まるが、同一局面の実クエリが直後に走るので温めた NN キャッシュは
+        失われない（KataGo 側のキャッシュはクエリの終了で消えない）。
+        """
+        nodes = getattr(self, "_board_watch_prefetch_nodes", [])
+        self._board_watch_prefetch_nodes = []
+        for node in nodes:
+            for engine in set(self.engines.values()):
+                engine.terminate_queries(only_for_node=node)
+
+    def _maybe_board_watch_prefetch(self, node):
+        """盤面監視モードで、相手（アプリ側）の有力応手 top-K の子局面を先読みする。
+
+        目的は NN キャッシュ温めだけ。相手が考えている間はエンジンが遊んでいるので、
+        応手の子局面を**実クエリと同条件**で先に探索しておくと、実際にその手が打たれた
+        ときの解析がキャッシュヒットで縮む。**結果は使わず捨てる**ので着手判定への影響は
+        ゼロ。外れてもコストは遊んでいた GPU 時間だけで、次の play() 冒頭で terminate される。
+
+        実測（2026-08-22・9路 2000visits・別プロセス2回）: 相手の着手が入った局面の解析が
+        先読みなし 1029ms → 的中時 108/113ms。AI 1手は 1.55 秒 → 約0.63 秒になる。
+        的中率は実対局134局面で top-1 32.1% / top-3 58.2% / top-5 68.7% / top-8 78.4% で、
+        K を増やす限界効率が 13 → 5.5 → 3 ポイント/秒 と落ちるので既定は 5 で打ち切る。
+
+        発火は「次番が人間（＝アプリ側）」のときだけ。相手の着手が入った直後は次番が AI に
+        なるので、この条件だけで「相手が考えている手番」を正しく選べる。
+        """
+        replies = int(getattr(self, "board_watch_prefetch_replies", 0) or 0)
+        if replies <= 0 or self.region_of_interest:
+            return  # リージョンありは詰碁経路＝_maybe_region_prefetch の担当（二重発火させない）
+        players_info = getattr(self.katrain, "players_info", None)
+        if not players_info:
+            return  # デバッグスタブ等、対局者情報が無い環境では先読みしない
+        try:
+            if players_info[node.next_player].player_type != PLAYER_HUMAN:
+                return
+        except (KeyError, AttributeError):
+            return
+        threading.Thread(target=self._board_watch_prefetch_worker, args=(node, replies), daemon=True).start()
+
+    def _board_watch_prefetch_worker(self, node, replies):
+        deadline = time.time() + 30.0
+        while not node.analysis_complete:
+            if time.time() > deadline or self.current_node is not node:
+                return  # 相手が先に着手した・解析が来ない → 先読みしない
+            time.sleep(0.05)
+        if self.current_node is not node:
+            return
+        top_replies = [
+            c["move"]
+            for c in sorted(node.candidate_moves, key=lambda c: -c.get("visits", 0))
+            if c.get("move") and c["move"] != "pass"
+        ][:replies]
+        if not top_replies:
+            return
+        # 使い捨ての複製ゲームで応手を1手進めた子ノードを作って解析する。本譜ノードを使わない
+        # のは (a) ツリーを汚さない (b) この子ノードに紐づくクエリだけを terminate できる、ため。
+        # クエリは `analyze()` を既定引数のまま呼ぶ＝実クエリ（play() の
+        # `played_node.analyze(engine)`）と visits・ownership・リージョンが1つ残らず一致する。
+        # 条件がずれると NN キャッシュが温まらない（詰碁で ownership を揃えなかったときの実測:
+        # 先読み直後の実クエリ 2.70 秒＝コールドと同一）
+        sim = self._region_prefetch_sim(node)
+        if sim is None:
+            return
+        base = sim.current_node
+        engine = self.engines[node.next_player]
+        prefetch_nodes, fired = [], []
+        for reply_gtp in top_replies:
+            if self.current_node is not node:
+                break  # 相手が着手した＝以降の発行は打ち切る（発行済み分は下の後始末が拾う）
+            sim.set_current_node(base)
+            try:
+                child = sim.play(Move.from_gtp(reply_gtp, player=node.next_player), ignore_ko=True)
+            except IllegalMoveException:
+                continue
+            child.analyze(engine, priority=PRIORITY_BOARD_WATCH_PREFETCH)
+            prefetch_nodes.append(child)
+            fired.append(reply_gtp)
+        if not prefetch_nodes:
+            return
+        self._board_watch_prefetch_nodes = prefetch_nodes
+        self.katrain.log(f"board_watch prefetch: 応手 {fired} の子局面を先読み", OUTPUT_DEBUG)
+        if self.current_node is not node:
+            # play() 側の cancel と交錯した可能性があるので、共有属性を経由せずローカルの
+            # リストを直接 terminate する（二重 terminate は無害）
+            self._board_watch_prefetch_nodes = []
             for child in prefetch_nodes:
                 for child_engine in set(self.engines.values()):
                     child_engine.terminate_queries(only_for_node=child)
