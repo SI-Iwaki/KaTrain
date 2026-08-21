@@ -9,10 +9,21 @@ paths:
 ## ログの場所と命名規則
 
 ```
-C:\Users\iwaki\.katrain\logs\game_YYYYMMDD_HHMMSS.log
+C:\Users\iwaki\.katrain\logs\\
+  game_YYYYMMDD_HHMMSS.log         -- 対局（1局1ファイル）
+  tsumego_YYYYMMDD_HHMMSS.log      -- 詰碁（**1問1ファイル**）
+  tsumego_YYYYMMDD_HHMMSS.log.keep -- 回答帳に記録した問題の保護マーカー
 ```
 
-1局1ファイル。サイズは数百KB〜1MB超になることがある。
+サイズは数百KB〜1MB超になることがある。
+
+**詰碁は1問1ファイル**。キャプチャの先頭で開くので、認識盤面（黒/白の GTP 座標）・抽出・出題前の検算・枠の採否・各手の判定が1ファイルに揃う＝**不具合報告はこのファイルだけ見れば再現できる**（ターミナルからコピーする必要はない）。
+
+**`debug_level` 0 でも作られる**（0 は INFO 行のみ、1 でエンジンのクエリまで）。戦略の判定ログ（`[Parity9Strategy]` `[Enigma9Strategy]` `[HumanStyleStrategy]` 等）は**OUTPUT_DEBUG なので `debug_level` 1 が必要**。
+
+**保持数は種別ごとに独立**（詰碁30本・対局10本＝`base_katrain.KaTrainBase.LOG_KINDS`）で古い順に自動削除。20手未満の対局ログは無効試合として削除される。ただし**回答帳に記録した問題のログは保護されて削除されない**（`keep_current_log` が `<ログ名>.log.keep` を隣に置き、ローテーションは保護済みを本数からも除外する）。実測 2026-08-21: 詰碁ログ629本のうち599本が `.keep` 付き＝未保護はちょうど30本。
+
+**回答帳との突き合わせ**: 詰碁ログには `tsumego_capture: 回答帳キー <sha1>` が出るので、`~/.katrain/tsumego_answers.json` の entry（`canonical_black` / `canonical_white` / `lines`）とjoin すれば「回答帳なしで出題し直して記録手順と比べる」オフライン検証ができる。
 
 ---
 
@@ -109,6 +120,60 @@ First-impression deviation: played E4 (loss=0.7). (338 bad moves filtered)
 ```
 
 ---
+
+### 10. 詰碁（`tsumego_*.log`・OUTPUT_INFO なので debug_level 0 でも出る）
+
+```
+tsumego_capture: 認識盤面 13路 komi=7.0 ko=False margin=4 black_to_attack=True
+tsumego_capture: 黒 A12 B12 B4 ...
+tsumego_capture: 白 A9 B6 C10 ...
+tsumego_capture: 役割指定: 黒が攻め方=True（ホットキー、推定と一致）
+tsumego_capture: ソルバ用の問題抽出に失敗（領域が閉じていない: ...）。現行経路で出題します
+tsumego_capture: 枠バランス試算 ko=False: root=-10.25目 / 手番側の本体石19子=+17.79（+0.94/子）
+tsumego_capture: 枠バランスが良い ko=True の枠を採用します
+tsumego_capture: 回答帳キー <sha1>
+```
+
+着手選択は `[TsumegoOwnershipStrategy]`、ソルバ経路は `[TsumegoSolverStrategy]`。
+所要時間は `[<戦略名>] 着手決定に X.X 秒`（OUTPUT_INFO）。
+
+**誤答調査の入口**: まず `枠バランス` と `役割指定` で**盤がそもそも成立しているか**を確かめ、
+次に `対抗馬なし:` / `候補N手（うち対抗馬M手）` で**選択則が実際に選んだのか**を判別する
+（対抗馬が1手だと全機構が不発で、KataGo 最善手をそのまま返しているだけ）。詳細は `tsumego.md`。
+
+### 11. Parity9 / Enigma（対局・**debug_level 1 必須**）
+
+prefix はクラス名そのまま（`[Parity9Strategy]` / `[Enigma9Strategy]` / `[Enigma13Strategy]` /
+`[Enigma19Strategy]`）。全分岐が「最善手を打つ」に倒れるフェイルセーフなので、
+**外さなかった理由がそのまま1行で出る**:
+
+```
+[Parity9Strategy] Rate: gate closed -> best move
+[Parity9Strategy] Endgame: sticky (locked, yose_cap=0) -> best move
+[Parity9Strategy] Endgame: lead unavailable -> best move
+[Parity9Strategy] Stage1 unavailable -> best move
+[Parity9Strategy] No verified lead for <GTP> -> dropped
+[Parity9Strategy] Probe incomplete for <GTP> -> dropped
+[Parity9Strategy] Ponder: warming replies [...] to <GTP>
+[Enigma9Strategy] Best move wins the confusion race -> best move
+[Enigma9Strategy] AimJigo: lead unavailable -> best move
+```
+
+**AI の手番は `depth` の偶奇で読む**（奇数＝1手打たれた後に着手＝白番）。
+ログ→SGF 復元時に「最初の着手の色」を AI の手番と読み違えないこと
+（CLAUDE.md「やってはいけないこと」参照）。
+
+### 12. 盤面監視（board_watch・OUTPUT_INFO）
+
+```
+board_watch: 監視を開始しました / 監視を停止しました
+board_watch: アプリの局面（<size>路）を取り込みました
+board_watch: 相手の着手 <GTP>
+board_watch: 注入を破棄しました（手数 N!=M）
+board_watch: 注入した手が非合法でした: <err>
+board_watch: 盤面を認識できないため開始しません
+board_watch: 取り込み SGF の解析に失敗: <err>
+```
 
 ## よく使うGrepパターン
 
@@ -443,3 +508,24 @@ C:\Users\iwaki\.katrain\logs\game_YYYYMMDD_HHMMSS.log を分析し、
 ```
 
 正常時は `humanPolicy: True` かつ `max > 0` であること。
+
+## 種別横断のGrepパターン（追記 2026-08-21）
+
+```bash
+# 詰碁: 枠の採否と役割（誤答調査の第一歩）
+grep -a "枠バランス\|役割指定\|回答帳キー" ~/.katrain/logs/tsumego_*.log
+
+# 詰碁: 選択則が無選択だった手番を洗い出す
+grep -a "対抗馬なし:" ~/.katrain/logs/tsumego_*.log
+
+# Parity9/Enigma: 外さなかった理由の内訳
+grep -aoh "\[\(Parity9\|Enigma[0-9]*\)Strategy\] [^:]*" ~/.katrain/logs/game_*.log | sort | uniq -c | sort -rn
+
+# 着手決定に何秒かかったか（全戦略共通・OUTPUT_INFO）
+grep -a "着手決定に" ~/.katrain/logs/*.log
+
+# 盤面監視の注入トラブル
+grep -a "board_watch: 注入\|board_watch: 盤面を認識できない" ~/.katrain/logs/game_*.log
+```
+
+**`grep -a` を必ず付ける**（`→` 等の非ASCII文字でバイナリ扱いになり出力が抑制される）。

@@ -12,7 +12,7 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 | 系統 | 内容 | 触る前に読む |
 |---|---|---|
 | Human-like AI 戦略 | 悪手フィルタに加え、力戦派 / 攻城 / 狩猟 / 一致率低減 / 持碁 / 一致率追随（9路）/ 難解（9・13・19路） | `.claude/rules/ai-strategies.md`（設計と実測）<br>`.claude/rules/ai-parameters.md`（全パラメータ値）<br>`.claude/rules/ai-humanstyle.md`（フィルタ実装） |
-| 詰碁 | 画面キャプチャ→盤面認識→枠→着手選択 `ai:tsumego`→死活ソルバ（Rust df-pn）→回答帳 | `.claude/rules/tsumego.md` |
+| 詰碁 | 画面キャプチャ→盤面認識→枠→着手選択 `ai:tsumego`→死活ソルバ（Rust df-pn）→回答帳 | `.claude/rules/tsumego.md`（設計と落とし穴）<br>`.claude/rules/tsumego-parameters.md`（パラメータ値） |
 | 盤面監視 | `board_watch.py`: BlueStacks 上の対局アプリの着手を検出して人間側の手として片方向注入（トグル `ctrl+alt+d`） | `docs/superpowers/specs/2026-08-18-board-watch-design.md` |
 
 ## 技術スタック
@@ -156,12 +156,12 @@ python -m katrain_debug --sgf FILE --strategy hunt --batch --settings hunt_max_l
   | 触る対象 | 読む rules |
   |---|---|
   | `katrain/core/ai.py`（戦略全般） | `ai-strategies.md`（設計と実測）, `ai-parameters.md`（全パラメータ値）, `ai-humanstyle.md`（フィルタ実装・チェックリスト） |
-  | 詰碁全般（`tsumego_*.py` / `tsumego_solver/` / `native/tsumego/` / `select_tsumego_move`） | `tsumego.md` |
+  | 詰碁全般（`tsumego_*.py` / `tsumego_solver/` / `native/tsumego/` / `select_tsumego_move`） | `tsumego.md`（設計と落とし穴）, `tsumego-parameters.md`（パラメータ値） |
   | `katrain/core/constants.py` / `katrain/config.json` | `ai-settings-gui.md`（AI設定追加手順） |
   | `katrain/core/base_katrain.py` | `base-katrain-config.md`（JsonStore構造・起動時リセットパターン） |
   | `**/*.log` の分析 | `log-analysis.md`（Grepパターン、サブエージェントテンプレート） |
 - **i18n変更時は `.po` 編集後に `python tools/compile_mo.py` で `.mo` を再コンパイルすること**
-- **パラメータ変更時は `.claude/rules/ai-parameters.md` のテーブルも同時に更新すること**
+- **パラメータ変更時はテーブルも同時に更新すること**: 戦略は `.claude/rules/ai-parameters.md`、詰碁は `.claude/rules/tsumego-parameters.md`
 - **独立した追加解析クエリは1本ずつ待たない**: KataGo はパッケージ同梱 `katrain/KataGo/analysis_config.cfg`（実効値。`~/.katrain/analysis_config.cfg` はエンジンに参照されない＝「ランタイム設定ファイル」節参照）の `numAnalysisThreads=12` で複数クエリを並列処理できる。詰碁の子局面解析は `_start_region_root` / `_wait_region_roots`（`ai.py`）で全部発行してからまとめて待つ形になっているので、解析を追加するときもこの形に合わせる（1本ずつ `_analyze_region_root` を呼ぶループに戻さない）
 - **`.claude/rules/` 配下のファイル編集時の注意**: `settings.local.json` で `Edit(.claude/rules/*)` を許可していても、`dontAsk` モードでEditが拒否されることがある（既知の問題）。拒否された場合は **サブエージェント（Agent tool）経由で編集・コミット** すること
 
@@ -195,4 +195,4 @@ python -m katrain_debug --sgf tests/data/panda1.sgf --strategy hunt --batch --pl
 
 ## 現在のパラメータ値
 
-`.claude/rules/ai-parameters.md` に全戦略のパラメータテーブルを格納。**自動ロードされないので `ai.py` を触る前に Read すること**。
+戦略は `.claude/rules/ai-parameters.md`、詰碁は `.claude/rules/tsumego-parameters.md`。**自動ロードされないので `ai.py` を触る前に Read すること**。

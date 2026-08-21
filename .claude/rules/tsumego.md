@@ -2,6 +2,7 @@
 
 `katrain/core/tsumego_*.py`、`katrain/core/tsumego_solver/`、`native/tsumego/`、
 `ai.py` の `select_tsumego_move` 系、および詰碁の誤答調査に着手する前に読む。
+パラメータの具体値は `tsumego-parameters.md`。
 
 ## 機能の全体像
 

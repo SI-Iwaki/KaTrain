@@ -71,7 +71,7 @@
 
 ## 詰碁
 
-作業前に `.claude/rules/tsumego.md` を読むこと。
+作業前に `.claude/rules/tsumego.md`（設計と落とし穴）と `.claude/rules/tsumego-parameters.md`（パラメータ値）を読むこと。
 
 ### キャプチャ・盤面認識・出題
 | spec | |
@@ -121,6 +121,17 @@
 | spec | |
 |---|---|
 | `2026-04-19-ccmux-introduction-design.md` | 📄 ccmux 導入検討（KaTrain のコードには無関係） |
+
+---
+
+---
+
+## 実装プラン（`docs/superpowers/plans/`）
+
+45本。上の各 spec と**1対1で対応する実装チェックリスト**（ファイル名は spec から `-design` を
+除いたもの、例 `2026-08-18-board-watch.md` ↔ `2026-08-18-board-watch-design.md`）。
+実装済みの機能では履歴的な資料で、**現在の挙動を知りたいなら spec か rules を見ること**
+（プランは着手前に書かれるので、実装中に変わった判断が反映されていない）。
 
 ---
 

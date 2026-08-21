@@ -25,8 +25,8 @@ RULES = [
     ),
     (
         lambda p, b: b.startswith("tsumego") or "tsumego_solver" in p or "native/tsumego" in p,
-        ["tsumego.md"],
-        "詰碁の全体像と「やってはいけないこと」44項目・回帰手順",
+        ["tsumego.md", "tsumego-parameters.md"],
+        "詰碁の全体像と「やってはいけないこと」44項目・回帰手順／パラメータ値",
     ),
     (
         lambda p, b: b == "constants.py" or p.endswith("katrain/config.json"),
