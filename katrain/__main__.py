@@ -1597,6 +1597,12 @@ class KaTrainGui(Screen, KaTrainBase):
         # 出し、回答帳バナーを覆い続ける。後ろに置くと成功パスでしか止まらない
         if self._stop_board_watcher():
             self.log("tsumego_watch: 詰碁を出題したため、実行中の監視を停止しました", OUTPUT_INFO)
+            # バナーも一緒に消す（他の停止経路 `_do_new_game` / `_board_watch_trigger` と揃える）。
+            # 消さないと、止めた監視が最後に出した警告文が `board_watch_detail` に残り、
+            # gui.kv の TsumegoBookBanner は watch_detail を回答帳ステータスより優先表示するので
+            # 回答帳バナーを覆ったままになる（しかも次の停止では `_board_watcher` が既に None で
+            # `_do_new_game` 側の消去も走らないため、消える機会が無い）
+            self._board_watch_status("", "")
         ok, reason = tsumego_watch_can_start(
             watch_white=settings.get("watch_white", True),
             view_kind=view_kind,
