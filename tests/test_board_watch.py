@@ -1049,6 +1049,7 @@ def test_backoff_multiplies_idle_interval_and_recovers_to_verdict_interval():
 def test_active_interval_reads_from_config():
     s = bw.watch_settings_from_config({"poll_interval_active_ms": 80})
     assert s.poll_interval_active_ms == 80
+    assert bw.watch_settings_from_config({}).poll_interval_active_ms == 50
 
 
 def test_replay_grid_no_moves_returns_copy_of_base():
@@ -1070,7 +1071,7 @@ def test_replay_grid_skips_pass():
 
 
 def test_replay_grid_captures_on_the_app_board():
-    # 白1子 (2,0)=グリッド(0,2) の呼吸点はグリッド(0,1) と (1,2)。両方詰めると取れる。
+    # 白1子 (2,2)=グリッド(0,2) の呼吸点はグリッド(0,1) と (1,2)。両方詰めると取れる。
     # 取りは「アプリの盤」の上で計算される＝KaTrain 側の枠石を巻き込まない
     base = _grid(["..W", "...", "..."])
     out = replay_grid(base, [((1, 2), "B"), ((2, 1), "B")], 3)
@@ -1089,4 +1090,3 @@ def test_replay_grid_returns_none_on_size_mismatch():
 
 def test_replay_grid_returns_none_for_missing_base():
     assert replay_grid(None, [], 3) is None
-    assert bw.watch_settings_from_config({}).poll_interval_active_ms == 50
