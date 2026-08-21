@@ -273,6 +273,12 @@ STATUS_WATCHING = "bw-watching"
 STATUS_WARN = "bw-warn"
 WATCHING_TEXT = "盤面監視中（相手の手を自動反映）"
 RESYNC_HINT = "（監視トグルのホットキーで OFF にし、1秒ほどおいてからもう一度押すと現局面を取り込み直します）"
+# 対局モード向けの既定の停滞警告文（_on_quiet 参照）。詰碁モードは __main__._start_tsumego_watch が
+# 別の文面（stall_text）を渡すので、これは stall_kinds/stall_text 未指定時の既定値として使う。
+STALL_TEXT = (
+    "盤面が変化しません（着手をアプリへ入力し忘れていないか、"
+    "または KaTrain の手番かもしれません。Enter で AI が着手します）"
+)
 
 
 class PermanentCaptureError(Exception):
@@ -298,8 +304,18 @@ class BoardWatcher:
       on_status(kind, text)   kind: "bw-watching" / "bw-warn" / ""
     """
 
-    def __init__(self, capture_fn, get_state_fn, on_move, on_status, settings, clock=time.monotonic,
-                 active_kinds=("in_sync",)):
+    def __init__(
+        self,
+        capture_fn,
+        get_state_fn,
+        on_move,
+        on_status,
+        settings,
+        clock=time.monotonic,
+        active_kinds=("in_sync",),
+        stall_kinds=("in_sync", "ahead", "waiting"),
+        stall_text=STALL_TEXT,
+    ):
         self.capture_fn = capture_fn
         self.get_state_fn = get_state_fn
         self.on_move = on_move
@@ -309,6 +325,12 @@ class BoardWatcher:
         # モードの従来どおり。詰碁は ahead（黒を打ったがまだアプリへタップしていない）が
         # 白の来る直前の状態なので ("in_sync", "ahead") を渡す（spec 2026-08-22 §5）
         self.active_kinds = tuple(active_kinds)
+        # 停滞警告（_on_quiet）の対象 kind と文面。既定は対局モードの従来どおり
+        # （in_sync/ahead/waiting すべてで20秒後に警告）。詰碁は ahead（ユーザーの思考時間）・
+        # waiting（難問の探索時間）が正常な待ちなので、__main__._start_tsumego_watch は
+        # stall_kinds=("in_sync",) だけを渡す（spec 2026-08-22 §5）
+        self.stall_kinds = tuple(stall_kinds)
+        self.stall_text = stall_text
         self.clock = clock
         self.interval_ms = settings.poll_interval_ms
         self._stopped = threading.Event()
@@ -415,7 +437,11 @@ class BoardWatcher:
             self._quiet_key = key
             self._quiet_since = now
             self._watching()
-        elif self._quiet_since is not None and now - self._quiet_since >= self.settings.stall_warn_sec:
+        elif (
+            kind in self.stall_kinds
+            and self._quiet_since is not None
+            and now - self._quiet_since >= self.settings.stall_warn_sec
+        ):
             self._quiet_since = now  # 再警告は stall_warn_sec ごと
             # import_next_player の確定ゾーン（空盤・盤上2子以内）で対局開始まわりの
             # デッドロックは無くなったが、「対局が進んだ局面で、実は KaTrain 側の手番である
@@ -423,11 +449,9 @@ class BoardWatcher:
             # 分からない）からは判定できず残る。この場合
             # ai-move（Enter / numpad-Enter、gui.kv:883）で AI に1手打たせれば動き出す。
             # もう一方のありふれた原因（アプリへのタップ忘れ）と合わせて両方を案内する。
-            # どちらが実際の原因かは判定しない
-            self._warn(
-                "盤面が変化しません（着手をアプリへ入力し忘れていないか、"
-                "または KaTrain の手番かもしれません。Enter で AI が着手します）"
-            )
+            # どちらが実際の原因かは判定しない（対象 kind・文面は stall_kinds/stall_text 参照＝
+            # 詰碁モードは ahead/waiting を対象から外し文面も専用のものに差し替える）
+            self._warn(self.stall_text)
 
     def _on_capture_failure(self, message, permanent=False):
         self._fail_count += 1
@@ -575,6 +599,7 @@ class AppBoardReader:
         self._fingerprint = None
         self._grid = None
 
+
 # --- 詰碁モード（白番自動反映。spec 2026-08-22-tsumego-white-auto-apply-design.md） ---
 TSUMEGO_AI_SUBTYPES = (AI_TSUMEGO, AI_TSUMEGO_SOLVER)
 
@@ -609,4 +634,3 @@ def tsumego_watch_status(kind, text):
     if kind == STATUS_WARN:
         return kind, text
     return "", ""
-

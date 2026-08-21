@@ -1139,7 +1139,6 @@ def test_active_kinds_can_be_passed_to_constructor():
     assert watcher.active_kinds == ("in_sync", "ahead")
 
 
-
 def test_can_start_accepts_normal_tsumego_capture():
     ok, reason = bw.tsumego_watch_can_start(
         watch_white=True, view_kind="app", auto_ai=True,
@@ -1207,3 +1206,59 @@ def test_watch_status_passes_warnings_through():
 def test_watch_status_swallows_watching_so_the_answer_book_banner_stays_visible():
     assert bw.tsumego_watch_status(bw.STATUS_WATCHING, bw.WATCHING_TEXT) == ("", "")
     assert bw.tsumego_watch_status("", "") == ("", "")
+
+
+# --- 停滞ウォッチドッグの対象 kind / 文面（stall_kinds / stall_text） ---
+# 詰碁では ahead（黒を打ったがまだアプリへタップしていない）はユーザーの思考時間そのものなので、
+# 対局モード向けの20秒警告をそのまま出すと毎手誤発火する。既定は対局モードの従来どおり
+# （in_sync/ahead/waiting すべてが対象）で、詰碁側だけ __main__._start_tsumego_watch が
+# stall_kinds=("in_sync",) を渡して絞る。
+
+
+def test_stall_warning_fires_for_ahead_by_default():
+    # 現行動作（対局モード）の回帰ガード: 既定では ahead が20秒続くと従来どおり警告が出る
+    h = Harness()
+    _current, observed, state = _ahead_case()
+    h.step(observed, state)
+    h.clock.advance(25.0)
+    h.step(observed, state)
+    assert any(kind == "bw-warn" for kind, _t in h.statuses)
+
+
+def test_stall_warning_suppressed_when_kind_not_in_stall_kinds():
+    # stall_kinds=("in_sync",) を渡すと、ahead が20秒続いても警告が出ない（詰碁モード向け）
+    h = Harness()
+    h.watcher.stall_kinds = ("in_sync",)
+    _current, observed, state = _ahead_case()
+    h.step(observed, state)
+    h.clock.advance(25.0)
+    h.step(observed, state)
+    assert not any(kind == "bw-warn" for kind, _t in h.statuses)
+
+
+def test_stall_warning_still_fires_for_included_kind_with_custom_text():
+    # stall_kinds=("in_sync",) でも in_sync 自体が20秒続けば警告は出る。文面は渡した stall_text
+    h = Harness()
+    h.watcher.stall_kinds = ("in_sync",)
+    h.watcher.stall_text = "アプリが白を返していないようです"
+    board = _grid(["...", "...", "..."])
+    state = _state(board)  # to_play_is_human=True・board==current_grid ＝ in_sync
+    h.step(board, state)
+    h.clock.advance(25.0)
+    h.step(board, state)
+    assert any(
+        kind == "bw-warn" and text == "アプリが白を返していないようです" for kind, text in h.statuses
+    )
+
+
+def test_stall_kinds_defaults_to_in_sync_ahead_waiting():
+    # コンストラクタ経由の既定値確認（Harness は固定引数で作るのでここだけ直接構築する）
+    watcher = BoardWatcher(
+        capture_fn=lambda: _grid(["..", ".."]),
+        get_state_fn=lambda: None,
+        on_move=lambda *a: None,
+        on_status=lambda *a: None,
+        settings=WatchSettings(),
+    )
+    assert watcher.stall_kinds == ("in_sync", "ahead", "waiting")
+    assert watcher.stall_text == bw.STALL_TEXT

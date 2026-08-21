@@ -1535,7 +1535,7 @@ class KaTrainGui(Screen, KaTrainBase):
             誤注入を止める既存の安全弁。
         """
         from katrain.core.board_watch import WatchState, move_to_grid, replay_grid
-        from katrain.core.tsumego_solver_api import moves_from_game
+        from katrain.core.tsumego_solver_api import moves_from_node
 
         game = self.game
         if game is None or game is not watch_game:
@@ -1548,7 +1548,11 @@ class KaTrainGui(Screen, KaTrainBase):
         size_x, size_y = game.board_size
         if size_x != size_y:
             return None  # 長方形の盤は監視対象外
-        current = replay_grid(base_grid, moves_from_game(game), size_x)
+        # node は1回だけ束縛し、以降は全部この node から読む（moves_from_node も含む）。
+        # moves_from_game(game) のように game.current_node を別途読み直すと、その間に AI が
+        # 着手した場合に影グリッドが node より1手遅れ、一過性の誤ったバナー警告が出る
+        node = game.current_node
+        current = replay_grid(base_grid, moves_from_node(node), size_x)
         if current is None:
             if not getattr(self, "_tsumego_watch_replay_warned", False):
                 self._tsumego_watch_replay_warned = True  # 毎周は出さない（1問1回）
@@ -1558,7 +1562,6 @@ class KaTrainGui(Screen, KaTrainBase):
                     OUTPUT_INFO,
                 )
             return None
-        node = game.current_node
         last_move = None
         move = node.move
         if move is not None and move.coords is not None:  # パスは coords=None の Move
@@ -1617,8 +1620,14 @@ class KaTrainGui(Screen, KaTrainBase):
             on_status=lambda kind, text: self._board_watch_status(*tsumego_watch_status(kind, text)),
             settings=watch_settings_from_config(self._config.get("board_watch")),
             active_kinds=active_kinds,
+            # 詰碁の停滞は in_sync（タップ済みなのに白が返らない）だけが異常。ahead はユーザーの
+            # 思考時間そのもの、waiting も難問なら20秒かかりうる正常な待ちなので対象から外し、
+            # 文面も「Enter で AI が着手します」（対局モード向け・詰碁では誤案内）から差し替える
+            stall_kinds=("in_sync",),
+            stall_text="アプリが白を返していないようです（アプリ側の盤を確認してください）",
         )
-        self._stop_board_watcher()
+        if self._stop_board_watcher():
+            self.log("tsumego_watch: 詰碁の監視を始めるため、実行中の監視を停止しました", OUTPUT_INFO)
         self._board_watcher = watcher
         self._board_watch_kind = "tsumego"
         watcher.start()
@@ -1999,7 +2008,13 @@ class KaTrainGui(Screen, KaTrainBase):
             # 監視の開始は finish_gui の**末尾**で行う。対局者ウィジェットの Clock 経由の
             # 更新が player_subtype を ai:default へ巻き戻すことがあり、この関数がその実効値を
             # 検証して入れ直しているため（実測 2026-07-30）。入口ゲートは検証後の値で判定する
-            self._start_tsumego_watch(settings, view_kind)
+            try:
+                self._start_tsumego_watch(settings, view_kind)
+            except Exception as e:
+                # 設定不正（例: board_sizes に数値化できない値）等で例外が Kivy のイベント
+                # ループへ抜けるのを防ぐ。監視が無いだけで詰碁自体は従来どおり解けるので
+                # degradation が正しい（監視は補助機能であり必須ではない）
+                self.log(f"tsumego_watch: 監視の開始に失敗しました: {e}", OUTPUT_INFO)
 
         Clock.schedule_once(finish_gui, 0.1)
 
