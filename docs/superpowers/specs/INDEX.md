@@ -113,6 +113,7 @@
 | spec | |
 |---|---|
 | `2026-08-18-board-watch-design.md` | 🟢 **44KB**・`board_watch.py`。対局アプリの着手を検出して人間側の手として片方向注入（トグル `ctrl+alt+d`） |
+| `2026-08-22-tsumego-white-auto-apply-design.md` | 🟢 `board_watch.py` + `__main__.py`。詰碁モードでアプリの白の応手を自動反映（影グリッド方式・`reconcile` は無変更） |
 
 ---
 
