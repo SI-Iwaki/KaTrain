@@ -1591,6 +1591,12 @@ class KaTrainGui(Screen, KaTrainBase):
             watch_settings_from_config,
         )
 
+        # 実行中の監視の停止はゲート判定より**前**に行う。ゲートが不成立（watch_white が偽・
+        # Web キャプチャ・auto_ai_black が偽）でも盤はもう詰碁に変わっているので、走ったままの
+        # 監視（`_do_new_game` が止めない対局用を含む）は別の局面を見続けて毎周 Mismatch 警告を
+        # 出し、回答帳バナーを覆い続ける。後ろに置くと成功パスでしか止まらない
+        if self._stop_board_watcher():
+            self.log("tsumego_watch: 詰碁を出題したため、実行中の監視を停止しました", OUTPUT_INFO)
         ok, reason = tsumego_watch_can_start(
             watch_white=settings.get("watch_white", True),
             view_kind=view_kind,
@@ -1626,13 +1632,16 @@ class KaTrainGui(Screen, KaTrainBase):
             stall_kinds=("in_sync",),
             stall_text="アプリが白を返していないようです（アプリ側の盤を確認してください）",
         )
-        if self._stop_board_watcher():
-            self.log("tsumego_watch: 詰碁の監視を始めるため、実行中の監視を停止しました", OUTPUT_INFO)
         self._board_watcher = watcher
         self._board_watch_kind = "tsumego"
         watcher.start()
         self.log("tsumego_watch: 白番の自動反映を開始しました", OUTPUT_INFO)
-        self._tsumego_message("白番の自動反映を開始しました", kind="info")
+        # 回答帳がヒットした回はフラッシュを出さない。ヒット時は黒が 0.0 秒で即答するので
+        # 「回答帳が効いている」ことは着手そのものが伝えており、ここで上書きすると情報量の多い
+        # 回答帳バナー（黄=解答中 / 緑=再生完了 / 橙=記録外）を5秒隠すことになる。
+        # ヒットしなかった回は、この通知が監視の開始を知る唯一の手段
+        if getattr(watch_game, "tsumego_book_entry", None) is None:
+            self._tsumego_message("白番の自動反映を開始しました", kind="info")
 
     def _board_watch_trigger(self):
         """ctrl+alt+d のワーカースレッド。OFF なら認識してから開始、ON なら停止する"""
