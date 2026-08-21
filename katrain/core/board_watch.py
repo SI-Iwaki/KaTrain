@@ -12,6 +12,8 @@ import threading
 import time
 from typing import NamedTuple, Optional, Tuple
 
+from katrain.core.constants import AI_TSUMEGO, AI_TSUMEGO_SOLVER
+
 EMPTY = "."
 BLACK = "B"
 WHITE = "W"
@@ -572,3 +574,39 @@ class AppBoardReader:
     def _forget_frame(self):
         self._fingerprint = None
         self._grid = None
+
+# --- 詰碁モード（白番自動反映。spec 2026-08-22-tsumego-white-auto-apply-design.md） ---
+TSUMEGO_AI_SUBTYPES = (AI_TSUMEGO, AI_TSUMEGO_SOLVER)
+
+
+def tsumego_watch_can_start(watch_white, view_kind, auto_ai, black_subtype, white_is_human):
+    """詰碁の白番自動反映を開始してよいか。(可否, 理由) を返す。
+
+    黒が詰碁 AI・白が人間であることを要求するのが**色の割り当てが逆のまま走らせない**ための
+    入口ゲート（reconcile の「AI の手番なら注入しない」行と二重の防御）。
+    """
+    if not watch_white:
+        return False, "設定 watch_white が無効です"
+    if view_kind != "app":
+        return False, f"アプリ盤面以外のキャプチャ（{view_kind}）は監視しません"
+    if not auto_ai:
+        return False, "auto_ai_black が無効です（黒が AI でないと応手が返りません）"
+    if black_subtype not in TSUMEGO_AI_SUBTYPES:
+        return False, f"黒が詰碁戦略ではありません（{black_subtype}）"
+    if not white_is_human:
+        return False, "白が人間ではありません"
+    return True, ""
+
+
+def tsumego_watch_status(kind, text):
+    """詰碁経路のバナー用に監視ステータスを絞る。
+
+    TsumegoBookBanner（gui.kv）は watch_detail を回答帳ステータスより優先して表示するので、
+    正常時の「監視中」を出しっぱなしにすると**回答帳バナーが恒久的に隠れる**（詰碁ビューでは
+    右パネルごと非表示なので、回答帳の再生状況を知る手段がバナーしかない）。警告だけ通し、
+    それ以外は空にして回答帳バナーへ譲る。
+    """
+    if kind == STATUS_WARN:
+        return kind, text
+    return "", ""
+

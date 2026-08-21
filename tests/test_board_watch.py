@@ -1137,3 +1137,73 @@ def test_active_kinds_can_be_passed_to_constructor():
         active_kinds=("in_sync", "ahead"),
     )
     assert watcher.active_kinds == ("in_sync", "ahead")
+
+
+
+def test_can_start_accepts_normal_tsumego_capture():
+    ok, reason = bw.tsumego_watch_can_start(
+        watch_white=True, view_kind="app", auto_ai=True,
+        black_subtype="ai:tsumego", white_is_human=True,
+    )
+    assert ok is True
+    assert reason == ""
+
+
+def test_can_start_accepts_solver_subtype():
+    ok, _reason = bw.tsumego_watch_can_start(
+        watch_white=True, view_kind="app", auto_ai=True,
+        black_subtype="ai:tsumego_solver", white_is_human=True,
+    )
+    assert ok is True
+
+
+def test_can_start_rejects_when_disabled():
+    ok, reason = bw.tsumego_watch_can_start(
+        watch_white=False, view_kind="app", auto_ai=True,
+        black_subtype="ai:tsumego", white_is_human=True,
+    )
+    assert ok is False and "watch_white" in reason
+
+
+def test_can_start_rejects_web_capture():
+    # AppBoardReader は Web 盤面（格子線＋ラベルOCR）を読めない
+    for kind in ("web_full", "web_partial"):
+        ok, reason = bw.tsumego_watch_can_start(
+            watch_white=True, view_kind=kind, auto_ai=True,
+            black_subtype="ai:tsumego", white_is_human=True,
+        )
+        assert ok is False and kind in reason
+
+
+def test_can_start_rejects_when_black_is_not_tsumego_ai():
+    # 色の割り当てが逆のまま走らせない入口ゲート
+    ok, reason = bw.tsumego_watch_can_start(
+        watch_white=True, view_kind="app", auto_ai=True,
+        black_subtype="ai:default", white_is_human=True,
+    )
+    assert ok is False and "ai:default" in reason
+
+
+def test_can_start_rejects_when_auto_ai_off():
+    ok, reason = bw.tsumego_watch_can_start(
+        watch_white=True, view_kind="app", auto_ai=False,
+        black_subtype="ai:tsumego", white_is_human=True,
+    )
+    assert ok is False and "auto_ai_black" in reason
+
+
+def test_can_start_rejects_when_white_is_not_human():
+    ok, reason = bw.tsumego_watch_can_start(
+        watch_white=True, view_kind="app", auto_ai=True,
+        black_subtype="ai:tsumego", white_is_human=False,
+    )
+    assert ok is False and "白" in reason
+
+
+def test_watch_status_passes_warnings_through():
+    assert bw.tsumego_watch_status(bw.STATUS_WARN, "こまった") == (bw.STATUS_WARN, "こまった")
+
+
+def test_watch_status_swallows_watching_so_the_answer_book_banner_stays_visible():
+    assert bw.tsumego_watch_status(bw.STATUS_WATCHING, bw.WATCHING_TEXT) == ("", "")
+    assert bw.tsumego_watch_status("", "") == ("", "")
