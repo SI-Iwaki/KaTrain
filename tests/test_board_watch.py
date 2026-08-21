@@ -5,7 +5,7 @@ import threading
 
 import pytest
 
-from katrain.core.board_watch import EMPTY, BLACK, WHITE, apply_move_to_grid, grid_to_move, move_to_grid, stones_to_grid, WatchState, reconcile, board_sgf, import_next_player
+from katrain.core.board_watch import EMPTY, BLACK, WHITE, apply_move_to_grid, grid_to_move, move_to_grid, stones_to_grid, WatchState, reconcile, board_sgf, import_next_player, replay_grid
 from katrain.core.board_watch import BoardWatcher, WatchSettings  # 既存の import 行に足す
 import katrain.core.board_watch as bw  # 既存の import 行の下に足す
 
@@ -1049,4 +1049,44 @@ def test_backoff_multiplies_idle_interval_and_recovers_to_verdict_interval():
 def test_active_interval_reads_from_config():
     s = bw.watch_settings_from_config({"poll_interval_active_ms": 80})
     assert s.poll_interval_active_ms == 80
+
+
+def test_replay_grid_no_moves_returns_copy_of_base():
+    base = _grid(["...", ".B.", "..."])
+    out = replay_grid(base, [], 3)
+    assert out == base
+    assert out is not base          # 呼び出し側が破壊できないようにコピーを返す
+
+
+def test_replay_grid_applies_move_in_katrain_coords():
+    # KaTrain の (x=0, y=0) は盤の左下 = グリッドの最終行の先頭
+    out = replay_grid(_grid(["...", "...", "..."]), [((0, 0), "B")], 3)
+    assert out == _grid(["...", "...", "B.."])
+
+
+def test_replay_grid_skips_pass():
+    base = _grid(["...", "...", "..."])
+    assert replay_grid(base, [(None, "B"), (None, "W")], 3) == base
+
+
+def test_replay_grid_captures_on_the_app_board():
+    # 白1子 (2,0)=グリッド(0,2) の呼吸点はグリッド(0,1) と (1,2)。両方詰めると取れる。
+    # 取りは「アプリの盤」の上で計算される＝KaTrain 側の枠石を巻き込まない
+    base = _grid(["..W", "...", "..."])
+    out = replay_grid(base, [((1, 2), "B"), ((2, 1), "B")], 3)
+    assert out == _grid([".B.", "..B", "..."])
+
+
+def test_replay_grid_returns_none_when_point_is_occupied_on_app_board():
+    # 枠が消した非コア石の位置に AI が打つと、アプリ側では石があるので再現できない
+    base = _grid(["W..", "...", "..."])
+    assert replay_grid(base, [((0, 2), "B")], 3) is None
+
+
+def test_replay_grid_returns_none_on_size_mismatch():
+    assert replay_grid(_grid(["..", ".."]), [], 3) is None
+
+
+def test_replay_grid_returns_none_for_missing_base():
+    assert replay_grid(None, [], 3) is None
     assert bw.watch_settings_from_config({}).poll_interval_active_ms == 50

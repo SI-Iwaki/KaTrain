@@ -151,6 +151,36 @@ def apply_move_to_grid(grid, i, j, color):
     return new_grid
 
 
+def replay_grid(base_grid, moves, size):
+    """キャプチャ時の認識グリッドに root からの着手列を再生して「アプリ側の盤」を再現する。
+
+    詰碁では KaTrain の盤とアプリの盤が一致しない。枠は壁と充填を**足す**だけでなく、
+    drop_non_core_stones（tsumego_frame.py）で枠矩形の境界線上・外側の非コア石を
+    **盤から消す**ため、game.stones はアプリの盤と両方向にずれている。そこで監視の
+    比較基準は「キャプチャ時の認識グリッド + root からの着手列」で作り直す。
+
+    moves は (coords, color) の列で、coords は KaTrain の下origin (x, y)（パスは None）。
+    取りはこのグリッド＝アプリの盤の上で計算されるので、枠石を巻き込む KaTrain 側の
+    取りとずれない。
+
+    キャッシュせず毎周 root から再生する前提の関数（13路×20手で apply_move_to_grid 20回＝
+    無視できるコスト）。こうすると undo/redo/分岐が自動的に正しくなる。
+
+    再現できない（アプリ側では既に石がある等）ときは None を返す＝「比較しない」に倒す。
+    """
+    if base_grid is None or len(base_grid) != size:
+        return None
+    grid = [row[:] for row in base_grid]
+    for coords, color in moves:
+        if coords is None:  # パスは盤に石を置かない
+            continue
+        i, j = move_to_grid(coords, size)
+        grid = apply_move_to_grid(grid, i, j, color)
+        if grid is None:
+            return None
+    return grid
+
+
 class WatchState(NamedTuple):
     """KaTrain 側の局面スナップショット（__main__ が作り、判定はここでだけ行う）"""
 
