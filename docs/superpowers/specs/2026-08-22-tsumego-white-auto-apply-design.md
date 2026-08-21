@@ -137,11 +137,11 @@ ai_can_respond = (self.play_analyze_mode == MODE_PLAY
 | 条件 | 理由 |
 |---|---|
 | `tsumego_capture.watch_white` が真 | 機能の ON/OFF |
-| `watchable`（`view.kind == "app"`） | `AppBoardReader` は Web フォールバックを持たない |
+| `view_kind == "app"` | `AppBoardReader` は Web フォールバックを持たない |
 | `auto_ai` が真 かつ B=`ai:tsumego(_solver)` かつ W=人間 | 黒が AI でないと注入しても応手が返らない。**色の割り当てが逆のまま走らせない**入口ゲート |
 
-`watchable` は `_tsumego_capture_trigger`（:1037）が `view.kind == "app"` を判定して
-`tsumego-capture-apply` メッセージの引数に足す（`capture_note` と同じ流し方）。
+`view_kind` は `_tsumego_capture_trigger`（:1037）が `view.kind` をそのまま
+`tsumego-capture-apply` メッセージの引数に足して渡す（`capture_note` と同じ流し方）。
 
 `AppBoardReader(title, sizes)` は構築時にキャプチャしない（最初の `read()` で盤矩形と
 盤サイズを確定する）ので、メッセージループを画面キャプチャで塞がずに `BoardWatcher` を
