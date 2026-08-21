@@ -143,3 +143,44 @@ def test_new_game_closes_tsumego_log_even_at_debug_level_0(tmp_path, monkeypatch
     app.log("game 1 move")
     body = open(path, encoding="utf-8").read()
     assert "problem 1" in body and "game 1 move" not in body
+
+
+def old_log(tmp_path, name="tsumego_20200101_000000.log", body="古い問題", keep=True):
+    """アーカイブ対象になる十分に古いログを置く。"""
+    folder = os.path.join(str(tmp_path), "logs")
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, name)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(body)
+    if keep:
+        with open(path + bk.KaTrainBase.KEEP_MARKER_SUFFIX, "w", encoding="utf-8") as f:
+            f.write("deadbeef\n")
+    return path
+
+
+def test_start_game_log_archives_old_tsumego_logs(tmp_path, monkeypatch):
+    """保護されていても十分に古い詰碁ログは月別 zip へ畳まれること（捨てはしない）。"""
+    import zipfile
+
+    old = old_log(tmp_path)
+    app = make_app(tmp_path, monkeypatch, debug_level=0)
+    app.start_game_log(kind="tsumego")
+    current = app._game_log_path
+    app._log_archive_thread.join(timeout=30)
+    assert not os.path.exists(old), "古いログがアーカイブされていない"
+    archive = os.path.join(str(tmp_path), "logs", "archive", "tsumego_202001.zip")
+    with zipfile.ZipFile(archive) as z:
+        assert sorted(z.namelist()) == ["tsumego_20200101_000000.log", "tsumego_20200101_000000.log.keep"]
+        assert z.read("tsumego_20200101_000000.log").decode("utf-8") == "古い問題"
+    assert os.path.exists(current), "いま開いているログを畳んでいる"
+
+
+def test_archiving_runs_once_per_session(tmp_path, monkeypatch):
+    """毎問スキャンし直さない（1セッション1回）。"""
+    app = make_app(tmp_path, monkeypatch, debug_level=0)
+    app.start_game_log(kind="tsumego")
+    first = app._log_archive_thread
+    assert first is not None
+    first.join(timeout=30)
+    app.start_game_log(kind="tsumego")
+    assert app._log_archive_thread is first, "2問目でもアーカイブスレッドを起こしている"

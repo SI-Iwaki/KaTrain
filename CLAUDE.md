@@ -89,6 +89,8 @@ python -m katrain
 
 **ログファイル**（`C:\Users\iwaki\.katrain\logs\`）: 詰碁は**1問1ファイル**（`tsumego_<日付>_<時刻>.log`）。キャプチャの先頭で開くので、認識盤面（黒/白の GTP 座標）・抽出・出題前の検算・枠の採否・各手の判定が1ファイルに揃う＝**不具合報告はこのファイルを見れば再現できる**（ターミナルからコピーする必要はない）。`debug_level` 0 でも作られる（0 は INFO 行のみ、1 でエンジンのクエリまで）。対局は従来どおり `game_<日付>_<時刻>.log`（20手未満は無効試合として削除）。保持数は種別ごとに独立（詰碁30本・対局10本＝`base_katrain.KaTrainBase.LOG_KINDS`）で古い順に自動削除。ただし**回答帳に記録した問題のログは保護されて自動削除されない**（`keep_current_log`＝`<ログ名>.log.keep` マーカーを隣に置き、ローテーションは保護済みを本数からも除外する。回答帳には誤答した問題だけでなく「解析が長かったので次から即答させたい正解済みの問題」も入るので、保護は正解／誤答で区別せず記録した全問に掛かる）。ログ側には**回答帳キー**（`tsumego_capture: 回答帳キー <sha1>`）と komi/ko/margin/black_to_attack/枠なし指定が出るので、`~/.katrain/tsumego_answers.json` の entry（`canonical_black`/`canonical_white`/`lines`）と join して「回答帳なしで出題し直し、記録手順と突き合わせる」オフライン検証ができる。spec 追記11・回答帳 spec 追記3
 
+保護ログは捨てられない（どれも詰碁モードの改善に使う）ので、**30日より古い詰碁ログは `logs/archive/tsumego_YYYYMM.zip` へ自動で畳まれる**（`katrain/core/log_archive.py`。起動後の最初のログ生成時に1セッション1回・別スレッド。`.keep` も同じ zip に入り、zip に入ったことを確かめてからでないと元を消さない）。畳んだあとは Grep ツールで直接引けないので、検索は `python tools/grep_tsumego_logs.py "<正規表現>"`（平文とアーカイブを横断・出力は `<場所>:<行番号>:<行>`）。`--extract <名前>` で平文に戻し、`--archive-now --days N` で手動実行できる。放置時の増加率は実測 2026-08-21 で 11日599本・130MB＝年 4GB
+
 **戦略デバッグCLI**: 対局不要で任意の局面の戦略意思決定を再現・確認（KataGo起動あり、約30秒）:
 ```bash
 python -m katrain_debug --sgf FILE --move N --strategy hunt [--settings key=val ...] [--output text|json]

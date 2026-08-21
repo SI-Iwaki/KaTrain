@@ -13,6 +13,7 @@ C:\Users\iwaki\.katrain\logs\\
   game_YYYYMMDD_HHMMSS.log         -- 対局（1局1ファイル）
   tsumego_YYYYMMDD_HHMMSS.log      -- 詰碁（**1問1ファイル**）
   tsumego_YYYYMMDD_HHMMSS.log.keep -- 回答帳に記録した問題の保護マーカー
+  archive/tsumego_YYYYMM.zip       -- 30日より古い詰碁ログ（月別・.keep 同梱）
 ```
 
 サイズは数百KB〜1MB超になることがある。
@@ -22,6 +23,20 @@ C:\Users\iwaki\.katrain\logs\\
 **`debug_level` 0 でも作られる**（0 は INFO 行のみ、1 でエンジンのクエリまで）。戦略の判定ログ（`[Parity9Strategy]` `[Enigma9Strategy]` `[HumanStyleStrategy]` 等）は**OUTPUT_DEBUG なので `debug_level` 1 が必要**。
 
 **保持数は種別ごとに独立**（詰碁30本・対局10本＝`base_katrain.KaTrainBase.LOG_KINDS`）で古い順に自動削除。20手未満の対局ログは無効試合として削除される。ただし**回答帳に記録した問題のログは保護されて削除されない**（`keep_current_log` が `<ログ名>.log.keep` を隣に置き、ローテーションは保護済みを本数からも除外する）。実測 2026-08-21: 詰碁ログ629本のうち599本が `.keep` 付き＝未保護はちょうど30本。
+
+**30日より古い詰碁ログは `logs/archive/tsumego_YYYYMM.zip` へ自動で畳まれる**（`katrain/core/log_archive.py`＝`base_katrain._maybe_archive_logs` が起動後の最初のログ生成時に1セッション1回・別スレッドで走る）。保護ログは捨てられない（どれも詰碁モードの改善に使う）が放置すると年 4GB ペースで増えるため、容量とファイル数だけ抑える措置。`.keep` も同じ zip に入り、**zip に入ったことを確かめてからでないと元を消さない**（例外なしで書けても実在とサイズを検証する）。
+
+### アーカイブ済みログの検索（Grep ツールは zip の中を読めない）
+
+```bash
+python tools/grep_tsumego_logs.py "回答帳キー"              # 平文＋zip を横断
+python tools/grep_tsumego_logs.py -i "failed|error"         # 大文字小文字を無視
+python tools/grep_tsumego_logs.py --name 20260810 "Selected:"  # ログ名で絞る
+python tools/grep_tsumego_logs.py --extract 20260810_102038 --out-dir /tmp/x  # 平文に戻す
+python tools/grep_tsumego_logs.py --archive-now --days 7    # 30日を待たず手で畳む
+```
+
+出力は `<場所>:<行番号>:<行>`（アーカイブ済みは `archive/tsumego_202608.zip:tsumego_....log:12:...`）。ヒット0なら終了コード1。**下の「よく使うGrepパターン」はそのまま第1引数に渡せる**。詰碁ログを横断分析するサブエージェントには、Grep ツールではなくこのコマンドを使うよう指示すること（古い問題が zip 側にいると Grep では素通りする）。
 
 **回答帳との突き合わせ**: 詰碁ログには `tsumego_capture: 回答帳キー <sha1>` が出るので、`~/.katrain/tsumego_answers.json` の entry（`canonical_black` / `canonical_white` / `lines`）とjoin すれば「回答帳なしで出題し直して記録手順と比べる」オフライン検証ができる。
 

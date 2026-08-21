@@ -1,6 +1,7 @@
 import os
 import shutil
 import sys
+import threading
 
 from kivy import Config
 from kivy.storage.jsonstore import JsonStore
@@ -109,6 +110,33 @@ class KaTrainBase:
     # ログ本体を open したまま改名/移動すると Windows で失敗するので、別ファイルで印を付ける
     KEEP_MARKER_SUFFIX = ".keep"
 
+    # 古い詰碁ログの月別 zip 化は1セッション1回・別スレッド（初回は数百MBを畳むので、
+    # 同期で走らせると次の問題のキャプチャを待たせる）
+    _log_archive_thread = None
+
+    def _maybe_archive_logs(self, log_dir):
+        """`ARCHIVE_AFTER_DAYS` より古い詰碁ログを `logs/archive/` の月別 zip へ畳む。
+
+        回答帳に記録した問題のログは `.keep` で保護されて自動削除の対象外なので、
+        そのままだと単調増加する（実測 2026-08-21: 11日で 599本・130MB）。どのログも
+        詰碁モードの改善に使うため捨てず、容量とファイル数だけ抑える。
+        """
+        if self._log_archive_thread is not None:
+            return self._log_archive_thread
+        from katrain.core.log_archive import archive_old_logs
+
+        def worker():
+            try:
+                count = archive_old_logs(log_dir, logger=lambda m: self.log(m, OUTPUT_INFO))
+                if count:
+                    self.log(f"古い詰碁ログ {count} 本を logs/archive へ畳みました", OUTPUT_INFO)
+            except Exception as e:
+                self.log(f"ログのアーカイブに失敗（{e}）", OUTPUT_INFO)
+
+        self._log_archive_thread = threading.Thread(target=worker, daemon=True)
+        self._log_archive_thread.start()
+        return self._log_archive_thread
+
     def keep_current_log(self, key="", note=""):
         """いま開いているログを自動削除の対象から外す。保護したパスを返す（できなければ None）。
 
@@ -167,6 +195,7 @@ class KaTrainBase:
 
         log_dir = os.path.join(os.path.expanduser(DATA_FOLDER), "logs")
         os.makedirs(log_dir, exist_ok=True)
+        self._maybe_archive_logs(log_dir)
 
         # 種別ごとに独立して古い順に消す（詰碁ログが対局ログを押し出さない）。
         # 保護済み（.keep が隣にある）は本数からも外す＝保護したぶんだけ通常ログの枠が
