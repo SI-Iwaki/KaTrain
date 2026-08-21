@@ -386,6 +386,11 @@ class KaTrainGui(Screen, KaTrainBase):
                 self.message_queue.put([self.game.game_id, message, args, kwargs])
 
     def _do_new_game(self, move_tree=None, analyze_fast=False, sgf_filename=None, _log=True):
+        # 詰碁の白番自動反映は局面に紐づくので、新しい局面になったら止める。次のキャプチャが
+        # 張り直す。対局監視モード（kind="game"）は巻き添えにしない
+        if self._stop_board_watcher(kinds=("tsumego",)):
+            self.log("tsumego_watch: 新しい局面になったため白番の自動反映を停止しました", OUTPUT_INFO)
+            self._board_watch_status("", "")
         if _log:
             self.start_game_log()
         self.pondering = False
@@ -701,6 +706,7 @@ class KaTrainGui(Screen, KaTrainBase):
             existing.stop()
             self.log("board_watch: 開始が重複したため前の監視スレッドを停止しました", OUTPUT_INFO)
         self._board_watcher = watcher
+        self._board_watch_kind = "game"  # _do_new_game の詰碁専用フックに巻き込まれないように
         # 相手の応手 top-K の子局面を先読みして NN キャッシュを温める（spec 追記4）。
         # 監視 OFF まで有効。0 で無効＝先読み導入前と同じ挙動
         prefetch = int((self._config.get("board_watch") or {}).get("prefetch_replies", 5))
@@ -1072,7 +1078,12 @@ class KaTrainGui(Screen, KaTrainBase):
                 )
             elif view.kind == "web_full":
                 capture_note = f"Web盤面認識（全体表示・{len(view.grid)}路）: 19路ではないため詰碁経路で出題"
-            self("tsumego-capture-apply", view.grid, ko, margin, black_to_attack, frameless, capture_note=capture_note)
+            # watchable: BlueStacks 型の全面盤だけ監視できる（AppBoardReader は Web 盤面の
+            # 格子線＋ラベルOCR を持たない）。spec 2026-08-22 §3.1
+            self(
+                "tsumego-capture-apply", view.grid, ko, margin, black_to_attack, frameless,
+                capture_note=capture_note, view_kind=view.kind,
+            )
         finally:
             self._tsumego_capture_busy = False
 
@@ -1496,6 +1507,124 @@ class KaTrainGui(Screen, KaTrainBase):
             board_size=size_x,
         )
 
+    def _stop_board_watcher(self, kinds=None):
+        """走っている監視スレッドを止める。kinds を渡すとその種別のときだけ止める。
+
+        戻り値は「実際に止めたか」。kinds=("tsumego",) は詰碁の白番自動反映だけを対象にする
+        （対局監視モードを巻き添えで止めない）。
+        """
+        watcher = getattr(self, "_board_watcher", None)
+        if watcher is None:
+            return False
+        if kinds is not None and getattr(self, "_board_watch_kind", None) not in kinds:
+            return False
+        watcher.stop()
+        self._board_watcher = None
+        self._board_watch_kind = None
+        return True
+
+    def _tsumego_watch_state(self, watch_game):
+        """詰碁監視スレッドが読む KaTrain 側のスナップショット（判定は board_watch 側で行う）。
+
+        対局版（_board_watch_state）との差は2点だけ:
+        (1) 比較基準が game.stones ではなく**アプリ盤の再現**（影グリッド）。枠は壁と充填を
+            足すうえ drop_non_core_stones で枠外の非コア石を消すので、game.stones はアプリの
+            盤と両方向にずれている。
+        (2) ai_can_respond から region_of_interest 条件を落とす（詰碁では ROI が正常状態）。
+            not node.children は**残す**＝回答帳の記録モードで undo 後に打ち直している間の
+            誤注入を止める既存の安全弁。
+        """
+        from katrain.core.board_watch import WatchState, move_to_grid, replay_grid
+        from katrain.core.tsumego_solver_api import moves_from_game
+
+        game = self.game
+        if game is None or game is not watch_game:
+            return None  # 張り替え・停止と競合した瞬間
+        if self.tsumego_recording:
+            return None  # 回答帳の記録モード（undo 後の打ち直し）では注入しない
+        base_grid = getattr(game, "tsumego_app_grid", None)
+        if base_grid is None:
+            return None
+        size_x, size_y = game.board_size
+        if size_x != size_y:
+            return None  # 長方形の盤は監視対象外
+        current = replay_grid(base_grid, moves_from_game(game), size_x)
+        if current is None:
+            if not getattr(self, "_tsumego_watch_replay_warned", False):
+                self._tsumego_watch_replay_warned = True  # 毎周は出さない（1問1回）
+                self.log(
+                    "tsumego_watch: アプリ盤を再現できないため監視を休止します"
+                    "（枠が消した非コア石の位置に着手した可能性）",
+                    OUTPUT_INFO,
+                )
+            return None
+        node = game.current_node
+        last_move = None
+        move = node.move
+        if move is not None and move.coords is not None:  # パスは coords=None の Move
+            i, j = move_to_grid(move.coords, size_x)
+            last_move = (i, j, move.player)
+        to_play = node.next_player
+        return WatchState(
+            current_grid=current,
+            last_move=last_move,
+            to_play=to_play,
+            to_play_is_human=self.players_info[to_play].human,
+            ai_can_respond=(
+                self.play_analyze_mode == MODE_PLAY and not node.children and not game.end_result
+            ),
+            move_number=node.depth,
+            board_size=size_x,
+        )
+
+    def _start_tsumego_watch(self, settings, view_kind):
+        """詰碁の白番自動反映を開始する（キャプチャ完了後・プレイヤー設定の検証後に呼ぶ）"""
+        from katrain.core.board_watch import (
+            AppBoardReader,
+            BoardWatcher,
+            grid_to_move,
+            tsumego_watch_can_start,
+            tsumego_watch_status,
+            watch_settings_from_config,
+        )
+
+        ok, reason = tsumego_watch_can_start(
+            watch_white=settings.get("watch_white", True),
+            view_kind=view_kind,
+            auto_ai=settings.get("auto_ai_black", True),
+            black_subtype=self.players_info["B"].player_subtype,
+            white_is_human=self.players_info["W"].human,
+        )
+        if not ok:
+            self.log(f"tsumego_watch: 白番の自動反映は開始しません（{reason}）", OUTPUT_DEBUG)
+            return
+        title = settings.get("window_title", "BlueStacks")
+        sizes = [int(s) for s in (settings.get("board_sizes") or [9, 13, 19])]
+        watch_game = self.game
+        self._tsumego_watch_replay_warned = False
+        # 詰碁では ahead（黒を打ったがまだアプリへタップしていない）が白の来る直前の状態
+        active_kinds = ("in_sync", "ahead") if settings.get("watch_active_on_ahead", True) else ("in_sync",)
+
+        def on_move(i, j, color, move_number, board_size):
+            self("board-watch-play", grid_to_move(i, j, board_size), color, move_number)
+
+        # AppBoardReader は構築時にキャプチャしない（最初の read() で盤矩形と盤サイズを
+        # 確定する）ので、ここでメッセージループを画面キャプチャで塞がない
+        watcher = BoardWatcher(
+            capture_fn=AppBoardReader(title, sizes).read,
+            get_state_fn=lambda: self._tsumego_watch_state(watch_game),
+            on_move=on_move,
+            on_status=lambda kind, text: self._board_watch_status(*tsumego_watch_status(kind, text)),
+            settings=watch_settings_from_config(self._config.get("board_watch")),
+            active_kinds=active_kinds,
+        )
+        self._stop_board_watcher()
+        self._board_watcher = watcher
+        self._board_watch_kind = "tsumego"
+        watcher.start()
+        self.log("tsumego_watch: 白番の自動反映を開始しました", OUTPUT_INFO)
+        self._tsumego_message("白番の自動反映を開始しました", kind="info")
+
     def _board_watch_trigger(self):
         """ctrl+alt+d のワーカースレッド。OFF なら認識してから開始、ON なら停止する"""
         from katrain.core.board_watch import AppBoardReader
@@ -1516,6 +1645,7 @@ class KaTrainGui(Screen, KaTrainBase):
             if watcher is not None:
                 watcher.stop()
                 self._board_watcher = None
+                self._board_watch_kind = None
                 # 監視を止めたら先読みも止める（通常の対局・検討で GPU を焼かない）
                 if self.game:
                     self.game.board_watch_prefetch_replies = 0
@@ -1572,7 +1702,9 @@ class KaTrainGui(Screen, KaTrainBase):
 
         Clock.schedule_once(finish_gui, 0.1)
 
-    def _do_tsumego_capture_apply(self, grid, ko, margin, black_to_attack=None, frameless=False, capture_note=None):
+    def _do_tsumego_capture_apply(
+        self, grid, ko, margin, black_to_attack=None, frameless=False, capture_note=None, view_kind="app"
+    ):
         # メッセージループスレッドで実行。既定は枠あり（use_frame: false で枠なし運用も選択可能）。
         # 枠なしを既定にしなかった理由: 実機検証で二律背反が判明したため。空いた盤面を放置すると
         # 地合いが支配し詰碁を読む動機が消える（実測: ある局面で-53目/勝率0%、別の局面で+37目/勝率100%）。
@@ -1727,6 +1859,10 @@ class KaTrainGui(Screen, KaTrainBase):
         # ソルバモード: 抽出済みの問題コンテキストを新しいゲームに引き渡す（§9.1 照会プロトコル。
         # 戦略はこれを使ってセッションを作り、以後の手番で再抽出しない）
         self.game.tsumego_solver_problem = solver_problem
+        # 白番自動反映（spec 2026-08-22）の比較基準。枠を張る**前**の認識グリッド＝アプリの盤
+        # そのもの。tsumego_book_stones を流用しないのは、あちらが回答帳の照合 try の中で
+        # 設定され、照合に失敗すると設定されないため（監視の基準を別機能の副産物にしない）
+        self.game.tsumego_app_grid = grid
         # 回答帳（スペック 2026-08-02-tsumego-answer-book-design.md）: 枠を張る前の認識石で
         # 正規化キーを計算して照合。ヒットしたら戦略が記録手順を0秒で再生する。
         # 枠張り・ソルバゲートの判断は従来どおり（スペック§5）
@@ -1860,6 +1996,10 @@ class KaTrainGui(Screen, KaTrainBase):
                 Window.raise_window()
             except Exception as e:
                 self.log(f"tsumego_capture: ウィンドウ前面化失敗: {e}", OUTPUT_DEBUG)
+            # 監視の開始は finish_gui の**末尾**で行う。対局者ウィジェットの Clock 経由の
+            # 更新が player_subtype を ai:default へ巻き戻すことがあり、この関数がその実効値を
+            # 検証して入れ直しているため（実測 2026-07-30）。入口ゲートは検証後の値で判定する
+            self._start_tsumego_watch(settings, view_kind)
 
         Clock.schedule_once(finish_gui, 0.1)
 

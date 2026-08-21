@@ -73,6 +73,8 @@
         "region_pad": 1,
         "noframe_region_pad": 3,
         "ponder_replies": 3,
+        "watch_white": true,
+        "watch_active_on_ahead": true,
         "solver_enabled": true,
         "solver_time_limit_ms": 5000,
         "solver_node_limit": 20000000,
