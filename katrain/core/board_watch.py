@@ -296,12 +296,17 @@ class BoardWatcher:
       on_status(kind, text)   kind: "bw-watching" / "bw-warn" / ""
     """
 
-    def __init__(self, capture_fn, get_state_fn, on_move, on_status, settings, clock=time.monotonic):
+    def __init__(self, capture_fn, get_state_fn, on_move, on_status, settings, clock=time.monotonic,
+                 active_kinds=("in_sync",)):
         self.capture_fn = capture_fn
         self.get_state_fn = get_state_fn
         self.on_move = on_move
         self.on_status = on_status
         self.settings = settings
+        # 低遅延（poll_interval_active_ms）で回す無音状態の集合。既定は in_sync だけ＝対局
+        # モードの従来どおり。詰碁は ahead（黒を打ったがまだアプリへタップしていない）が
+        # 白の来る直前の状態なので ("in_sync", "ahead") を渡す（spec 2026-08-22 §5）
+        self.active_kinds = tuple(active_kinds)
         self.clock = clock
         self.interval_ms = settings.poll_interval_ms
         self._stopped = threading.Event()
@@ -396,10 +401,11 @@ class BoardWatcher:
         """waiting / ahead / in_sync = 無音の終端状態。長すぎたら警告する（spec §2.5c）"""
         self._stable_move = None
         self._stable_count = 0
-        if kind == "in_sync":
+        if kind in self.active_kinds:
             # 盤がアプリと一致している＝次に変わるのは相手の石。ここだけが低遅延を要する
-            # 局面で、waiting（KaTrain の AI が思考中）と ahead（ユーザーがまだアプリへ
-            # タップしていない）は相手の石が来ようがないので idle のままにする
+            # 局面で、waiting（KaTrain の AI が思考中）は相手の石が来ようがないので idle の
+            # まま。ahead（ユーザーがまだアプリへタップしていない）は対局モードでは同じく
+            # idle だが、詰碁ではタップ直後にアプリが白を返すので active に含める
             self._active()
         key = (kind, state.move_number, _grid_key(observed))
         now = self.clock()

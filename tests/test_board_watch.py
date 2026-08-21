@@ -1090,3 +1090,50 @@ def test_replay_grid_returns_none_on_size_mismatch():
 
 def test_replay_grid_returns_none_for_missing_base():
     assert replay_grid(None, [], 3) is None
+
+
+def _ahead_case():
+    """KaTrain が黒を打ったがアプリにはまだ反映されていない（ahead）状態の一式"""
+    current = _grid(["...", ".B.", "..."])
+    observed = _grid(["...", "...", "..."])
+    state = _state(current, to_play="W", last_move=(1, 1, "B"), move_number=5)
+    return current, observed, state
+
+
+def test_ahead_is_idle_by_default():
+    h = Harness(WatchSettings(poll_interval_ms=400, poll_interval_active_ms=50))
+    _current, observed, state = _ahead_case()
+    h.step(observed, state)
+    assert h.watcher.interval_ms == 400
+
+
+def test_ahead_is_active_when_requested():
+    h = Harness(WatchSettings(poll_interval_ms=400, poll_interval_active_ms=50))
+    h.watcher.active_kinds = ("in_sync", "ahead")
+    _current, observed, state = _ahead_case()
+    h.step(observed, state)
+    assert h.watcher.interval_ms == 50
+
+
+def test_in_sync_stays_active_with_default_active_kinds():
+    h = Harness(WatchSettings(poll_interval_ms=400, poll_interval_active_ms=50))
+    current = _grid(["...", ".B.", "..."])
+    h.step(current, _state(current, to_play="W", move_number=5))
+    assert h.watcher.interval_ms == 50
+
+
+def test_active_kinds_defaults_to_in_sync_only():
+    h = Harness()
+    assert h.watcher.active_kinds == ("in_sync",)
+
+
+def test_active_kinds_can_be_passed_to_constructor():
+    watcher = BoardWatcher(
+        capture_fn=lambda: _grid(["..", ".."]),
+        get_state_fn=lambda: None,
+        on_move=lambda *a: None,
+        on_status=lambda *a: None,
+        settings=WatchSettings(),
+        active_kinds=("in_sync", "ahead"),
+    )
+    assert watcher.active_kinds == ("in_sync", "ahead")
