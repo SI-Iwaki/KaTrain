@@ -92,6 +92,7 @@
         "hotkey": "ctrl+alt+d",
         "window_title": "",
         "poll_interval_ms": 400,
+        "poll_interval_active_ms": 50,
         "stable_frames": 2,
         "failure_warn_frames": 8,
         "inject_timeout_ms": 5000,

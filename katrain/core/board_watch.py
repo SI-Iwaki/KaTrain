@@ -205,7 +205,7 @@ def reconcile(state, observed):
 
 
 class WatchSettings(NamedTuple):
-    poll_interval_ms: int = 400
+    poll_interval_ms: int = 400  # 相手の石が来ようがない局面（idle）の周期
     stable_frames: int = 2
     failure_warn_frames: int = 8
     inject_timeout_ms: int = 5000
@@ -214,6 +214,10 @@ class WatchSettings(NamedTuple):
     backoff_after_failures: int = 3
     backoff_factor: float = 2.0
     poll_interval_max_ms: int = 2000
+    # 相手の着手を実際に待っている局面（in_sync・注入の反映待ち・確定途中）の周期。
+    # 反映の体感遅延はほぼ「位相待ち＋確定待ち」＝この値2つぶんで決まる（spec 追記3）。
+    # poll_interval_ms と同値にすれば適応をやめて従来どおりの固定周期に戻る。
+    poll_interval_active_ms: int = 50
 
 
 def watch_settings_from_config(cfg):
@@ -229,6 +233,7 @@ def watch_settings_from_config(cfg):
         backoff_after_failures=int(d.get("backoff_after_failures", default.backoff_after_failures)),
         backoff_factor=float(d.get("backoff_factor", default.backoff_factor)),
         poll_interval_max_ms=int(d.get("poll_interval_max_ms", default.poll_interval_max_ms)),
+        poll_interval_active_ms=int(d.get("poll_interval_active_ms", default.poll_interval_active_ms)),
     )
 
 
@@ -292,6 +297,8 @@ class BoardWatcher:
         if state is None:
             return
         if self._pending is not None and not self._resolve_pending(state):
+            if self._pending is not None:
+                self._active()  # 注入した手が反映されるまでは速く確認する（タイムアウト後は idle へ戻す）
             return
         verdict = reconcile(state, observed)
         if verdict.kind == "mismatch":
@@ -329,7 +336,8 @@ class BoardWatcher:
         self._quiet_key = None
         self._quiet_since = None
         if self._blocked == (move[0], move[1], state.move_number):
-            return  # タイムアウトした手は局面が変わるまで投げ直さない
+            return  # タイムアウトした手は局面が変わるまで投げ直さない（復帰待ちを速く回しても意味がない）
+        self._active()  # 確定待ちの1周が体感遅延に直結するので詰める
         if self._stable_move == move:
             self._stable_count += 1
         else:
@@ -358,6 +366,11 @@ class BoardWatcher:
         """waiting / ahead / in_sync = 無音の終端状態。長すぎたら警告する（spec §2.5c）"""
         self._stable_move = None
         self._stable_count = 0
+        if kind == "in_sync":
+            # 盤がアプリと一致している＝次に変わるのは相手の石。ここだけが低遅延を要する
+            # 局面で、waiting（KaTrain の AI が思考中）と ahead（ユーザーがまだアプリへ
+            # タップしていない）は相手の石が来ようがないので idle のままにする
+            self._active()
         key = (kind, state.move_number, _grid_key(observed))
         now = self.clock()
         if key != self._quiet_key:
@@ -391,7 +404,12 @@ class BoardWatcher:
 
     def _on_capture_success(self):
         self._fail_count = 0
+        # 撮影に成功したらまず idle に戻す（＝バックオフの解除）。この後 step() の各分岐が
+        # 「相手の着手を待っている」と判断したときだけ _active() で上書きする
         self.interval_ms = self.settings.poll_interval_ms
+
+    def _active(self):
+        self.interval_ms = self.settings.poll_interval_active_ms
 
     def _watching(self):
         self.on_status(STATUS_WATCHING, WATCHING_TEXT)
@@ -445,12 +463,30 @@ def _capture_api():
     return find_window_rect, capture_screen_rect, detect_board, detect_size_and_classify
 
 
-class AppBoardReader:
-    """アプリ窓を撮って観測グリッドを返す。盤矩形と盤サイズをキャッシュする。
+def _board_fingerprint(img, board_rect):
+    """盤矩形の画素そのもの（バイト列）を返す。取れなければ None＝「比較しない」に倒す。
 
-    キャッシュ有りの1周は「撮影 27ms ＋ 格子検算 5〜25ms ＋ 分類 7〜29ms」＝40〜85ms（実測）。
+    撮り直しても盤の画素が1ビットも変わっていなければ、格子検算も分類も同じ入力に対する
+    純粋な関数なので結果は必ず同一になる。だから省ける（判定の意味論は変わらない）。
+    """
+    try:
+        return img.crop(board_rect).tobytes()
+    except Exception:
+        return None
+
+
+class AppBoardReader:
+    """アプリ窓を撮って観測グリッドを返す。盤矩形・盤サイズ・直前フレームをキャッシュする。
+
+    1周の実測は「撮影 21〜27ms ＋ 格子検算 5〜25ms ＋ 分類 7〜29ms」＝40〜85ms。
     毎周 detect_size_and_classify をキャッシュしたサイズ1候補で回すのは、これが
     「盤矩形と規則配置の仮定がまだ合っているか」の検算を兼ねるため。
+
+    ただし対局中のフレームはほとんどが「前と同じ盤」なので、盤矩形の画素を前回と比較して
+    同一なら分類ごと省く（**1周が 21〜23ms に落ちる**）。これが無いと 19路では1周 85ms
+    かかり、50ms 周期を指定しても実際には 85ms 間隔でしか回れない＝低遅延化が成立しない。
+    比較対象を窓全体でなく**盤矩形**にするのは、窓内の時計・通知などが毎フレーム変わると
+    最適化が丸ごと効かなくなるため。
     """
 
     def __init__(self, window_title, board_sizes):
@@ -459,6 +495,8 @@ class AppBoardReader:
         self.size = None
         self._window_rect = None
         self._board_rect = None
+        self._fingerprint = None
+        self._grid = None
 
     def read(self):
         find_window_rect, capture_screen_rect, detect_board, detect_size_and_classify = _capture_api()
@@ -472,14 +510,29 @@ class AppBoardReader:
             self._board_rect = None
         img = capture_screen_rect(rect)
         if self._board_rect is None:
+            self._forget_frame()
             board_rect = detect_board(img)
             size, grid = detect_size_and_classify(img, board_rect, self.board_sizes)
             self._board_rect = board_rect
             self.size = size
+            self._remember_frame(_board_fingerprint(img, board_rect), grid)
             return grid
+        fingerprint = _board_fingerprint(img, self._board_rect)
+        if fingerprint is not None and fingerprint == self._fingerprint:
+            return self._grid  # 盤の画素が1つも変わっていない＝分類しても同じグリッドになる
         try:
             _size, grid = detect_size_and_classify(img, self._board_rect, [self.size])
         except Exception:
             self._board_rect = None  # 次回はフル検出からやり直す
+            self._forget_frame()  # 失敗した回の画素を覚えない（覚えると次周が古いグリッドを返す）
             raise
+        self._remember_frame(fingerprint, grid)
         return grid
+
+    def _remember_frame(self, fingerprint, grid):
+        self._fingerprint = fingerprint
+        self._grid = grid
+
+    def _forget_frame(self):
+        self._fingerprint = None
+        self._grid = None

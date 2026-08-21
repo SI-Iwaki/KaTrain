@@ -488,8 +488,15 @@ def test_watcher_skips_transient_capture_failures_then_warns():
     assert any(kind == "bw-warn" for kind, _t in h.statuses)
 
 
-def test_watcher_backs_off_and_recovers():
-    h = Harness(WatchSettings(poll_interval_ms=400, backoff_after_failures=2, backoff_factor=2.0, poll_interval_max_ms=2000))
+def test_watcher_backs_off_and_recovers_with_adaptive_polling_disabled():
+    """poll_interval_active_ms を poll_interval_ms と同値にすれば適応が消えて固定周期に戻る。
+
+    「設定を戻せば従来の挙動」という約束をテストで固定しておく（2026-08-21 の低遅延化）。
+    """
+    h = Harness(WatchSettings(
+        poll_interval_ms=400, poll_interval_active_ms=400,
+        backoff_after_failures=2, backoff_factor=2.0, poll_interval_max_ms=2000,
+    ))
     h.step(RuntimeError("x"))
     h.step(RuntimeError("x"))
     assert h.watcher.interval_ms == 800
@@ -863,3 +870,183 @@ def test_real_screenshot_before_imports_as_white_to_play():
     _size, before = _recognize_real_screenshot(_BEFORE_PNG)
     next_player, _reason = import_next_player(before, human_color=BLACK)
     assert next_player == WHITE
+
+
+# --- 反映遅延の短縮（2026-08-21）: 変化なし早期打ち切り と 適応ポーリング周期 ---
+
+
+class _FakeImage:
+    """crop().tobytes() だけを持つ最小の画像スタブ。pixels が画素そのものに相当する"""
+
+    def __init__(self, pixels):
+        self.pixels = pixels
+
+    def crop(self, _box):
+        return self
+
+    def tobytes(self):
+        return self.pixels.encode()
+
+
+def _reader_harness(monkeypatch, frames):
+    """frames を順に返す AppBoardReader。分類の呼び出し回数を記録する"""
+    calls = {"detect_board": 0, "classify": 0}
+    state = {"grid_id": 0}
+
+    def fake_capture_screen_rect(_rect):
+        return frames.pop(0)
+
+    def fake_detect_board(_img):
+        calls["detect_board"] += 1
+        return (0, 0, 10, 10)
+
+    def fake_detect_size_and_classify(_img, _board_rect, _sizes):
+        calls["classify"] += 1
+        state["grid_id"] += 1
+        grid = [["."] * 9 for _ in range(9)]
+        grid[0][0] = str(state["grid_id"])  # 呼び出しごとに区別できるようにする
+        return 9, grid
+
+    monkeypatch.setattr(bw, "_capture_api", lambda: (
+        lambda _title: (0, 0, 100, 100), fake_capture_screen_rect, fake_detect_board, fake_detect_size_and_classify
+    ))
+    return bw.AppBoardReader("BlueStacks", [9]), calls
+
+
+def test_reader_skips_classification_when_board_pixels_unchanged(monkeypatch):
+    reader, calls = _reader_harness(monkeypatch, [_FakeImage("same"), _FakeImage("same"), _FakeImage("same")])
+    first = reader.read()
+    assert calls["classify"] == 1
+    second = reader.read()
+    third = reader.read()
+    assert calls["classify"] == 1  # 画素が同一なら分類も格子検算も走らない
+    assert second == first and third == first  # 同じ画素からは同じグリッドしか出ない
+
+
+def test_reader_reclassifies_when_board_pixels_change(monkeypatch):
+    reader, calls = _reader_harness(monkeypatch, [_FakeImage("a"), _FakeImage("b")])
+    first = reader.read()
+    second = reader.read()
+    assert calls["classify"] == 2
+    assert second != first
+
+
+def test_reader_reclassifies_when_window_moves_even_if_pixels_match(monkeypatch):
+    """窓が動いたら盤矩形キャッシュごと落ちる＝画素が同じでも作り直す"""
+    frames = [_FakeImage("same"), _FakeImage("same")]
+    calls = {"detect_board": 0, "classify": 0}
+    rects = [(0, 0, 100, 100), (5, 5, 105, 105)]
+
+    def fake_detect_size_and_classify(_img, _board_rect, _sizes):
+        calls["classify"] += 1
+        return 9, [["."] * 9 for _ in range(9)]
+
+    def fake_detect_board(_img):
+        calls["detect_board"] += 1
+        return (0, 0, 10, 10)
+
+    monkeypatch.setattr(bw, "_capture_api", lambda: (
+        lambda _title: rects.pop(0), lambda _rect: frames.pop(0), fake_detect_board, fake_detect_size_and_classify
+    ))
+    reader = bw.AppBoardReader("BlueStacks", [9])
+    reader.read()
+    reader.read()
+    assert calls["detect_board"] == 2
+    assert calls["classify"] == 2
+
+
+def test_reader_does_not_serve_stale_grid_after_classification_failure(monkeypatch):
+    """分類が失敗した回の画素をキャッシュに残さない（残すと次周が古いグリッドを返す）"""
+    frames = [_FakeImage("a"), _FakeImage("b"), _FakeImage("b")]
+    calls = {"classify": 0}
+    fail = {"now": False}
+
+    def fake_detect_size_and_classify(_img, _board_rect, _sizes):
+        calls["classify"] += 1
+        if fail["now"]:
+            raise RuntimeError("grid score too low")
+        return 9, [["."] * 9 for _ in range(9)]
+
+    monkeypatch.setattr(bw, "_capture_api", lambda: (
+        lambda _title: (0, 0, 100, 100), lambda _rect: frames.pop(0),
+        lambda _img: (0, 0, 10, 10), fake_detect_size_and_classify
+    ))
+    reader = bw.AppBoardReader("BlueStacks", [9])
+    reader.read()
+    fail["now"] = True
+    with pytest.raises(RuntimeError):
+        reader.read()
+    fail["now"] = False
+    calls["classify"] = 0
+    reader.read()
+    assert calls["classify"] == 1  # 失敗後の同一画素でもキャッシュを使わず読み直す
+
+
+def _adaptive():
+    return WatchSettings(poll_interval_ms=400, poll_interval_active_ms=50, stable_frames=2)
+
+
+def test_interval_is_active_while_waiting_for_opponent_stone():
+    h = Harness(_adaptive())
+    board = _grid(["...", "...", "..."])
+    h.step(board, _state(board))  # in_sync = 相手の着手を待っている
+    assert h.watcher.interval_ms == 50
+
+
+def test_interval_is_idle_while_katrain_ai_thinks():
+    h = Harness(_adaptive())
+    board = _grid(["...", "...", "..."])
+    h.step(board, _state(board, human=False))  # waiting
+    assert h.watcher.interval_ms == 400
+
+
+def test_interval_is_idle_while_user_has_not_tapped_app():
+    h = Harness(_adaptive())
+    current = _grid(["W..", "...", "..."])
+    observed = _grid(["...", "...", "..."])  # KaTrain の AI が打った手がまだアプリに無い
+    h.step(observed, _state(current, to_play="B", last_move=(0, 0, "W")))
+    assert h.watcher.interval_ms == 400
+
+
+def test_interval_is_active_while_confirming_and_injecting_move():
+    h = Harness(_adaptive())
+    current = _grid(["...", "...", "..."])
+    observed = _grid(["...", ".B.", "..."])
+    state = _state(current, to_play="B", move_number=4)
+    h.step(observed, state)        # 1フレーム目（確定前）
+    assert h.watcher.interval_ms == 50
+    h.step(observed, state)        # 確定して注入
+    assert h.moves == [(1, 1, "B", 4)]
+    h.step(observed, state)        # 注入の反映待ち
+    assert h.watcher.interval_ms == 50
+
+
+def test_interval_is_idle_on_mismatch():
+    h = Harness(_adaptive())
+    current = _grid(["...", "...", "..."])
+    observed = _grid(["BB.", "...", "..."])  # 2手ぶん進んでいる
+    h.step(observed, _state(current, to_play="B"))
+    assert h.watcher.interval_ms == 400
+
+
+def test_backoff_multiplies_idle_interval_and_recovers_to_verdict_interval():
+    h = Harness(WatchSettings(
+        poll_interval_ms=400, poll_interval_active_ms=50,
+        backoff_after_failures=2, backoff_factor=2.0, poll_interval_max_ms=2000,
+    ))
+    h.step(RuntimeError("x"))
+    h.step(RuntimeError("x"))
+    assert h.watcher.interval_ms == 800
+    h.step(RuntimeError("x"))
+    assert h.watcher.interval_ms == 1600
+    board = _grid(["...", "...", "..."])
+    h.step(board, _state(board, human=False))  # 成功1回でバックオフ解除（waiting なので idle）
+    assert h.watcher.interval_ms == 400
+    h.step(board, _state(board))               # in_sync なら active
+    assert h.watcher.interval_ms == 50
+
+
+def test_active_interval_reads_from_config():
+    s = bw.watch_settings_from_config({"poll_interval_active_ms": 80})
+    assert s.poll_interval_active_ms == 80
+    assert bw.watch_settings_from_config({}).poll_interval_active_ms == 50
