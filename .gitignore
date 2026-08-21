@@ -174,3 +174,6 @@ docs/superpowers/specs/calibration-data/tsumego/answer-book-*.jsonl
 docs/superpowers/specs/calibration-data/tsumego/diag-*.jsonl
 docs/superpowers/specs/calibration-data/tsumego/promo8.jsonl
 docs/superpowers/specs/calibration-data/tsumego/dominant-override-probe.jsonl
+
+# CLAUDE rules リマインダの既読マーカー（セッションごと）
+.claude/.rules_reminded/
