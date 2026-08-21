@@ -1582,7 +1582,8 @@ class KaTrainGui(Screen, KaTrainBase):
         # `use_frame: false` の既存経路そのものなので、押されていないキャプチャは不変
         settings = capture_settings_for_frame_mode(settings, frameless)
         komi = self.config("game/komi", 6.5)
-        # 詰碁は1問1ファイルでログを取る（~/.katrain/logs/tsumego_<日付>_<時刻>.log。古い順に自動削除）。
+        # 詰碁は1問1ファイルでログを取る（~/.katrain/logs/tsumego_<日付>_<時刻>.log。未保護は古い順に
+        # 自動削除、回答帳に記録した保護ぶんは30日で logs/archive の月別 zip へ畳む）。
         # ここで開くのは、出題の判断（抽出・検算・枠の採否）が _do_new_game より前に出るため
         # ＝ここより後ろで開くと肝心の判断が直前の問題のファイルに落ちる
         self.start_game_log(kind="tsumego")
