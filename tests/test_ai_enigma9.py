@@ -10,6 +10,7 @@ from katrain.core.ai import (
     ENIGMA9_HP_BOOK,
     ENIGMA9_JIGO_TARGET,
     ENIGMA9_PUNISH_CAP,
+    ENIGMA9_W_OWN_RARE,
     Enigma13Strategy,
     Enigma19Strategy,
     Enigma9Strategy,
@@ -19,6 +20,7 @@ from katrain.core.ai import (
     enigma9_expected_punish,
     enigma9_hp_lookup,
     enigma9_net_score,
+    enigma9_own_rarity_weight,
     enigma9_rarity,
     enigma9_reply_findability,
     enigma9_reply_table,
@@ -262,6 +264,34 @@ class TestNetScore:
 
     def test_cost_weight_default_is_full(self):
         assert enigma9_net_score(4.0, 2.0, 0.0, ENIGMA9_HP_BOOK) == pytest.approx(-1.0)
+
+    def test_w_own_zero_ignores_own_hp(self):
+        # ヨセ（w_own=0）では自手の hp が 0 でも加点されない
+        assert enigma9_net_score(0.0, 0.3, 1.0, 0.0, w_own=0.0) == pytest.approx(0.3)
+
+
+class TestOwnRarityWeight:
+    """ヨセでは「自手の意外さ」を net から外す（2026-08-22・spec 追記6）。"""
+
+    def test_midgame_keeps_full_weight(self):
+        assert enigma9_own_rarity_weight(False) == pytest.approx(ENIGMA9_W_OWN_RARE)
+
+    def test_yose_drops_own_rarity(self):
+        assert enigma9_own_rarity_weight(True) == 0.0
+
+    def test_yose_choice_falls_back_to_best_move(self):
+        # 実測（校正局 move 53・白 lead+5.6）の再現: hp 0.1% の J8 は意外さ項が
+        # 消えると最善手 E9 に負ける＝ヨセで「人間が打たない手」を打たなくなる
+        w_own = enigma9_own_rarity_weight(True)
+        best = enigma9_net_score(0.0, 0.19, 0.891, 0.957, w_own=w_own)
+        weird = enigma9_net_score(0.27, 0.32, 0.828, 0.001, w_own=w_own)
+        assert weird < best
+        # 中盤（従来どおり）では意外さ項が勝ち、外しが成立していたことも押さえる
+        w_mid = enigma9_own_rarity_weight(False)
+        assert (
+            enigma9_net_score(0.27, 0.32, 0.828, 0.001, w_own=w_mid)
+            > enigma9_net_score(0.0, 0.19, 0.891, 0.957, w_own=w_mid)
+        )
 
 
 class TestSpendingPlan:

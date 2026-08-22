@@ -2203,6 +2203,25 @@ def enigma9_aim_cap(lead, target, cap):
     return min(cap, max(0.0, lead - target))
 
 
+def enigma9_own_rarity_weight(in_yose, base=ENIGMA9_W_OWN_RARE):
+    """net の「自手の意外さ」項の重み。ヨセでは 0（＝この項を使わない）。
+
+    own_rare は「相手の研究した定跡・手筋を外す」ための項なので、外す対象の
+    知識が残っている序盤〜中盤の道具（要件1）。ヨセに入ると E も応手の
+    見つけにくさも候補間で横並びに潰れる（実測 2026-08-22・校正局
+    parity9-vs-human-20260808-parity9b move 53・白 lead+5.6: 最善 E9 が
+    E=0.19/find_hp=0.891、挑戦者 J8 が E=0.32/find_hp=0.828）ので、net の
+    差は own_rare がそのまま決める＝**予算内で最も humanPolicy の低い手**が
+    機械的に選ばれる（J8 は hp 0.1% で意外さ +0.996 を得て 0.27 目払って採用
+    された。罠の価値は E 差 0.13 目しかない）。ヨセは1手の目数がほぼ確定して
+    いて手順も一本道なので、これは相手から見て「人間が打たない手」にしかならず
+    （jigo の `jigo_endgame_humanstyle` がヨセ委譲を入れたのと同じ理由）、
+    ユーザー報告の症状そのもの。ヨセの外しは E（相手が実際に間違える期待損失）と
+    応手の見つけにくさ＝**本物の罠**だけで正当化する。
+    """
+    return 0.0 if in_yose else base
+
+
 def enigma9_net_score(loss, e_punish, reply_findability, own_hp,
                       w_reply=ENIGMA9_W_REPLY_RARE, w_own=ENIGMA9_W_OWN_RARE,
                       cost_weight=1.0):
@@ -2731,6 +2750,9 @@ class Enigma9Strategy(AIStrategy):
                         f"{target:.1f}), playing best move."
                     )
 
+        # ヨセでは「自手の意外さ」を net から外す（`enigma9_own_rarity_weight`）
+        w_own = enigma9_own_rarity_weight(in_yose)
+
         # ---- ゲート3: 安全な外し候補があるか（クエリ0本）----
         # プールは visits >= ENIGMA9_POOL_MIN_VISITS まで広げる（二段の漏斗）。
         # 生 loss の cap 判定は浅い候補でも安全側（楽観バイアス＝過小評価なので
@@ -2805,7 +2827,9 @@ class Enigma9Strategy(AIStrategy):
             e_punish, coverage = enigma9_expected_punish(replies, hp_of)
             findability = enigma9_reply_findability(replies, hp_of)
             own_hp = own_hp_of(c["gtp"])
-            net = enigma9_net_score(vloss, e_punish, findability, own_hp, cost_weight=cost_weight)
+            net = enigma9_net_score(
+                vloss, e_punish, findability, own_hp, w_own=w_own, cost_weight=cost_weight
+            )
             scored.append(
                 {**c, "loss": vloss, "raw_loss": c["loss"], "wr_after": wr_after,
                  "e": e_punish, "cov": coverage, "find": findability,
@@ -2815,7 +2839,7 @@ class Enigma9Strategy(AIStrategy):
             self._log(
                 f"Score {c['gtp']}: vloss={vloss:.2f} (raw {c['loss']:.2f}) wr={wr_txt} "
                 f"E={e_punish:.2f} cov={coverage:.2f} find_hp={findability:.3f} "
-                f"own_hp={own_hp:.3f} reply={best_reply} net={net:.2f}"
+                f"own_hp={own_hp:.3f} (w_own={w_own:.1f}) reply={best_reply} net={net:.2f}"
             )
 
         chosen = enigma9_choose(scored, best_gtp, margin)
