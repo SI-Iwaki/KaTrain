@@ -720,3 +720,11 @@ def test_package_config_has_autoloop_section():
         cfg = json.load(f)
     sec = cfg["tsumego_autoloop"]
     assert sec["hotkey"] == "ctrl+alt+a" and sec["enabled"] is True and "adb_path" in sec
+
+
+def test_popup_state_correct_template():
+    # 実機 2026-08-23: 正解フレームの tail は correct テンプレと MAD 0.0 / wrong と 37.0（wrong フレームは逆）
+    templates = al.load_templates()
+    assert {"wrong", "correct"} <= set(templates)
+    assert al.popup_state(_frame("popup_correct.png"), templates) == "correct"
+    assert al.popup_state(_frame("popup_wrong.png"), templates) == "wrong"
