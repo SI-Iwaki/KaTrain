@@ -114,7 +114,7 @@
 |---|---|
 | `2026-08-18-board-watch-design.md` | 🟢 **44KB**・`board_watch.py`。対局アプリの着手を検出して人間側の手として片方向注入（トグル `ctrl+alt+d`） |
 | `2026-08-22-tsumego-white-auto-apply-design.md` | 🟢 `board_watch.py` + `__main__.py`。詰碁モードでアプリの白の応手を自動反映（影グリッド方式・`reconcile` は無変更） |
-| `2026-08-23-tsumego-autoloop-design.md` | ⚪ 未実装・設計のみ。詰碁の自動ループ（ADB でアプリを操作し 出題→回答→正誤→誤答なら ヒント歩きで回答帳へ自動収穫→次の問題）。前提実測（ADB 疎通・役割推定誤り 3.7%・再出題率）と台帳 `tsumego_ledger.jsonl` |
+| `2026-08-23-tsumego-autoloop-design.md` | 🟢 実装済み。詰碁の自動ループ（ADB でアプリを操作し 出題→回答→正誤→誤答なら ヒント歩きで回答帳へ自動収穫→次の問題）。前提実測（ADB 疎通・役割推定誤り 3.7%・再出題率）と台帳 `tsumego_ledger.jsonl` |
 
 ---
 
