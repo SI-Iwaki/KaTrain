@@ -66,6 +66,7 @@ def _watch_game(replies=5, candidates=("E3", "C5", "G5", "F7", "B2", "H8")):
     game.current_node = node
     game.region_of_interest = None
     game.board_watch_prefetch_replies = replies
+    game.board_watch_probe_warm = False
     game._board_watch_prefetch_nodes = []
     return game, node, engine
 
@@ -84,6 +85,41 @@ def test_prefetch_fires_top_k_children_with_same_settings_as_the_real_query():
         assert child is not node
         assert child.parent is not node
     assert {child.move.gtp() for child, _ in engine.requests} == {"E3", "C5", "G5", "F7", "B2"}
+
+
+def test_probe_warm_is_off_unless_the_strategy_asks_for_it():
+    # 既定は通常解析の温めだけ＝序盤〜中盤に ownership 付きクエリを増やさない
+    game, node, engine = _watch_game(replies=2)
+    game._board_watch_prefetch_worker(node, 2)
+    assert len(engine.requests) == 2
+    assert all(kwargs["ownership"] is None for _, kwargs in engine.requests)
+
+
+def test_probe_warm_matches_the_enigma_yose_probe_query():
+    """難解モードがヨセで撃つ判定クエリ（Probe）も同条件で温める。
+
+    通常解析（ownership なし）とは ownerMap の有無が違う＝別のキャッシュエントリなので、
+    上の応手先読みでは1秒も速くならない（実測 2026-08-23: ヨセの Probe に 1.1 秒）。
+    条件は `Enigma9Strategy._generate_move` の `_run_query("Probe", ...)` と揃える。
+    """
+    game, node, engine = _watch_game(replies=2)
+    game.board_watch_probe_warm = True
+    game._board_watch_prefetch_worker(node, 2)
+
+    assert len(engine.requests) == 4  # 応手2手 × (通常解析 + Probe)
+    probes = [(child, kw) for child, kw in engine.requests if kw["ownership"] is True]
+    assert len(probes) == 2
+    for child, kwargs in probes:
+        assert kwargs["include_policy"] is False
+        assert kwargs["extra_settings"] == {"ignorePreRootHistory": False, "wideRootNoise": 0.0}
+        # visits は渡さない＝実クエリ（_run_query("Probe", ...) も未指定）と同じ
+        # config の max_visits に解決される。ずれると別の探索深さ＝温まらない
+        assert kwargs.get("visits") is None
+        assert kwargs["priority"] == PRIORITY_BOARD_WATCH_PREFETCH
+    # 温めるのは通常解析と同じ子ノード＝cancel が両方まとめて terminate できる
+    normal = [child for child, kw in engine.requests if kw["ownership"] is None]
+    assert [child for child, _ in probes] == normal
+    assert game._board_watch_prefetch_nodes == normal
 
 
 def test_prefetch_children_are_played_by_the_opponent_color():

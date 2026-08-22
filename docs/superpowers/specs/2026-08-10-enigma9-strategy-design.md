@@ -567,3 +567,99 @@ E が高ければヨセでも hp の低い手は打ちうる（move 35 の E4 �
 「ヨセでは hp の低い手を一切打たない」まで要るなら、外し候補に humanPolicy の
 下限（絶対値または最善手比）を課す案が次の一手（今回は未実装＝ユーザー選択で
 「意外さ項の無効化のみ」を採用）。
+
+---
+
+## 追記7（2026-08-23）: 盤面監視モードのヨセの即応（精度不変・9/13/19路共通）
+
+### 症状と実測
+
+「難解モードのヨセが遅い（秒読みでつらい）」というユーザー報告。直前のコミット
+`d8059bb`（ヨセの own_rare 無効化）を疑ったが、**あの変更は net の重みだけで
+クエリを1本も増やしていない**（採否の順位が変わるだけ）。ヨセが遅いのは元からの構造。
+
+実測（`~/.katrain/logs/game_20260823_024656.log`・9路・盤面監視モードで進行した実戦）:
+
+| 手番 | `着手決定に X 秒` | 内訳 |
+|---|---|---|
+| ヨセ前 | 0.0〜0.4 | 子局面プローブのみ（ponder で温まっている） |
+| ヨセ | 0.7〜1.7 | **Probe 1.1 秒** + プローブバッチ 0.2 秒 |
+
+`depth=52` の手番を1本ずつ追うと `QUERY:15635`（`includeOwnership=true` /
+`wideRootNoise=0` / 2000visits）が **1.1 秒**、続く子局面バッチ（500v×2 + 8v×3）が
+0.2 秒。**支配項はヨセ判定クエリ（Probe）**で、しかもこれは既存の応手先読み
+（`_maybe_board_watch_prefetch`・`node.analyze()` の既定＝ownership なし）では
+**1秒も速くならない** — KataGo の NN キャッシュは ownerMap の有無を区別するため
+（CLAUDE.md「KataGo 解析結果の扱い」・詰碁 spec の実測 2.70秒 vs 0.10秒 と同じ罠）。
+
+### 設計
+
+Probe が sticky 後に運んでいる情報は**外し予算の lead だけ**（未確定点の数え直しは
+sticky なので不要）。そこで2方向から削る。**どちらも解析条件を変えないので
+「シャッフル」は起きない**（CLAUDE.md の A/B 心得）。
+
+**(1) 飽和帯では Probe を撃たない**（採用判断はビット同一）
+
+ヨセの cap は `min(max_loss, lead − target)`。余剰 `lead − target` が `max_loss` を
+十分上回っていれば cap は **lead の値によらず max_loss** なので、lead をどの精度で
+測っても結果が変わらない。この帯だけ通常解析 root の `scoreLead`（クエリ0本）で
+判定して Probe を省く:
+
+```python
+def enigma9_yose_probe_skippable(lead, target, max_loss, margin=ENIGMA9_FAST_YOSE_MARGIN):
+    if lead is None:
+        return False
+    return (lead - target) >= max_loss + margin
+```
+
+- `margin = ENIGMA9_FAST_YOSE_MARGIN`(0.5 目) は、通常解析 root が
+  **wideRootNoise=0.04**（候補を広げるノイズ）で撃たれているぶんの揺れの吸収。
+- 適用は **ヨセ sticky 後** × **`game.board_watch_active`** の AND
+  （`_fast_yose_lead`）。ヨセ突入の判定には ownership が要るので初回は従来どおり、
+  監視していない経路（通常対局・バッチ評価・CLI）は1行も変わらない。
+- **接戦（余剰が `max_loss + margin` 未満）は従来どおり Probe を撃つ**＝lead が
+  そのまま予算になる帯＝目差の精度が要る局面では何も落とさない。ユーザーの
+  懸念（「目差を正確に計算する必要がある段階で劣化するのでは」）はここで閉じる。
+- `cap <= ENIGMA9_MIN_BUDGET`(0.05) の早期 return は飽和帯では構造的に起きない
+  （余剰 >= max_loss + 0.5）ので、省略しても分岐の意味は変わらない。
+
+実測ログのヨセ14手番は lead **5.77〜34.48**・cap は14本とも **1.60**＝**全部が飽和側**
+なので、この対局なら判定は1手も変わらずに 1.1 秒が消える。
+
+**(2) 接戦で残る Probe は応手先読みで温める**（値は同一・速くなるだけ）
+
+戦略が Probe を撃った手番に `game.board_watch_probe_warm` を立て、
+`Game._board_watch_prefetch_worker` が応手 top-K の子局面へ**同条件**
+（`ownership=True` / `extra_settings={"ignorePreRootHistory": False, "wideRootNoise": 0.0}` /
+`include_policy=False` / visits 未指定＝config の max_visits）のクエリを1本ずつ足す。
+結果は捨てる＝判定影響ゼロ、priority は既存の `PRIORITY_BOARD_WATCH_PREFETCH`(-50)、
+掃除は既存の `_cancel_board_watch_prefetch`（同じ子ノードに紐づくので追加の後始末は不要）。
+的中率は実測 top-5 68.7%（追記4 の応手先読みと同じ母数）。
+
+先読み側に置いたのは、**難解モードの ponder（`_start_ponder`）が早期 return 経路では
+発火しない**ため。接戦のヨセは `cap <= MIN_BUDGET` で `_best_move` に倒れる手番が多く、
+そこで ponder は動かない＝ちょうど温めが要る手番を取りこぼす。`Game.play()` から
+駆動される監視モードの先読みなら全経路を覆う。
+
+### 実装
+
+- `ai.py`: `ENIGMA9_FAST_YOSE_MARGIN` / `enigma9_yose_probe_skippable`（純関数） /
+  `Enigma9Strategy._fast_yose_lead` / ゲート2 の分岐（`board_watch_probe_warm` の設定つき）。
+  13/19路は `_generate_move` 共有なのでそのまま効く。
+- `game.py`: `Game.board_watch_active` / `board_watch_probe_warm` の初期化と、
+  `_board_watch_prefetch_worker` の温め1本。
+- `__main__.py`: `_do_board_watch_start` で `board_watch_active = True`、
+  `_stop_board_watcher`（kind=`"game"`）で `board_watch_active` /
+  `board_watch_prefetch_replies` / `board_watch_probe_warm` を戻す
+  （**既存の取りこぼしの修正**＝従来は監視 OFF 後も応手先読みが回り続けていた。
+  game.py の「__main__ が監視 ON で設定し OFF で 0 に戻す」というコメントの意図どおりに揃えた）。
+- ログ: 省いた手番は `Endgame budget: lead~<値> target=… cap=… (watch: probe skipped)`。
+
+### 検証
+
+- `pytest`: 941 passed（新規11件＝`TestYoseProbeSkippable` 5 / `TestFastYoseLead` 4 /
+  先読みの温め 2）。温めのテストは**実クエリと同条件であること**を kwargs 単位で固定する
+  （条件がずれると NN キャッシュが温まらない、が過去に何度も踏んでいる罠）。
+- 期待効果: ヨセの `着手決定` 1.3 秒 → 約 0.2 秒（残りは温まっている子局面プローブ）。
+  応手検出→着手までの往復は 1.6 秒 → 約 0.5 秒。接戦では Probe が残るが、先読み的中時は
+  1.1 秒 → 0.1 秒級。

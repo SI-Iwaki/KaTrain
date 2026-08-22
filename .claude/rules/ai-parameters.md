@@ -481,6 +481,7 @@ move 15 では 3目の候補が「高くても難解でない」（E 0.06・find
 `ENIGMA9_REPLY_REF_MIN_VISITS=10` / `ENIGMA9_REPLY_MIN_VISITS=2` /
 `ENIGMA9_PUNISH_CAP=8.0` / `ENIGMA9_ADEQUATE_LOSS=0.3` / `ENIGMA9_HP_BOOK=0.25` /
 `ENIGMA9_W_REPLY_RARE=1.0` / `ENIGMA9_W_OWN_RARE=1.0` / `ENIGMA9_MIN_BUDGET=0.05` /
+`ENIGMA9_FAST_YOSE_MARGIN=0.5`（監視モードのヨセで Probe を省ける余剰の余裕・目） /
 `ENIGMA9_PONDER_REPLIES=3`（着手後の先読み応手数・0で無効） /
 `PRIORITY_ENIGMA_PONDER=-50`（constants.py）
 
@@ -505,6 +506,26 @@ AI 同士では発火しない）。残骸の掃除は2段: 主経路 `Game._can
 実測（13路・校正13路局の白番・NN ウォーム）: generate 8局面×2run 平均 1.04→0.89 秒、
 先読み**的中時**は次手番の 通常解析+generate 0.92〜1.09 → **0.35〜0.48 秒**
 （プローブバッチ 0.45〜0.64 → 0.08〜0.09 秒）。外れた場合は従来どおり。
+
+**盤面監視モードのヨセの即応（2026-08-23・精度不変・spec 追記7）**: 秒読みのある実戦
+（`board_watch` で対局アプリを監視している間）向けに、ヨセの追加クエリを2方向で削る。
+実測の内訳（`game_20260823_024656.log`・9路・監視モード）は ヨセ前 0.0〜0.4 秒に対しヨセ
+0.7〜1.7 秒で、**支配項はヨセ判定クエリ（Probe＝2000visits・ownership=True・wRN=0）の 1.1 秒**。
+応手先読み（`_maybe_board_watch_prefetch`・ownership なし）では ownerMap の有無が違って
+別のキャッシュエントリになるため1秒も速くならない。
+(1) **飽和帯では Probe を撃たない**（`enigma9_yose_probe_skippable` / `_fast_yose_lead` /
+`ENIGMA9_FAST_YOSE_MARGIN`=0.5）＝cap は `min(max_loss, lead − target)` なので、余剰が
+`max_loss + margin` 以上なら cap は lead の値によらず max_loss ＝ **採用判断はビット同一**の
+まま追加クエリ 0 本にできる。lead は通常解析 root の scoreLead（wRN=0.04＝Probe の wRN=0 より
+僅かに揺れるぶんが margin）。**接戦（余剰が `max_loss + margin` 未満＝lead がそのまま予算に
+なる帯）は従来どおり Probe を撃つ**＝目差が予算を決める局面の精度は落とさない。適用は
+ヨセ sticky 後だけ（ヨセ突入の判定には ownership が要る）× `game.board_watch_active` が
+真のときだけ。実測ログのヨセ14手番は lead 5.77〜34.48・cap 14本とも 1.60＝全部が飽和側。
+(2) **接戦で残る Probe は先読みで温める**＝戦略が撃った手番に `game.board_watch_probe_warm` を
+立て、`_board_watch_prefetch_worker` が応手 top-K の子局面へ**同条件**（ownership=True・
+wRN=0・visits 既定）のクエリを1本ずつ足す（結果は捨てる＝判定影響ゼロ・的中率 top-5 68.7%）。
+監視 OFF では `_stop_board_watcher` が `board_watch_active` / `board_watch_prefetch_replies` /
+`board_watch_probe_warm` を戻す。ログは `Endgame budget: lead~… (watch: probe skipped)`。
 
 **二段の漏斗と同深さ検証**（2026-08-10 実測で確定）: 9路の通常解析は visits を 1〜3 手に
 集中させるため、`visits>=10` のプールでは外し候補が 0〜1 手しか残らない（実測 move 8:

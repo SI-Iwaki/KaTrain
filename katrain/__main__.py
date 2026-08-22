@@ -712,6 +712,7 @@ class KaTrainGui(Screen, KaTrainBase):
         # 監視 OFF まで有効。0 で無効＝先読み導入前と同じ挙動
         prefetch = int((self._config.get("board_watch") or {}).get("prefetch_replies", 5))
         self.game.board_watch_prefetch_replies = prefetch
+        self.game.board_watch_active = True
         watcher.start()
         self.log(f"board_watch: 監視を開始しました（応手先読み {prefetch} 手）", OUTPUT_INFO)
 
@@ -1526,8 +1527,17 @@ class KaTrainGui(Screen, KaTrainBase):
         if kinds is not None and getattr(self, "_board_watch_kind", None) not in kinds:
             return False
         watcher.stop()
+        stopped_kind = getattr(self, "_board_watch_kind", None)
         self._board_watcher = None
         self._board_watch_kind = None
+        if stopped_kind == "game":
+            # 監視 OFF で先読み系のフラグも戻す（game.py の board_watch_* の契約）。
+            # 戻さないと監視を止めた後も応手先読みが回り続ける
+            game = getattr(self, "game", None)
+            if game is not None:
+                game.board_watch_active = False
+                game.board_watch_prefetch_replies = 0
+                game.board_watch_probe_warm = False
         return True
 
     def _tsumego_watch_state(self, watch_game):

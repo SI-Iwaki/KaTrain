@@ -1991,6 +1991,10 @@ ENIGMA9_HP_BOOK = 0.25             # これ以上の humanPolicy は「本に載
 ENIGMA9_W_REPLY_RARE = 1.0         # 十分な応手の見つけにくさの重み（目相当）
 ENIGMA9_W_OWN_RARE = 1.0           # 自手の意外さの重み（目相当）
 ENIGMA9_MIN_BUDGET = 0.05          # ヨセの余剰予算がこれ以下なら外さない（目）
+# 盤面監視モードのヨセで判定クエリ（Probe）を省ける余裕（目）。cap の式
+# min(max_loss, lead - target) が max_loss 側で飽和していることを、通常解析 root の
+# lead（wideRootNoise=0.04）で判断するためのマージン（`enigma9_yose_probe_skippable`）
+ENIGMA9_FAST_YOSE_MARGIN = 0.5
 ENIGMA9_PONDER_REPLIES = 3         # 着手後に温める相手の有力応手数（0 で無効・結果は捨てるだけ）
 # aim_jigo（持碁〜2目以内の負けを狙うオプション）の狙い点。許容帯 [-2, 0]（持碁 >
 # 2目以内の負け > それ超の負け）の中心 -1.0 を狙う: 9路 area scoring の整数コミ
@@ -2222,6 +2226,28 @@ def enigma9_own_rarity_weight(in_yose, base=ENIGMA9_W_OWN_RARE):
     return 0.0 if in_yose else base
 
 
+def enigma9_yose_probe_skippable(lead, target, max_loss, margin=ENIGMA9_FAST_YOSE_MARGIN):
+    """ヨセの外し予算 cap を、専用の判定クエリ（Probe）なしで確定できるか。
+
+    ヨセの cap は `min(max_loss, lead - target)` なので、余剰 `lead - target` が
+    max_loss を十分上回っている（＝飽和帯）なら cap は lead の値によらず max_loss で、
+    **lead をどの精度で測っても結果が変わらない**。この判定が True の手番だけ Probe を
+    省く＝採用判断はビット同一のまま、ヨセの追加クエリが1本（実測 1.1 秒）消える。
+
+    lead は通常解析 root の scoreLead（クエリ0本）を想定する。Probe は wideRootNoise=0
+    で撃つのに対しこちらは 0.04＝root に候補を広げるノイズが乗るぶん僅かに揺れるので、
+    飽和の判定に margin（既定 `ENIGMA9_FAST_YOSE_MARGIN`）を積む。接戦（余剰が
+    max_loss + margin 未満＝lead がそのまま予算になる帯）では False を返して従来どおり
+    Probe を撃つ＝**目差が予算を決める局面の精度は落とさない**。
+
+    実測 2026-08-23（9路・盤面監視モード・game_20260823_024656.log）: ヨセ14手番の
+    lead は 5.77〜34.48 目で cap は14本とも 1.60＝飽和しており、全手番が True 側。
+    """
+    if lead is None:
+        return False
+    return (lead - target) >= max_loss + margin
+
+
 def enigma9_net_score(loss, e_punish, reply_findability, own_hp,
                       w_reply=ENIGMA9_W_REPLY_RARE, w_own=ENIGMA9_W_OWN_RARE,
                       cost_weight=1.0):
@@ -2319,6 +2345,19 @@ class Enigma9Strategy(AIStrategy):
         if pol:
             return pol[0][1], f"{reason} (policy fallback)"
         return Move(None, player=self.cn.next_player), f"{reason} (no candidates)"
+
+    def _fast_yose_lead(self, in_yose, sign):
+        """盤面監視モードのヨセで使う「通常解析 root の目差」（クエリ0本）。他は None。
+
+        ヨセが sticky になった後の Probe の用途は外し予算の lead だけ（未確定点の
+        数え直しは sticky なので不要）なので、飽和帯なら通常解析の root で足りる
+        （`enigma9_yose_probe_skippable`）。監視モードに限るのは、秒読みのある実戦で
+        1手 1.1 秒の追加クエリが効くのがそこだから＝それ以外の経路は従来のまま。
+        """
+        if not in_yose or not bool(getattr(self.game, "board_watch_active", False)):
+            return None
+        root_lead = (self.cn.analysis.get("root") or {}).get("scoreLead")
+        return None if root_lead is None else root_lead * sign
 
     def _run_query(self, label, **kwargs):
         """追加クエリを1本撃って完了まで待つ。失敗時は None。"""
@@ -2670,45 +2709,60 @@ class Enigma9Strategy(AIStrategy):
         endgame_flag = f"_{self.KEY_PREFIX}_endgame"
         in_yose = bool(getattr(self.game, endgame_flag, False))
         cap = max_loss
+        # 盤面監視モードのヨセ（sticky 後）は、cap が飽和していれば Probe を省く
+        # （`enigma9_yose_probe_skippable`）。省いた手番の cap は max_loss で従来と同値、
+        # 接戦（余剰が薄く lead がそのまま予算になる帯）では従来どおり撃つ
+        self.game.board_watch_probe_warm = False
         if in_yose or self.cn.depth >= endgame_move:
-            # ownership=True を明示するのはユーザーのローカル設定が
-            # _enable_ownership=false でも未確定度を測れるようにするため。
-            # wideRootNoise=0 は root の scoreLead の精度用（この moveInfos を
-            # 候補の損失判定に使ってはいけない＝プールは通常解析から作る）
-            probe = self._run_query(
-                "Probe",
-                include_policy=False,
-                ownership=True,
-                extra_settings={"ignorePreRootHistory": False, "wideRootNoise": 0.0},
-            )
-            ownership = probe.get("ownership") if probe else None
-            n_unsettled = (
-                None if ownership is None
-                else sum(1 for o in ownership if abs(o) < PARITY9_UNSETTLED_ABS)
-            )
-            if not in_yose and parity9_is_endgame(self.cn.depth, ownership, endgame_move, unsettled_max):
-                setattr(self.game, endgame_flag, True)  # sticky
-                in_yose = True
-            self._log(
-                f"Endgame check: depth={self.cn.depth} thr={endgame_move} "
-                f"unsettled={n_unsettled} max={unsettled_max} -> {'yose' if in_yose else 'not yet'}"
-            )
-            if in_yose:
-                root_lead = (probe or {}).get("rootInfo", {}).get("scoreLead")
-                if root_lead is None:
-                    self._log("Endgame: lead unavailable -> best move")
-                    return self._best_move(f"{self.LABEL}: endgame, lead unavailable, playing best move.")
-                lead = root_lead * sign
-                budget = lead - target
-                cap = min(max_loss, budget)
+            fast_lead = self._fast_yose_lead(in_yose, sign)
+            if enigma9_yose_probe_skippable(fast_lead, target, max_loss):
+                cap = max_loss
                 self._log(
-                    f"Endgame budget: lead={lead:.2f} target={target:.1f} cap={cap:.2f}"
+                    f"Endgame budget: lead~{fast_lead:.2f} target={target:.1f} "
+                    f"cap={cap:.2f} (watch: probe skipped)"
                 )
-                if cap <= ENIGMA9_MIN_BUDGET:
-                    return self._best_move(
-                        f"{self.LABEL}: endgame, securing result (lead {lead:.2f} vs "
-                        f"target {target:.1f}), playing best move."
+            else:
+                # 次の手番もこの Probe を撃つ見込み＝盤面監視モードの応手先読みに
+                # 同条件（ownership 付き・wRN=0）の温めを1本足させる
+                self.game.board_watch_probe_warm = True
+                # ownership=True を明示するのはユーザーのローカル設定が
+                # _enable_ownership=false でも未確定度を測れるようにするため。
+                # wideRootNoise=0 は root の scoreLead の精度用（この moveInfos を
+                # 候補の損失判定に使ってはいけない＝プールは通常解析から作る）
+                probe = self._run_query(
+                    "Probe",
+                    include_policy=False,
+                    ownership=True,
+                    extra_settings={"ignorePreRootHistory": False, "wideRootNoise": 0.0},
+                )
+                ownership = probe.get("ownership") if probe else None
+                n_unsettled = (
+                    None if ownership is None
+                    else sum(1 for o in ownership if abs(o) < PARITY9_UNSETTLED_ABS)
+                )
+                if not in_yose and parity9_is_endgame(self.cn.depth, ownership, endgame_move, unsettled_max):
+                    setattr(self.game, endgame_flag, True)  # sticky
+                    in_yose = True
+                self._log(
+                    f"Endgame check: depth={self.cn.depth} thr={endgame_move} "
+                    f"unsettled={n_unsettled} max={unsettled_max} -> {'yose' if in_yose else 'not yet'}"
+                )
+                if in_yose:
+                    root_lead = (probe or {}).get("rootInfo", {}).get("scoreLead")
+                    if root_lead is None:
+                        self._log("Endgame: lead unavailable -> best move")
+                        return self._best_move(f"{self.LABEL}: endgame, lead unavailable, playing best move.")
+                    lead = root_lead * sign
+                    budget = lead - target
+                    cap = min(max_loss, budget)
+                    self._log(
+                        f"Endgame budget: lead={lead:.2f} target={target:.1f} cap={cap:.2f}"
                     )
+                    if cap <= ENIGMA9_MIN_BUDGET:
+                        return self._best_move(
+                            f"{self.LABEL}: endgame, securing result (lead {lead:.2f} vs "
+                            f"target {target:.1f}), playing best move."
+                        )
 
         # ---- ゲート2b: 勝勢時の消費モード（ヨセ前のみ）----
         # 通常 cap いっぱい外しても目標差まで縮まらない勝勢では、余剰リード

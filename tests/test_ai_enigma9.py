@@ -27,7 +27,9 @@ from katrain.core.ai import (
     enigma9_shortlist,
     enigma9_spending_plan,
     enigma9_verified_metrics,
+    enigma9_yose_probe_skippable,
 )
+from katrain.core.ai import ENIGMA9_FAST_YOSE_MARGIN
 
 
 def cand(gtp, loss, visits=100, wr=0.5):
@@ -292,6 +294,142 @@ class TestOwnRarityWeight:
             enigma9_net_score(0.27, 0.32, 0.828, 0.001, w_own=w_mid)
             > enigma9_net_score(0.0, 0.19, 0.891, 0.957, w_own=w_mid)
         )
+
+
+class TestYoseProbeSkippable:
+    """盤面監視モードのヨセ: cap が飽和している手番だけ判定クエリ（Probe）を省く。
+
+    実測 2026-08-23（game_20260823_024656.log・9路・監視モード）: ヨセ14手番の lead は
+    5.77〜34.48 目で cap は14本とも 1.60＝飽和。この帯では lead をどの精度で測っても
+    cap = max_loss なので、Probe（実測 1.1 秒）を省いても採用判断はビット同一になる。
+    """
+
+    def test_no_lead_keeps_the_probe(self):
+        # 通常解析 root に scoreLead が無い手番はフェイルセーフで従来どおり撃つ
+        assert enigma9_yose_probe_skippable(None, 0.2, 1.6) is False
+
+    def test_saturated_lead_skips_the_probe(self):
+        # 実測の最小 lead 5.77（余剰 5.57 >= 1.6 + 0.5）
+        assert enigma9_yose_probe_skippable(5.77, 0.2, 1.6) is True
+
+    def test_close_endgame_keeps_the_probe(self):
+        # 余剰が cap を決める帯（lead がそのまま予算）は精度が要るので省かない
+        assert enigma9_yose_probe_skippable(1.5, 0.2, 1.6) is False
+        assert enigma9_yose_probe_skippable(0.1, 0.2, 1.6) is False
+
+    def test_margin_is_the_boundary(self):
+        # 境界は 余剰 == max_loss + margin（ちょうどは省く側）。ここだけ二進で割り切れる
+        # 値を使う＝0.2 等では丸め（2.3 - 0.2 = 2.0999…）で境界ちょうどが評価できない
+        assert ENIGMA9_FAST_YOSE_MARGIN == 0.5
+        assert enigma9_yose_probe_skippable(2.0, 0.0, 1.5) is True
+        assert enigma9_yose_probe_skippable(1.75, 0.0, 1.5) is False
+        # 実運用の設定（target=0.2 / max_loss=1.6）でも境界の両側で向きが変わる
+        assert enigma9_yose_probe_skippable(2.35, 0.2, 1.6) is True
+        assert enigma9_yose_probe_skippable(2.25, 0.2, 1.6) is False
+
+    def test_negative_lead_keeps_the_probe(self):
+        # 劣勢（外し予算なし＝最善手で粘る手番）も従来経路のまま
+        assert enigma9_yose_probe_skippable(-8.0, 0.2, 1.6) is False
+
+
+class TestFastYoseLead:
+    """通常解析 root からの目差取得は「監視モード × ヨセ sticky」でだけ効く。"""
+
+    def _stub(self, *, in_yose_attrs, score_lead=12.0, **game_attrs):
+        import types
+
+        katrain = types.SimpleNamespace(log=lambda *a, **k: None)
+        node = types.SimpleNamespace(
+            next_player="W", analysis={"root": {"scoreLead": score_lead}}
+        )
+        game = types.SimpleNamespace(katrain=katrain, current_node=node, **game_attrs)
+        s = Enigma9Strategy(game, {})
+        return s
+
+    def test_watch_and_yose_uses_root_lead_with_sign(self):
+        s = self._stub(in_yose_attrs=True, board_watch_active=True)
+        assert s._fast_yose_lead(True, 1) == pytest.approx(12.0)    # 黒番
+        assert s._fast_yose_lead(True, -1) == pytest.approx(-12.0)  # 白番＝符号反転
+
+    def test_not_watching_falls_back_to_the_probe(self):
+        s = self._stub(in_yose_attrs=True, board_watch_active=False)
+        assert s._fast_yose_lead(True, 1) is None
+        # 属性そのものが無い環境（バッチ評価・デバッグスタブ）も従来経路
+        s = self._stub(in_yose_attrs=True)
+        assert s._fast_yose_lead(True, 1) is None
+
+    def test_before_yose_falls_back_to_the_probe(self):
+        # ヨセ突入の判定には ownership が要る＝sticky になる前は省けない
+        s = self._stub(in_yose_attrs=False, board_watch_active=True)
+        assert s._fast_yose_lead(False, 1) is None
+
+    def test_missing_root_lead_is_none(self):
+        import types
+
+        katrain = types.SimpleNamespace(log=lambda *a, **k: None)
+        node = types.SimpleNamespace(next_player="W", analysis={})
+        game = types.SimpleNamespace(
+            katrain=katrain, current_node=node, board_watch_active=True
+        )
+        assert Enigma9Strategy(game, {})._fast_yose_lead(True, 1) is None
+
+
+class TestYoseSkipsProbeEndToEnd:
+    """_generate_move がヨセで実際に Probe を撃たない（＝1.1 秒が消える）ことの確認。
+
+    純関数のテストだけだと「呼び出し側が繋がっていない」バグを取り逃すので、
+    generate_move を最後まで通して `_run_query` の発行有無を見る。
+    """
+
+    def _strategy(self, *, watch, lead=12.0, depth=40):
+        import types
+
+        logs = []
+        katrain = types.SimpleNamespace(log=lambda msg, *a, **k: logs.append(str(msg)))
+        node = types.SimpleNamespace(
+            next_player="W",
+            player="B",
+            depth=depth,
+            analysis_complete=True,
+            analysis={"root": {"scoreLead": -lead}},  # 白番なので黒視点は符号反転
+            candidate_moves=[
+                {"move": "E5", "pointsLost": 0.0, "relativePointsLost": 0.0, "visits": 900, "winrate": 0.99},
+                {"move": "A1", "pointsLost": 0.5, "relativePointsLost": 0.5, "visits": 40, "winrate": 0.98},
+            ],
+        )
+        game = types.SimpleNamespace(
+            katrain=katrain,
+            current_node=node,
+            board_size=(9, 9),
+            _enigma9_endgame=True,  # ヨセ sticky（突入判定は済んでいる）
+            board_watch_active=watch,
+        )
+        s = Enigma9Strategy(game, {"enigma9_target_score": 0.2, "enigma9_max_loss": 1.6})
+        s.queries = []
+        s._run_query = lambda label, **kw: s.queries.append(label)
+        s._probe_children = lambda *a, **k: ({}, None)  # humanSL 不在 → 最善手で終了
+        return s, logs
+
+    def test_watching_and_saturated_skips_the_probe(self):
+        s, logs = self._strategy(watch=True, lead=12.0)
+        move, reason = s.generate_move()
+        assert s.queries == []                       # 追加クエリ0本
+        assert move.gtp() == "E5"
+        assert any("probe skipped" in m for m in logs)
+        assert s.game.board_watch_probe_warm is False  # 温めも要らない手番
+
+    def test_close_endgame_still_probes(self):
+        # 余剰 1.0 目（< max_loss 1.6 + margin 0.5）＝lead がそのまま予算になる帯
+        s, logs = self._strategy(watch=True, lead=1.2)
+        s.generate_move()
+        assert s.queries == ["Probe"]
+        assert s.game.board_watch_probe_warm is True   # 次手番ぶんを先読みで温める
+
+    def test_without_watching_nothing_changes(self):
+        s, logs = self._strategy(watch=False, lead=12.0)
+        s.generate_move()
+        assert s.queries == ["Probe"]                  # 監視していない経路は従来どおり
+        assert not any("probe skipped" in m for m in logs)
 
 
 class TestSpendingPlan:

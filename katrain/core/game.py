@@ -474,6 +474,12 @@ class Game(BaseGame):
         self._region_prefetch_nodes = []  # 先読みクエリを発行した使い捨て子ノード（play 時の terminate 用）
         # 盤面監視モードの応手先読み（追記4）。__main__ が監視 ON で設定し OFF で 0 に戻す
         self.board_watch_prefetch_replies = 0
+        self.board_watch_active = False  # 対局監視スレッドが走っているか（__main__ が ON/OFF で設定）
+        # 応手先読みで ownership 付きの判定クエリも温めるか。難解モードがヨセで撃つ Probe
+        # （ownership=True・wideRootNoise=0）は通常解析と ownerMap の有無が違う＝別のキャッシュ
+        # エントリなので、下の応手先読み（ownership なし）では1秒も速くならない。撃つ見込みが
+        # ある手番だけ戦略側が True を立てる（`Enigma9Strategy._generate_move`）
+        self.board_watch_probe_warm = False
         self._board_watch_prefetch_nodes = []
         self._early_speculation_nodes = []  # 前倒し投機（段階3）の使い捨て子ノード（terminate 用）
 
@@ -809,6 +815,10 @@ class Game(BaseGame):
         base = sim.current_node
         engine = self.engines[node.next_player]
         prefetch_nodes, fired = [], []
+
+        def _discard(*_args, **_kwargs):
+            return None  # 温めるだけ＝結果は使わない（着手判定への影響はゼロ）
+
         for reply_gtp in top_replies:
             if self.current_node is not node:
                 break  # 相手が着手した＝以降の発行は打ち切る（発行済み分は下の後始末が拾う）
@@ -818,6 +828,19 @@ class Game(BaseGame):
             except IllegalMoveException:
                 continue
             child.analyze(engine, priority=PRIORITY_BOARD_WATCH_PREFETCH)
+            if getattr(self, "board_watch_probe_warm", False):
+                # 難解モードがヨセで撃つ判定クエリ（Probe）と同条件で1本。条件がずれると
+                # 温まらないので `Enigma9Strategy._generate_move` の `_run_query("Probe", ...)`
+                # と揃える（visits は既定＝config の max_visits も同じ）
+                engine.request_analysis(
+                    child,
+                    callback=_discard,
+                    error_callback=_discard,
+                    include_policy=False,
+                    ownership=True,
+                    extra_settings={"ignorePreRootHistory": False, "wideRootNoise": 0.0},
+                    priority=PRIORITY_BOARD_WATCH_PREFETCH,
+                )
             prefetch_nodes.append(child)
             fired.append(reply_gtp)
         if not prefetch_nodes:
