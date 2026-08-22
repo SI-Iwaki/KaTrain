@@ -66,6 +66,12 @@ class Theme:
     TOP_MOVE_TEXTURE = "topmove.png"
     BOARD_TEXTURE = "board.png"
     GRAPH_TEXTURE = "graph_bg.png"
+    # 盤・碁石テクスチャに mipmap を張るか（テーマの json から切り替え可）。碁石の実描画は
+    # 一辺 2*STONE_SIZE*格子 ≒ 1マス分（1920x1080 で 19路 約49px）しかないので、素材が
+    # 大きいほど GPU の4テクセル補間が取りこぼしてザラつく。True なら縮小率によらず滑らかに
+    # なる代わりに、Kivy の既定フィルタが linear_mipmap_nearest（段を混ぜない）ぶん
+    # 中間サイズで少し眠くなる。実素材を描画サイズに合わせて焼く方が鮮鋭ではある。
+    TEXTURE_MIPMAP = False
     # sounds
     STONE_SOUNDS = [f"stone{i}.wav" for i in [1, 2, 3, 4, 5]]
     CAPTURING_SOUND = "capturing.wav"

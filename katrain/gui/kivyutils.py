@@ -679,9 +679,11 @@ def draw_circle(pos, r, col):
 
 # direct cache to texture, bypassing resource_find
 def cached_texture(path, _cache={}):
-    tex = _cache.get(path)
+    # mipmap の有無でテクスチャが別物になるのでキーに含める（テーマ切替時は下でまとめて捨てる）
+    key = (path, Theme.TEXTURE_MIPMAP)
+    tex = _cache.get(key)
     if not tex:
-        tex = _cache[path] = Image(resource_find(path)).texture
+        tex = _cache[key] = Image(resource_find(path), mipmap=Theme.TEXTURE_MIPMAP).texture
     return tex
 
 
