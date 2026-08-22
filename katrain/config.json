@@ -106,6 +106,18 @@
         "backoff_factor": 2.0,
         "poll_interval_max_ms": 2000
     },
+    "tsumego_autoloop": {
+        "enabled": true,
+        "hotkey": "ctrl+alt+a",
+        "adb_path": "C:\\Program Files\\BlueStacks_nxt\\HD-Adb.exe",
+        "adb_serial": "",
+        "poll_ms": 500,
+        "settle_ms": 700,
+        "answer_timeout_s": 40,
+        "capture_timeout_s": 15,
+        "max_problems": 0,
+        "max_consecutive_errors": 3
+    },
     "trainer": {
         "theme": "theme:normal",
         "num_undo_prompts": [

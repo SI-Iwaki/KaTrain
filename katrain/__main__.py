@@ -161,6 +161,7 @@ class KaTrainGui(Screen, KaTrainBase):
         self.last_key_down = None
         self.last_focus_event = 0
         self._tsumego_flash_event = None  # バナー一時メッセージの消去タイマー
+        self._autoloop = None  # 詰碁自動ループのコントローラ（ctrl+alt+a で開始/停止）
 
     def log(self, message, level=OUTPUT_INFO):
         super().log(message, level)
@@ -458,7 +459,13 @@ class KaTrainGui(Screen, KaTrainBase):
             mode = self.next_player_info.strategy
             settings = self.config(f"ai/{mode}")
             if settings is not None:
-                generate_ai_move(self.game, mode, settings)
+                move, _played = generate_ai_move(self.game, mode, settings)
+                # 自動ループ（詰碁）: 黒＝AI の着手をアプリ盤へタップするのはループ側の仕事。
+                # ここが「KaTrain が正解手を決めた」瞬間そのものなので、その座標を渡す
+                # （パスは Move.coords が None＝コントローラ側が無視する）
+                autoloop = getattr(self, "_autoloop", None)
+                if autoloop is not None and move is not None and move.player == "B":
+                    autoloop.on_black_move(id(self.game), move.coords)
             else:
                 self.log(f"AI Mode {mode} not found!", OUTPUT_ERROR)
 
@@ -500,7 +507,6 @@ class KaTrainGui(Screen, KaTrainBase):
 
     def _do_tsumego_record_toggle(self):
         """回答帳: 「正解手順を記録」/「この手順を保存」ボタン（回答帳スペック§6）。"""
-        from katrain.core import tsumego_answer_book as answer_book
         from katrain.core.tsumego_solver_api import moves_from_game
 
         game = self.game
@@ -535,8 +541,29 @@ class KaTrainGui(Screen, KaTrainBase):
         if not moves or moves[0][1] != "B":
             self._tsumego_message("手順が空か黒番から始まっていないため記録を破棄しました", kind="warn")
             return
-        bk_black, bk_white, bk_size = game.tsumego_book_stones
-        t0 = game.tsumego_book_transforms[0]
+        added, n = self._save_answer_line(game.tsumego_app_grid, moves)
+        if added:
+            self._tsumego_message(f"正解手順を回答帳に保存しました（{n}手）", kind="save")
+        else:
+            self._tsumego_message("同じ手順が記録済みです（回答帳は変更なし）", kind="info")
+
+    def _save_answer_line(self, base_grid, moves):
+        """回答帳へ 1 手順を保存する（記録ボタンと自動ループの共用）。
+
+        base_grid は枠を張る前の認識グリッド（= game.tsumego_app_grid = アプリの盤）。moves は
+        KaTrain 座標 (x, y) の (coords, color) 列（パスは None）。キーは `_do_tsumego_capture_apply` と
+        同じ canonicalize なので、同じ盤なら同じ entry に追記される。戻り値 (追加されたか, 手数)。
+
+        自動ループ（`_autoloop_callbacks`）からはメッセージループ外のワーカースレッドで呼ばれるが、
+        ここで触るのは回答帳ファイル・ログ・`game.tsumego_book_entry` だけで Kivy のプロパティは
+        更新しない（＝Clock を経由する必要がない）。
+        """
+        from katrain.core import tsumego_answer_book as answer_book
+        from katrain.core.tsumego_problem import grid_to_stones
+
+        bk_black, bk_white, (bk_size, _) = grid_to_stones(base_grid)
+        key, transforms = answer_book.canonicalize(bk_black, bk_white, bk_size, "B")
+        t0 = transforms[0]
         line = answer_book.moves_to_canonical(moves, t0, bk_size)
         canonical_black = sorted(
             answer_book.point_to_gtp(answer_book.transform_point(p, t0, bk_size)) for p in bk_black
@@ -546,7 +573,9 @@ class KaTrainGui(Screen, KaTrainBase):
         )
         book = answer_book.get_book(lambda msg: self.log(msg, OUTPUT_INFO))
         added = book.add_line(key, bk_size, "B", canonical_black, canonical_white, line)
-        game.tsumego_book_entry = book.lookup(key)  # 保存直後から再生可能（root に戻して検証できる）
+        game = self.game
+        if getattr(game, "tsumego_book_key", None) == key:
+            game.tsumego_book_entry = book.lookup(key)  # 保存直後から再生可能（root に戻して検証できる）
         # 回答帳に入った問題のログは自動削除の対象から外す（誤答した問題も、解析が長かったので
         # 次から即答させたい正解済みの問題も同じく残す）。認識盤面・キャプチャ設定
         # （komi/ko/margin/black_to_attack/枠なし）と各手の判定が揃っているこのファイルが、
@@ -554,10 +583,7 @@ class KaTrainGui(Screen, KaTrainBase):
         kept = self.keep_current_log(key=key, note=f"answer_book {len(line)}手 {' '.join(line)}")
         if kept:
             self.log(f"tsumego_answer_book: このログを保護しました（自動削除しません）: {kept}", OUTPUT_INFO)
-        if added:
-            self._tsumego_message(f"正解手順を回答帳に保存しました（{len(line)}手）", kind="save")
-        else:
-            self._tsumego_message("同じ手順が記録済みです（回答帳は変更なし）", kind="info")
+        return added, len(line)
 
     def _do_redo(self, n_times=1):
         self.board_gui.animating_pv = None
@@ -930,15 +956,16 @@ class KaTrainGui(Screen, KaTrainBase):
         raise ValueError(f"未対応のキー指定です: {spec!r}")
 
     def _setup_global_hotkeys(self):
-        """詰碁キャプチャと盤面監視のグローバルホットキーを1本のメッセージループで登録する。
+        """詰碁キャプチャ・盤面監視・詰碁自動ループのグローバルホットキーを1本のメッセージループで登録する。
 
-        2つの機能の enabled は**独立に評価する**。以前は tsumego_capture.enabled が偽だと
+        各機能の enabled は**独立に評価する**。以前は tsumego_capture.enabled が偽だと
         関数ごと早期 return していたため、詰碁を使わないユーザーでは board_watch の
         ホットキーも登録されず、ログにも何も出なかった。
         """
         tsumego = self._config.get("tsumego_capture") or {}
         watch = self._config.get("board_watch") or {}
-        if not tsumego.get("enabled", False) and not watch.get("enabled", False):
+        autoloop = self._config.get("tsumego_autoloop") or {}
+        if not tsumego.get("enabled", False) and not watch.get("enabled", False) and not autoloop.get("enabled", False):
             return
         if sys.platform != "win32":
             self.log("グローバルホットキー: Windows 専用機能のため登録しません", OUTPUT_INFO)
@@ -968,6 +995,9 @@ class KaTrainGui(Screen, KaTrainBase):
             # ホットキーは Theme.KEY_* と重ねないこと（RegisterHotKey はフォーカス窓から
             # キーを奪うので、重ねると KaTrain 本体のショートカットが黙って死ぬ）
             specs.append((watch, "board_watch", "hotkey", "ctrl+alt+d", "_board_watch_trigger", (), "盤面監視トグル"))
+        if autoloop.get("enabled", False):
+            # F キーは使わない（Theme.KEY_* と重なると KaTrain 本体のショートカットが黙って死ぬ）
+            specs.append((autoloop, "tsumego_autoloop", "hotkey", "ctrl+alt+a", "_autoloop_trigger", (), "詰碁自動ループ トグル"))
         hotkeys = []
         for settings, feature, key, default, handler, args, label in specs:
             spec = settings.get(key, default)
@@ -1042,13 +1072,15 @@ class KaTrainGui(Screen, KaTrainBase):
             for hotkey_id, _spec, _action, _label, _feature in registered:
                 user32.UnregisterHotKey(None, hotkey_id)
 
-    def _tsumego_capture_trigger(self, black_to_attack=None, frameless=False):
+    def _tsumego_capture_trigger(self, black_to_attack=None, frameless=False, force=False):
         # ホットキースレッドが起こした作業スレッドで実行される。
         # 認識までここで行い、盤面への反映はメッセージループに投げる
+        # force=True はホットキー連打防止のデバウンスを飛ばす（自動ループが次の問題を出した直後に
+        # 呼ぶため。人間の連打と違い、前回のキャプチャから2秒未満でも意図した1回である）
         from katrain.core.tsumego_capture import CaptureError, capture_board_view
 
         now = time.time()
-        if now - getattr(self, "_tsumego_capture_last_trigger", 0.0) < 2.0:
+        if not force and now - getattr(self, "_tsumego_capture_last_trigger", 0.0) < 2.0:
             return
         self._tsumego_capture_last_trigger = now
         if getattr(self, "_tsumego_capture_busy", False):
@@ -1463,6 +1495,11 @@ class KaTrainGui(Screen, KaTrainBase):
         """失敗をターミナルと GUI の両方に出す（作業スレッドから呼ばれるため GUI 更新は Clock 経由）"""
         self.log(message, OUTPUT_ERROR)
         Clock.schedule_once(lambda _dt: self.controls.set_status(message, STATUS_ERROR, check_level=False), 0)
+        # 自動ループ: キャプチャが失敗しても止まらず、わざと1手打って収穫（アプリの正解手順の
+        # 取り込み）に回すため、失敗そのものをイベントとして渡す
+        autoloop = getattr(self, "_autoloop", None)
+        if autoloop is not None:
+            autoloop.on_capture_failed(message)
 
     def _board_watch_status(self, kind, text):
         """監視バナーを更新する（ワーカースレッドから呼ばれるため Clock 経由）"""
@@ -1714,6 +1751,93 @@ class KaTrainGui(Screen, KaTrainBase):
             self("board-watch-start", reader, grid, reader.size)
         finally:
             self._board_watch_busy = False
+
+    def _autoloop_trigger(self):
+        """ctrl+alt+a のワーカースレッド。OFF なら ADB に接続して開始、ON なら停止する"""
+        from katrain.core.tsumego_autoloop import (
+            AdbClient,
+            AutoLoopController,
+            Ledger,
+            Vision,
+            autoloop_settings_from_config,
+            discover_serial,
+        )
+
+        now = time.time()
+        if now - getattr(self, "_autoloop_last_trigger", 0.0) < 2.0:
+            return
+        self._autoloop_last_trigger = now
+        current = getattr(self, "_autoloop", None)
+        if current is not None and current.state == "IDLE":
+            # ループが自分で止まった後（max_problems 到達・連続失敗）。スレッドは IDLE のまま
+            # 回り続けるので `running` は真だが、ユーザーから見れば「止まっている」。
+            # このキーは「もう一度回す」の意味なので、片付けてから開始側へ落とす
+            current.stop()
+            self._autoloop = None
+            self.log("autoloop: 停止状態のループを破棄して再開します", OUTPUT_INFO)
+            current = None
+        if current is not None:
+            current.stop()
+            self._autoloop = None
+            self.log("autoloop: 停止しました", OUTPUT_INFO)
+            self._tsumego_message("自動ループを停止しました", kind="info")
+            return
+        settings = autoloop_settings_from_config(self._config.get("tsumego_autoloop"))
+        serial = settings.adb_serial or discover_serial(settings.adb_path)
+        if not serial:
+            self._tsumego_message(
+                "ADB デバイスが見つかりません（BlueStacks 設定で ADB を ON にして再起動）", kind="warn", seconds=8
+            )
+            return
+        adb = AdbClient(settings.adb_path, serial)
+        try:
+            adb.connect()
+            if not adb.is_device():
+                raise RuntimeError(f"{serial} が device として見えません")
+        except Exception as e:
+            self._tsumego_message(f"ADB に接続できません: {e}", kind="warn", seconds=8)
+            return
+        cap = self._config.get("tsumego_capture") or {}
+        sizes = [int(s) for s in (cap.get("board_sizes") or [9, 13, 19])]
+        controller = AutoLoopController(
+            adb,
+            Vision(sizes, ui_points=settings.ui_points),
+            self._autoloop_callbacks(),
+            settings,
+            Ledger(settings.ledger_path),
+        )
+        self._autoloop = controller
+        controller.start()
+        self.log(f"autoloop: 開始しました（{serial}）", OUTPUT_INFO)
+        self._tsumego_message("自動ループを開始しました（ctrl+alt+a で停止）", kind="info")
+
+    def _autoloop_callbacks(self):
+        """コントローラが使う GUI 側の操作（どれもワーカースレッドから呼ばれる）"""
+        from types import SimpleNamespace
+
+        from katrain.core.board_watch import grid_to_move
+
+        def trigger_capture():
+            self._tsumego_capture_trigger(black_to_attack=None, frameless=False, force=True)
+
+        def save_line(base_grid, moves_grid):
+            size = len(base_grid)
+            moves = [(grid_to_move(i, j, size), color) for (i, j), color in moves_grid]
+            return self._save_answer_line(base_grid, moves)
+
+        def stop_watch():
+            if self._stop_board_watcher(kinds=("tsumego",)):
+                self._board_watch_status("", "")
+
+        def notify(kind, text):
+            self._tsumego_message(text, kind=kind)
+
+        def log(text):
+            self.log(text, OUTPUT_INFO)
+
+        return SimpleNamespace(
+            trigger_capture=trigger_capture, save_line=save_line, stop_watch=stop_watch, notify=notify, log=log
+        )
 
     def _do_capture_fullboard_apply(self, grid):
         # Web サイトの全体表示（盤全体が写っている）キャプチャ: 詰碁パイプライン（枠・解析リージョン・
@@ -2051,6 +2175,16 @@ class KaTrainGui(Screen, KaTrainBase):
                 # ループへ抜けるのを防ぐ。監視が無いだけで詰碁自体は従来どおり解けるので
                 # degradation が正しい（監視は補助機能であり必須ではない）
                 self.log(f"tsumego_watch: 監視の開始に失敗しました: {e}", OUTPUT_INFO)
+            # 自動ループ: 出題が盤に載り切った（＝黒が着手を始められる）ことをコントローラへ知らせる。
+            # 監視の開始と同じく finish_gui の末尾に置くのは、player_subtype の実効値がここで
+            # 確定するため（route の判定に使う）。トークンは Game の同一性
+            autoloop = getattr(self, "_autoloop", None)
+            if autoloop is not None:
+                game = self.game
+                route = "book" if getattr(game, "tsumego_book_entry", None) else self.players_info["B"].player_subtype
+                autoloop.on_problem_ready(
+                    id(game), getattr(game, "tsumego_app_grid", None), getattr(game, "tsumego_book_key", None), route
+                )
 
         Clock.schedule_once(finish_gui, 0.1)
 

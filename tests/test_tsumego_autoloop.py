@@ -687,3 +687,36 @@ def test_controller_tap_helper_swallows_adb_error(tmp_path):
     c.adb.tap = raising_tap
     assert c._tap(1, 2) is False
     assert any("タップ失敗" in m for m in gui.logs)
+
+
+# --- GUI 接続（Task 5）: Kivy を import せず ast で接続点の存在だけを確認する ---
+def _main_source():
+    path = os.path.join(os.path.dirname(__file__), "..", "katrain", "__main__.py")
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def _main_tree():
+    import ast
+
+    return ast.parse(_main_source())
+
+
+def test_main_has_autoloop_hooks():
+    import ast
+
+    tree = _main_tree()
+    names = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+    assert {"_autoloop_trigger", "_autoloop_callbacks", "_save_answer_line"} <= names
+    src = ast.unparse(tree)
+    assert "on_problem_ready(" in src and "on_capture_failed(" in src and "on_black_move(" in src
+    # 設定セクション名。ast.unparse は文字列リテラルの引用符を単引用符に正規化するので生ソースで見る
+    assert '"tsumego_autoloop"' in _main_source()
+
+
+def test_package_config_has_autoloop_section():
+    path = os.path.join(os.path.dirname(__file__), "..", "katrain", "config.json")
+    with open(path, encoding="utf-8") as f:
+        cfg = json.load(f)
+    sec = cfg["tsumego_autoloop"]
+    assert sec["hotkey"] == "ctrl+alt+a" and sec["enabled"] is True and "adb_path" in sec
