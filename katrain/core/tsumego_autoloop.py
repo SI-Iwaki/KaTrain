@@ -278,3 +278,121 @@ class Vision:
 
     def ui_point(self, name, frame):
         return ui_point(name, frame.size, self.ui_points)
+
+
+# --- ADB（BlueStacks 同梱 HD-Adb.exe） ---
+class AdbError(Exception):
+    pass
+
+
+def _run_adb(args, binary=False, timeout_s=10):
+    """subprocess.run の薄い包み。binary=True は stdout をそのまま返す（screencap の PNG）"""
+    try:
+        proc = subprocess.run(
+            args, capture_output=True, timeout=timeout_s, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise AdbError(f"adb 実行失敗: {e}") from e
+    if binary:
+        return proc.stdout
+    return proc.stdout.decode("utf-8", errors="replace")
+
+
+class AdbClient:
+    def __init__(self, adb_path, serial, runner=None, timeout_s=10):
+        self.adb_path = adb_path
+        self.serial = serial
+        self.runner = runner or _run_adb
+        self.timeout_s = timeout_s
+
+    def _adb(self, *args, binary=False):
+        return self.runner([self.adb_path, *args], binary=binary, timeout_s=self.timeout_s)
+
+    def connect(self):
+        out = self._adb("connect", self.serial)
+        return "connected" in out or "already connected" in out
+
+    def is_device(self):
+        out = self._adb("devices")
+        return any(line.split("\t")[:2] == [self.serial, "device"] for line in out.splitlines())
+
+    def screencap(self):
+        data = self._adb("-s", self.serial, "exec-out", "screencap", "-p", binary=True)
+        if not data:
+            raise AdbError("screencap が空でした（接続を確認）")
+        try:
+            return Image.open(io.BytesIO(data)).convert("RGB")
+        except Exception as e:
+            raise AdbError(f"screencap を画像にできません: {e}") from e
+
+    def tap(self, x, y):
+        self._adb("-s", self.serial, "shell", "input", "tap", str(int(round(x))), str(int(round(y))))
+
+
+def discover_serial(adb_path, conf_path=BLUESTACKS_CONF, runner=None):
+    """bluestacks.conf の adb_port を順に connect し、devices に 'device' で現れた最初のものを返す"""
+    ports = []
+    try:
+        with open(conf_path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                m = re.match(r'bst\.instance\.[^.]+\.adb_port="(\d+)"', line.strip())
+                if m and m.group(1) not in ports:
+                    ports.append(m.group(1))
+    except OSError:
+        return None
+    for port in ports:
+        serial = f"127.0.0.1:{port}"
+        client = AdbClient(adb_path, serial, runner=runner)
+        try:
+            client.connect()
+            if client.is_device():
+                return serial
+        except AdbError:
+            continue
+    return None
+
+
+def main(argv=None):
+    """手動確認用 CLI: probe（画面状態を出す）/ tap <name>|<x> <y> / shot <path>"""
+    import argparse
+
+    p = argparse.ArgumentParser(prog="python -m katrain.core.tsumego_autoloop")
+    p.add_argument("cmd", choices=["probe", "tap", "shot"])
+    p.add_argument("args", nargs="*")
+    p.add_argument("--adb", default=DEFAULT_ADB_PATH)
+    p.add_argument("--serial", default="")
+    a = p.parse_args(argv)
+    serial = a.serial or discover_serial(a.adb)
+    if not serial:
+        print("ADB デバイスが見つかりません（BlueStacks 設定で ADB を ON にして再起動）")
+        return 2
+    adb = AdbClient(a.adb, serial)
+    if a.cmd == "shot":
+        adb.screencap().save(a.args[0])
+        print("saved", a.args[0])
+        return 0
+    if a.cmd == "tap":
+        frame = adb.screencap()
+        if len(a.args) == 1:
+            x, y = ui_point(a.args[0], frame.size)
+        else:
+            x, y = int(a.args[0]), int(a.args[1])
+        adb.tap(x, y)
+        print("tapped", x, y)
+        return 0
+    frame = adb.screencap()
+    vision = Vision((9, 13, 19))
+    print("serial", serial, "frame", frame.size)
+    print("popup_present", vision.popup_present(frame), "popup_state", vision.popup_state(frame))
+    print("hint_enabled", vision.hint_enabled(frame), "header", vision.header_hash(frame))
+    try:
+        read = vision.read_board(frame)
+        print("board", read.rect, "size", read.size, "stones", sum(v != EMPTY for row in read.grid for v in row))
+        print("hint_circle", vision.find_hint_circle(frame, read.rect, read.size))
+    except CaptureError as e:
+        print("board: 読めません:", e)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

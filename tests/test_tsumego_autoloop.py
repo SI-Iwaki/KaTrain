@@ -1,3 +1,4 @@
+import io
 import json
 import os
 
@@ -68,3 +69,60 @@ def test_header_hash_is_stable_and_short():
 def test_empty_points_lists_dots():
     grid = [list("B.W"), list("..."), list("W.B")]
     assert al.empty_points(grid) == [(0, 1), (1, 0), (1, 1), (1, 2), (2, 1)]
+
+
+class FakeRunner:
+    """subprocess.run の代役。呼ばれた引数列を記録し、登録した応答を返す"""
+
+    def __init__(self, responses=None):
+        self.calls = []
+        self.responses = responses or {}
+
+    def __call__(self, args, binary=False, timeout_s=10):
+        self.calls.append(list(args))
+        key = " ".join(args[1:])  # adb パスを除いた部分で引く
+        for k, v in self.responses.items():
+            if key.startswith(k):
+                return v
+        return b"" if binary else ""
+
+
+def test_adb_devices_and_tap_use_serial():
+    runner = FakeRunner({"devices": "List of devices attached\n127.0.0.1:5585\tdevice\nemulator-5584\tdevice\n"})
+    adb = al.AdbClient("HD-Adb.exe", "127.0.0.1:5585", runner=runner)
+    assert adb.is_device() is True
+    adb.tap(10.6, 20.2)
+    assert runner.calls[-1] == ["HD-Adb.exe", "-s", "127.0.0.1:5585", "shell", "input", "tap", "11", "20"]
+
+
+def test_adb_screencap_decodes_png():
+    buf = io.BytesIO()
+    Image.new("RGB", (4, 6), (1, 2, 3)).save(buf, format="PNG")
+    runner = FakeRunner({"-s 127.0.0.1:5585 exec-out screencap -p": buf.getvalue()})
+    adb = al.AdbClient("HD-Adb.exe", "127.0.0.1:5585", runner=runner)
+    img = adb.screencap()
+    assert img.size == (4, 6)
+
+
+def test_adb_screencap_raises_on_empty():
+    adb = al.AdbClient("HD-Adb.exe", "127.0.0.1:5585", runner=FakeRunner())
+    with pytest.raises(al.AdbError):
+        adb.screencap()
+
+
+def test_discover_serial_reads_bluestacks_conf(tmp_path):
+    conf = tmp_path / "bluestacks.conf"
+    conf.write_text('bst.instance.Pie64.adb_port="5555"\nbst.instance.Pie64_3.adb_port="5585"\n', encoding="utf-8")
+    runner = FakeRunner(
+        {
+            "connect 127.0.0.1:5585": "connected to 127.0.0.1:5585",
+            "devices": "List of devices attached\n127.0.0.1:5585\tdevice\n",
+        }
+    )
+    assert al.discover_serial("HD-Adb.exe", str(conf), runner=runner) == "127.0.0.1:5585"
+
+
+def test_discover_serial_none_when_nothing_answers(tmp_path):
+    conf = tmp_path / "bluestacks.conf"
+    conf.write_text('bst.instance.Pie64.adb_port="5555"\n', encoding="utf-8")
+    assert al.discover_serial("HD-Adb.exe", str(conf), runner=FakeRunner()) is None
