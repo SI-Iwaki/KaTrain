@@ -352,6 +352,139 @@ def discover_serial(adb_path, conf_path=BLUESTACKS_CONF, runner=None):
     return None
 
 
+# --- 台帳 ---
+class Ledger:
+    def __init__(self, path):
+        self.path = path
+
+    def append(self, record):
+        os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
+        with open(self.path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+# --- 収穫（ヒント歩き） ---
+HINT_WAIT_S = 1.5  # ヒント押下後に赤丸を待つ上限（spec §4.4）
+MOVE_WAIT_S = 6.0  # 黒タップ後に盤が安定するまでの上限
+REWIND_MAX_TAPS = 20
+HARVEST_MAX_MOVES = 40
+
+
+def white_reply(expected, observed):
+    """expected（黒を打った直後の盤）と observed の差が「白 1 手」で説明できればその (i,j)。
+    差が無ければ None、説明できなければ False"""
+    if observed == expected:
+        return None
+    size = len(expected)
+    for i in range(size):
+        for j in range(size):
+            if expected[i][j] == EMPTY and observed[i][j] == WHITE:
+                if apply_move_to_grid(expected, i, j, WHITE) == observed:
+                    return (i, j)
+                return False
+    return False
+
+
+class Harvester:
+    """不正解後のヒント歩き。step(frame) を繰り返し呼ぶ（1 回 = 1 フレーム・待ちは deadline で表現）。"""
+
+    def __init__(self, adb, vision, base_grid, size, settle_ms, clock, log):
+        self.adb, self.vision, self.base, self.size = adb, vision, [r[:] for r in base_grid], size
+        self.settle_s = settle_ms / 1000.0
+        self.clock, self.log = clock, log
+        self.phase = "close"
+        self.grid = None
+        self.moves = []
+        self.rewind_taps = 0
+        self.deadline = 0.0
+        self.not_before = 0.0
+        self.pending = None  # (i, j, expected_grid)
+        self.last_obs = None
+        self.hint_retry = 0
+
+    def _tap_named(self, name, frame):
+        self.adb.tap(*self.vision.ui_point(name, frame))
+        self.not_before = self.clock() + self.settle_s
+
+    def step(self, frame):
+        now = self.clock()
+        if now < self.not_before:
+            return "running", None
+        if self.phase == "close":
+            if self.vision.popup_present(frame):
+                self._tap_named("popup_view", frame)
+                return "running", None
+            self.phase = "rewind"
+        if self.phase == "rewind":
+            try:
+                grid = self.vision.read_board(frame, self.size).grid
+            except CaptureError:
+                return "running", None
+            if grid == self.base:
+                self.grid = [r[:] for r in grid]
+                self.phase = "hint"
+            else:
+                if self.rewind_taps >= REWIND_MAX_TAPS:
+                    return "failed", "rewind: 初期局面に戻せません"
+                self.rewind_taps += 1
+                self._tap_named("bar_undo", frame)
+                return "running", None
+        if self.phase == "hint":
+            if len(self.moves) >= HARVEST_MAX_MOVES:
+                return "failed", "hint: 手数上限"
+            self._tap_named("bar_hint", frame)
+            self.deadline = self.clock() + HINT_WAIT_S
+            self.phase = "wait_hint"
+            return "running", None
+        if self.phase == "wait_hint":
+            rect = self.vision.board_rect(frame)
+            pt = self.vision.find_hint_circle(frame, rect, self.size)
+            if pt is not None:
+                i, j = pt
+                expected = apply_move_to_grid(self.grid, i, j, BLACK)
+                if expected is None:
+                    return "failed", f"hint: 赤丸 {pt} に打てません"
+                self.adb.tap(*board_to_device(i, j, rect, self.size))
+                self.pending = (i, j, expected)
+                self.last_obs = None
+                self.deadline = self.clock() + MOVE_WAIT_S
+                self.not_before = self.clock() + self.settle_s
+                self.phase = "wait_move"
+                return "running", None
+            if now >= self.deadline:
+                if not self.vision.hint_enabled(frame):
+                    return "done", list(self.moves)
+                if self.hint_retry < 1:
+                    self.hint_retry += 1
+                    self.phase = "hint"  # もう 1 回だけ押し直す
+                    return "running", None
+                return "failed", "hint: 赤丸が出ません（ヒントは有効のまま）"
+            return "running", None
+        if self.phase == "wait_move":
+            i, j, expected = self.pending
+            try:
+                obs = self.vision.read_board(frame, self.size).grid
+            except CaptureError:
+                obs = None
+            if obs is not None and obs[i][j] == BLACK and obs == self.last_obs:
+                w = white_reply(expected, obs)
+                if w is False:
+                    return "failed", f"diff: 黒 {(i, j)} の後の盤を説明できません"
+                self.moves.append(((i, j), BLACK))
+                if w is not None:
+                    self.moves.append((w, WHITE))
+                self.grid = [r[:] for r in obs]
+                self.pending = None
+                self.hint_retry = 0
+                self.phase = "hint"
+                return "running", None
+            self.last_obs = obs
+            if now >= self.deadline:
+                return "failed", f"move: 黒 {(i, j)} が盤に現れません"
+            return "running", None
+        return "failed", f"unknown phase {self.phase}"
+
+
 def main(argv=None):
     """手動確認用 CLI: probe（画面状態を出す）/ tap <name>|<x> <y> / shot <path>"""
     import argparse

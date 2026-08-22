@@ -126,3 +126,139 @@ def test_discover_serial_none_when_nothing_answers(tmp_path):
     conf = tmp_path / "bluestacks.conf"
     conf.write_text('bst.instance.Pie64.adb_port="5555"\n', encoding="utf-8")
     assert al.discover_serial("HD-Adb.exe", str(conf), runner=FakeRunner()) is None
+
+
+def test_ledger_appends_jsonl(tmp_path):
+    led = al.Ledger(str(tmp_path / "ledger.jsonl"))
+    led.append({"a": 1})
+    led.append({"b": "x"})
+    lines = (tmp_path / "ledger.jsonl").read_text(encoding="utf-8").splitlines()
+    assert [json.loads(l) for l in lines] == [{"a": 1}, {"b": "x"}]
+
+
+def test_white_reply_detects_single_white_and_captures():
+    g = [list("..."), list(".B."), list("...")]
+    exp = al.apply_move_to_grid(g, 0, 1, "B")
+    obs = al.apply_move_to_grid(exp, 0, 0, "W")
+    assert al.white_reply(exp, obs) == (0, 0)
+    assert al.white_reply(exp, exp) is None
+    bad = [row[:] for row in exp]
+    bad[2][2] = "B"
+    assert al.white_reply(exp, bad) is False
+
+
+class FakeAdb:
+    def __init__(self):
+        self.taps = []
+
+    def tap(self, x, y):
+        self.taps.append((int(x), int(y)))
+
+
+class FakeVision:
+    """フレームは dict: {"popup": bool, "grid": grid, "hint": (i,j)|None, "hint_on": bool}"""
+
+    RECT = (0, 0, 899, 899)
+
+    def __init__(self, size=3):
+        self.size = size
+
+    def popup_present(self, f):
+        return f.get("popup", False)
+
+    def popup_state(self, f):
+        return f.get("state", "none")
+
+    def read_board(self, f, size=None):
+        if f.get("grid") is None:
+            raise al.CaptureError("no board")
+        return al.BoardRead(self.RECT, self.size, f["grid"])
+
+    def board_rect(self, f):
+        return self.RECT
+
+    def find_hint_circle(self, f, rect, size):
+        return f.get("hint")
+
+    def hint_enabled(self, f):
+        return f.get("hint_on", True)
+
+    def header_hash(self, f):
+        return "h"
+
+    def ui_point(self, name, f):
+        return al.ui_point(name, (900, 1600))
+
+
+class FakeClock:
+    def __init__(self):
+        self.t = 1000.0
+
+    def __call__(self):
+        return self.t
+
+    def advance(self, s):
+        self.t += s
+
+
+def _run_harvest(h, frames):
+    """フレーム列を順に step に流し、最初の非 running を返す"""
+    for f in frames:
+        st, payload = h.step(f)
+        if st != "running":
+            return st, payload
+    return "running", None
+
+
+def test_harvester_walks_hints_and_returns_line():
+    base = [list("..."), list("..."), list("...")]
+    clock = FakeClock()
+    adb, vision = FakeAdb(), FakeVision(3)
+    h = al.Harvester(adb, vision, base, 3, settle_ms=0, clock=clock, log=lambda m: None)
+    g1 = al.apply_move_to_grid(base, 1, 1, "B")  # 黒 (1,1)
+    g2 = al.apply_move_to_grid(g1, 0, 0, "W")  # 白 (0,0)
+    g3 = al.apply_move_to_grid(g2, 2, 2, "B")  # 黒 (2,2)＝最終手（白応じず）
+    # 1 フレーム = 1 step。phase "hint" はヒントを押して running を返す（赤丸は次のフレームで読む）ので、
+    # 赤丸つきフレームはヒント押下フレームの**次**に置く
+    frames = [
+        {"popup": True},  # close: 問題を見る
+        {"grid": g3},  # rewind: 最終局面 → 戻す
+        {"grid": base},  # rewind: 初期局面 → hint: ヒント押下
+        {"grid": base, "hint": (1, 1)},  # wait_hint: 赤丸 → 黒タップ
+        {"grid": g2},
+        {"grid": g2},  # wait_move: 黒+白 安定 2 フレーム → 手順追記
+        {"grid": g2},  # hint: ヒント押下
+        {"grid": g2, "hint": (2, 2)},  # wait_hint: 赤丸 → 黒タップ
+        {"grid": g3},
+        {"grid": g3},  # wait_move: 黒のみ 安定 → 手順追記
+        {"grid": g3},  # hint: ヒント押下
+        {"grid": g3, "hint": None, "hint_on": True},  # wait_hint: まだ 1.5 秒以内
+    ]
+    st, payload = _run_harvest(h, frames)
+    assert st == "running"
+    clock.advance(2.0)  # 1.5 秒経過・赤丸なし・ヒント灰 → 終了
+    st, payload = h.step({"grid": g3, "hint": None, "hint_on": False})
+    assert st == "done"
+    assert payload == [((1, 1), "B"), ((0, 0), "W"), ((2, 2), "B")]
+    names = [t for t in adb.taps]
+    assert names[0] == al.ui_point("popup_view", (900, 1600))
+    assert names[1] == al.ui_point("bar_undo", (900, 1600))
+
+
+def test_harvester_fails_when_rewind_never_reaches_base():
+    base = [list("..."), list("..."), list("...")]
+    other = [list("B.."), list("..."), list("...")]
+    h = al.Harvester(FakeAdb(), FakeVision(3), base, 3, settle_ms=0, clock=FakeClock(), log=lambda m: None)
+    frames = [{"grid": other}] * 25
+    st, payload = _run_harvest(h, frames)
+    assert st == "failed" and "rewind" in payload
+
+
+def test_harvester_fails_on_unexplained_diff():
+    base = [list("..."), list("..."), list("...")]
+    clock = FakeClock()
+    h = al.Harvester(FakeAdb(), FakeVision(3), base, 3, settle_ms=0, clock=clock, log=lambda m: None)
+    weird = [list("W.."), list(".B."), list("..B")]  # 黒 (1,1) は在るが (2,2) の黒が説明できない
+    frames = [{"grid": base}, {"grid": base, "hint": (1, 1)}, {"grid": weird}, {"grid": weird}]
+    st, payload = _run_harvest(h, frames)
+    assert st == "failed" and "diff" in payload
