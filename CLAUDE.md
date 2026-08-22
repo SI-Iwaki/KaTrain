@@ -15,6 +15,30 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 | 詰碁 | 画面キャプチャ→盤面認識→枠→着手選択 `ai:tsumego`→死活ソルバ（Rust df-pn）→回答帳 | `.claude/rules/tsumego.md`（設計と落とし穴）<br>`.claude/rules/tsumego-parameters.md`（パラメータ値） |
 | 盤面監視 | `board_watch.py`: BlueStacks 上の対局アプリの着手を検出して人間側の手として片方向注入（トグル `ctrl+alt+d`） | `docs/superpowers/specs/2026-08-18-board-watch-design.md` |
 
+## 盤面テーマ（盤・碁石のデザイン）
+
+設定 →「盤面テーマ」のドロップダウンで切り替える（`general/board_theme`、既定 `default`）。
+テーマ = 1ディレクトリで、中の `theme*.json` が `katrain/gui/theme.py` の `Theme` 属性を
+上書きし、同名の画像（`board.png` / `B_stone.png` / `W_stone.png` 等）がそのまま差し替わる。
+
+- 同梱: `katrain/themes/<名前>/`（上流 https://github.com/sanderland/katrain の themes/ 由来。出典は同 README）
+- ユーザー追加: `~/.katrain/themes/<名前>/` に同じ構成で置くと一覧に出る
+- 適用順は デフォルト → `~/.katrain/theme*.json`（従来からのベタ置き＝常時適用）→ **選択テーマ**。
+  画像の探索順も同じ向き（`resource_find` は `reversed(resource_paths)` を走るので後勝ち）
+
+**即時反映されるのは盤の描画だけ**（盤テクスチャ・碁石・線・星・評価ドット・地合い・最善手マーク＝
+すべて描画時に `Theme.` を読む）。`.kv` に焼かれる右パネル背景色・フォント・グラフ背景は再起動が要る。
+
+やってはいけないこと:
+
+- **`Theme` への setattr を巻き戻さずにテーマを重ねない** — 起動時1回の一方向適用だったものを
+  切り替え可能にしたので、前のテーマが書いたキーを覚えて（`_applied_keys`）デフォルトへ戻してから
+  次を適用する。戻さないと「default に戻したのに milos の盤が残る」になる
+- **探索パスを触ったあとに `Cache.remove("kv.resourcefind")` を忘れない** — `resource_find` は
+  結果を60秒キャッシュするので、パスだけ差し替えても古いファイルが返る
+- **`cached_texture` のキャッシュ破棄も要る**（`clear_texture_cache`）— パスが変わっても
+  同じ名前で以前のテクスチャを返し続ける
+
 ## 技術スタック
 
 - **言語**: Python 3.12
@@ -52,6 +76,8 @@ katrain/
     tsumego_answer_book.py -- 回答帳（正解手順の記録と、盤の8対称キーで一致する再出題の0秒再生）
     ...               -- utils.py, lang.py, contribute_engine.py, tsumego_frame.py 等
   gui/                -- Kivy GUIウィジェット
+    theme_manager.py  -- 盤面テーマ（盤・碁石）の一覧と切り替え（設定 general/board_theme）
+  themes/             -- 同梱の盤面テーマ（koast / lizzie / milos。1テーマ=1ディレクトリ）
 native/tsumego/       -- 死活ソルバの Rust カーネル（DFS+df-pn。ビルド: cargo build --release --target x86_64-pc-windows-gnu → katrain/core/tsumego_solver/katrain_tsumego.dll へコピー）
   config.json         -- パッケージ同梱のデフォルト設定
   i18n/               -- 多言語リソース

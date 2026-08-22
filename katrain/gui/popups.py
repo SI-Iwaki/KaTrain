@@ -55,6 +55,7 @@ from katrain.gui.kivyutils import (
     SizedRectangleButton,
     AutoSizedRectangleButton,
 )
+from katrain.gui import theme_manager
 from katrain.gui.theme import Theme
 from katrain.gui.widgets.progress_loader import ProgressLoader
 
@@ -793,13 +794,28 @@ class BaseConfigPopup(QuickConfigGui):
 class ConfigPopup(BaseConfigPopup):
     def __init__(self, katrain):
         super().__init__(katrain)
+        self.fill_board_themes()  # build_and_set_properties が選択中の値を当てる前に選択肢を揃える
         Clock.schedule_once(self.check_katas)
         MDApp.get_running_app().bind(language=self.check_models)
         MDApp.get_running_app().bind(language=self.check_katas)
 
+    def fill_board_themes(self, *_args):
+        self.board_theme.value_refs = [name for name, _label in theme_manager.list_themes()]
+
+    def apply_board_theme(self):
+        applied = theme_manager.apply_theme(
+            self.katrain.config("general/board_theme", theme_manager.THEME_DEFAULT),
+            log=lambda msg: self.katrain.log(msg, OUTPUT_INFO),
+        )
+        self.katrain.log(f"盤面テーマ {applied} を適用しました", OUTPUT_INFO)
+        self.katrain.board_gui.redraw_trigger()
+
     def update_config(self, save_to_file=True, close_popup=True):
         updated = super().update_config(save_to_file=save_to_file, close_popup=close_popup)
         self.katrain.debug_level = self.katrain.config("general/debug_level", OUTPUT_INFO)
+
+        if "general/board_theme" in updated:
+            self.apply_board_theme()
 
         ignore = {"max_visits", "fast_visits", "max_time", "enable_ownership", "wide_root_noise"}
         detected_restart = [key for key in updated if "engine" in key and not any(ig in key for ig in ignore)]

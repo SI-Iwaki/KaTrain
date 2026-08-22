@@ -90,6 +90,7 @@
     model_files: model_files
     humanlike_model_files: humanlike_model_files
     katago_files: katago_files
+    board_theme: board_theme
     download_progress_box: download_progress_box
     katago_download_progress_box: katago_download_progress_box
 
@@ -272,6 +273,16 @@
                     input_property: "general/debug_level"
                     helper_text: i18n._("general:debug_level:hint")
                     helper_text_mode: "on_focus"
+
+            DescriptionLabel:
+                text: i18n._("general:board_theme")
+                size_hint_x: 1.5
+            AnchorLayout:
+                LabelledSpinner:
+                    id: board_theme
+                    input_property: "general/board_theme"
+                    size_hint: 0.95, 0.8
+                    font_size: sp(Theme.DESC_FONT_SIZE)
 
         # Engine Settings
         ConfigSectionGridLayout:

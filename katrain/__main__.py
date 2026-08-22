@@ -109,6 +109,7 @@ from katrain.core.game import (
 )
 from katrain.core.sgf_parser import Move, ParseError
 from katrain.gui.popups import ConfigPopup, LoadSGFPopup, NewGamePopup, ConfigAIPopup
+from katrain.gui import theme_manager
 from katrain.gui.theme import Theme
 from kivymd.app import MDApp
 
@@ -2366,16 +2367,9 @@ class KaTrainApp(MDApp):
         resource_add_path(PATHS["PACKAGE"] + "/img")
         resource_add_path(os.path.abspath(os.path.expanduser(DATA_FOLDER)))  # prefer resources in .katrain
 
-        theme_files = glob.glob(os.path.join(os.path.expanduser(DATA_FOLDER), "theme*.json"))
-        for theme_file in sorted(theme_files):
-            try:
-                with open(theme_file) as f:
-                    theme_overrides = json.load(f)
-                for k, v in theme_overrides.items():
-                    setattr(Theme, k, v)
-                    print(f"[{theme_file}] Found theme override {k} = {v}")
-            except Exception as e:  # noqa E722
-                print(f"Failed to load theme file {theme_file}: {e}")
+        # 選択中の盤面テーマと ~/.katrain/theme*.json のベタ置きを適用する。
+        # kv は widget 生成時に Theme.* を評価するので、Builder.load_file より前に済ませる。
+        theme_manager.apply_theme(theme_manager.startup_theme_name())
 
         Theme.DEFAULT_FONT = resource_find(Theme.DEFAULT_FONT)
         Builder.load_file(kv_file)

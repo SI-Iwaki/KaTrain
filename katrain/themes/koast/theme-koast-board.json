@@ -1,0 +1,7 @@
+{
+	"BOARD_COLOR_TINT":[1,1,1,1],
+	"STONE_SIZE": 0.49,
+	"APPROX_BOARD_COLOR":[0.807,0.435,0.263],
+	"TERRITORY_DISPLAY": "marks",
+	"STONE_MARKS": "weak"
+}

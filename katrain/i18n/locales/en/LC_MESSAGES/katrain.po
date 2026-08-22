@@ -684,6 +684,12 @@ msgstr "Time between moves when animating a sequence"
 msgid "general:debug_level"
 msgstr "Debug level in the console"
 
+msgid "general:board_theme"
+msgstr "Board theme"
+
+msgid "default"
+msgstr "default"
+
 msgid "general:debug_level:hint"
 msgstr "Set to 1 when reporting errors"
 

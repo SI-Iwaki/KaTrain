@@ -683,3 +683,8 @@ def cached_texture(path, _cache={}):
     if not tex:
         tex = _cache[path] = Image(resource_find(path)).texture
     return tex
+
+
+def clear_texture_cache():
+    # テーマを切り替えると同じ名前が別ファイルに解決されるので、キャッシュを捨てて引き直す
+    cached_texture.__defaults__[0].clear()

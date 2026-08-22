@@ -433,6 +433,12 @@ msgstr "手順アニメーションの一手毎の時間"
 msgid "general:debug_level"
 msgstr "コンソールのデバッグレベル"
 
+msgid "general:board_theme"
+msgstr "盤面テーマ"
+
+msgid "default"
+msgstr "デフォルト"
+
 msgid "general:debug_level:hint"
 msgstr "エラーを報告する際は1に設定を"
 
