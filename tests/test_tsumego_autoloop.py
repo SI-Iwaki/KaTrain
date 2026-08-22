@@ -1,6 +1,8 @@
 import io
 import json
 import os
+import threading
+import time
 
 import pytest
 from PIL import Image
@@ -378,14 +380,14 @@ class FrameAdb(FakeAdb):
         return True
 
 
-def _controller(frames, tmp_path, **over):
+def _controller(frames, tmp_path, vision=None, **over):
     settings = al.autoloop_settings_from_config(
         {"poll_ms": 0, "settle_ms": 0, "ledger_path": str(tmp_path / "l.jsonl"), "shots_dir": str(tmp_path), **over}
     )
     clock = FakeClock()
     gui = FakeGui()
     adb = FrameAdb(frames)
-    c = al.AutoLoopController(adb, FakeVision(3), gui, settings, al.Ledger(settings.ledger_path), clock=clock)
+    c = al.AutoLoopController(adb, vision or FakeVision(3), gui, settings, al.Ledger(settings.ledger_path), clock=clock)
     return c, gui, adb, clock
 
 
@@ -510,3 +512,178 @@ def test_controller_starts_on_popup_by_tapping_next(tmp_path):
     assert c.state == "NEXT"
     c.step()
     assert adb.taps[-1] == al.ui_point("popup_next", (900, 1600))
+
+
+# --- レビュー修正（findings 1-5, m1-m6） ---
+
+
+def test_controller_capture_failed_idle_not_overwritten(tmp_path):
+    """finding 1: _error_step が上限で IDLE にした後、_step_capture_failed が NEXT で上書きしない"""
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path, max_consecutive_errors=1)
+    c.activate()
+    c.step(); c.step()
+    c.on_capture_failed("窓が無い")
+    c.step()                                             # CAPTURE_FAILED に入り、空点をタップ
+    assert c.state == "CAPTURE_FAILED"
+    c.step()                                             # タップ済み・結果待ち
+    clock.advance(al.CAPTURE_FAILED_WAIT_S + 1)
+    c.step()                                             # 締切超過 → error_step で IDLE（上書きされない）
+    assert c.state == "IDLE" and c.stats["failed"] == 1
+
+
+def test_controller_await_problem_retaps_then_errors(tmp_path):
+    """finding 2a: NEXT のタップが効かず出題が検出できないまま AWAIT_PROBLEM に居続けたら、
+    1 回目の締切超過で bar_next を再タップし、2 回目の締切超過で error_step に回す"""
+    empty_frame = {"grid": [list("..."), list("..."), list("...")]}
+    c, gui, adb, clock = _controller([empty_frame], tmp_path, max_consecutive_errors=1, answer_timeout_s=5)
+    c.activate()
+    clock.advance(6)
+    c.step()
+    assert adb.taps == [al.ui_point("bar_next", (900, 1600))]
+    assert c.state == "AWAIT_PROBLEM"
+    clock.advance(6)
+    c.step()
+    assert c.state == "IDLE" and c.stats["failed"] == 1
+
+
+class _NoRectVision(FakeVision):
+    """board_rect が常に失敗する Vision（finding 2b の検証用）"""
+
+    def board_rect(self, f):
+        raise al.CaptureError("no rect")
+
+
+def test_controller_answering_unreadable_board_still_reaches_stalled(tmp_path):
+    """finding 2b: pending_taps が残ったまま board_rect が読めなくても、締切超過で STALLED に抜ける"""
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path, vision=_NoRectVision(3))
+    c.activate()
+    c.step(); c.step()
+    c.on_problem_ready(token=1, base_grid=BASE, key="k", route="frame")
+    c.on_black_move(token=1, coords_xy=(0, 0))
+    c.step()
+    assert c.state == "ANSWERING" and adb.taps == []
+    clock.advance(41)
+    c.step()
+    assert c.state == "STALLED"
+
+
+def test_controller_activate_resets_stats(tmp_path):
+    """finding 3: activate() は stats をゼロへリセットする"""
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path)
+    c.activate()
+    c.stats["correct"] = 5
+    c.activate()
+    assert c.stats == {"problems": 0, "correct": 0, "wrong": 0, "harvested": 0, "failed": 0}
+
+
+def test_controller_capture_failed_counts_toward_max_problems(tmp_path):
+    """finding 3: CAPTURE_FAILED になった問題も stats["problems"] にカウントされる（max_problems の対象）"""
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path, max_problems=1)
+    c.activate()
+    c.step(); c.step()
+    c.on_capture_failed("窓が無い")
+    c.step()
+    assert c.stats["problems"] == 1
+
+
+def test_controller_start_stop_no_duplicate_threads(tmp_path):
+    """finding 4: start(); stop(); start(); stop() で旧スレッドが残らない"""
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path, poll_ms=10)
+    c.start()
+    t1 = c._thread
+    c.stop()
+    assert c.running is False
+    assert t1.is_alive() is False
+    c.start()
+    t2 = c._thread
+    c.stop()
+    assert c.running is False
+    assert t2.is_alive() is False
+    assert t1 is not t2
+
+
+def test_controller_run_stops_after_repeated_step_exceptions(tmp_path):
+    """m5: _run は step() が 10 回連続で例外を投げたら _to_idle で止まる"""
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path, poll_ms=5)
+
+    def boom():
+        raise RuntimeError("boom")
+
+    c.step = boom
+    c.state = "AWAIT_PROBLEM"
+    c._stop.clear()
+    c._thread = threading.Thread(target=c._run, name="tsumego-autoloop-test", daemon=True)
+    c._thread.start()
+    for _ in range(200):
+        if c.state == "IDLE":
+            break
+        time.sleep(0.01)
+    assert c.state == "IDLE"
+    c.stop()
+    c._thread.join(timeout=2.0)
+    assert c._thread.is_alive() is False
+
+
+def test_controller_answering_tap_cap_goes_to_stalled(tmp_path):
+    """finding 5: 1問あたりのタップ上限に達したら pending_taps を捨てて STALLED へ（タップはしない）"""
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path)
+    c.activate()
+    c.step(); c.step()
+    c.on_problem_ready(token=1, base_grid=BASE, key="k", route="frame")
+    c.step()
+    c.problem.n_black = al.MAX_TAPS_PER_PROBLEM
+    c.on_black_move(token=1, coords_xy=(0, 0))
+    c.step()
+    assert c.state == "STALLED"
+    assert adb.taps == []
+
+
+def test_controller_result_popup_vanished_records_ledger(tmp_path):
+    """m1: verdict == "none" でも NEXT に行く前に unknown_popup/popup_vanished を台帳に書く"""
+    frames = [
+        {"grid": BASE}, {"grid": BASE}, {"grid": BASE},
+        {"popup": True, "state": "none"},                # ANSWERING -> RESULT
+    ]
+    c, gui, adb, clock = _controller(frames, tmp_path)
+    c.activate()
+    c.step(); c.step()
+    c.on_problem_ready(token=1, base_grid=BASE, key="k1", route="frame")
+    c.step()
+    c.step()                                             # ANSWERING: popup -> RESULT
+    assert c.state == "RESULT"
+    c.step()                                             # RESULT: verdict none -> NEXT（台帳に記録）
+    assert c.state == "NEXT"
+    rec = json.loads((tmp_path / "l.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert rec["outcome"] == "unknown_popup" and rec["harvest"] == "skipped:popup_vanished"
+
+
+class _SavableFrame(dict):
+    def save(self, path):
+        with open(path, "wb") as f:
+            f.write(b"x")
+
+
+def test_controller_save_shot_returns_path_and_records_shots(tmp_path):
+    """m4: _save_shot はパスを返し self._shots に積む。_record はそれを "shots" として書く"""
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path)
+    frame = _SavableFrame({"grid": BASE})
+    path1 = c._save_shot(frame, "t1")
+    path2 = c._save_shot(frame, "t2")
+    assert path1 is not None and path2 is not None and path1 != path2
+    assert c._shots == [path1, path2]
+    c.problem = al._Problem(1, BASE, "k", "frame", clock())
+    c._record(c.problem, "wrong")
+    rec = json.loads((tmp_path / "l.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+    assert rec["shots"] == [path1, path2]
+
+
+def test_controller_tap_helper_swallows_adb_error(tmp_path):
+    """m5: _tap は AdbError を捕まえて gui.log し False を返す（呼び出し側はそのまま進む）"""
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path)
+
+    def raising_tap(x, y):
+        raise al.AdbError("boom")
+
+    c.adb.tap = raising_tap
+    assert c._tap(1, 2) is False
+    assert any("タップ失敗" in m for m in gui.logs)

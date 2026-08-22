@@ -512,8 +512,10 @@ class Harvester:
 
 # --- 状態機械 ---
 STALL_EXTRA_S = 60.0  # STALLED からポップアップをさらに待つ秒数
+CAPTURE_FAILED_WAIT_S = 45.0  # CAPTURE_FAILED でポップアップ（結果）を待つ秒数
 FRAME_FAIL_RECONNECT = 3
 FRAME_FAIL_GIVEUP = 6
+MAX_TAPS_PER_PROBLEM = 60  # 1問あたりのタップ上限（spec §9）
 
 
 class _Problem:
@@ -538,6 +540,7 @@ class AutoLoopController:
         self.last_initial = None
         self.last_final = None
         self._await_prev = None
+        self._await_retapped = False
         self._deadline = 0.0
         self._not_before = 0.0
         self._frame_failures = 0
@@ -545,6 +548,8 @@ class AutoLoopController:
         self._cf_tapped = False
         self._cf_base = None
         self._pending_taps = []
+        self._shots = []
+        self._shot_seq = 0
 
     # --- スレッド ---
     @property
@@ -554,8 +559,12 @@ class AutoLoopController:
     def activate(self):
         """状態だけ AWAIT_PROBLEM にする（テスト・start から使う）"""
         self.state = "AWAIT_PROBLEM"
+        self.stats = {"problems": 0, "correct": 0, "wrong": 0, "harvested": 0, "failed": 0}
         self._errors = 0
         self._await_prev = None
+        self._await_retapped = False
+        self._deadline = self.clock() + self.settings.answer_timeout_s
+        self._shots = []
 
     def start(self):
         self._stop.clear()
@@ -567,13 +576,22 @@ class AutoLoopController:
         self._stop.set()
         self._wake.set()
         self.state = "IDLE"
+        t = self._thread
+        if t is not None and t.is_alive() and t is not threading.current_thread():
+            t.join(timeout=2.0)
 
     def _run(self):
-        while not self._stop.is_set():
+        me = threading.current_thread()
+        exc_count = 0
+        while not self._stop.is_set() and self._thread is me:
             try:
                 self.step()
+                exc_count = 0
             except Exception as e:  # 1 周の例外でスレッドを落とさない
+                exc_count += 1
                 self.gui.log(f"autoloop: step で例外: {e!r}")
+                if exc_count >= 10:
+                    self._to_idle("step の例外が続くため停止しました")
             self._wake.wait(self.settings.poll_ms / 1000.0)
             self._wake.clear()
 
@@ -623,20 +641,28 @@ class AutoLoopController:
             except queue.Empty:
                 return
             kind = ev[0]
-            if kind == "problem_ready" and self.state == "CAPTURING":
-                _k, token, base_grid, key, route = ev
-                self.problem = _Problem(token, base_grid, key, route, self.clock())
-                self.stats["problems"] += 1
-                self.state = "ANSWERING"
-                self.gui.notify("info", self._banner("解答中"))
-            elif kind == "capture_failed" and self.state == "CAPTURING":
-                self.gui.log(f"autoloop: キャプチャ失敗 → わざと1手打って収穫に回します（{ev[1]}）")
-                self._enter_capture_failed()
-            elif kind == "black_move" and self.state == "ANSWERING" and self.problem is not None:
+            if kind == "problem_ready":
+                if self.state == "CAPTURING":
+                    _k, token, base_grid, key, route = ev
+                    self.problem = _Problem(token, base_grid, key, route, self.clock())
+                    self.stats["problems"] += 1
+                    self._shots = []
+                    self.state = "ANSWERING"
+                    self.gui.notify("info", self._banner("解答中"))
+                else:
+                    self.gui.log(f"autoloop: problem_ready を無視しました（state={self.state}）")
+            elif kind == "capture_failed":
+                if self.state == "CAPTURING":
+                    self.gui.log(f"autoloop: キャプチャ失敗 → わざと1手打って収穫に回します（{ev[1]}）")
+                    self._enter_capture_failed()
+                else:
+                    self.gui.log(f"autoloop: capture_failed を無視しました（state={self.state}）")
+            elif kind == "black_move":
                 _k, token, coords_xy = ev
-                if token != self.problem.token:
-                    continue
-                self._pending_taps.append(coords_xy)
+                if self.state == "ANSWERING" and self.problem is not None and token == self.problem.token:
+                    self._pending_taps.append(coords_xy)
+                else:
+                    self.gui.log(f"autoloop: black_move を無視しました（state={self.state}, token={token}）")
 
     def _step_await_problem(self, frame):
         if self.vision.popup_present(frame):
@@ -645,20 +671,34 @@ class AutoLoopController:
         try:
             grid = self.vision.read_board(frame).grid
         except CaptureError:
+            grid = None
+        has_stones = grid is not None and any(v != EMPTY for row in grid for v in row)
+        if grid is None or not has_stones or grid == self.last_initial or grid == self.last_final:
             self._await_prev = None
-            return
-        has_stones = any(v != EMPTY for row in grid for v in row)
-        if not has_stones or grid == self.last_initial or grid == self.last_final:
+        elif grid == self._await_prev:
             self._await_prev = None
+            self._pending_taps = []
+            self.state = "CAPTURING"
+            self._deadline = self.clock() + self.settings.capture_timeout_s
+            self.gui.trigger_capture()
             return
-        if grid != self._await_prev:
-            self._await_prev = grid
-            return  # 2 フレーム連続で同じになるまで待つ
-        self._await_prev = None
-        self._pending_taps = []
-        self.state = "CAPTURING"
-        self._deadline = self.clock() + self.settings.capture_timeout_s
-        self.gui.trigger_capture()
+        else:
+            self._await_prev = grid  # 2 フレーム連続で同じになるまで待つ
+        self._check_await_deadline(frame)
+
+    def _check_await_deadline(self, frame):
+        """出題（NEXT のタップ）を検出できないまま長時間 AWAIT_PROBLEM に留まっていないか。
+        1 回目の締切超過で「次の問題」を再タップ、2 回目で _error_step に回す（bounded loop）。"""
+        if self.clock() < self._deadline:
+            return
+        if not self._await_retapped:
+            self.gui.log("autoloop: 出題を検出できません。「次の問題」を再タップします")
+            self._tap(*self.vision.ui_point("bar_next", frame))
+            self._await_retapped = True
+        else:
+            self._error_step("await_problem: 出題を検出できません")
+            self._await_retapped = False
+        self._deadline = self.clock() + self.settings.answer_timeout_s
 
     def _step_capturing(self, frame):
         if self.clock() >= self._deadline:
@@ -670,26 +710,37 @@ class AutoLoopController:
         if self.vision.popup_present(frame):
             self.state = "RESULT"
             return
+        # 締切チェックは pending_taps の処理より前に置く: board_rect が読めない盤が
+        # 続く場合でも（pending_taps が残ったままでも）STALLED に必ず抜けられるようにする
+        if self.clock() - p.started > self.settings.answer_timeout_s:
+            self.state = "STALLED"
+            self._deadline = self.clock() + STALL_EXTRA_S
+            self._save_shot(frame, "stalled")
+            return
         if self._pending_taps:
+            if p.n_black >= MAX_TAPS_PER_PROBLEM:
+                self._pending_taps = []
+                self._save_shot(frame, "tap_cap")
+                self.gui.log(f"autoloop: 1問あたりのタップ上限（{MAX_TAPS_PER_PROBLEM}）に達しました")
+                self.state = "STALLED"
+                self._deadline = self.clock() + STALL_EXTRA_S
+                return
             try:
                 p.rect = self.vision.board_rect(frame)
             except CaptureError:
                 return  # 次のフレームで
             for coords_xy in self._pending_taps:
                 i, j = move_to_grid(coords_xy, p.size)
-                self.adb.tap(*board_to_device(i, j, p.rect, p.size))
+                self._tap(*board_to_device(i, j, p.rect, p.size))
                 p.n_black += 1
             self._pending_taps = []
             return
-        if self.clock() - p.started > self.settings.answer_timeout_s:
-            self.state = "STALLED"
-            self._deadline = self.clock() + STALL_EXTRA_S
-            self._save_shot(frame, "stalled")
 
     def _step_result(self, frame):
         verdict = self.vision.popup_state(frame)
         p = self.problem
         if verdict == "none":
+            self._record(p, "unknown_popup", harvest="skipped:popup_vanished")
             self.state = "NEXT"  # ポップアップが消えた（ユーザー操作等）
             return
         if verdict == "wrong":
@@ -698,8 +749,8 @@ class AutoLoopController:
             self.gui.stop_watch()
             base = p.base if (p and p.base) else self._cf_base
             if base is None:
-                self._record(p, "wrong", harvest="skipped:盤が読めていない")
                 self._save_shot(frame, "wrong_nobase")
+                self._record(p, "wrong", harvest="skipped:盤が読めていない")
                 self.state = "NEXT"
                 return
             self.harvester = Harvester(self.adb, self.vision, base, len(base), self.settings.settle_ms, self.clock, self.gui.log)
@@ -716,9 +767,11 @@ class AutoLoopController:
     def _enter_capture_failed(self):
         self.state = "CAPTURE_FAILED"
         self.problem = _Problem(None, None, None, None, self.clock())
+        self.stats["problems"] += 1  # キャプチャ失敗も 1 問（max_problems の対象）
+        self._shots = []
         self._cf_tapped = False
         self._cf_base = None
-        self._deadline = self.clock() + 45.0
+        self._deadline = self.clock() + CAPTURE_FAILED_WAIT_S
 
     def _step_capture_failed(self, frame):
         if self.vision.popup_present(frame):
@@ -735,17 +788,18 @@ class AutoLoopController:
                 empties = empty_points(read.grid)
                 if empties:
                     i, j = empties[0]
-                    self.adb.tap(*board_to_device(i, j, read.rect, read.size))
+                    self._tap(*board_to_device(i, j, read.rect, read.size))
             except CaptureError:
                 self._save_shot(frame, "capture_failed")
                 w, h = frame.size
-                self.adb.tap(w // 2, int(h * 0.46))
+                self._tap(w // 2, int(h * 0.46))
             self._cf_tapped = True
             return
         if self.clock() >= self._deadline:
             self._record(self.problem, "capture_failed", harvest="skipped:ポップアップが出ない")
             self._error_step("capture_failed: 結果が出ません")
-            self.state = "NEXT"
+            if self.state != "IDLE":  # _error_step が上限で IDLE にしていたら上書きしない
+                self.state = "NEXT"
 
     def _step_harvest(self, frame):
         status, payload = self.harvester.step(frame)
@@ -759,8 +813,8 @@ class AutoLoopController:
             self._record(p, "wrong", harvest="saved" if added else "duplicate", line_len=n)
             self.gui.notify("save", f"正解手順を回答帳に保存しました（{n}手）")
         else:
-            self._record(p, "wrong", harvest=f"skipped:{payload}")
             self._save_shot(frame, "harvest_failed")
+            self._record(p, "wrong", harvest=f"skipped:{payload}")
             self.gui.log(f"autoloop: 収穫失敗: {payload}")
         self.harvester = None
         self.state = "NEXT"
@@ -783,7 +837,7 @@ class AutoLoopController:
         if self.problem is not None and self.problem.base:
             self.last_initial = self.problem.base
         name = "popup_next" if self.vision.popup_present(frame) else "bar_next"
-        self.adb.tap(*self.vision.ui_point(name, frame))
+        self._tap(*self.vision.ui_point(name, frame))
         self.problem = None
         self._cf_base = None
         self._not_before = self.clock() + max(self.settings.settle_ms, 300) / 1000.0
@@ -792,8 +846,18 @@ class AutoLoopController:
             return
         self.state = "AWAIT_PROBLEM"
         self._await_prev = None
+        self._await_retapped = False
+        self._deadline = self.clock() + self.settings.answer_timeout_s
 
     # --- 補助 ---
+    def _tap(self, x, y):
+        try:
+            self.adb.tap(x, y)
+            return True
+        except AdbError as e:
+            self.gui.log(f"autoloop: タップ失敗: {e}")
+            return False
+
     def _error_step(self, why):
         self._errors += 1
         self.stats["failed"] += 1
@@ -802,9 +866,9 @@ class AutoLoopController:
             self._to_idle(f"連続 {self._errors} 回失敗したため停止しました（{why}）")
 
     def _fail(self, why, frame):
-        self._record(self.problem, "error", harvest=f"skipped:{why}")
         if frame is not None:
             self._save_shot(frame, "error")
+        self._record(self.problem, "error", harvest=f"skipped:{why}")
 
     def _to_idle(self, text):
         self.state = "IDLE"
@@ -826,6 +890,7 @@ class AutoLoopController:
             "n_black": p.n_black if p else 0,
             "harvest": harvest,
             "line_len": line_len,
+            "shots": list(self._shots),
         }
         try:
             self.ledger.append(rec)
@@ -833,13 +898,21 @@ class AutoLoopController:
             self.gui.log(f"autoloop: 台帳に書けません: {e}")
 
     def _save_shot(self, frame, tag):
+        """スクショを保存しパスを返す（保存できなければ None）。self._shots にも積む。
+        ファイル名は per-process カウンタで一意にする（同一秒内の複数保存の衝突回避）"""
+        if not hasattr(frame, "save"):
+            return None
         try:
             os.makedirs(self.settings.shots_dir, exist_ok=True)
-            path = os.path.join(self.settings.shots_dir, f"{time.strftime('%Y%m%d_%H%M%S')}_{tag}.png")
-            if hasattr(frame, "save"):
-                frame.save(path)
+            self._shot_seq += 1
+            ts = time.strftime("%Y%m%d_%H%M%S")
+            path = os.path.join(self.settings.shots_dir, f"{ts}_{self._shot_seq:03d}_{tag}.png")
+            frame.save(path)
+            self._shots.append(path)
+            return path
         except Exception as e:
             self.gui.log(f"autoloop: スクショ保存失敗: {e}")
+            return None
 
 
 def main(argv=None):
