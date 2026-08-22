@@ -236,8 +236,10 @@ def test_harvester_walks_hints_and_returns_line():
     ]
     st, payload = _run_harvest(h, frames)
     assert st == "running"
-    clock.advance(2.0)  # 1.5 秒経過・赤丸なし・ヒント灰 → 終了
+    clock.advance(2.0)  # 1.5 秒経過・赤丸なし・ヒント灰 → 1回目の確認（2連続要求のため終了しない）
     st, payload = h.step({"grid": g3, "hint": None, "hint_on": False})
+    assert st == "running"
+    st, payload = h.step({"grid": g3, "hint": None, "hint_on": False})  # 2回目の灰確認 → 終了
     assert st == "done"
     assert payload == [((1, 1), "B"), ((0, 0), "W"), ((2, 2), "B")]
     names = [t for t in adb.taps]
@@ -262,3 +264,71 @@ def test_harvester_fails_on_unexplained_diff():
     frames = [{"grid": base}, {"grid": base, "hint": (1, 1)}, {"grid": weird}, {"grid": weird}]
     st, payload = _run_harvest(h, frames)
     assert st == "failed" and "diff" in payload
+
+
+def test_white_reply_detects_capture_of_just_played_black():
+    """投げ込み/ナカデ捨て石: 白の応手が黒自身を取るので黒点は EMPTY のまま戻ってこない。
+    white_reply は apply_move_to_grid で差分を検算するので obs[i][j]==BLACK に依存しない。"""
+    base = [list("W.W"), list("..."), list("...")]  # (0,0)/(0,2) が白、(0,1) は 1 呼吸点だけの投げ込み点
+    expected = al.apply_move_to_grid(base, 0, 1, "B")  # 黒 (0,1) 投げ込み（呼吸点 (1,1) のみ残る）
+    observed = al.apply_move_to_grid(expected, 1, 1, "W")  # 白 (1,1) で最後の呼吸点を詰めて捕獲
+    assert observed[0][1] == "."  # 黒は取られて盤上に残っていない
+    assert al.white_reply(expected, observed) == (1, 1)
+
+
+def test_harvester_accepts_black_captured_by_white_reply():
+    base = [list("W.W"), list("..."), list("...")]
+    clock = FakeClock()
+    adb, vision = FakeAdb(), FakeVision(3)
+    h = al.Harvester(adb, vision, base, 3, settle_ms=0, clock=clock, log=lambda m: None)
+    observed = al.apply_move_to_grid(al.apply_move_to_grid(base, 0, 1, "B"), 1, 1, "W")
+    frames = [
+        {"grid": base},                                     # rewind: 初期局面 → hint: ヒント押下
+        {"grid": base, "hint": (0, 1)},                      # wait_hint: 赤丸 → 黒タップ（投げ込み）
+        {"grid": observed},
+        {"grid": observed},                                  # wait_move: 白の捕獲後の盤で安定 → 手順追記
+        {"grid": observed},                                  # hint: ヒント押下
+        {"grid": observed, "hint": None, "hint_on": True},   # wait_hint: まだ 1.5 秒以内
+    ]
+    st, payload = _run_harvest(h, frames)
+    assert st == "running"
+    clock.advance(2.0)
+    st, payload = h.step({"grid": observed, "hint": None, "hint_on": False})  # 1回目の灰確認
+    assert st == "running"
+    st, payload = h.step({"grid": observed, "hint": None, "hint_on": False})  # 2回目の灰確認 → 終了
+    assert st == "done"
+    assert payload == [((0, 1), "B"), ((1, 1), "W")]
+
+
+def test_harvester_fails_when_popup_never_closes():
+    base = [list("..."), list("..."), list("...")]
+    h = al.Harvester(FakeAdb(), FakeVision(3), base, 3, settle_ms=0, clock=FakeClock(), log=lambda m: None)
+    frames = [{"popup": True}] * 8
+    st, payload = _run_harvest(h, frames)
+    assert st == "failed" and "close" in payload
+
+
+def test_harvester_fails_when_no_move_harvested():
+    base = [list("..."), list("..."), list("...")]
+    clock = FakeClock()
+    h = al.Harvester(FakeAdb(), FakeVision(3), base, 3, settle_ms=0, clock=clock, log=lambda m: None)
+    frames = [
+        {"grid": base},                                   # rewind → hint: ヒント押下
+        {"grid": base, "hint": None, "hint_on": True},     # wait_hint: まだ 1.5 秒以内
+    ]
+    st, payload = _run_harvest(h, frames)
+    assert st == "running"
+    clock.advance(2.0)
+    st, payload = h.step({"grid": base, "hint": None, "hint_on": False})  # 1回目の灰確認
+    assert st == "running"
+    st, payload = h.step({"grid": base, "hint": None, "hint_on": False})  # 2回目 → 手順ゼロで失敗
+    assert st == "failed" and "手順" in payload
+
+
+def test_harvester_fails_after_overall_deadline():
+    base = [list("..."), list("..."), list("...")]
+    clock = FakeClock()
+    h = al.Harvester(FakeAdb(), FakeVision(3), base, 3, settle_ms=0, clock=clock, log=lambda m: None)
+    clock.advance(al.HARVEST_MAX_S + 1)
+    st, payload = h.step({"grid": base})
+    assert st == "failed" and "時間切れ" in payload

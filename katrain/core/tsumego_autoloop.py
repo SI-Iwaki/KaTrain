@@ -368,6 +368,8 @@ HINT_WAIT_S = 1.5  # ヒント押下後に赤丸を待つ上限（spec §4.4）
 MOVE_WAIT_S = 6.0  # 黒タップ後に盤が安定するまでの上限
 REWIND_MAX_TAPS = 20
 HARVEST_MAX_MOVES = 40
+HARVEST_MAX_S = 120.0  # 収穫1問あたりの総時間上限（close/rewind が無限に粘る事態への全体締切）
+CLOSE_MAX_TAPS = 5  # ポップアップが閉じ続ける場合の打ち切り
 
 
 def white_reply(expected, observed):
@@ -396,22 +398,34 @@ class Harvester:
         self.grid = None
         self.moves = []
         self.rewind_taps = 0
+        self.close_taps = 0
         self.deadline = 0.0
+        self.deadline_all = self.clock() + HARVEST_MAX_S
         self.not_before = 0.0
         self.pending = None  # (i, j, expected_grid)
         self.last_obs = None
         self.hint_retry = 0
+        self.gray_seen = 0
 
     def _tap_named(self, name, frame):
         self.adb.tap(*self.vision.ui_point(name, frame))
         self.not_before = self.clock() + self.settle_s
 
+    def _fail(self, reason):
+        self.log(f"[Harvester] failed: {reason}")
+        return "failed", reason
+
     def step(self, frame):
         now = self.clock()
+        if now >= self.deadline_all:
+            return self._fail("harvest: 時間切れ")
         if now < self.not_before:
             return "running", None
         if self.phase == "close":
             if self.vision.popup_present(frame):
+                if self.close_taps >= CLOSE_MAX_TAPS:
+                    return self._fail("close: ポップアップが閉じません")
+                self.close_taps += 1
                 self._tap_named("popup_view", frame)
                 return "running", None
             self.phase = "rewind"
@@ -425,40 +439,48 @@ class Harvester:
                 self.phase = "hint"
             else:
                 if self.rewind_taps >= REWIND_MAX_TAPS:
-                    return "failed", "rewind: 初期局面に戻せません"
+                    return self._fail("rewind: 初期局面に戻せません")
                 self.rewind_taps += 1
                 self._tap_named("bar_undo", frame)
                 return "running", None
         if self.phase == "hint":
             if len(self.moves) >= HARVEST_MAX_MOVES:
-                return "failed", "hint: 手数上限"
+                return self._fail("hint: 手数上限")
             self._tap_named("bar_hint", frame)
-            self.deadline = self.clock() + HINT_WAIT_S
+            self.deadline = self.not_before + HINT_WAIT_S
+            self.gray_seen = 0
             self.phase = "wait_hint"
             return "running", None
         if self.phase == "wait_hint":
             rect = self.vision.board_rect(frame)
             pt = self.vision.find_hint_circle(frame, rect, self.size)
             if pt is not None:
+                self.gray_seen = 0
                 i, j = pt
                 expected = apply_move_to_grid(self.grid, i, j, BLACK)
                 if expected is None:
-                    return "failed", f"hint: 赤丸 {pt} に打てません"
+                    return self._fail(f"hint: 赤丸 {pt} に打てません")
                 self.adb.tap(*board_to_device(i, j, rect, self.size))
                 self.pending = (i, j, expected)
                 self.last_obs = None
-                self.deadline = self.clock() + MOVE_WAIT_S
                 self.not_before = self.clock() + self.settle_s
+                self.deadline = self.not_before + MOVE_WAIT_S
                 self.phase = "wait_move"
                 return "running", None
             if now >= self.deadline:
                 if not self.vision.hint_enabled(frame):
+                    self.gray_seen += 1
+                    if self.gray_seen < 2:
+                        return "running", None  # 誤読対策: ヒント灰読みは2連続要求
+                    if not self.moves:
+                        return self._fail("hint: 手順が取れません")
+                    self.log(f"[Harvester] done: {len(self.moves)} 手")
                     return "done", list(self.moves)
                 if self.hint_retry < 1:
                     self.hint_retry += 1
                     self.phase = "hint"  # もう 1 回だけ押し直す
                     return "running", None
-                return "failed", "hint: 赤丸が出ません（ヒントは有効のまま）"
+                return self._fail("hint: 赤丸が出ません（ヒントは有効のまま）")
             return "running", None
         if self.phase == "wait_move":
             i, j, expected = self.pending
@@ -466,10 +488,13 @@ class Harvester:
                 obs = self.vision.read_board(frame, self.size).grid
             except CaptureError:
                 obs = None
-            if obs is not None and obs[i][j] == BLACK and obs == self.last_obs:
+            # 盤が変化して2フレーム安定したら受理する（obs[i][j]==BLACK に限定しない）。
+            # 投げ込み・ナカデ捨て石は白の応手が黒自身を取るため、その黒点は EMPTY のまま
+            # 戻ってこない。白の応手は white_reply（apply_move_to_grid 由来）が判定する。
+            if obs is not None and obs != self.grid and obs == self.last_obs:
                 w = white_reply(expected, obs)
                 if w is False:
-                    return "failed", f"diff: 黒 {(i, j)} の後の盤を説明できません"
+                    return self._fail(f"diff: 黒 {(i, j)} の後の盤を説明できません")
                 self.moves.append(((i, j), BLACK))
                 if w is not None:
                     self.moves.append((w, WHITE))
@@ -480,9 +505,9 @@ class Harvester:
                 return "running", None
             self.last_obs = obs
             if now >= self.deadline:
-                return "failed", f"move: 黒 {(i, j)} が盤に現れません"
+                return self._fail(f"move: 黒 {(i, j)} が盤に現れません")
             return "running", None
-        return "failed", f"unknown phase {self.phase}"
+        return self._fail(f"unknown phase {self.phase}")
 
 
 def main(argv=None):
