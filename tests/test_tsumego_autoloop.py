@@ -332,3 +332,181 @@ def test_harvester_fails_after_overall_deadline():
     clock.advance(al.HARVEST_MAX_S + 1)
     st, payload = h.step({"grid": base})
     assert st == "failed" and "時間切れ" in payload
+
+
+class FakeGui:
+    def __init__(self):
+        self.captures = 0
+        self.saved = []
+        self.stopped = 0
+        self.notes = []
+        self.logs = []
+
+    def trigger_capture(self):
+        self.captures += 1
+
+    def save_line(self, base_grid, moves):
+        self.saved.append((base_grid, moves))
+        return True, len(moves)
+
+    def stop_watch(self):
+        self.stopped += 1
+
+    def notify(self, kind, text):
+        self.notes.append((kind, text))
+
+    def log(self, text):
+        self.logs.append(text)
+
+
+class FrameAdb(FakeAdb):
+    """screencap が与えたフレーム列を順に返す（尽きたら最後を繰り返す）"""
+
+    def __init__(self, frames):
+        super().__init__()
+        self.frames = list(frames)
+
+    def screencap(self):
+        if len(self.frames) > 1:
+            return self.frames.pop(0)
+        return self.frames[0]
+
+    def connect(self):
+        return True
+
+    def is_device(self):
+        return True
+
+
+def _controller(frames, tmp_path, **over):
+    settings = al.autoloop_settings_from_config(
+        {"poll_ms": 0, "settle_ms": 0, "ledger_path": str(tmp_path / "l.jsonl"), "shots_dir": str(tmp_path), **over}
+    )
+    clock = FakeClock()
+    gui = FakeGui()
+    adb = FrameAdb(frames)
+    c = al.AutoLoopController(adb, FakeVision(3), gui, settings, al.Ledger(settings.ledger_path), clock=clock)
+    return c, gui, adb, clock
+
+
+BASE = [list("..."), list("..."), list("B..")]
+FINAL = al.apply_move_to_grid(BASE, 1, 1, "B")
+
+
+def test_controller_correct_flow_taps_black_and_advances(tmp_path):
+    frames = [
+        {"grid": BASE}, {"grid": BASE},                  # AWAIT: 2 フレーム同じ → キャプチャ起動
+        {"grid": BASE},                                  # CAPTURING（完了は on_problem_ready）
+        {"grid": BASE},                                  # ANSWERING: 黒の着手イベントを処理してタップ
+        {"popup": True, "state": "correct"},             # ANSWERING: ポップアップ → RESULT
+        {"popup": True, "state": "correct"},             # RESULT: correct → NEXT
+        {"popup": True, "state": "correct"},             # NEXT: ポップアップの「次の問題」をタップ
+        {"grid": [list("..."), list("..."), list("..W")]},
+    ]
+    c, gui, adb, clock = _controller(frames, tmp_path)
+    c.activate()
+    c.step(); c.step()
+    assert gui.captures == 1 and c.state == "CAPTURING"
+    c.step()
+    c.on_problem_ready(token=7, base_grid=BASE, key="k1", route="frame")
+    c.on_black_move(token=7, coords_xy=(1, 1))           # KaTrain 座標 (x=1,y=1) → グリッド (1,1)
+    c.step()
+    assert c.state == "ANSWERING"
+    assert adb.taps[-1] == al.board_to_device(1, 1, FakeVision.RECT, 3)
+    c.step()                                             # popup → RESULT
+    assert c.state == "RESULT"
+    c.step()                                             # correct → NEXT
+    assert c.state == "NEXT" and c.stats["correct"] == 1
+    c.step()                                             # 次の問題をタップ → AWAIT_PROBLEM
+    assert adb.taps[-1] == al.ui_point("popup_next", (900, 1600)) and c.state == "AWAIT_PROBLEM"
+    rec = json.loads((tmp_path / "l.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert rec["outcome"] == "correct" and rec["key"] == "k1" and rec["route"] == "frame"
+
+
+def test_controller_wrong_flow_harvests_and_saves(tmp_path):
+    g1 = al.apply_move_to_grid(BASE, 1, 1, "B")
+    frames = [
+        {"grid": BASE}, {"grid": BASE}, {"grid": BASE}, {"grid": BASE},
+        {"popup": True, "state": "wrong"},               # ANSWERING → RESULT
+        {"popup": True, "state": "wrong"},               # RESULT: wrong → HARVEST
+        {"popup": True},                                 # harvest close: 問題を見る
+        {"grid": BASE},                                  # rewind: 初期局面 → ヒント押下
+        {"grid": BASE, "hint": (1, 1)},                  # 赤丸 → 黒タップ
+        {"grid": g1}, {"grid": g1},                      # 安定 → 手順追記
+        {"grid": g1, "hint": None, "hint_on": False},    # ヒント押下（以後この frame が繰り返る）
+    ]
+    c, gui, adb, clock = _controller(frames, tmp_path)
+    c.activate()
+    c.step(); c.step(); c.step()
+    c.on_problem_ready(token=7, base_grid=BASE, key="k1", route="solver")
+    c.on_black_move(token=7, coords_xy=(0, 2))
+    c.step()
+    c.step()                                             # RESULT
+    c.step()                                             # wrong → HARVEST（監視停止）
+    assert c.state == "HARVEST" and gui.stopped == 1
+    for _ in range(6):
+        c.step()
+    clock.advance(2.0)
+    c.step()                                             # 1 回目の灰確認（2 連続要求のため終わらない）
+    c.step()                                             # 2 回目の灰確認 → done
+    assert gui.saved == [(BASE, [((1, 1), "B")])]
+    assert c.state == "NEXT" and c.stats["harvested"] == 1
+
+
+def test_controller_capture_failed_taps_empty_point_then_harvests(tmp_path):
+    frames = [{"grid": BASE}, {"grid": BASE}, {"grid": BASE}, {"grid": BASE}, {"popup": True, "state": "wrong"}]
+    c, gui, adb, clock = _controller(frames, tmp_path)
+    c.activate()
+    c.step(); c.step()
+    c.on_capture_failed("窓が無い")
+    c.step()                                             # CAPTURE_FAILED に入り、同じ周で空点をタップ
+    assert c.state == "CAPTURE_FAILED"
+    assert adb.taps[-1] == al.board_to_device(0, 0, FakeVision.RECT, 3)
+    c.step()                                             # タップ済み・結果待ち
+    c.step()                                             # popup → RESULT（base は ADB フレームから読んだ BASE）
+    assert c.state == "RESULT"
+    c.step()                                             # wrong → HARVEST
+    assert c.state == "HARVEST"
+
+
+def test_controller_capture_timeout_goes_to_capture_failed(tmp_path):
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path)
+    c.activate()
+    c.step(); c.step()
+    assert c.state == "CAPTURING"
+    clock.advance(16)
+    c.step()
+    assert c.state == "CAPTURE_FAILED"
+
+
+def test_controller_stalled_then_error_then_idle_after_3(tmp_path):
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path, max_consecutive_errors=1)
+    c.activate()
+    c.step(); c.step()
+    c.on_problem_ready(token=1, base_grid=BASE, key="k", route="frame")
+    c.step()
+    clock.advance(41)
+    c.step()
+    assert c.state == "STALLED"
+    clock.advance(61)
+    c.step()
+    assert c.state == "IDLE" and c.stats["failed"] == 1
+
+
+def test_controller_ignores_black_move_from_other_game(tmp_path):
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path)
+    c.activate()
+    c.step(); c.step()
+    c.on_problem_ready(token=1, base_grid=BASE, key="k", route="frame")
+    c.on_black_move(token=999, coords_xy=(0, 0))
+    c.step()
+    assert adb.taps == []
+
+
+def test_controller_starts_on_popup_by_tapping_next(tmp_path):
+    c, gui, adb, clock = _controller([{"popup": True, "state": "correct"}, {"popup": True, "state": "correct"}, {"grid": BASE}], tmp_path)
+    c.activate()
+    c.step()
+    assert c.state == "NEXT"
+    c.step()
+    assert adb.taps[-1] == al.ui_point("popup_next", (900, 1600))
