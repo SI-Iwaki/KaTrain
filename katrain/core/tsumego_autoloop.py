@@ -43,7 +43,7 @@ VERDICT_TAIL_W = 140  # 文字列の右端に寄せた切り出し幅（中央�
 VERDICT_MAX_MAD = 30.0  # テンプレートとの平均絶対差の上限
 VERDICT_MIN_GAP = 10.0  # 1位と2位の差がこれ未満なら unknown
 HINT_ICON = (0.833, 0.775, 18)  # (cx比, cy比, 半径px)。実測 平均輝度: 有効 151 / グレーの戻す 48
-HINT_ICON_ENABLED_MIN = 110.0
+HINT_ICON_ENABLED_MIN = 126.0  # 実測 2026-08-23: 有効 160.4 / 無効 92.7（中点）
 HEADER_BAND = (0.10, 0.15, 0.90, 0.18)
 RED_RING_MIN_PIXELS = 80
 
@@ -212,22 +212,35 @@ def device_to_board(x, y, rect, size):
 
 
 def find_hint_circle(frame, rect, size):
-    """盤の中の赤いリング（ヒント）の交点 (i, j)。無ければ None。複数（離れた赤）なら None"""
+    """盤の中の赤いリング（ヒント）の交点 (i, j)。無ければ None。複数（離れた赤）なら None。
+
+    赤画素は最も近い交点（device_to_board）ごとにクラスタへ振り分ける。実機では最終手に
+    小さい赤四角マーカー（約16px）も描かれるため、単一 bbox で集計するとリングと合算されて
+    サイズ判定を外れる（spec 2026-08-23 追記）。クラスタごとに bbox のサイズを見て、リング
+    サイズ（cell*0.4〜1.3・かつ RED_RING_MIN_PIXELS 以上）に収まるものだけを候補とする。
+    マーカーのような小さいクラスタは無視され、候補が 0 個・2 個以上なら None。
+    """
     x0, y0, x1, y1 = rect
     px = frame.load()
-    xs, ys = [], []
+    clusters = {}
     for y in range(y0, y1 + 1, 2):
         for x in range(x0, x1 + 1, 2):
             if _is_red(*px[x, y][:3]):
-                xs.append(x)
-                ys.append(y)
-    if len(xs) < RED_RING_MIN_PIXELS:
-        return None
+                key = device_to_board(x, y, rect, size)
+                clusters.setdefault(key, []).append((x, y))
     cell = (x1 - x0 + 1) / size
-    bw, bh = max(xs) - min(xs), max(ys) - min(ys)
-    if not (cell * 0.4 <= bw <= cell * 1.3 and cell * 0.4 <= bh <= cell * 1.3):
-        return None  # 1交点の大きさでない＝別の赤（複数の赤丸・UI）
-    return device_to_board((min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, rect, size)
+    candidates = []
+    for key, pts in clusters.items():
+        if len(pts) < RED_RING_MIN_PIXELS:
+            continue
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+        bw, bh = max(xs) - min(xs), max(ys) - min(ys)
+        if cell * 0.4 <= bw <= cell * 1.3 and cell * 0.4 <= bh <= cell * 1.3:
+            candidates.append(key)
+    if len(candidates) != 1:
+        return None
+    return candidates[0]
 
 
 def hint_enabled(frame):

@@ -728,3 +728,18 @@ def test_popup_state_correct_template():
     assert {"wrong", "correct"} <= set(templates)
     assert al.popup_state(_frame("popup_correct.png"), templates) == "correct"
     assert al.popup_state(_frame("popup_wrong.png"), templates) == "wrong"
+
+
+def test_hint_disabled_frame():
+    assert al.hint_enabled(_frame("hint_disabled.png")) is False
+    assert al.hint_enabled(_frame("problem.png")) is True
+
+
+def test_find_hint_circle_ignores_last_move_marker():
+    # hint_disabled.png: 最終手の赤い四角マーカーだけ（赤丸なし）→ None
+    fr = _frame("hint_disabled.png")
+    rect = al.board_rect_of(fr)
+    assert al.find_hint_circle(fr, rect, 13) is None
+    # hint_with_marker.png: 赤丸 (2,9) ＋ 四角マーカー → 赤丸だけを返す
+    fr2 = _frame("hint_with_marker.png")
+    assert al.find_hint_circle(fr2, al.board_rect_of(fr2), 13) == (2, 9)
