@@ -219,14 +219,23 @@ AutoLoop 本体（`katrain/core/tsumego_autoloop.py`）は Kivy 非依存で、G
 1問1行。後から「どこで落ちたか」をまとめて見るためのもの（既存の1問1ログ `tsumego_*.log` は従来どおり）。
 
 ```json
-{"ts": "2026-08-23T06:30:12", "key": "<sha1|null>", "size": 13, "route": "frame|solver|frameless|book|null",
- "role_guess": true, "outcome": "correct|wrong|timeout|capture_failed|unknown_popup|stalled",
- "elapsed_s": 17.4, "n_black": 4, "harvest": "saved|skipped:<理由>|null", "line_len": 7,
- "header_hash": "<phash>", "shots": ["autoloop/20260823_063012_popup.png"], "log": "tsumego_20260823_063001.log"}
+{"ts": "2026-08-23T06:30:12", "key": "<sha1|null>", "size": 13, "route": "book|ai:tsumego|ai:tsumego_solver|null",
+ "outcome": "correct|wrong|error|capture_failed|unknown_popup|stalled",
+ "elapsed_s": 17.4, "n_black": 4, "harvest": "saved|duplicate|skipped:<理由>|null", "line_len": 7,
+ "header_hash": "<sha1 先頭16桁|null>",
+ "shots": ["C:\Users\...\.katrain\logs\autoloop\20260823_063012_001_stalled.png"],
+ "log": "tsumego_20260823_063001.log"}
 ```
 
+実装との対応（2026-08-23 の最終レビューで揃えた）: `route` は**回答帳ヒットなら `book`、それ以外は
+黒の `player_subtype` 文字列**（`ai:tsumego` / `ai:tsumego_solver`。枠あり／枠なしの別は持たない）。
+`shots` は `_save_shot` が返す**絶対パス**（`shots_dir` 直下・`<日時>_<連番>_<タグ>.png`）。`role_guess` は
+**記録しない**（枠の役割推定は自動ループの外の判断で、コントローラからは見えない）。`header_hash` は
+AWAIT→CAPTURING へ入るフレームのヘッダ帯（`vision.header_hash`）で、キャプチャできなかった問題にも付く。
+`log` はその問題の詰碁ログのファイル名（`_game_log_path` の basename）で、台帳から 1問1ログ を引くための鍵。
+
 - スクショは `~/.katrain/logs/autoloop/` に、**正常系では保存しない**（失敗・unknown・stalled のときだけ）
-- `header_hash` はヘッダ帯の 16×4 縮小グレースケールのハッシュ。同じ出典・番号なら同じ値になるので、
+- `header_hash` はヘッダ帯の 32×4 縮小グレースケールの sha1 先頭16桁。同じ出典・番号なら同じ値になるので、
   回答帳キーが認識ずれで外れた回の追跡に使う（OCR は §13）
 - 保持: 追記のみ。ローテーションしない（1行 300B・1万問で 3MB）
 
@@ -259,6 +268,7 @@ AutoLoop 本体（`katrain/core/tsumego_autoloop.py`）は Kivy 非依存で、G
 | poll_ms | 500 | ADB フレームの周期 |
 | settle_ms | 700 | タップ後に盤の安定を待つ時間 |
 | answer_timeout_s | 40 | ANSWERING のポップアップ待ち上限 |
+| capture_timeout_s | 25 | CAPTURING（KaTrain の取り込み完了）待ちの上限。超過で CAPTURE_FAILED |
 | max_problems | 0 | 0 で無制限 |
 | max_consecutive_errors | 3 | これで IDLE |
 | ui_points | §4.1 の既定 | 比率座標 |

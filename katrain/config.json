@@ -114,7 +114,7 @@
         "poll_ms": 500,
         "settle_ms": 700,
         "answer_timeout_s": 40,
-        "capture_timeout_s": 15,
+        "capture_timeout_s": 25,
         "max_problems": 0,
         "max_consecutive_errors": 3
     },

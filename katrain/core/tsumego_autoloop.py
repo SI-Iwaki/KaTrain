@@ -16,7 +16,7 @@ import re
 import subprocess
 import threading
 import time
-from typing import NamedTuple, Optional
+from typing import NamedTuple
 
 from PIL import Image, ImageStat
 
@@ -89,7 +89,7 @@ def autoloop_settings_from_config(cfg):
         poll_ms=int(cfg.get("poll_ms", 500)),
         settle_ms=int(cfg.get("settle_ms", 700)),
         answer_timeout_s=float(cfg.get("answer_timeout_s", 40)),
-        capture_timeout_s=float(cfg.get("capture_timeout_s", 15)),
+        capture_timeout_s=float(cfg.get("capture_timeout_s", 25)),
         max_problems=int(cfg.get("max_problems", 0)),
         max_consecutive_errors=int(cfg.get("max_consecutive_errors", 3)),
         ui_points=points,
@@ -260,6 +260,27 @@ def empty_points(grid):
     return [(i, j) for i, row in enumerate(grid) for j, v in enumerate(row) if v == EMPTY]
 
 
+def farthest_empty_point(grid):
+    """どの石からも最も遠い空点（チェビシェフ距離の最大・同値なら先頭）。空点が無ければ None。
+
+    CAPTURE_FAILED の「わざと1手」に使う。左上から順の `empty_points[0]` は問題の石の
+    すぐ隣になりうる＝正解手や有効な変化を踏みかねないので、石から最も離れた点を選ぶ
+    （不正解になれば、そのまま収穫＝ヒント歩きで正解手順を取り込める）。
+    """
+    empties = empty_points(grid)
+    if not empties:
+        return None
+    stones = [(i, j) for i, row in enumerate(grid) for j, v in enumerate(row) if v != EMPTY]
+    if not stones:
+        return empties[0]
+    best, best_d = None, -1
+    for i, j in empties:
+        d = min(max(abs(i - si), abs(j - sj)) for si, sj in stones)
+        if d > best_d:
+            best, best_d = (i, j), d
+    return best
+
+
 class Vision:
     """画面判定の束（テストでは同じメソッド名のフェイクに差し替える）"""
 
@@ -306,6 +327,11 @@ def _run_adb(args, binary=False, timeout_s=10):
         )
     except (OSError, subprocess.TimeoutExpired) as e:
         raise AdbError(f"adb 実行失敗: {e}") from e
+    if proc.returncode != 0:
+        # 失敗を空文字（＝「接続されていない」と同じ見た目）で返さない。呼び出し側は
+        # AdbError を捕まえて次の port へ進む／再接続する（devices の空出力と区別できる）
+        detail = (proc.stderr or proc.stdout or b"").decode("utf-8", errors="replace").strip()
+        raise AdbError(f"adb 失敗（code {proc.returncode}）: {detail[:120]}")
     if binary:
         return proc.stdout
     return proc.stdout.decode("utf-8", errors="replace")
@@ -322,7 +348,10 @@ class AdbClient:
         return self.runner([self.adb_path, *args], binary=binary, timeout_s=self.timeout_s)
 
     def connect(self):
-        out = self._adb("connect", self.serial)
+        try:
+            out = self._adb("connect", self.serial)
+        except AdbError:  # 応答しない port は失敗であって例外ではない（探索が次へ進める）
+            return False
         return "connected" in out or "already connected" in out
 
     def is_device(self):
@@ -342,8 +371,12 @@ class AdbClient:
         self._adb("-s", self.serial, "shell", "input", "tap", str(int(round(x))), str(int(round(y))))
 
 
-def discover_serial(adb_path, conf_path=BLUESTACKS_CONF, runner=None):
-    """bluestacks.conf の adb_port を順に connect し、devices に 'device' で現れた最初のものを返す"""
+def discover_serial(adb_path, conf_path=BLUESTACKS_CONF, runner=None, timeout_s=10):
+    """bluestacks.conf の adb_port を順に connect し、devices に 'device' で現れた最初のものを返す
+
+    timeout_s は 1 本あたりの adb 実行の上限。GUI のホットキーから呼ぶときは短く（3 秒）指定する
+    ＝応答しない port が複数あると既定の 10 秒×本数ぶん画面が固まって見える
+    """
     ports = []
     try:
         with open(conf_path, encoding="utf-8", errors="replace") as f:
@@ -355,7 +388,7 @@ def discover_serial(adb_path, conf_path=BLUESTACKS_CONF, runner=None):
         return None
     for port in ports:
         serial = f"127.0.0.1:{port}"
-        client = AdbClient(adb_path, serial, runner=runner)
+        client = AdbClient(adb_path, serial, runner=runner, timeout_s=timeout_s)
         try:
             client.connect()
             if client.is_device():
@@ -381,7 +414,7 @@ HINT_WAIT_S = 1.5  # ヒント押下後に赤丸を待つ上限（spec §4.4）
 MOVE_WAIT_S = 6.0  # 黒タップ後に盤が安定するまでの上限
 REWIND_MAX_TAPS = 20
 HARVEST_MAX_MOVES = 40
-HARVEST_MAX_S = 120.0  # 収穫1問あたりの総時間上限（close/rewind が無限に粘る事態への全体締切）
+HARVEST_MAX_S = 180.0  # 収穫1問あたりの総時間上限（実測 40 手 ≒ 140 秒。close/rewind の粘りへの全体締切）
 CLOSE_MAX_TAPS = 5  # ポップアップが閉じ続ける場合の打ち切り
 
 
@@ -420,8 +453,18 @@ class Harvester:
         self.hint_retry = 0
         self.gray_seen = 0
 
+    def _tap_xy(self, x, y):
+        """タップ（AdbError は握って続行）。上げるとコントローラの `_run` の例外カウンタが進み、
+        ADB の一時的な失敗でループ全体が止まってしまう"""
+        try:
+            self.adb.tap(x, y)
+            return True
+        except AdbError as e:
+            self.log(f"[Harvester] タップ失敗: {e}")
+            return False
+
     def _tap_named(self, name, frame):
-        self.adb.tap(*self.vision.ui_point(name, frame))
+        self._tap_xy(*self.vision.ui_point(name, frame))
         self.not_before = self.clock() + self.settle_s
 
     def _fail(self, reason):
@@ -465,7 +508,10 @@ class Harvester:
             self.phase = "wait_hint"
             return "running", None
         if self.phase == "wait_hint":
-            rect = self.vision.board_rect(frame)
+            try:
+                rect = self.vision.board_rect(frame)
+            except CaptureError:
+                return "running", None  # 遷移画面等で盤が読めないフレーム。次のフレームで
             pt = self.vision.find_hint_circle(frame, rect, self.size)
             if pt is not None:
                 self.gray_seen = 0
@@ -473,7 +519,7 @@ class Harvester:
                 expected = apply_move_to_grid(self.grid, i, j, BLACK)
                 if expected is None:
                     return self._fail(f"hint: 赤丸 {pt} に打てません")
-                self.adb.tap(*board_to_device(i, j, rect, self.size))
+                self._tap_xy(*board_to_device(i, j, rect, self.size))
                 self.pending = (i, j, expected)
                 self.last_obs = None
                 self.not_before = self.clock() + self.settle_s
@@ -533,11 +579,13 @@ MAX_TAPS_PER_PROBLEM = 60  # 1問あたりのタップ上限（spec §9）
 
 
 class _Problem:
-    def __init__(self, token, base_grid, key, route, started):
+    def __init__(self, token, base_grid, key, route, started, header_hash=None, log_name=None):
         self.token, self.base, self.key, self.route, self.started = token, base_grid, key, route, started
         self.size = len(base_grid) if base_grid else None
         self.n_black = 0
         self.rect = None
+        self.header_hash = header_hash  # 出題フレームのヘッダ帯のハッシュ（同じ出典・番号なら同じ）
+        self.log_name = log_name  # 詰碁ログのファイル名（台帳から 1問1ログ を引くため）
 
 
 class AutoLoopController:
@@ -560,10 +608,13 @@ class AutoLoopController:
         self._frame_failures = 0
         self._errors = 0
         self._cf_tapped = False
+        self._cf_wait_one = False  # CAPTURE_FAILED に入った最初の step は打たずに 1 周待つ
         self._cf_base = None
         self._popup_seen = False  # ポップアップを 1 フレーム見た（2 フレーム目で RESULT へ）
         self._result_tries = 0  # RESULT で unknown を粘った回数
         self._pending_taps = []
+        self._early_taps = {}  # problem_ready より先に届いた黒手（トークン別）
+        self._pending_header = None  # 出題フレームの header_hash（CAPTURING へ入るときに撮る）
         self._shots = []
         self._shot_seq = 0
 
@@ -583,6 +634,8 @@ class AutoLoopController:
         self._shots = []
         self._popup_seen = False
         self._result_tries = 0
+        self._early_taps = {}
+        self._pending_header = None
 
     def start(self):
         self._stop.clear()
@@ -594,6 +647,7 @@ class AutoLoopController:
         self._stop.set()
         self._wake.set()
         self.state = "IDLE"
+        self._clear_events()  # IDLE 中に溜めない（次の start で前回の黒手が飛び出さないように）
         t = self._thread
         if t is not None and t.is_alive() and t is not threading.current_thread():
             t.join(timeout=2.0)
@@ -603,7 +657,9 @@ class AutoLoopController:
     def _run(self):
         me = threading.current_thread()
         exc_count = 0
+        poll_s = self.settings.poll_ms / 1000.0
         while not self._stop.is_set() and self._thread is me:
+            started = self.clock()
             try:
                 self.step()
                 exc_count = 0
@@ -612,12 +668,14 @@ class AutoLoopController:
                 self.gui.log(f"autoloop: step で例外: {e!r}")
                 if exc_count >= 10:
                     self._to_idle("step の例外が続くため停止しました")
-            self._wake.wait(self.settings.poll_ms / 1000.0)
+            # step 自体が screencap 等で時間を使うので、その分だけ待ちを縮めて実効周期を保つ
+            # （縮めないと poll_ms=500 でも実効 1 Hz 近くまで落ちる）
+            self._wake.wait(max(0.0, poll_s - (self.clock() - started)))
             self._wake.clear()
 
     # --- GUI からのイベント ---
-    def on_problem_ready(self, token, base_grid, key, route):
-        self._events.put(("problem_ready", token, base_grid, key, route))
+    def on_problem_ready(self, token, base_grid, key, route, log_name=None):
+        self._events.put(("problem_ready", token, base_grid, key, route, log_name))
         self._wake.set()
 
     def on_capture_failed(self, message):
@@ -637,6 +695,17 @@ class AutoLoopController:
         self._drain_events()
         if self.state == "IDLE" or self.clock() < self._not_before:
             return
+        # 盤の位置が分かっている 2 手目以降は screencap を待たずにタップする（黒の着手が
+        # 1 周ぶん遅れないように）。rect 未知・タップ上限のときは従来どおりフレームを見て決める
+        if (
+            self.state == "ANSWERING"
+            and self._pending_taps
+            and not self._popup_seen  # 直前のフレームでポップアップが見えていたら盤を触らない
+            and self.problem is not None
+            and self.problem.rect is not None
+            and self.problem.n_black < MAX_TAPS_PER_PROBLEM
+        ):
+            self._flush_pending_taps()
         try:
             frame = self.adb.screencap()
             self._frame_failures = 0
@@ -652,7 +721,34 @@ class AutoLoopController:
                 self._fail("adb: 画面が取れません", frame=None)
                 self._to_idle("ADB から画面が取れないため停止しました")
             return
+        if self.state == "IDLE":
+            return  # screencap を待っている間に stop() された（_step_idle は無い）
         getattr(self, f"_step_{self.state.lower()}")(frame)
+
+    def _clear_events(self):
+        while True:
+            try:
+                self._events.get_nowait()
+            except queue.Empty:
+                return
+
+    def _accept_problem(self, token, base_grid, key, route, log_name):
+        """problem_ready を受理して ANSWERING へ。先に届いていた黒手はここで拾う（I1）"""
+        counted = self.state == "CAPTURE_FAILED"  # CAPTURE_FAILED 入りで既に 1 問数えてある
+        self.problem = _Problem(
+            token, base_grid, key, route, self.clock(), header_hash=self._pending_header, log_name=log_name
+        )
+        if not counted:
+            self.stats["problems"] += 1
+            self._shots = []
+        self._popup_seen = False
+        self._cf_base = None
+        self._pending_taps = self._early_taps.pop(token, [])
+        if self._early_taps:
+            self.gui.log(f"autoloop: 先行して届いた別トークンの黒手を破棄しました（{list(self._early_taps)}）")
+            self._early_taps = {}
+        self.state = "ANSWERING"
+        self.gui.notify("info", self._banner("解答中"))
 
     def _drain_events(self):
         while True:
@@ -662,14 +758,11 @@ class AutoLoopController:
                 return
             kind = ev[0]
             if kind == "problem_ready":
-                if self.state == "CAPTURING":
-                    _k, token, base_grid, key, route = ev
-                    self.problem = _Problem(token, base_grid, key, route, self.clock())
-                    self.stats["problems"] += 1
-                    self._shots = []
-                    self._popup_seen = False
-                    self.state = "ANSWERING"
-                    self.gui.notify("info", self._banner("解答中"))
+                _k, token, base_grid, key, route, log_name = ev
+                # CAPTURE_FAILED でも「まだ わざと1手 を打っていない」なら遅れて来たキャプチャを活かす
+                # （実測: 再出題の解析が capture_timeout を数秒超えるだけで正答中の問題を潰していた）
+                if self.state == "CAPTURING" or (self.state == "CAPTURE_FAILED" and not self._cf_tapped):
+                    self._accept_problem(token, base_grid, key, route, log_name)
                 else:
                     self.gui.log(f"autoloop: problem_ready を無視しました（state={self.state}）")
             elif kind == "capture_failed":
@@ -682,6 +775,10 @@ class AutoLoopController:
                 _k, token, coords_xy = ev
                 if self.state == "ANSWERING" and self.problem is not None and token == self.problem.token:
                     self._pending_taps.append(coords_xy)
+                elif self.state == "CAPTURING":
+                    # 回答帳ヒット等の高速な再出題では、黒の着手が problem_ready より先に届く。
+                    # 捨てるとその手が永久に打たれない（＝解答が止まる）のでトークン別に溜める
+                    self._early_taps.setdefault(token, []).append(coords_xy)
                 else:
                     self.gui.log(f"autoloop: black_move を無視しました（state={self.state}, token={token}）")
 
@@ -718,11 +815,18 @@ class AutoLoopController:
         if grid is None or not has_stones or grid == self.last_initial or grid == self.last_final:
             self._await_prev = None
         elif grid == self._await_prev:
+            if self.gui.trigger_capture() is False:
+                # 取り込み中／デバウンス中で何も起きなかった。CAPTURING に入ると 25 秒待って
+                # CAPTURE_FAILED に落ちるだけなので、AWAIT に留まって次の周で撃ち直す
+                self.gui.log("autoloop: キャプチャを起動できませんでした。次の周で再試行します")
+                self._check_await_deadline(frame)
+                return
             self._await_prev = None
             self._pending_taps = []
+            self._early_taps = {}
+            self._pending_header = self._header_hash(frame)
             self.state = "CAPTURING"
             self._deadline = self.clock() + self.settings.capture_timeout_s
-            self.gui.trigger_capture()
             return
         else:
             self._await_prev = grid  # 2 フレーム連続で同じになるまで待つ
@@ -763,24 +867,38 @@ class AutoLoopController:
             self._save_shot(frame, "stalled")
             return
         if self._pending_taps:
-            if p.n_black >= MAX_TAPS_PER_PROBLEM:
-                self._pending_taps = []
-                self._save_shot(frame, "tap_cap")
-                self.gui.log(f"autoloop: 1問あたりのタップ上限（{MAX_TAPS_PER_PROBLEM}）に達しました")
-                self.state = "STALLED"
-                self._popup_seen = False
-                self._deadline = self.clock() + STALL_EXTRA_S
-                return
+            self._flush_pending_taps(frame)
+            return
+
+    def _flush_pending_taps(self, frame=None):
+        """溜まっている黒手をアプリ盤へタップする。frame=None は screencap 前の呼び出し
+        （盤の矩形が既知のときだけ成立する）。打てたら True"""
+        p = self.problem
+        if p is None or not self._pending_taps:
+            return False
+        if p.n_black >= MAX_TAPS_PER_PROBLEM:
+            if frame is None:
+                return False  # スクショを残したいのでフレームのある周で STALLED に落とす
+            self._pending_taps = []
+            self._save_shot(frame, "tap_cap")
+            self.gui.log(f"autoloop: 1問あたりのタップ上限（{MAX_TAPS_PER_PROBLEM}）に達しました")
+            self.state = "STALLED"
+            self._popup_seen = False
+            self._deadline = self.clock() + STALL_EXTRA_S
+            return False
+        if p.rect is None:
+            if frame is None:
+                return False
             try:
                 p.rect = self.vision.board_rect(frame)
             except CaptureError:
-                return  # 次のフレームで
-            for coords_xy in self._pending_taps:
-                i, j = move_to_grid(coords_xy, p.size)
-                self._tap(*board_to_device(i, j, p.rect, p.size))
-                p.n_black += 1
-            self._pending_taps = []
-            return
+                return False  # 次のフレームで
+        for coords_xy in self._pending_taps:
+            i, j = move_to_grid(coords_xy, p.size)
+            self._tap(*board_to_device(i, j, p.rect, p.size))
+            p.n_black += 1
+        self._pending_taps = []
+        return True
 
     def _step_result(self, frame):
         verdict = self.vision.popup_state(frame)
@@ -817,11 +935,13 @@ class AutoLoopController:
     def _enter_capture_failed(self):
         self.state = "CAPTURE_FAILED"
         self._popup_seen = False
-        self.problem = _Problem(None, None, None, None, self.clock())
+        self.problem = _Problem(None, None, None, None, self.clock(), header_hash=self._pending_header)
         self.stats["problems"] += 1  # キャプチャ失敗も 1 問（max_problems の対象）
         self._shots = []
         self._cf_tapped = False
+        self._cf_wait_one = True  # 遅れて来る problem_ready のために 1 周だけ待つ
         self._cf_base = None
+        self._early_taps = {}
         self._deadline = self.clock() + CAPTURE_FAILED_WAIT_S
 
     def _step_capture_failed(self, frame):
@@ -834,13 +954,18 @@ class AutoLoopController:
             return
         if self._popup_seen:
             return  # ポップアップ 1 枚目
+        if self._cf_wait_one:
+            # 「わざと1手」は正答中の問題を潰しうるので、遅れて届くキャプチャ完了に 1 周ぶん
+            # 猶予を与える（届けば _drain_events が ANSWERING へ戻す）
+            self._cf_wait_one = False
+            return
         if not self._cf_tapped:
             try:
                 read = self.vision.read_board(frame)
                 self._cf_base = [r[:] for r in read.grid]
-                empties = empty_points(read.grid)
-                if empties:
-                    i, j = empties[0]
+                far = farthest_empty_point(read.grid)
+                if far is not None:
+                    i, j = far
                     self._tap(*board_to_device(i, j, read.rect, read.size))
             except CaptureError:
                 self._save_shot(frame, "capture_failed")
@@ -861,7 +986,17 @@ class AutoLoopController:
         p = self.problem
         if status == "done":
             base = p.base if (p and p.base) else self._cf_base
-            added, n = self.gui.save_line(base, payload)
+            # ログの保護（.keep）はキャプチャできた問題だけ。CAPTURE_FAILED 由来の収穫では
+            # いま開いているのは**前の問題**のログなので、保護すると無関係なログが残り続ける
+            protect = bool(p is not None and p.token is not None)
+            try:
+                added, n = self.gui.save_line(base, payload, protect_log=protect)
+            except Exception as e:
+                self.gui.log(f"autoloop: 回答帳への保存に失敗: {e!r}")
+                self._record(p, "wrong", harvest=f"skipped:save_failed:{e}")
+                self.harvester = None
+                self.state = "NEXT"
+                return
             self.stats["harvested"] += 1
             self._record(p, "wrong", harvest="saved" if added else "duplicate", line_len=n)
             self.gui.notify("save", f"正解手順を回答帳に保存しました（{n}手）")
@@ -895,6 +1030,9 @@ class AutoLoopController:
         self._tap(*self.vision.ui_point(name, frame))
         self.problem = None
         self._cf_base = None
+        self._pending_taps = []
+        self._early_taps = {}
+        self._pending_header = None
         self._not_before = self.clock() + max(self.settings.settle_ms, 300) / 1000.0
         if self.settings.max_problems and self.stats["problems"] >= self.settings.max_problems:
             self._to_idle(f"{self.settings.max_problems} 問に達したため停止しました")
@@ -927,8 +1065,17 @@ class AutoLoopController:
 
     def _to_idle(self, text):
         self.state = "IDLE"
+        self._clear_events()  # 止まっている間に届くイベントを溜めない
         self.gui.notify("warn", f"自動ループ: {text}")
         self.gui.log(f"autoloop: {text}")
+
+    def _header_hash(self, frame):
+        """出題フレームのヘッダ帯のハッシュ（台帳用）。取れなければ None"""
+        try:
+            return self.vision.header_hash(frame)
+        except Exception as e:
+            self.gui.log(f"autoloop: header_hash を取れません: {e}")
+            return None
 
     def _banner(self, what):
         s = self.stats
@@ -945,6 +1092,8 @@ class AutoLoopController:
             "n_black": p.n_black if p else 0,
             "harvest": harvest,
             "line_len": line_len,
+            "header_hash": p.header_hash if p else None,
+            "log": p.log_name if p else None,
             "shots": list(self._shots),
         }
         try:

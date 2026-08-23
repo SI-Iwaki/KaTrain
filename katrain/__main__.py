@@ -549,7 +549,7 @@ class KaTrainGui(Screen, KaTrainBase):
         else:
             self._tsumego_message("同じ手順が記録済みです（回答帳は変更なし）", kind="info")
 
-    def _save_answer_line(self, base_grid, moves):
+    def _save_answer_line(self, base_grid, moves, protect_log=True):
         """回答帳へ 1 手順を保存する（記録ボタンと自動ループの共用）。
 
         base_grid は枠を張る前の認識グリッド（= game.tsumego_app_grid = アプリの盤）。moves は
@@ -559,6 +559,10 @@ class KaTrainGui(Screen, KaTrainBase):
         自動ループ（`_autoloop_callbacks`）からはメッセージループ外のワーカースレッドで呼ばれるが、
         ここで触るのは回答帳ファイル・ログ・`game.tsumego_book_entry` だけで Kivy のプロパティは
         更新しない（＝Clock を経由する必要がない）。
+
+        protect_log=False は「いま開いているログはこの手順の問題のものではない」ときに渡す
+        （自動ループの CAPTURE_FAILED 経由の収穫＝キャプチャできていないので、開いているのは
+        **前の問題**のログ。保護すると無関係なログが自動削除されずに残り続ける）。
         """
         from katrain.core import tsumego_answer_book as answer_book
         from katrain.core.tsumego_problem import grid_to_stones
@@ -582,7 +586,9 @@ class KaTrainGui(Screen, KaTrainBase):
         # 次から即答させたい正解済みの問題も同じく残す）。認識盤面・キャプチャ設定
         # （komi/ko/margin/black_to_attack/枠なし）と各手の判定が揃っているこのファイルが、
         # 後から回答帳なしで出題し直して正解／誤答を比べるときの入力になる
-        kept = self.keep_current_log(key=key, note=f"answer_book {len(line)}手 {' '.join(line)}")
+        kept = None
+        if protect_log:
+            kept = self.keep_current_log(key=key, note=f"answer_book {len(line)}手 {' '.join(line)}")
         if kept:
             self.log(f"tsumego_answer_book: このログを保護しました（自動削除しません）: {kept}", OUTPUT_INFO)
         return added, len(line)
@@ -1079,14 +1085,16 @@ class KaTrainGui(Screen, KaTrainBase):
         # 認識までここで行い、盤面への反映はメッセージループに投げる
         # force=True はホットキー連打防止のデバウンスを飛ばす（自動ループが次の問題を出した直後に
         # 呼ぶため。人間の連打と違い、前回のキャプチャから2秒未満でも意図した1回である）
+        # 戻り値は「実際にキャプチャを起動したか」。自動ループはこれが False なら CAPTURING に
+        # 入らず AWAIT に留まる（入ると誰も problem_ready を出さないまま締切まで待つことになる）
         from katrain.core.tsumego_capture import CaptureError, capture_board_view
 
         now = time.time()
         if not force and now - getattr(self, "_tsumego_capture_last_trigger", 0.0) < 2.0:
-            return
+            return False
         self._tsumego_capture_last_trigger = now
         if getattr(self, "_tsumego_capture_busy", False):
-            return
+            return False
         self._tsumego_capture_busy = True
         try:
             settings = self._config.get("tsumego_capture") or {}
@@ -1096,17 +1104,17 @@ class KaTrainGui(Screen, KaTrainBase):
                 margin = int(settings.get("frame_margin", 4))
             except CaptureError as e:
                 self._tsumego_capture_failed(f"詰碁キャプチャ失敗: {e}")
-                return
+                return True
             except Exception as e:
                 self._tsumego_capture_failed(f"詰碁キャプチャで予期しないエラー: {e}")
-                return
+                return True
             if view.kind == "web_full" and len(view.grid) == 19:
                 # Web サイトの 19 路全体表示は詰碁ではなく盤面把握（最善手）問題なので、枠・リージョン・
                 # 詰碁戦略を通さず通常モードの解析に回す（ユーザー要件 2026-08-13）。9/13 路は盤が小さく
                 # モバイル風レイアウトでは詰碁でも全体表示になるため、全体表示でも詰碁経路に回す
                 # （ユーザー要件 2026-08-13 追記2）
                 self("capture-fullboard-apply", view.grid)
-                return
+                return True
             capture_note = None
             if view.kind == "web_partial":
                 capture_note = "Web盤面認識（部分表示）: 切れている辺=" + ",".join(view.cropped_sides) + (
@@ -1120,6 +1128,7 @@ class KaTrainGui(Screen, KaTrainBase):
                 "tsumego-capture-apply", view.grid, ko, margin, black_to_attack, frameless,
                 capture_note=capture_note, view_kind=view.kind,
             )
+            return True
         finally:
             self._tsumego_capture_busy = False
 
@@ -1497,8 +1506,16 @@ class KaTrainGui(Screen, KaTrainBase):
         """失敗をターミナルと GUI の両方に出す（作業スレッドから呼ばれるため GUI 更新は Clock 経由）"""
         self.log(message, OUTPUT_ERROR)
         Clock.schedule_once(lambda _dt: self.controls.set_status(message, STATUS_ERROR, check_level=False), 0)
-        # 自動ループ: キャプチャが失敗しても止まらず、わざと1手打って収穫（アプリの正解手順の
-        # 取り込み）に回すため、失敗そのものをイベントとして渡す
+        self._autoloop_capture_failed(message)
+
+    def _autoloop_capture_failed(self, message):
+        """自動ループへ「この出題は取り込めなかった」を伝える。
+
+        キャプチャが失敗しても止まらず、わざと1手打って収穫（アプリの正解手順の取り込み）に
+        回すため、失敗そのものをイベントとして渡す。**盤への反映側（`_do_tsumego_capture_apply`）の
+        早期 return からも呼ぶこと** — 呼ばないとコントローラは problem_ready を待ち続け、
+        capture_timeout ぶん空回りしてから CAPTURE_FAILED に落ちる
+        """
         autoloop = getattr(self, "_autoloop", None)
         if autoloop is not None:
             autoloop.on_capture_failed(message)
@@ -1783,13 +1800,13 @@ class KaTrainGui(Screen, KaTrainBase):
         self._autoloop = None
 
     def _autoloop_trigger_locked(self):
+        # discover_serial は _autoloop_find_serial 側で import する（探索の詳細はそちらに集約）
         from katrain.core.tsumego_autoloop import (
             AdbClient,
             AutoLoopController,
             Ledger,
             Vision,
             autoloop_settings_from_config,
-            discover_serial,
         )
 
         now = time.time()
@@ -1809,35 +1826,65 @@ class KaTrainGui(Screen, KaTrainBase):
             self.log("autoloop: 停止しました", OUTPUT_INFO)
             self._tsumego_message("自動ループを停止しました", kind="info")
             return
-        settings = autoloop_settings_from_config(self._config.get("tsumego_autoloop"))
-        serial = settings.adb_serial or discover_serial(settings.adb_path)
-        if not serial:
-            self._tsumego_message(
-                "ADB デバイスが見つかりません（BlueStacks 設定で ADB を ON にして再起動）", kind="warn", seconds=8
-            )
-            return
-        adb = AdbClient(settings.adb_path, serial)
+        # ここから先（設定読み込み〜discover〜connect〜構築〜start）は丸ごと try で包む。
+        # 実測 2026-08-23: 設定が壊れている・BlueStacks が落ちている等の例外がホットキーの
+        # ワーカースレッドで消え、ユーザーからは「押しても何も起きない」に見えていた
+        self._tsumego_message("ADB に接続中…", kind="info")
         try:
+            settings = autoloop_settings_from_config(self._config.get("tsumego_autoloop"))
+            cap = self._config.get("tsumego_capture") or {}
+            if not cap.get("auto_ai_black", True):
+                # 黒が AI でないと KaTrain は正解手を打たない＝ループは毎問タイムアウトするだけ
+                self._tsumego_message(
+                    "詰碁キャプチャの auto_ai_black が OFF です（黒=AI にしてから開始してください）",
+                    kind="warn",
+                    seconds=8,
+                )
+                return
+            serial = settings.adb_serial or self._autoloop_find_serial(settings)
+            if not serial:
+                self._tsumego_message(
+                    "ADB デバイスが見つかりません（BlueStacks 設定で ADB を ON にして再起動）", kind="warn", seconds=8
+                )
+                return
+            adb = AdbClient(settings.adb_path, serial)
             adb.connect()
             if not adb.is_device():
                 raise RuntimeError(f"{serial} が device として見えません")
+            sizes = [int(s) for s in (cap.get("board_sizes") or [9, 13, 19])]
+            controller = AutoLoopController(
+                adb,
+                Vision(sizes, ui_points=settings.ui_points),
+                self._autoloop_callbacks(),
+                settings,
+                Ledger(settings.ledger_path),
+            )
+            self._autoloop = controller
+            self._autoloop_instances.append(controller)
+            controller.start()
+            self._autoloop_serial = serial  # 次回はここから試す（探索の数秒を省く）
+            self.log(f"autoloop: 開始しました（{serial}）", OUTPUT_INFO)
+            self._tsumego_message("自動ループを開始しました（ctrl+alt+a で停止）", kind="info")
         except Exception as e:
-            self._tsumego_message(f"ADB に接続できません: {e}", kind="warn", seconds=8)
-            return
-        cap = self._config.get("tsumego_capture") or {}
-        sizes = [int(s) for s in (cap.get("board_sizes") or [9, 13, 19])]
-        controller = AutoLoopController(
-            adb,
-            Vision(sizes, ui_points=settings.ui_points),
-            self._autoloop_callbacks(),
-            settings,
-            Ledger(settings.ledger_path),
-        )
-        self._autoloop = controller
-        self._autoloop_instances.append(controller)
-        controller.start()
-        self.log(f"autoloop: 開始しました（{serial}）", OUTPUT_INFO)
-        self._tsumego_message("自動ループを開始しました（ctrl+alt+a で停止）", kind="info")
+            self.log(f"autoloop: 開始できません: {e!r}", OUTPUT_ERROR)
+            self._tsumego_message(f"自動ループを開始できません: {e}", kind="warn", seconds=8)
+
+    def _autoloop_find_serial(self, settings):
+        """前回つながった serial を先に試し、だめなら bluestacks.conf を探索する。
+
+        探索は 1 本あたり 3 秒で切る（既定 10 秒だと応答しない port の数だけ GUI が固まる）
+        """
+        from katrain.core.tsumego_autoloop import AdbClient, discover_serial
+
+        remembered = getattr(self, "_autoloop_serial", "")
+        if remembered:
+            try:
+                probe = AdbClient(settings.adb_path, remembered, timeout_s=3.0)
+                if probe.connect() and probe.is_device():
+                    return remembered
+            except Exception as e:
+                self.log(f"autoloop: 前回の serial {remembered} は使えません（{e}）", OUTPUT_INFO)
+        return discover_serial(settings.adb_path, timeout_s=3.0)
 
     def _autoloop_callbacks(self):
         """コントローラが使う GUI 側の操作（どれもワーカースレッドから呼ばれる）"""
@@ -1846,12 +1893,13 @@ class KaTrainGui(Screen, KaTrainBase):
         from katrain.core.board_watch import grid_to_move
 
         def trigger_capture():
-            self._tsumego_capture_trigger(black_to_attack=None, frameless=False, force=True)
+            # 戻り値は「実際にキャプチャを起動したか」（False なら busy/debounce で何もしていない）
+            return self._tsumego_capture_trigger(black_to_attack=None, frameless=False, force=True)
 
-        def save_line(base_grid, moves_grid):
+        def save_line(base_grid, moves_grid, protect_log=True):
             size = len(base_grid)
             moves = [(grid_to_move(i, j, size), color) for (i, j), color in moves_grid]
-            return self._save_answer_line(base_grid, moves)
+            return self._save_answer_line(base_grid, moves, protect_log=protect_log)
 
         def stop_watch():
             if self._stop_board_watcher(kinds=("tsumego",)):
@@ -2045,12 +2093,14 @@ class KaTrainGui(Screen, KaTrainBase):
             move_tree = KaTrainSGF.parse_sgf(grid_to_sgf(board, komi=komi))
         except ParseError as e:
             self.log(f"詰碁キャプチャSGF解析失敗: {e}", OUTPUT_ERROR)
+            self._autoloop_capture_failed(f"詰碁キャプチャSGF解析失敗: {e}")
             return
         except CaptureError as e:
             # 石が1つも無い等、grid_to_sgf自体が弾くケース。self.log(OUTPUT_ERROR)は
             # 本クラスのlog()内でステータスバーにも転送されるため、_tsumego_capture_failed同様
             # ユーザーに認識できる（メッセージループスレッドなのでClock経由のGUI操作は不要）
             self.log(f"詰碁キャプチャ失敗: {e}", OUTPUT_ERROR)
+            self._autoloop_capture_failed(f"詰碁キャプチャ失敗: {e}")
             return
         self._do_new_game(move_tree=move_tree, _log=False)  # ログは上で詰碁用に開いてある
         # ソルバモード: 抽出済みの問題コンテキストを新しいゲームに引き渡す（§9.1 照会プロトコル。
@@ -2211,7 +2261,11 @@ class KaTrainGui(Screen, KaTrainBase):
                 game = self.game
                 route = "book" if getattr(game, "tsumego_book_entry", None) else self.players_info["B"].player_subtype
                 autoloop.on_problem_ready(
-                    id(game), getattr(game, "tsumego_app_grid", None), getattr(game, "tsumego_book_key", None), route
+                    id(game),
+                    getattr(game, "tsumego_app_grid", None),
+                    getattr(game, "tsumego_book_key", None),
+                    route,
+                    log_name=os.path.basename(self._game_log_path or ""),
                 )
 
         Clock.schedule_once(finish_gui, 0.1)

@@ -152,9 +152,11 @@ def test_white_reply_detects_single_white_and_captures():
 class FakeAdb:
     def __init__(self):
         self.taps = []
+        self.events = []  # ("tap", x, y) / ("cap",) の時系列（タップと screencap の順序を見るため）
 
     def tap(self, x, y):
         self.taps.append((int(x), int(y)))
+        self.events.append(("tap", int(x), int(y)))
 
 
 class FakeVision:
@@ -337,18 +339,25 @@ def test_harvester_fails_after_overall_deadline():
 
 
 class FakeGui:
-    def __init__(self):
+    def __init__(self, capture_ok=True):
         self.captures = 0
+        self.capture_ok = capture_ok  # trigger_capture が「起動した」と答えるか（I2e）
         self.saved = []
+        self.protect_flags = []
+        self.save_error = None
         self.stopped = 0
         self.notes = []
         self.logs = []
 
     def trigger_capture(self):
         self.captures += 1
+        return self.capture_ok
 
-    def save_line(self, base_grid, moves):
+    def save_line(self, base_grid, moves, protect_log=True):
+        if self.save_error is not None:
+            raise self.save_error
         self.saved.append((base_grid, moves))
+        self.protect_flags.append(protect_log)
         return True, len(moves)
 
     def stop_watch(self):
@@ -367,8 +376,11 @@ class FrameAdb(FakeAdb):
     def __init__(self, frames):
         super().__init__()
         self.frames = list(frames)
+        self.screencaps = 0
 
     def screencap(self):
+        self.screencaps += 1
+        self.events.append(("cap",))
         if len(self.frames) > 1:
             return self.frames.pop(0)
         return self.frames[0]
@@ -380,12 +392,12 @@ class FrameAdb(FakeAdb):
         return True
 
 
-def _controller(frames, tmp_path, vision=None, **over):
+def _controller(frames, tmp_path, vision=None, gui=None, **over):
     settings = al.autoloop_settings_from_config(
         {"poll_ms": 0, "settle_ms": 0, "ledger_path": str(tmp_path / "l.jsonl"), "shots_dir": str(tmp_path), **over}
     )
     clock = FakeClock()
-    gui = FakeGui()
+    gui = gui or FakeGui()
     adb = FrameAdb(frames)
     c = al.AutoLoopController(adb, vision or FakeVision(3), gui, settings, al.Ledger(settings.ledger_path), clock=clock)
     return c, gui, adb, clock
@@ -461,13 +473,14 @@ def test_controller_wrong_flow_harvests_and_saves(tmp_path):
 
 
 def test_controller_capture_failed_taps_empty_point_then_harvests(tmp_path):
-    frames = [{"grid": BASE}, {"grid": BASE}, {"grid": BASE}, {"grid": BASE}, {"popup": True, "state": "wrong"}]
+    frames = [{"grid": BASE}] * 5 + [{"popup": True, "state": "wrong"}]
     c, gui, adb, clock = _controller(frames, tmp_path)
     c.activate()
     c.step(); c.step()
     c.on_capture_failed("窓が無い")
-    c.step()                                             # CAPTURE_FAILED に入り、同じ周で空点をタップ
-    assert c.state == "CAPTURE_FAILED"
+    c.step()                                             # CAPTURE_FAILED に入る（I2c: 最初の1周は待つ）
+    assert c.state == "CAPTURE_FAILED" and adb.taps == []
+    c.step()                                             # 1 周待ったので空点をタップ
     assert adb.taps[-1] == al.board_to_device(0, 0, FakeVision.RECT, 3)
     c.step()                                             # タップ済み・結果待ち
     c.step()                                             # popup 1 枚目（2 フレーム規則）
@@ -482,7 +495,7 @@ def test_controller_capture_timeout_goes_to_capture_failed(tmp_path):
     c.activate()
     c.step(); c.step()
     assert c.state == "CAPTURING"
-    clock.advance(16)
+    clock.advance(26)                                    # capture_timeout(25) 超過
     c.step()
     assert c.state == "CAPTURE_FAILED"
 
@@ -529,8 +542,9 @@ def test_controller_capture_failed_idle_not_overwritten(tmp_path):
     c.activate()
     c.step(); c.step()
     c.on_capture_failed("窓が無い")
-    c.step()                                             # CAPTURE_FAILED に入り、空点をタップ
+    c.step()                                             # CAPTURE_FAILED に入る（最初の1周は待つ）
     assert c.state == "CAPTURE_FAILED"
+    c.step()                                             # 空点をタップ
     c.step()                                             # タップ済み・結果待ち
     clock.advance(al.CAPTURE_FAILED_WAIT_S + 1)
     c.step()                                             # 締切超過 → error_step で IDLE（上書きされない）
@@ -852,3 +866,348 @@ def test_popup_state_animating_frame_is_unknown():
     判定帯に別の行が掛かり tail がテンプレとずれる → unknown（wrong と誤判定しないことを固定）"""
     templates = al.load_templates()
     assert al.popup_state(_frame("popup_correct_animating.png"), templates) == "unknown"
+
+
+# --- 最終レビュー修正（I1-I7 / m1-m9） ---
+
+
+def test_capture_timeout_default_is_25():
+    """I2a: 正答中の問題に「わざと1手」を打ちに行かないよう、キャプチャ待ちを 25 秒にする"""
+    assert al.autoloop_settings_from_config(None).capture_timeout_s == 25
+    path = os.path.join(os.path.dirname(__file__), "..", "katrain", "config.json")
+    with open(path, encoding="utf-8") as f:
+        assert json.load(f)["tsumego_autoloop"]["capture_timeout_s"] == 25
+
+
+def test_harvest_deadline_is_180s():
+    """m4: 40 手 ≒ 140 秒の実測ペースに合わせて収穫の全体締切を伸ばす"""
+    assert al.HARVEST_MAX_S == 180.0
+
+
+def test_farthest_empty_point_is_far_from_stones():
+    """m5: 「わざと1手」はどの石からも最も遠い空点（チェビシェフ距離の最大・同値なら先頭）"""
+    grid = [list("B...B"), list("....."), list("....."), list("....."), list("B....")]
+    assert al.empty_points(grid)[0] == (0, 1)   # 左上から順だと石の隣
+    assert al.farthest_empty_point(grid) == (4, 4)
+    assert al.farthest_empty_point([list("BB"), list("BB")]) is None
+    assert al.farthest_empty_point([list(".."), list("..")]) == (0, 0)  # 石が無ければ先頭
+
+
+def test_controller_black_move_before_problem_ready_is_tapped(tmp_path):
+    """I1: 再出題の高速解析では黒の着手が problem_ready より先に来る。捨てずに溜めてタップする"""
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path)
+    c.activate()
+    c.step(); c.step()
+    assert c.state == "CAPTURING"
+    c.on_black_move(token=7, coords_xy=(1, 1))           # problem_ready より先に来た黒
+    c.step()
+    assert adb.taps == []                                # CAPTURING 中はまだ打たない（溜めるだけ）
+    c.on_problem_ready(token=7, base_grid=BASE, key="k1", route="frame")
+    c.step()
+    assert c.state == "ANSWERING"
+    assert adb.taps[-1] == al.board_to_device(1, 1, FakeVision.RECT, 3)
+
+
+def test_controller_drops_early_taps_of_other_tokens(tmp_path):
+    """I1: 別トークン（前の問題）の先行黒手は破棄する"""
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path)
+    c.activate()
+    c.step(); c.step()
+    c.on_black_move(token=999, coords_xy=(1, 1))
+    c.step()
+    c.on_problem_ready(token=7, base_grid=BASE, key="k1", route="frame")
+    c.step()
+    assert c.state == "ANSWERING" and adb.taps == []
+    assert any("先行" in m for m in gui.logs)
+
+
+def test_controller_late_problem_ready_after_capture_failed_returns_to_answering(tmp_path):
+    """I2b: 遅れて届いたキャプチャ完了は、CAPTURE_FAILED でも（未タップなら）活かす"""
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path)
+    c.activate()
+    c.step(); c.step()
+    assert c.state == "CAPTURING"
+    clock.advance(26)                                    # capture_timeout(25) 超過
+    c.step()
+    assert c.state == "CAPTURE_FAILED" and adb.taps == []
+    c.on_problem_ready(token=7, base_grid=BASE, key="k1", route="frame")
+    c.step()
+    assert c.state == "ANSWERING"
+    assert c.stats["problems"] == 1                      # CAPTURE_FAILED で数えた1問を二重に数えない
+
+
+def test_controller_late_problem_ready_ignored_after_deliberate_tap(tmp_path):
+    """I2b: すでに「わざと1手」を打った後の problem_ready は受理しない（盤がずれている）"""
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path)
+    c.activate()
+    c.step(); c.step()
+    clock.advance(26)
+    c.step()                                             # CAPTURE_FAILED に入る
+    c.step()                                             # 1 周待つ（遅いキャプチャの猶予）
+    c.step()                                             # わざと1手
+    assert adb.taps != []
+    c.on_problem_ready(token=7, base_grid=BASE, key="k1", route="frame")
+    c.step()
+    assert c.state == "CAPTURE_FAILED"
+
+
+def test_controller_await_stays_when_trigger_capture_declines(tmp_path):
+    """I2e: キャプチャを起動できなかった（busy/debounce）ら CAPTURING に入らず AWAIT で再試行する"""
+    gui = FakeGui(capture_ok=False)
+    c, _gui, adb, clock = _controller([{"grid": BASE}], tmp_path, gui=gui)
+    c.activate()
+    c.step(); c.step()
+    assert gui.captures == 1 and c.state == "AWAIT_PROBLEM"
+    gui.capture_ok = True
+    c.step()
+    assert gui.captures == 2 and c.state == "CAPTURING"
+
+
+def test_controller_taps_before_screencap_when_rect_known(tmp_path):
+    """I3b: 2 手目以降は rect が既知なので screencap を待たずにタップする（余分な撮影もしない）"""
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path)
+    c.activate()
+    c.step(); c.step()
+    c.on_problem_ready(token=7, base_grid=BASE, key="k1", route="frame")
+    c.on_black_move(token=7, coords_xy=(1, 1))
+    c.step()                                             # 1 手目: frame から rect を確定
+    assert c.problem.rect is not None
+    caps, mark = adb.screencaps, len(adb.events)
+    c.on_black_move(token=7, coords_xy=(0, 0))
+    c.step()
+    assert adb.events[mark][0] == "tap"                  # screencap より前にタップが出ている
+    assert adb.screencaps == caps + 1                    # タップのために撮影が増えない
+
+
+def test_run_waits_poll_minus_step_elapsed(tmp_path):
+    """I3a: 実効周期を保つ（step の所要ぶんだけ待ちを縮める）"""
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path, poll_ms=100)
+    waits = []
+
+    def slow_step():
+        clock.advance(0.06)
+
+    class _Wake:
+        def wait(self, t):
+            waits.append(t)
+            c._stop.set()
+            return True
+
+        def clear(self):
+            pass
+
+        def set(self):
+            pass
+
+        def is_set(self):
+            return False
+
+    c.step = slow_step
+    c._wake = _Wake()
+    c._stop.clear()
+    c._thread = threading.current_thread()
+    c._run()
+    assert waits and abs(waits[0] - 0.04) < 1e-6
+
+
+class _DoneHarvester:
+    def __init__(self, moves):
+        self.moves = moves
+
+    def step(self, frame):
+        return "done", list(self.moves)
+
+
+def test_controller_harvest_protect_log_only_for_real_problem(tmp_path):
+    """I4: CAPTURE_FAILED→HARVEST の保存では .keep を付けない（前問のログが保護されてしまう）"""
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path)
+    c.activate()
+    c.problem = al._Problem(7, BASE, "k", "frame", clock())
+    c.harvester, c.state = _DoneHarvester([((1, 1), "B")]), "HARVEST"
+    c.step()
+    assert gui.protect_flags == [True]
+    c.problem = al._Problem(None, BASE, None, None, clock())
+    c.harvester, c.state = _DoneHarvester([((1, 1), "B")]), "HARVEST"
+    c.step()
+    assert gui.protect_flags == [True, False]
+
+
+def test_controller_harvest_survives_save_failure(tmp_path):
+    """m7: 回答帳への保存が例外を投げても台帳に残して次の問題へ進む"""
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path)
+    c.activate()
+    gui.save_error = RuntimeError("boom")
+    c.problem = al._Problem(7, BASE, "k", "frame", clock())
+    c.harvester, c.state = _DoneHarvester([((1, 1), "B")]), "HARVEST"
+    c.step()
+    assert c.state == "NEXT"
+    rec = json.loads((tmp_path / "l.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+    assert rec["harvest"].startswith("skipped:save_failed")
+
+
+class _RaisingAdb(FakeAdb):
+    def tap(self, x, y):
+        raise al.AdbError("boom")
+
+
+def test_harvester_survives_adb_tap_error():
+    """I5: タップの AdbError で例外を上げない（_run の例外カウンタでループ全体が止まるのを防ぐ）"""
+    base = [list("..."), list("..."), list("...")]
+    h = al.Harvester(_RaisingAdb(), FakeVision(3), base, 3, settle_ms=0, clock=FakeClock(), log=lambda m: None)
+    assert h.step({"popup": True}) == ("running", None)   # close のタップ
+    h2 = al.Harvester(_RaisingAdb(), FakeVision(3), base, 3, settle_ms=0, clock=FakeClock(), log=lambda m: None)
+    st, _p = _run_harvest(h2, [{"grid": base}, {"grid": base, "hint": (1, 1)}])  # 赤丸への黒タップ
+    assert st == "running"
+
+
+def test_harvester_survives_capture_error_in_wait_hint():
+    """I5: wait_hint の board_rect が CaptureError でも running を返す（遷移画面のフレーム）"""
+    base = [list("..."), list("..."), list("...")]
+    h = al.Harvester(FakeAdb(), _NoRectVision(3), base, 3, settle_ms=0, clock=FakeClock(), log=lambda m: None)
+    st, _p = _run_harvest(h, [{"grid": base}, {"grid": base, "hint": (1, 1)}])
+    assert st == "running"
+
+
+def test_step_returns_when_stopped_during_screencap(tmp_path):
+    """m1: stop() が screencap 中に入っても _step_idle を呼びに行かない"""
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path)
+    c.activate()
+    real = adb.screencap
+
+    def stopping():
+        c.state = "IDLE"
+        return real()
+
+    adb.screencap = stopping
+    c.step()
+    assert c.state == "IDLE"
+
+
+def test_run_adb_raises_on_nonzero_returncode(monkeypatch):
+    """m2: adb が非ゼロ終了したら AdbError（無言で空文字を返さない）"""
+
+    class _Proc:
+        returncode = 1
+        stdout = b""
+        stderr = b"error: device not found"
+
+    monkeypatch.setattr(al.subprocess, "run", lambda *a, **k: _Proc())
+    with pytest.raises(al.AdbError) as e:
+        al._run_adb(["adb", "devices"])
+    assert "not found" in str(e.value)
+
+
+def test_adb_connect_returns_false_on_error():
+    """m2: connect() は AdbError を捕まえて False を返す（discover_serial が次の port へ進める）"""
+
+    def runner(args, binary=False, timeout_s=10):
+        raise al.AdbError("boom")
+
+    assert al.AdbClient("adb", "127.0.0.1:5585", runner=runner).connect() is False
+
+
+def test_discover_serial_passes_timeout(tmp_path):
+    """I6: ADB 探索は短いタイムアウトで撃つ（見つからない port で GUI が固まらない）"""
+    conf = tmp_path / "bluestacks.conf"
+    conf.write_text('bst.instance.Pie64.adb_port="5585"\n', encoding="utf-8")
+    seen = []
+
+    def runner(args, binary=False, timeout_s=10):
+        seen.append(timeout_s)
+        return "connected to 127.0.0.1:5585" if args[1] == "connect" else "127.0.0.1:5585\tdevice\n"
+
+    assert al.discover_serial("HD-Adb.exe", str(conf), runner=runner, timeout_s=1.5) == "127.0.0.1:5585"
+    assert seen == [1.5, 1.5]
+
+
+def test_ledger_records_header_hash_and_log_name(tmp_path):
+    """m3: 台帳に header_hash（出題フレーム）と log（詰碁ログのファイル名）を残す"""
+    frames = [{"grid": BASE}] * 3 + [{"popup": True, "state": "correct"}] * 3
+    c, gui, adb, clock = _controller(frames, tmp_path)
+    c.activate()
+    c.step(); c.step()
+    c.on_problem_ready(token=7, base_grid=BASE, key="k1", route="frame", log_name="tsumego_20260823_0900.log")
+    c.step(); c.step(); c.step(); c.step()
+    rec = json.loads((tmp_path / "l.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert rec["outcome"] == "correct" and rec["header_hash"] == "h"
+    assert rec["log"] == "tsumego_20260823_0900.log"
+
+
+def test_to_idle_and_stop_clear_event_queue(tmp_path):
+    """m6: IDLE 中にイベントを溜めない（次の start で古い黒手が飛び出すのを防ぐ）"""
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path)
+    c.activate()
+    c.on_black_move(token=1, coords_xy=(0, 0))
+    c._to_idle("test")
+    assert c._events.empty()
+    c.on_capture_failed("x")
+    c.stop()
+    assert c._events.empty()
+
+
+def test_controller_capture_failed_taps_farthest_empty(tmp_path):
+    """m5: わざと1手は「どの石からも最も遠い空点」（左上の空点ではない）"""
+    g = [list("B...B"), list("....."), list("....."), list("....."), list("B....")]
+    c, gui, adb, clock = _controller([{"grid": g}], tmp_path, vision=FakeVision(5))
+    c.activate()
+    c.step(); c.step()
+    c.on_capture_failed("窓が無い")
+    c.step()                                             # CAPTURE_FAILED（1周待ち）
+    c.step()                                             # わざと1手＝最も遠い空点
+    assert adb.taps[-1] == al.board_to_device(4, 4, FakeVision.RECT, 5)
+
+
+def test_transition_frame_is_not_popup_and_board_reads():
+    """I7: 遷移画面（ヘッダ・下バー無し・右上に残り秒）はポップアップではなく、盤は 13 路で読める"""
+    fr = _frame("transition.png")
+    assert al.popup_present(fr) is False
+    assert al.read_board(fr, (9, 13, 19)).size == 13
+
+
+def _main_func_src(name):
+    import ast
+
+    for n in ast.walk(_main_tree()):
+        if isinstance(n, ast.FunctionDef) and n.name == name:
+            return ast.unparse(n)
+    raise AssertionError(f"{name} が見つかりません")
+
+
+def test_main_autoloop_start_is_guarded():
+    """I6: 起動本体を try/except で包み、ADB 探索は短いタイムアウト＋前回 serial の記憶"""
+    src = _main_func_src("_autoloop_trigger_locked")
+    assert "自動ループを開始できません" in src and "except Exception" in src
+    assert "ADB に接続中" in src
+    assert "auto_ai_black" in src
+    assert "_autoloop_serial" in src
+    find = _main_func_src("_autoloop_find_serial")   # 前回 serial を先に試す・探索は短いタイムアウト
+    assert "timeout_s=3.0" in find and "_autoloop_serial" in find
+
+
+def test_main_capture_trigger_reports_whether_it_ran():
+    """I2e/I2d: trigger_capture は bool を返し、早期 return でも on_capture_failed を通知する"""
+    trig = _main_func_src("_tsumego_capture_trigger")
+    assert "return False" in trig and "return True" in trig
+    cb = _main_func_src("trigger_capture")
+    assert "return self._tsumego_capture_trigger" in cb
+    apply_src = _main_func_src("_do_tsumego_capture_apply")
+    assert apply_src.count("_autoloop_capture_failed") >= 2
+
+
+def test_main_save_answer_line_takes_protect_log():
+    """I4: 回答帳保存はログ保護の有無を選べる（自動ループの CAPTURE_FAILED では付けない）"""
+    import ast
+
+    for n in ast.walk(_main_tree()):
+        if isinstance(n, ast.FunctionDef) and n.name == "_save_answer_line":
+            assert "protect_log" in [a.arg for a in n.args.args]
+            break
+    else:
+        raise AssertionError("_save_answer_line が見つかりません")
+    assert "protect_log" in _main_func_src("save_line")
+
+
+def test_main_passes_log_name_to_problem_ready():
+    """m3: 台帳の log 欄に詰碁ログのファイル名を渡す"""
+    src = _main_func_src("_do_tsumego_capture_apply")   # finish_gui は同名が複数あるので親で見る
+    assert "log_name=os.path.basename" in src
