@@ -29,17 +29,50 @@ def test_settings_defaults_and_override():
 
 
 def test_popup_present_on_real_frames():
-    """結果ポップアップ（濃紺のタイトル帯）だけを True にする（spec 追記4）。
+    """結果ポップアップ（濃紺のタイトル帯＋内側の小盤）だけを True にする（spec 追記4）。
 
     「盤の上端が黄色でない」だけだと認定証・遷移中・ホームまでポップアップ扱いになり、
     そこへ「次の問題」を撃ってしまう＝誤タップ事故の根本原因 (1)
     """
     assert al.popup_present(_frame("popup_wrong.png")) is True
     assert al.popup_present(_frame("popup_correct.png")) is True
+    assert al.popup_present(_frame("popup_correct_animating.png")) is True
     assert al.popup_present(_frame("problem.png")) is False
     assert al.popup_present(_frame("hint.png")) is False
+    assert al.popup_present(_frame("hint_disabled.png")) is False
     assert al.popup_present(_frame("transition.png")) is False
     assert al.popup_present(_frame("certificate.png")) is False
+
+
+def test_popup_present_inner_board_measurements():
+    """内側の小盤の黄色率実測（spec 追記4）。
+
+    popup_wrong 0.87 / popup_correct 0.83 / popup_correct_animating 0.86 / 認定証 0.0。
+    問題・遷移・ヒント画面は 0.94〜0.96 だが、盤の上端の帯（POPUP_STRIP）条件で既に除外される
+    のでこの条件だけでは分離しない＝ホーム/メニュー画面（盤が中央に無い）を落とすための条件。
+    """
+    ratio = al.yellow_ratio
+    assert abs(ratio(_frame("popup_wrong.png"), al.POPUP_INNER_BOARD_BOX) - 0.87) < 0.02
+    assert abs(ratio(_frame("popup_correct.png"), al.POPUP_INNER_BOARD_BOX) - 0.83) < 0.02
+    assert abs(ratio(_frame("popup_correct_animating.png"), al.POPUP_INNER_BOARD_BOX) - 0.86) < 0.02
+    assert ratio(_frame("certificate.png"), al.POPUP_INNER_BOARD_BOX) == 0.0
+
+
+def test_popup_present_false_without_inner_board():
+    """盤の上端の帯とタイトル帯の条件を満たしても、中央に盤が無ければポップアップにしない。
+
+    popup_wrong.png の内側の小盤ボックスを単色で塗りつぶして合成する（ホーム画面等、盤の無い
+    未知の画面を模す）。他の2条件（黄色帯でない・タイトル帯が濃紺）は元のフレームのまま。
+    """
+    frame = _frame("popup_wrong.png").copy()
+    x0, y0, x1, y1 = al._box(frame, al.POPUP_INNER_BOARD_BOX)
+    px = frame.load()
+    for y in range(y0, y1):
+        for x in range(x0, x1):
+            px[x, y] = (240, 240, 240)
+    assert al.yellow_ratio(frame, al.POPUP_STRIP) < al.POPUP_STRIP_YELLOW_MAX
+    assert al.result_title_band_dark(frame) is True
+    assert al.popup_present(frame) is False
 
 
 def test_result_title_band_dark_measurements():
@@ -1322,6 +1355,9 @@ def test_main_passes_log_name_to_problem_ready():
 
 # --- 認定証などのフルスクリーン画面（spec 追記2） ---
 
+# "popup": True は歴史的な名残（実機では overlay と popup は排他）。ANSWERING/STALLED も
+# spec 追記4 で _handle_overlay を先頭に置いたため、この "popup" フラグは overlay=True の間は
+# 一切参照されない（overlay が先に消費するため）。RESULT 到達後に出す想定でだけ使う
 OVERLAY = {"popup": True, "state": "unknown", "overlay": True}
 
 
@@ -1357,11 +1393,13 @@ def test_controller_result_closes_overlay_then_takes_verdict(tmp_path):
     """RESULT の先頭でオーバーレイを × で閉じる（判定は進めない）。消えたら通常どおり判定する。
 
     spec 追記4: × は 2 フレーム連続で見えてから 1 回、次は OVERLAY_TAP_WAIT_S 待ってから
-    （フェード中に連打して、消えた後の問題画面の ← 戻るを押す事故への対策）
+    （フェード中に連打して、消えた後の問題画面の ← 戻るを押す事故への対策）。
+    ANSWERING → RESULT の遷移は overlay の無い純粋な popup フレームで起こす（spec 追記4 で
+    ANSWERING も _handle_overlay を先頭で見るため、overlay=True のフレームはそちらで消費される）
     """
     frames = [
         {"grid": BASE}, {"grid": BASE}, {"grid": BASE},
-        OVERLAY, OVERLAY,                                # ANSWERING: popup 2 枚 → RESULT
+        {"popup": True, "state": "unknown"}, {"popup": True, "state": "unknown"},  # ANSWERING: popup 2 枚 → RESULT
         OVERLAY, OVERLAY, OVERLAY,                       # RESULT: 1 枚目は確認・以降 × をタップ
         {"popup": True, "state": "correct"},             # RESULT: オーバーレイが消えた → correct
         {"popup": True, "state": "correct"},
@@ -1386,6 +1424,31 @@ def test_controller_result_closes_overlay_then_takes_verdict(tmp_path):
     clock.advance(2.0)
     c.step()
     assert c.state == "NEXT" and c.stats["correct"] == 1
+
+
+def test_controller_answering_closes_overlay_without_waiting_for_stalled(tmp_path):
+    """ANSWERING 中に認定証が出たら、STALLED（40秒+60秒待ち）を経由せず即座に × で閉じにいく。
+
+    spec 追記4: _handle_overlay を _step_answering の先頭でも呼ぶ。オーバーレイは popup_present
+    の署名（濃紺のタイトル帯）とは無関係なので、先頭で割り込まなければ answer_timeout_s の締切
+    まで気付かれない。
+    """
+    frames = [
+        {"grid": BASE}, {"grid": BASE}, {"grid": BASE},
+        {"overlay": True, "close": (40, 50)},            # ANSWERING: 1 枚目は確認だけ
+        {"overlay": True, "close": (40, 50)},             # ANSWERING: 2 枚目 → × を 1 回
+    ]
+    c, gui, adb, clock = _controller(frames, tmp_path)
+    c.activate()
+    c.step(); c.step()
+    c.on_problem_ready(token=7, base_grid=BASE, key="k1", route="frame")
+    c.step()
+    assert c.state == "ANSWERING"
+    clock.advance(200.0)                                  # answer_timeout_s(40)+STALL_EXTRA_S(60) 超
+    c.step()                                              # overlay 1 枚目: 確認だけ（タップしない）
+    assert c.state == "ANSWERING" and adb.taps == []
+    c.step()                                              # overlay 2 枚目: × を 1 回。STALLED にはならない
+    assert c.state == "ANSWERING" and adb.taps == [(40, 50)]
 
 
 def test_controller_overlay_taps_are_capped(tmp_path):

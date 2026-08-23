@@ -38,6 +38,8 @@ DEFAULT_UI_POINTS = {
 }
 POPUP_STRIP = (0.02, 0.181, 0.98, 0.19)  # 大盤の上端の帯。実測: 問題画面 黄 0.957 / ポップアップ 0.074
 POPUP_STRIP_YELLOW_MAX = 0.5
+POPUP_INNER_BOARD_BOX = (0.25, 0.42, 0.75, 0.62)  # 結果ポップアップが常に出す内側の小盤
+POPUP_INNER_BOARD_YELLOW_MIN = 0.5  # 実測: popup_wrong 0.87 / popup_correct 0.83 / animating 0.86 / 認定証 0.0
 VERDICT_BAND = (0.10, 0.289, 0.90, 0.325)  # 判定文 1 行目（実測 文字 y 481..511）
 VERDICT_DARK_SUM = 300  # 文字画素: R+G+B < 300（紙色は 600 超）
 VERDICT_TAIL_W = 140  # 文字列の右端に寄せた切り出し幅（中央寄せ文の長さ差を吸収）
@@ -150,8 +152,15 @@ def popup_present(frame):
     「盤の上端の帯が黄色でない」だけだと、アプリのホーム・遷移中・認定証まで一律に
     ポップアップ扱いになり、そこへ「次の問題」を撃ってしまう（spec 追記4 の誤タップ事故）。
     結果ポップアップの署名（濃紺のタイトル帯）を AND して、知らない画面と区別する。
+    さらに結果ポップアップは中央に必ず内側の小盤（黄色）を出すので、それも AND する
+    （spec 追記4）。ホーム・メニュー画面は中央に盤が無い＝この条件だけで「ポップアップではない」
+    と確定できる（他の2条件が偶然揃っても、盤が無ければポップアップにしない）。
     """
-    return yellow_ratio(frame, POPUP_STRIP) < POPUP_STRIP_YELLOW_MAX and result_title_band_dark(frame)
+    return (
+        yellow_ratio(frame, POPUP_STRIP) < POPUP_STRIP_YELLOW_MAX
+        and result_title_band_dark(frame)
+        and yellow_ratio(frame, POPUP_INNER_BOARD_BOX) >= POPUP_INNER_BOARD_YELLOW_MIN
+    )
 
 
 def find_close_glyph(frame):
@@ -997,6 +1006,8 @@ class AutoLoopController:
             self._enter_capture_failed()
 
     def _step_answering(self, frame):
+        if self._handle_overlay(frame):
+            return
         p = self.problem
         if self._popup_stable(frame):
             self._enter_result()
@@ -1155,6 +1166,8 @@ class AutoLoopController:
         self.state = "NEXT"
 
     def _step_stalled(self, frame):
+        if self._handle_overlay(frame):
+            return
         if self._popup_stable(frame):
             self._enter_result()
             return
@@ -1233,6 +1246,11 @@ class AutoLoopController:
         タップの条件は 3 つ（spec 追記4。フェード中の認定証を連打して、消えた後の問題画面の
         ← 戻る を押してしまった事故への対策）: (1) OVERLAY_MIN_FRAMES 連続で検出、
         (2) 1 回ごとに OVERLAY_TAP_WAIT_S 待つ、(3) × が実際に見えている。
+
+        呼び出し元は AWAIT_PROBLEM / ANSWERING / RESULT / STALLED / NEXT の各先頭（spec 追記4）。
+        ANSWERING / STALLED でも先頭に置くのは、認定証は popup_present（濃紺のタイトル帯）とは
+        別の署名（紙色）なので通常のポップアップ検出には掛からず、放っておくと answer_timeout_s
+        （40秒）→ STALLED → STALL_EXTRA_S（60秒）を丸ごと待ってからしか × を押しにいけないため。
         """
         try:
             present = self.vision.overlay_present(frame)
