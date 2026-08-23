@@ -46,6 +46,16 @@ HINT_ICON = (0.833, 0.775, 18)  # (cx比, cy比, 半径px)。実測 平均輝度
 HINT_ICON_ENABLED_MIN = 126.0  # 実測 2026-08-23: 有効 160.4 / 無効 92.7（中点）
 HEADER_BAND = (0.10, 0.15, 0.90, 0.18)
 RED_RING_MIN_PIXELS = 80
+# 認定証などのフルスクリーン画面（spec 追記2）。× は左上の暗いグリフ、背景は紙色 (251,249,225) 前後
+CLOSE_GLYPH_BOX = (0.0, 0.005, 0.13, 0.10)
+CLOSE_GLYPH_DARK_SUM = 450  # 暗画素: R+G+B < 450
+CLOSE_GLYPH_WARM_MAX = 40  # 金の装飾枠を落とす: R-B がこれを超える暖色は数えない（実測 × -6 / 金 +78）
+CLOSE_GLYPH_MIN_PIXELS = 30
+CLOSE_GLYPH_MIN_PX = 12  # bbox の辺の下限（900 幅基準・フレーム幅でスケール）
+CLOSE_GLYPH_MAX_PX = 90  # 同・上限
+CLOSE_GLYPH_Y_WINDOW = 90  # 最初に暗画素が出た行から採る高さ（900 幅基準）
+OVERLAY_TITLE_BAND = (0.08, 0.145, 0.45, 0.175)  # 結果ポップアップでは濃紺の「囲碁詰めチャレ」帯
+OVERLAY_TITLE_LIGHT_MIN = 160.0  # 実測: 結果ポップアップ 81〜100 / 認定証（紙色）247
 
 
 def _is_red(r, g, b):
@@ -120,6 +130,56 @@ def yellow_ratio(frame, ratio_box):
 def popup_present(frame):
     """結果ポップアップが盤を覆っているか（大盤の上端の帯が黄色でなくなる）"""
     return yellow_ratio(frame, POPUP_STRIP) < POPUP_STRIP_YELLOW_MAX
+
+
+def find_close_glyph(frame):
+    """左上の × ボタンの中心 (x, y)。見つからなければ None。
+
+    暗い（R+G+B < CLOSE_GLYPH_DARK_SUM）画素の bbox を採るが、そのままでは金色の装飾枠が
+    混ざって bbox が広がる（実測 認定証: × だけなら 22x22 px、金込みなら 54x53 px で
+    サイズ判定を外れる）。落とし方は 2 つ: (1) 暖色を数えない（× は濃紺で R-B=-6、金は +78）、
+    (2) y 方向は最初に暗画素が現れた行から CLOSE_GLYPH_Y_WINDOW px 以内だけを採る。
+    フレームは実機（900x1600）の切り抜きでも来るので、px の閾値は幅の比でスケールする。
+    """
+    x0, y0, x1, y1 = _box(frame, CLOSE_GLYPH_BOX)
+    px = frame.load()
+    scale = frame.size[0] / float(DEVICE_W)
+    rows = {}
+    for y in range(y0, y1):
+        for x in range(x0, x1):
+            r, g, b = px[x, y][:3]
+            if r + g + b < CLOSE_GLYPH_DARK_SUM and r - b <= CLOSE_GLYPH_WARM_MAX:
+                rows.setdefault(y, []).append(x)
+    if not rows:
+        return None
+    top = min(rows)
+    window = CLOSE_GLYPH_Y_WINDOW * scale
+    kept = [(y, xs) for y, xs in rows.items() if y - top <= window]
+    n = sum(len(xs) for _y, xs in kept)
+    if n < CLOSE_GLYPH_MIN_PIXELS:
+        return None
+    xs = [x for _y, row in kept for x in row]
+    ys = [y for y, row in kept for _x in row]
+    bw, bh = max(xs) - min(xs), max(ys) - min(ys)
+    lo, hi = CLOSE_GLYPH_MIN_PX * scale, CLOSE_GLYPH_MAX_PX * scale
+    if not (lo <= bw <= hi and lo <= bh <= hi):
+        return None
+    return (min(xs) + max(xs)) // 2, (min(ys) + max(ys)) // 2
+
+
+def overlay_present(frame):
+    """認定証など、結果ポップアップではないフルスクリーン画面が出ているか。
+
+    盤が覆われている（popup_present）＋ タイトル帯が紙色＝濃紺の結果ポップアップではない
+    ＋ 左上に × がある、の 3 条件。結果ポップアップを誤って「閉じる」と判定が飛ぶので、
+    帯の輝度で先に切る。
+    """
+    if not popup_present(frame):
+        return False
+    band = frame.crop(_box(frame, OVERLAY_TITLE_BAND)).convert("L")
+    if ImageStat.Stat(band).mean[0] < OVERLAY_TITLE_LIGHT_MIN:
+        return False
+    return find_close_glyph(frame) is not None
 
 
 def _dark_bbox(frame, ratio_box):
@@ -294,6 +354,12 @@ class Vision:
 
     def popup_state(self, frame):
         return popup_state(frame, self.templates)
+
+    def overlay_present(self, frame):
+        return overlay_present(frame)
+
+    def find_close_glyph(self, frame):
+        return find_close_glyph(frame)
 
     def read_board(self, frame, size=None):
         return read_board(frame, (size,) if size else self.sizes)
@@ -576,6 +642,9 @@ CAPTURE_FAILED_WAIT_S = 45.0  # CAPTURE_FAILED でポップアップ（結果）
 FRAME_FAIL_RECONNECT = 3
 FRAME_FAIL_GIVEUP = 6
 MAX_TAPS_PER_PROBLEM = 60  # 1問あたりのタップ上限（spec §9）
+OVERLAY_MAX_TAPS = 5  # 認定証などのオーバーレイを × で閉じにいく連続タップの上限（spec 追記2）
+NEXT_MAX_TAPS = 4  # popup が消えないまま NEXT のタップを繰り返してよい回数（2 倍を超えたら失敗）
+CLOSE_FALLBACK_POINT = (0.045, 0.035)  # × が見つからないときの比率座標
 
 
 class _Problem:
@@ -615,6 +684,9 @@ class AutoLoopController:
         self._pending_taps = []
         self._early_taps = {}  # problem_ready より先に届いた黒手（トークン別）
         self._pending_header = None  # 出題フレームの header_hash（CAPTURING へ入るときに撮る）
+        self._overlay_taps = 0  # 認定証などのオーバーレイを閉じにいった連続回数
+        self._overlay_shot = False  # そのオーバーレイのスクショを 1 枚撮ったか
+        self._next_taps = 0  # popup が消えないまま NEXT をタップし続けた回数
         self._shots = []
         self._shot_seq = 0
 
@@ -636,6 +708,9 @@ class AutoLoopController:
         self._result_tries = 0
         self._early_taps = {}
         self._pending_header = None
+        self._overlay_taps = 0
+        self._overlay_shot = False
+        self._next_taps = 0
 
     def start(self):
         self._stop.clear()
@@ -804,6 +879,8 @@ class AutoLoopController:
         self.state = "RESULT"
 
     def _step_await_problem(self, frame):
+        if self._handle_overlay(frame):
+            return
         if self.vision.popup_present(frame):
             self.state = "NEXT"
             return
@@ -812,6 +889,8 @@ class AutoLoopController:
         except CaptureError:
             grid = None
         has_stones = grid is not None and any(v != EMPTY for row in grid for v in row)
+        if has_stones:
+            self._next_taps = 0  # 出題まで来た＝「次の問題」は効いていた
         if grid is None or not has_stones or grid == self.last_initial or grid == self.last_final:
             self._await_prev = None
         elif grid == self._await_prev:
@@ -901,6 +980,8 @@ class AutoLoopController:
         return True
 
     def _step_result(self, frame):
+        if self._handle_overlay(frame):
+            return
         verdict = self.vision.popup_state(frame)
         p = self.problem
         if verdict == "unknown" and self._result_tries < RESULT_UNKNOWN_RETRIES:
@@ -1020,6 +1101,8 @@ class AutoLoopController:
                 self.state = "NEXT"
 
     def _step_next(self, frame):
+        if self._handle_overlay(frame):
+            return
         try:
             self.last_final = self.vision.read_board(frame).grid
         except CaptureError:
@@ -1028,6 +1111,14 @@ class AutoLoopController:
             self.last_initial = self.problem.base
         name = "popup_next" if self.vision.popup_present(frame) else "bar_next"
         self._tap(*self.vision.ui_point(name, frame))
+        self._next_taps += 1
+        if self._next_taps > NEXT_MAX_TAPS * 2:
+            self._next_taps = 0
+            self._error_step("next: ポップアップが閉じません")
+        elif self._next_taps > NEXT_MAX_TAPS:
+            # 「次の問題」が効いていない＝知らない画面が覆っている可能性。× を 1 回だけ試す
+            self._tap(*self._close_point(frame))
+            self.gui.log(f"autoloop: 「次の問題」が {self._next_taps} 回効きません。× をタップします")
         self.problem = None
         self._cf_base = None
         self._pending_taps = []
@@ -1037,12 +1128,54 @@ class AutoLoopController:
         if self.settings.max_problems and self.stats["problems"] >= self.settings.max_problems:
             self._to_idle(f"{self.settings.max_problems} 問に達したため停止しました")
             return
+        if self.state == "IDLE":
+            return  # _error_step が上限で停止させた（AWAIT_PROBLEM で上書きしない）
         self.state = "AWAIT_PROBLEM"
         self._await_prev = None
         self._await_retapped = False
         self._deadline = self.clock() + self.settings.answer_timeout_s
 
     # --- 補助 ---
+    def _close_point(self, frame):
+        """左上の × の座標。見つからなければ比率のフォールバック（実測の × の位置）"""
+        try:
+            point = self.vision.find_close_glyph(frame)
+        except Exception as e:
+            self.gui.log(f"autoloop: × を探せません: {e!r}")
+            point = None
+        if point is not None:
+            return point
+        w, h = getattr(frame, "size", (DEVICE_W, DEVICE_H))
+        return int(round(CLOSE_FALLBACK_POINT[0] * w)), int(round(CLOSE_FALLBACK_POINT[1] * h))
+
+    def _handle_overlay(self, frame):
+        """認定証などのフルスクリーン画面なら × をタップして 1 周待つ（True なら呼び出し側は return）。
+
+        状態は変えない（オーバーレイが消えた次の周で通常の判定に進む）。閉じられないまま
+        OVERLAY_MAX_TAPS を超えたら失敗として打ち切る＝無限にタップし続けない。
+        """
+        try:
+            present = self.vision.overlay_present(frame)
+        except Exception as e:
+            self.gui.log(f"autoloop: オーバーレイ判定に失敗: {e!r}")
+            return False
+        if not present:
+            self._overlay_taps = 0
+            self._overlay_shot = False
+            return False
+        if self._overlay_taps >= OVERLAY_MAX_TAPS:
+            self._overlay_taps = 0
+            self._error_step("overlay: 閉じられません")
+            return True
+        self._tap(*self._close_point(frame))
+        self._overlay_taps += 1
+        self.gui.log("autoloop: 認定証などのオーバーレイを閉じます")
+        if not self._overlay_shot:
+            self._overlay_shot = True
+            self._save_shot(frame, "overlay")
+        self._not_before = self.clock() + self.settings.settle_ms / 1000.0
+        return True
+
     def _tap(self, x, y):
         try:
             self.adb.tap(x, y)
@@ -1152,6 +1285,7 @@ def main(argv=None):
     print("serial", serial, "frame", frame.size)
     print("popup_present", vision.popup_present(frame), "popup_state", vision.popup_state(frame))
     print("hint_enabled", vision.hint_enabled(frame), "header", vision.header_hash(frame))
+    print("overlay_present", vision.overlay_present(frame), "close_glyph", vision.find_close_glyph(frame))
     try:
         read = vision.read_board(frame)
         print("board", read.rect, "size", read.size, "stones", sum(v != EMPTY for row in read.grid for v in row))

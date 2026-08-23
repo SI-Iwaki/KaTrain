@@ -160,7 +160,7 @@ class FakeAdb:
 
 
 class FakeVision:
-    """フレームは dict: {"popup": bool, "grid": grid, "hint": (i,j)|None, "hint_on": bool}"""
+    """フレームは dict: {"popup": bool, "grid": grid, "hint": (i,j)|None, "hint_on": bool, "overlay": bool}"""
 
     RECT = (0, 0, 899, 899)
 
@@ -172,6 +172,12 @@ class FakeVision:
 
     def popup_state(self, f):
         return f.get("state", "none")
+
+    def overlay_present(self, f):
+        return f.get("overlay", False)
+
+    def find_close_glyph(self, f):
+        return f.get("close", (40, 50))
 
     def read_board(self, f, size=None):
         if f.get("grid") is None:
@@ -1211,3 +1217,115 @@ def test_main_passes_log_name_to_problem_ready():
     """m3: 台帳の log 欄に詰碁ログのファイル名を渡す"""
     src = _main_func_src("_do_tsumego_capture_apply")   # finish_gui は同名が複数あるので親で見る
     assert "log_name=os.path.basename" in src
+
+
+# --- 認定証などのフルスクリーン画面（spec 追記2） ---
+
+OVERLAY = {"popup": True, "state": "unknown", "overlay": True}
+
+
+def test_find_close_glyph_on_certificate():
+    """認定証の左上 × を見つける（実機フレームと縦横比が違う切り抜きでも比率×フレーム幅でスケール）"""
+    frame = _frame("certificate.png")
+    w, h = frame.size
+    point = al.find_close_glyph(frame)
+    assert point is not None
+    x, y = point
+    assert 0 < x < 0.13 * w and 0 < y < 0.10 * h
+
+
+def test_overlay_present_only_on_certificate():
+    """結果ポップアップ（濃紺のタイトル帯）・問題画面（popup 無し）はオーバーレイではない"""
+    assert al.overlay_present(_frame("certificate.png")) is True
+    assert al.overlay_present(_frame("popup_correct.png")) is False
+    assert al.overlay_present(_frame("popup_wrong.png")) is False
+    assert al.overlay_present(_frame("problem.png")) is False
+
+
+def test_vision_exposes_overlay_helpers():
+    v = al.Vision((9, 13, 19), templates={})
+    frame = _frame("certificate.png")
+    assert v.overlay_present(frame) is True
+    assert v.find_close_glyph(frame) == al.find_close_glyph(frame)
+
+
+def test_controller_result_closes_overlay_then_takes_verdict(tmp_path):
+    """RESULT の先頭でオーバーレイを × で閉じる（判定は進めない）。消えたら通常どおり判定する"""
+    frames = [
+        {"grid": BASE}, {"grid": BASE}, {"grid": BASE},
+        OVERLAY, OVERLAY,                                # ANSWERING: popup 2 枚 → RESULT
+        OVERLAY, OVERLAY, OVERLAY,                       # RESULT: × を 3 回タップ
+        {"popup": True, "state": "correct"},             # RESULT: オーバーレイが消えた → correct
+        {"popup": True, "state": "correct"},
+    ]
+    c, gui, adb, clock = _controller(frames, tmp_path)
+    c.activate()
+    c.step(); c.step()
+    c.on_problem_ready(token=7, base_grid=BASE, key="k1", route="frame")
+    c.step()
+    c.step(); c.step()
+    assert c.state == "RESULT"
+    for _ in range(3):
+        c.step()
+        assert c.state == "RESULT" and adb.taps[-1] == (40, 50)
+    assert adb.taps.count((40, 50)) == 3
+    assert any("オーバーレイ" in m for m in gui.logs)
+    c.step()
+    assert c.state == "NEXT" and c.stats["correct"] == 1
+
+
+def test_controller_overlay_taps_are_capped(tmp_path):
+    """閉じられないオーバーレイは OVERLAY_MAX_TAPS で打ち切る（無限タップにしない）"""
+    c, gui, adb, clock = _controller([OVERLAY], tmp_path, max_consecutive_errors=9)
+    c.activate()
+    for _ in range(al.OVERLAY_MAX_TAPS):
+        c.step()
+    assert adb.taps == [(40, 50)] * al.OVERLAY_MAX_TAPS and c.stats["failed"] == 0
+    c.step()
+    assert adb.taps == [(40, 50)] * al.OVERLAY_MAX_TAPS and c.stats["failed"] == 1
+    assert c.state == "AWAIT_PROBLEM"                    # 状態は変えない
+
+
+def test_controller_overlay_counter_resets_when_gone(tmp_path):
+    """オーバーレイが消えたらカウンタは 0 に戻る（次の認定証も 5 回まで粘れる）"""
+    c, gui, adb, clock = _controller([OVERLAY], tmp_path)
+    c.activate()
+    c.step(); c.step()
+    assert c._overlay_taps == 2
+    c.adb.frames = [{"grid": BASE}]
+    c.step()
+    assert c._overlay_taps == 0
+
+
+def test_controller_next_taps_are_capped(tmp_path):
+    """popup が消えないまま NEXT を繰り返したら × を1回挟み、さらに続いたら失敗として打ち切る"""
+    c, gui, adb, clock = _controller([{"popup": True, "state": "correct"}], tmp_path, max_consecutive_errors=9)
+    c.activate()
+
+    def next_round():                                    # AWAIT（popup）→ NEXT（タップ）
+        clock.advance(1.0); c.step()
+        clock.advance(1.0); c.step()
+
+    nxt = al.ui_point("popup_next", (900, 1600))
+    for _ in range(al.NEXT_MAX_TAPS):
+        next_round()
+    assert adb.taps == [nxt] * al.NEXT_MAX_TAPS and c.stats["failed"] == 0
+    next_round()                                         # 上限超え → × を 1 回
+    assert adb.taps[-1] == (40, 50) and c.stats["failed"] == 0
+    for _ in range(al.NEXT_MAX_TAPS - 1):
+        next_round()
+    assert c.stats["failed"] == 0
+    next_round()                                         # 2 倍を超えた → 打ち切り
+    assert c.stats["failed"] == 1 and c._next_taps == 0
+
+
+def test_controller_next_taps_reset_when_board_appears(tmp_path):
+    """AWAIT で石のある盤が読めたら NEXT の連続タップ数は 0 に戻る"""
+    c, gui, adb, clock = _controller([{"popup": True, "state": "correct"}], tmp_path)
+    c.activate()
+    clock.advance(1.0); c.step()
+    clock.advance(1.0); c.step()
+    assert c._next_taps == 1
+    adb.frames = [{"grid": BASE}]
+    clock.advance(1.0); c.step()
+    assert c._next_taps == 0
