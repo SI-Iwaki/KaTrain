@@ -166,13 +166,24 @@ def capture_screen_rect(rect):
 
 GRID_SCORE_MIN = 0.5  # 正解サイズは概ね0.8超、誤サイズは0.2未満になる（実サンプルで確認）
 GRID_SCORE_MARGIN = 0.15
+# 第2段（継ぎ目の影を y 方向にも許容した読み直し）の採用バー。第1段より厳しいのは、y 許容は誤サイズの
+# スコアも押し上げるため（実測 2026-08-24・全サンプル×16 オフセット: 正解サイズの最小 0.75 / 誤サイズの
+# 最大 0.51 / Web 盤〈従来方式が失敗して Web 認識へ落ちるべき画像〉の最大 0.46）。0.5 のままだと Web 盤を
+# 従来方式が誤って受理しうる（余裕 0.04）。0.7 は両側に 0.2 以上の余裕
+GRID_SCORE_MIN_SEAM = 0.7
+GRID_SEAM_DY_TOLERANCE = 3
 
 
-def _grid_line_score(rgb, board_rect, size):
+def _grid_line_score(rgb, board_rect, size, dy_tolerance=0):
     """候補サイズの想定縦線位置（交点間の中点）に実際に暗い線ピクセルがある割合を返す。
 
     石に隠れた点（7x7パッチが黒石の暗さ or 白石の明るさ）は分母から除外する。
     正しいサイズなら線上の点ばかりでスコア≈1、誤ったサイズなら線間の黄色に落ちてスコア≈0.1
+
+    暗い線の探索は縦線向けに x 方向 ±3px だけ（縦線は y のずれに不感）。`dy_tolerance` > 0 なら
+    y 方向 ±dy_tolerance px も見る＝石で埋まって縦線が隠れた盤では、信号が「縦に隣接する白石どうしの
+    継ぎ目の影」（横向き 1〜2px）しか残らず、サンプル行が 1px ずれるだけで全部外れる（実測 2026-08-24
+    9 路 70 子: 盤矩形が縮小画像由来で 4px 単位に量子化されるため y1 が 771/767 で揺れ、39/39 → 7/43）
     """
     x0, y0, x1, y1 = board_rect
     cell_w = (x1 - x0 + 1) / size
@@ -195,7 +206,18 @@ def _grid_line_score(rgb, board_rect, size):
             total += 1
             if any((sum(px[lx + dx, ly][:3]) / 3) < 150 for dx in range(-3, 4)):
                 hits += 1
+            elif dy_tolerance and any(
+                (sum(px[lx, ly + dy][:3]) / 3) < 150 for dy in range(-dy_tolerance, dy_tolerance + 1)
+            ):
+                hits += 1
     return hits / total if total else 0.0
+
+
+def _rank_grid_scores(scores):
+    ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
+    best_size, best_score = ranked[0]
+    second_score = ranked[1][1] if len(ranked) > 1 else 0.0
+    return best_size, best_score, second_score
 
 
 def detect_size_and_classify(img, board_rect, sizes=DEFAULT_BOARD_SIZES):
@@ -206,12 +228,17 @@ def detect_size_and_classify(img, board_rect, sizes=DEFAULT_BOARD_SIZES):
     """
     rgb = img.convert("RGB")
     scores = {size: _grid_line_score(rgb, board_rect, size) for size in sizes}
-    ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
-    best_size, best_score = ranked[0]
-    second_score = ranked[1][1] if len(ranked) > 1 else 0.0
+    best_size, best_score, second_score = _rank_grid_scores(scores)
     if best_score < GRID_SCORE_MIN or best_score - second_score < GRID_SCORE_MARGIN:
+        # 第2段: 石で埋まって縦線が見えない盤（継ぎ目の影しか信号が無い）を y 許容で読み直す。
+        # 第1段が決められた盤には一切触れない（従来経路はビット同一）
+        seam_scores = {size: _grid_line_score(rgb, board_rect, size, GRID_SEAM_DY_TOLERANCE) for size in sizes}
+        seam_size, seam_best, seam_second = _rank_grid_scores(seam_scores)
+        if seam_best >= GRID_SCORE_MIN_SEAM and seam_best - seam_second >= GRID_SCORE_MARGIN:
+            return seam_size, classify_intersections(img, board_rect, seam_size)
         detail = ", ".join(f"{s}:{v:.2f}" for s, v in scores.items())
-        raise CaptureError(f"盤サイズを判定できません（格子線スコア {detail}）")
+        seam_detail = ", ".join(f"{s}:{v:.2f}" for s, v in seam_scores.items())
+        raise CaptureError(f"盤サイズを判定できません（格子線スコア {detail} ／ 継ぎ目許容 {seam_detail}）")
     return best_size, classify_intersections(img, board_rect, best_size)
 
 

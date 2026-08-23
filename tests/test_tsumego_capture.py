@@ -16,6 +16,7 @@ from katrain.core.tsumego_capture import (
 SAMPLE = os.path.join(os.path.dirname(__file__), "data", "tsumego_app_sample.png")
 SAMPLE_9X9 = os.path.join(os.path.dirname(__file__), "data", "tsumego_app_sample_9x9.png")
 SAMPLE_SPARSE13 = os.path.join(os.path.dirname(__file__), "data", "tsumego_app_sample_sparse13.png")
+SAMPLE_DENSE9 = os.path.join(os.path.dirname(__file__), "data", "tsumego_app_sample_dense9.png")
 
 EXPECTED_WHITE = {(0, 0), (0, 2), (0, 3), (1, 0), (1, 3), (2, 3), (3, 0), (3, 1), (3, 2), (3, 3)}
 EXPECTED_BLACK = {(1, 2), (1, 4), (2, 0), (2, 1), (2, 4), (3, 4), (4, 0), (4, 1), (4, 2), (4, 3), (4, 4)}
@@ -79,6 +80,50 @@ def test_auto_size_sparse13_sample():
     white = {(i, j) for i in range(13) for j in range(13) if grid[i][j] == "W"}
     assert black == {(1, 11), (2, 10), (3, 10), (3, 11)}
     assert white == {(1, 9), (2, 7), (2, 9), (3, 9), (4, 10), (4, 11), (5, 10)}
+
+
+EXPECTED_DENSE9 = [
+    ". W W W W W W W W",
+    "B B W W W W W W W",
+    "B W B B B W W W W",
+    "B . . W . B W W W",
+    "B B B W . . W W W",
+    "B B B W W . W W W",
+    "B B B B B B B W W",
+    "B B B B B B B B W",
+    "B B B B B B B B B",
+]
+
+
+def test_auto_size_dense9_sample():
+    # 石が 70 子で格子線がほぼ隠れた 9 路盤の回帰テスト（実測 2026-08-24・自動ループのウィンドウ
+    # キャプチャ）。縦線が見えないので格子線スコアの信号は「縦に隣接する白石どうしの継ぎ目の影」
+    # （横向き 1〜2px）だけになり、x 方向にしか許容幅の無い従来スコアはサンプル行が 1px ずれる
+    # だけで 39/39 → 7/43（9:0.16）に崩れて盤サイズを判定できなかった。継ぎ目の影を y 方向にも
+    # 許容して読み直す第2段で 9 路と判定できること
+    img = Image.open(SAMPLE_DENSE9)
+    size, grid = detect_size_and_classify(img, detect_board(img))
+    assert size == 9
+    assert [" ".join(row) for row in grid] == EXPECTED_DENSE9
+
+
+def test_dense9_sample_uses_app_path():
+    from katrain.core.tsumego_capture import recognize_board
+
+    view = recognize_board(Image.open(SAMPLE_DENSE9))
+    assert view.kind == "app"
+    assert [" ".join(row) for row in view.grid] == EXPECTED_DENSE9
+
+
+def test_grid_line_score_primary_is_unchanged_and_inconclusive_on_dense9():
+    # 第1段（従来スコア）はビット同一のまま＝この盤では従来どおり判定不能で、第2段だけが救う
+    from katrain.core.tsumego_capture import GRID_SCORE_MIN, _grid_line_score
+
+    img = Image.open(SAMPLE_DENSE9).convert("RGB")
+    rect = detect_board(img)
+    scores = {s: _grid_line_score(img, rect, s) for s in (9, 13, 19)}
+    assert max(scores.values()) < GRID_SCORE_MIN
+    assert _grid_line_score(img, rect, 9, dy_tolerance=3) >= 0.99
 
 
 def test_cross_size_rejection():
