@@ -95,6 +95,7 @@
 | `2026-07-31-tsumego-analysis-speedup-design.md` | 🟢 並列発行・先読み |
 | `2026-08-03-tsumego-latency-overlap-design.md` | 🟢 手番内投機（段階1+2） |
 | `2026-08-03-tsumego-stage3-early-speculation-design.md` | 🟢 root 部分結果からの前倒し投機（段階3） |
+| `2026-08-23-tsumego-capture-latency-growth.md` | 🟢 自動ループで 1 問ごとにキャプチャ反映が +12〜16ms 伸びる問題（`CollapsablePanel` のタブ作り直し × Kivy `bind()` の O(observer 数)）。GUI パイプラインのプローブ `calibration-data/tsumego/capture_loop_latency_probe.py` |
 
 ### 誤答の調査・修正
 | spec | |

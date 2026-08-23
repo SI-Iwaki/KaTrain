@@ -517,22 +517,58 @@ class CollapsablePanel(MDBoxLayout):
     def __init__(self, **kwargs):
         self.open_close_button, self.header = None, None
         self.option_buttons = []
+        self._syncing_option_buttons = False
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.bind(
             options=self.build_options,
             option_colors=self.build_options,
             options_height=self.build_options,
-            option_active=self.build_options,
             options_spacing=self.build_options,
         )
+        # option_active はタブの押下状態そのもので、タブを作り直す理由にはならない。旧実装はこれも
+        # build_options に bind していたため、プレイ／解析のモード切替（load_ui_state →
+        # set_option_state）が項目を 1 つ書くたびに全タブ（KivyMD ボタン）を作り直していた。
+        # KivyMD ボタンは __init__ でグローバルな theme_cls に bound method を bind し、theme_cls の
+        # プロパティは一度も変わらないので死んだ WeakMethod が掃除されず、Kivy の bind() は重複チェック
+        # で既存 observer を全部デリファレンスする＝bind 1 回の費用が observer 数に比例して伸びる
+        # （実測 0.012ms@0 → 6.3ms@20k）。詰碁の自動ループで 1 問ごとにキャプチャが +12〜16ms ずつ
+        # 遅くなった原因（300 問で 1.7→5.7 秒）。ボタンは作り直さず押下状態だけ同期する
+        # （tests/test_collapsable_panel.py）
+        self.bind(option_active=self._sync_option_buttons)
         self.bind(state=self._on_state, content_height=self._on_size, options_height=self._on_size)
+        # << / >> ボタンのアイコン更新は 1 回だけ bind する（旧実装は build_options の中で bind して
+        # いたので作り直すたびに state の observer が 1 本ずつ増えていた）。lambda は呼び出し時の
+        # open_close_button を見るので、作り直し後も正しいボタンに効く
+        self.bind(state=lambda *_args: self.open_close_button.setter("icon")(None, self.open_close_icon()))
         MDApp.get_running_app().bind(language=lambda *_: Clock.schedule_once(self.build_options, 0))
         self.build_options()
 
     def _on_state(self, *_args):
         self.build()
         self.trigger_select(ix=None)
+
+    def _sync_option_buttons(self, *_args):
+        """option_active → 既存タブボタンの押下状態（ボタンは作り直さない）。
+
+        button.state の変更は trigger_select を呼び option_active を書き戻すので、再入は止める
+        （trigger_select 側も値が変わるときしか書かないので実際には 1 段で収まる）。
+        """
+        if self._syncing_option_buttons:
+            return
+        # kv からの構築では options / option_colors / option_active が __init__ の後に順に届くので、
+        # ボタンの本数が合っていないうちは構成変更＝作り直し（build_options はこの 3 つの zip で
+        # 本数が決まる）。本数が合っていれば押下状態を同期するだけ
+        n_expected = min(len(self.option_labels or self.options), len(self.option_colors), len(self.option_active))
+        if len(self.option_buttons) != n_expected:
+            self.build_options()
+            return
+        self._syncing_option_buttons = True
+        try:
+            for button, active in zip(self.option_buttons, self.option_active):
+                button.state = "down" if active else "normal"
+        finally:
+            self._syncing_option_buttons = False
 
     def _on_size(self, *_args):
         height, size_hint_y = 1, None
@@ -550,10 +586,13 @@ class CollapsablePanel(MDBoxLayout):
         return {option: active for option, active in zip(self.options, self.option_active)}
 
     def set_option_state(self, state_dict):
-        for ix, (option, button) in enumerate(zip(self.options, self.option_buttons)):
-            if option in state_dict:
-                self.option_active[ix] = state_dict[option]
-                button.state = "down" if state_dict[option] else "normal"
+        # 変わる項目だけ書く（同じ値でも ObservableList は dispatch するので、毎回のモード切替で
+        # 無駄な同期を走らせない）。ボタンの押下状態は _sync_option_buttons が合わせる
+        for ix, option in enumerate(self.options):
+            if option in state_dict and ix < len(self.option_active):
+                active = bool(state_dict[option])
+                if self.option_active[ix] != active:
+                    self.option_active[ix] = active
         self.trigger_select(ix=None)
 
     def build_options(self, *args):
@@ -579,7 +618,6 @@ class CollapsablePanel(MDBoxLayout):
             size_hint_x=None,
             on_press=lambda *_args: self.set_state("toggle"),
         )
-        self.bind(state=lambda *_args: self.open_close_button.setter("icon")(None, self.open_close_icon()))
         self.build()
 
     def build(self, *args):
@@ -620,7 +658,9 @@ class CollapsablePanel(MDBoxLayout):
 
     def trigger_select(self, ix):
         if ix is not None and self.option_buttons:
-            self.option_active[ix] = self.option_buttons[ix].state == "down"
+            active = self.option_buttons[ix].state == "down"
+            if ix < len(self.option_active) and self.option_active[ix] != active:
+                self.option_active[ix] = active
         if self.state == "open":
             self.dispatch("on_option_state", {opt: btn.active for opt, btn in zip(self.options, self.option_buttons)})
         return False
