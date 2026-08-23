@@ -242,14 +242,14 @@ class BadukPanWidget(Widget):
     ):
         stone_size = self.stone_size * scale
         if ownership is not None:
-            (owner, other) = ("B", "W") if ownership > 0 else ("W", "B")
+            owner, other = ("B", "W") if ownership > 0 else ("W", "B")
             if Theme.TERRITORY_DISPLAY != "marks":
                 if player == owner:
                     alpha = Theme.STONE_MIN_ALPHA + (1.0 - Theme.STONE_MIN_ALPHA) * abs(ownership)
                 else:
                     alpha = Theme.STONE_MIN_ALPHA
         else:
-            (owner, other) = ("B", "W")  # prevent errors in unused unset vars
+            owner, other = ("B", "W")  # prevent errors in unused unset vars
         Color(1, 1, 1, alpha)
         Rectangle(
             pos=(self.gridpos[y][x][0] - stone_size, self.gridpos[y][x][1] - stone_size),
@@ -343,6 +343,9 @@ class BadukPanWidget(Widget):
             )
             self.stone_size = self.calculate_stone_size(self.grid_size)
             # if not initiated or if changed
+            # 判定は x・y の両方で行う。x だけだと、幅が律速の窓で高さだけが変わる（盤の上のバナーが
+            # 出て盤の高さが縮む等）とき grid_size も x も不変で縦の余白だけが動き、古い gridpos_y の
+            # まま描いて盤がバナーに重なる（実測 2026-08-24・窓を半分にした詰碁の自動ループ）
             if (
                 self.gridpos is None
                 or abs(
@@ -350,6 +353,13 @@ class BadukPanWidget(Widget):
                     + extra_px_margin_x
                     + math.floor(grid_spaces_margin_x[0] * self.grid_size + 0.5)
                     - self.initial_gridpos_x[0]
+                )
+                > 0.001
+                or abs(
+                    self.pos[1]
+                    + extra_px_margin_y
+                    + math.floor(grid_spaces_margin_y[0] * self.grid_size + 0.5)
+                    - self.initial_gridpos_y[0]
                 )
                 > 0.001
             ):
@@ -776,7 +786,7 @@ class BadukPanWidget(Widget):
             for x in range(board_size_x):
                 if abs(grid[y][x]) < 0.01:
                     continue
-                (ix_owner, other) = ("B", "W") if grid[y][x] > 0 else ("W", "B")
+                ix_owner, other = ("B", "W") if grid[y][x] > 0 else ("W", "B")
                 if loss_color is None:
                     Color(*Theme.STONE_COLORS[ix_owner][:3], 1.0)
                 else:
