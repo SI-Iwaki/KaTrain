@@ -57,6 +57,8 @@ CLOSE_GLYPH_MAX_PX = 90  # 同・上限
 CLOSE_GLYPH_Y_WINDOW = 90  # 最初に暗画素が出た行から採る高さ（900 幅基準）
 OVERLAY_TITLE_BAND = (0.08, 0.145, 0.45, 0.175)  # 結果ポップアップでは濃紺の「囲碁詰めチャレ」帯
 OVERLAY_TITLE_LIGHT_MIN = 160.0  # 実測: 結果ポップアップ 81〜100 / 認定証（紙色）247
+RESULT_TITLE_DARK_MAX = 140.0  # 結果ポップアップの署名。実測 81.1（正誤とも）/ 100.5（出現途中）/ 認定証 247.2
+# 140〜160 は「濃紺でも紙色でもない」帯＝結果ポップアップでも認定証でもない＝どちらの経路もタップしない
 
 
 def _is_red(r, g, b):
@@ -128,9 +130,28 @@ def yellow_ratio(frame, ratio_box):
     return n / t if t else 0.0
 
 
+def _band_mean(frame, ratio_box):
+    return ImageStat.Stat(frame.crop(_box(frame, ratio_box)).convert("L")).mean[0]
+
+
+def result_title_band_dark(frame):
+    """結果ポップアップの濃紺タイトル帯（「囲碁詰めチャレ」）が出ているか。
+
+    実測（tests/data/autoloop）: popup_wrong / popup_correct 81.1・出現途中 100.5 に対し
+    認定証（紙色）247.2。問題画面（53.7）・遷移（43.5）もアプリの青いヘッダなので暗い側に出る
+    ＝この帯だけでは問題画面と分離できない。分離は popup_present の黄色帯の条件が担う。
+    """
+    return _band_mean(frame, OVERLAY_TITLE_BAND) < RESULT_TITLE_DARK_MAX
+
+
 def popup_present(frame):
-    """結果ポップアップが盤を覆っているか（大盤の上端の帯が黄色でなくなる）"""
-    return yellow_ratio(frame, POPUP_STRIP) < POPUP_STRIP_YELLOW_MAX
+    """結果ポップアップが盤を覆っているか。
+
+    「盤の上端の帯が黄色でない」だけだと、アプリのホーム・遷移中・認定証まで一律に
+    ポップアップ扱いになり、そこへ「次の問題」を撃ってしまう（spec 追記4 の誤タップ事故）。
+    結果ポップアップの署名（濃紺のタイトル帯）を AND して、知らない画面と区別する。
+    """
+    return yellow_ratio(frame, POPUP_STRIP) < POPUP_STRIP_YELLOW_MAX and result_title_band_dark(frame)
 
 
 def find_close_glyph(frame):
@@ -171,14 +192,14 @@ def find_close_glyph(frame):
 def overlay_present(frame):
     """認定証など、結果ポップアップではないフルスクリーン画面が出ているか。
 
-    盤が覆われている（popup_present）＋ タイトル帯が紙色＝濃紺の結果ポップアップではない
-    ＋ 左上に × がある、の 3 条件。結果ポップアップを誤って「閉じる」と判定が飛ぶので、
-    帯の輝度で先に切る。
+    盤が覆われている（黄色の帯が消えている）＋ タイトル帯が濃紺ではない（＝結果ポップアップ
+    ではない）＋ 紙色（OVERLAY_TITLE_LIGHT_MIN 以上）＋ 左上に × がある、の 4 条件。
+    結果ポップアップを誤って「閉じる」と判定が飛ぶので、帯の輝度で先に切る。
     """
-    if not popup_present(frame):
+    if yellow_ratio(frame, POPUP_STRIP) >= POPUP_STRIP_YELLOW_MAX:
         return False
-    band = frame.crop(_box(frame, OVERLAY_TITLE_BAND)).convert("L")
-    if ImageStat.Stat(band).mean[0] < OVERLAY_TITLE_LIGHT_MIN:
+    mean = _band_mean(frame, OVERLAY_TITLE_BAND)
+    if mean < RESULT_TITLE_DARK_MAX or mean < OVERLAY_TITLE_LIGHT_MIN:
         return False
     return find_close_glyph(frame) is not None
 
@@ -672,9 +693,10 @@ CAPTURE_FAILED_WAIT_S = 45.0  # CAPTURE_FAILED でポップアップ（結果）
 FRAME_FAIL_RECONNECT = 3
 FRAME_FAIL_GIVEUP = 6
 MAX_TAPS_PER_PROBLEM = 60  # 1問あたりのタップ上限（spec §9）
-OVERLAY_MAX_TAPS = 5  # 認定証などのオーバーレイを × で閉じにいく連続タップの上限（spec 追記2）
-NEXT_MAX_TAPS = 4  # popup が消えないまま NEXT のタップを繰り返してよい回数（2 倍を超えたら失敗）
-CLOSE_FALLBACK_POINT = (0.045, 0.035)  # × が見つからないときの比率座標
+OVERLAY_MAX_TAPS = 3  # 認定証などのオーバーレイを × で閉じにいく連続タップの上限（spec 追記2・4）
+OVERLAY_MIN_FRAMES = 2  # × を押す前にオーバーレイを確認するフレーム数（フェード中の誤検出よけ）
+OVERLAY_TAP_WAIT_S = 1.5  # × を 1 回押したあと次のタップまでの最低待ち（フェードが終わるまで押さない）
+NEXT_MAX_TAPS = 4  # popup が消えないまま NEXT のタップを繰り返してよい回数（超えたら失敗＝当てずっぽうは撃たない）
 
 
 class _Problem:
@@ -715,8 +737,10 @@ class AutoLoopController:
         self._early_taps = {}  # problem_ready より先に届いた黒手（トークン別）
         self._pending_header = None  # 出題フレームの header_hash（CAPTURING へ入るときに撮る）
         self._overlay_taps = 0  # 認定証などのオーバーレイを閉じにいった連続回数
+        self._overlay_seen = 0  # オーバーレイを連続で見たフレーム数（2 枚目から × を押す）
         self._overlay_shot = False  # そのオーバーレイのスクショを 1 枚撮ったか
         self._next_taps = 0  # popup が消えないまま NEXT をタップし続けた回数
+        self._unknown_shot = False  # 盤の見えない画面のスクショを 1 枚撮ったか
         self._shots = []
         self._shot_seq = 0
 
@@ -739,8 +763,10 @@ class AutoLoopController:
         self._early_taps = {}
         self._pending_header = None
         self._overlay_taps = 0
+        self._overlay_seen = 0
         self._overlay_shot = False
         self._next_taps = 0
+        self._unknown_shot = False
 
     def start(self):
         self._stop.clear()
@@ -943,12 +969,22 @@ class AutoLoopController:
 
     def _check_await_deadline(self, frame):
         """出題（NEXT のタップ）を検出できないまま長時間 AWAIT_PROBLEM に留まっていないか。
-        1 回目の締切超過で「次の問題」を再タップ、2 回目で _error_step に回す（bounded loop）。"""
+        1 回目の締切超過で「次の問題」を再タップ、2 回目で _error_step に回す（bounded loop）。
+
+        **再タップは盤が見えているフレームだけ**（spec 追記4）。ホーム画面などアプリの別画面へ
+        迷い込んでいると、比率座標の「次の問題」は無関係なボタン（← 戻る等）を押してしまう。
+        """
         if self.clock() < self._deadline:
             return
         if not self._await_retapped:
-            self.gui.log("autoloop: 出題を検出できません。「次の問題」を再タップします")
-            self._tap(*self.vision.ui_point("bar_next", frame))
+            if self._board_visible(frame):
+                self.gui.log("autoloop: 出題を検出できません。「次の問題」を再タップします")
+                self._tap(*self.vision.ui_point("bar_next", frame))
+            else:
+                self.gui.log("autoloop: 盤が見えない画面です（タップしません）")
+                if not self._unknown_shot:
+                    self._unknown_shot = True
+                    self._save_shot(frame, "unknown_screen")
             self._await_retapped = True
         else:
             self._error_step("await_problem: 出題を検出できません")
@@ -1142,13 +1178,11 @@ class AutoLoopController:
         name = "popup_next" if self.vision.popup_present(frame) else "bar_next"
         self._tap(*self.vision.ui_point(name, frame))
         self._next_taps += 1
-        if self._next_taps > NEXT_MAX_TAPS * 2:
+        if self._next_taps > NEXT_MAX_TAPS:
+            # 「次の問題」が効いていない＝知らない画面の可能性。当てずっぽうの × は撃たない
+            # （旧実装の比率フォールバックが問題画面の ← 戻る を押していた＝spec 追記4）
             self._next_taps = 0
             self._error_step("next: ポップアップが閉じません")
-        elif self._next_taps > NEXT_MAX_TAPS:
-            # 「次の問題」が効いていない＝知らない画面が覆っている可能性。× を 1 回だけ試す
-            self._tap(*self._close_point(frame))
-            self.gui.log(f"autoloop: 「次の問題」が {self._next_taps} 回効きません。× をタップします")
         self.problem = None
         self._cf_base = None
         self._pending_taps = []
@@ -1163,26 +1197,42 @@ class AutoLoopController:
         self.state = "AWAIT_PROBLEM"
         self._await_prev = None
         self._await_retapped = False
+        self._unknown_shot = False
         self._deadline = self.clock() + self.settings.answer_timeout_s
 
     # --- 補助 ---
     def _close_point(self, frame):
-        """左上の × の座標。見つからなければ比率のフォールバック（実測の × の位置）"""
+        """左上の × の座標。見つからなければ None（当てずっぽうのタップはしない＝spec 追記4）。
+
+        比率のフォールバック（旧 CLOSE_FALLBACK_POINT = 0.045,0.035）は、問題画面では
+        ヘッダの ← 戻る に当たってアプリをホームへ飛ばす。× は見えているときだけ押す。
+        """
         try:
-            point = self.vision.find_close_glyph(frame)
+            return self.vision.find_close_glyph(frame)
         except Exception as e:
             self.gui.log(f"autoloop: × を探せません: {e!r}")
-            point = None
-        if point is not None:
-            return point
-        w, h = getattr(frame, "size", (DEVICE_W, DEVICE_H))
-        return int(round(CLOSE_FALLBACK_POINT[0] * w)), int(round(CLOSE_FALLBACK_POINT[1] * h))
+            return None
+
+    def _board_visible(self, frame):
+        """盤が読める＝問題画面にいる（比率座標の UI ボタンが意味を持つ）"""
+        try:
+            self.vision.board_rect(frame)
+        except CaptureError:
+            return False
+        except Exception as e:
+            self.gui.log(f"autoloop: 盤の位置を取れません: {e!r}")
+            return False
+        return True
 
     def _handle_overlay(self, frame):
-        """認定証などのフルスクリーン画面なら × をタップして 1 周待つ（True なら呼び出し側は return）。
+        """認定証などのフルスクリーン画面なら × をタップして待つ（True なら呼び出し側は return）。
 
         状態は変えない（オーバーレイが消えた次の周で通常の判定に進む）。閉じられないまま
         OVERLAY_MAX_TAPS を超えたら失敗として打ち切る＝無限にタップし続けない。
+
+        タップの条件は 3 つ（spec 追記4。フェード中の認定証を連打して、消えた後の問題画面の
+        ← 戻る を押してしまった事故への対策）: (1) OVERLAY_MIN_FRAMES 連続で検出、
+        (2) 1 回ごとに OVERLAY_TAP_WAIT_S 待つ、(3) × が実際に見えている。
         """
         try:
             present = self.vision.overlay_present(frame)
@@ -1191,19 +1241,28 @@ class AutoLoopController:
             return False
         if not present:
             self._overlay_taps = 0
+            self._overlay_seen = 0
             self._overlay_shot = False
             return False
+        self._overlay_seen += 1
+        if self._overlay_seen < OVERLAY_MIN_FRAMES:
+            return True  # 1 枚目は確認だけ（遷移中の 1 フレームで押しにいかない）
         if self._overlay_taps >= OVERLAY_MAX_TAPS:
             self._overlay_taps = 0
+            self._overlay_seen = 0
             self._error_step("overlay: 閉じられません")
             return True
-        self._tap(*self._close_point(frame))
+        point = self._close_point(frame)
+        if point is None:
+            self.gui.log("autoloop: オーバーレイの × が見つかりません（タップしません）")
+        else:
+            self._tap(*point)
+            self.gui.log("autoloop: 認定証などのオーバーレイを閉じます")
         self._overlay_taps += 1
-        self.gui.log("autoloop: 認定証などのオーバーレイを閉じます")
         if not self._overlay_shot:
             self._overlay_shot = True
             self._save_shot(frame, "overlay")
-        self._not_before = self.clock() + self.settings.settle_ms / 1000.0
+        self._not_before = self.clock() + max(OVERLAY_TAP_WAIT_S, 2 * self.settings.settle_ms / 1000.0)
         return True
 
     def _tap(self, x, y):
@@ -1314,6 +1373,7 @@ def main(argv=None):
     vision = Vision((9, 13, 19))
     print("serial", serial, "foreground_package", adb.foreground_package(), "frame", frame.size)
     print("popup_present", vision.popup_present(frame), "popup_state", vision.popup_state(frame))
+    print("title_band", round(_band_mean(frame, OVERLAY_TITLE_BAND), 1), "dark", result_title_band_dark(frame))
     print("hint_enabled", vision.hint_enabled(frame), "header", vision.header_hash(frame))
     print("overlay_present", vision.overlay_present(frame), "close_glyph", vision.find_close_glyph(frame))
     try:

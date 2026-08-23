@@ -332,3 +332,9 @@ serial を全部集めてから前面パッケージが `fm.wars.goquest`（`APP
 同じ確認をしてから使い、外れていれば discover へフォールバックする。`tsumego_autoloop.adb_serial`
 を明示指定した場合はこの探索を通らず、指定値をそのまま使う（`_autoloop_trigger_locked` が
 `settings.adb_serial or self._autoloop_find_serial(settings)` で分岐）。
+
+## 追記4（2026-08-23）— 誤タップ防止（結果ポップアップの署名・当てずっぽうのタップ廃止）
+
+実機で認定証がフェード中に × を連打し、認定証が消えた後の**問題画面のヘッダの ← 戻る**（≒(40,80)/900x1600）を押してアプリがホームへ戻る事故が出た。原因は 3 つ: (1) `popup_present` が「盤の上端が黄色でない」だけなので、ホーム・遷移中・認定証まで結果ポップアップ扱いになり `popup_next` を撃っていた、(2) `_handle_overlay` が検出 1 フレーム目から連続でタップしていた、(3) NEXT の上限超えに `CLOSE_FALLBACK_POINT`(0.045,0.035) の**盤面を見ない**タップがあり、その座標が問題画面では ← 戻るだった。
+
+対策: (1) `result_title_band_dark`（`OVERLAY_TITLE_BAND` の平均輝度 < `RESULT_TITLE_DARK_MAX`=140）を結果ポップアップの署名として `popup_present` に AND する。実測 popup_wrong / popup_correct **81.1**・出現途中 100.5 に対し認定証 **247.2**（140〜160 は「濃紺でも紙色でもない」不感帯＝どちらの経路もタップしない）。**問題画面 53.7・遷移 43.5 もアプリの青ヘッダで暗い側**なので帯だけでは問題画面と分離できず、そこは従来どおり黄色帯の条件が担う。`overlay_present` は「黄色でない ∧ 濃紺でない ∧ 紙色(>=160) ∧ × が見える」。(2) `_handle_overlay` は `OVERLAY_MIN_FRAMES`=2 連続で確認してから 1 回タップし、次まで `max(OVERLAY_TAP_WAIT_S=1.5, 2×settle)` 待つ。上限は `OVERLAY_MAX_TAPS` 5→**3**、`find_close_glyph` が None なら 1 回も押さない（オーバーレイでないフレームでカウンタは 0 に戻る）。(3) `CLOSE_FALLBACK_POINT` は**削除**し、NEXT は `NEXT_MAX_TAPS`(4) 超で即 `_error_step("next: ポップアップが閉じません")`。(4) AWAIT の締切再タップは `board_rect` が読めるフレーム（＝問題画面）に限り、読めなければ「盤が見えない画面です（タップしません）」を出して `unknown_screen` のスクショを 1 枚残すだけにする（2 回目の締切超過で従来どおり `_error_step`）。**知らない画面では 1 タップも撃たない**が新しい不変条件。

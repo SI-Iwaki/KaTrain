@@ -29,9 +29,35 @@ def test_settings_defaults_and_override():
 
 
 def test_popup_present_on_real_frames():
+    """結果ポップアップ（濃紺のタイトル帯）だけを True にする（spec 追記4）。
+
+    「盤の上端が黄色でない」だけだと認定証・遷移中・ホームまでポップアップ扱いになり、
+    そこへ「次の問題」を撃ってしまう＝誤タップ事故の根本原因 (1)
+    """
     assert al.popup_present(_frame("popup_wrong.png")) is True
+    assert al.popup_present(_frame("popup_correct.png")) is True
     assert al.popup_present(_frame("problem.png")) is False
     assert al.popup_present(_frame("hint.png")) is False
+    assert al.popup_present(_frame("transition.png")) is False
+    assert al.popup_present(_frame("certificate.png")) is False
+
+
+def test_result_title_band_dark_measurements():
+    """帯の実測値（閾値 140 の両側に 39.5 / 107 の余裕）。
+
+    実測: popup_wrong / popup_correct 81.1・出現途中 100.5（＜140＝濃紺）／認定証 247.2（紙色）。
+    問題画面 53.7・遷移 43.5 もアプリの青ヘッダなので**暗い側**に出る＝この帯だけでは問題画面と
+    分離できない（分離するのは popup_present の黄色帯の条件）。
+    """
+    band = al._band_mean
+    assert abs(band(_frame("popup_wrong.png"), al.OVERLAY_TITLE_BAND) - 81.1) < 1.0
+    assert abs(band(_frame("popup_correct_animating.png"), al.OVERLAY_TITLE_BAND) - 100.5) < 1.0
+    assert abs(band(_frame("certificate.png"), al.OVERLAY_TITLE_BAND) - 247.2) < 1.0
+    assert al.result_title_band_dark(_frame("popup_wrong.png")) is True
+    assert al.result_title_band_dark(_frame("popup_correct.png")) is True
+    assert al.result_title_band_dark(_frame("popup_correct_animating.png")) is True
+    assert al.result_title_band_dark(_frame("certificate.png")) is False
+    assert al.result_title_band_dark(_frame("problem.png")) is True  # 青ヘッダ（黄色帯で切る）
 
 
 def test_popup_state_wrong_template():
@@ -644,6 +670,25 @@ def test_controller_answering_unreadable_board_still_reaches_stalled(tmp_path):
     clock.advance(41)
     c.step()
     assert c.state == "STALLED"
+
+
+def test_controller_await_deadline_does_not_tap_without_board(tmp_path):
+    """spec 追記4: 盤の見えない画面（アプリのホーム等）では「次の問題」を再タップしない。
+
+    比率座標の bar_next は問題画面の座標なので、別画面では無関係なボタンを踏む。
+    タップの代わりに 1 枚だけスクショを残し、2 回目の締切超過で従来どおり _error_step に回す
+    """
+    c, gui, adb, clock = _controller(
+        [{"grid": None}], tmp_path, vision=_NoRectVision(3), max_consecutive_errors=1, answer_timeout_s=5
+    )
+    c.activate()
+    clock.advance(6)
+    c.step()
+    assert adb.taps == [] and c.state == "AWAIT_PROBLEM"
+    assert any("盤が見えない画面です" in m for m in gui.logs)
+    clock.advance(6)
+    c.step()
+    assert adb.taps == [] and c.state == "IDLE" and c.stats["failed"] == 1
 
 
 def test_controller_activate_resets_stats(tmp_path):
@@ -1294,8 +1339,11 @@ def test_overlay_present_only_on_certificate():
     """結果ポップアップ（濃紺のタイトル帯）・問題画面（popup 無し）はオーバーレイではない"""
     assert al.overlay_present(_frame("certificate.png")) is True
     assert al.overlay_present(_frame("popup_correct.png")) is False
+    assert al.overlay_present(_frame("popup_correct_animating.png")) is False
     assert al.overlay_present(_frame("popup_wrong.png")) is False
     assert al.overlay_present(_frame("problem.png")) is False
+    assert al.overlay_present(_frame("hint.png")) is False
+    assert al.overlay_present(_frame("transition.png")) is False
 
 
 def test_vision_exposes_overlay_helpers():
@@ -1306,11 +1354,15 @@ def test_vision_exposes_overlay_helpers():
 
 
 def test_controller_result_closes_overlay_then_takes_verdict(tmp_path):
-    """RESULT の先頭でオーバーレイを × で閉じる（判定は進めない）。消えたら通常どおり判定する"""
+    """RESULT の先頭でオーバーレイを × で閉じる（判定は進めない）。消えたら通常どおり判定する。
+
+    spec 追記4: × は 2 フレーム連続で見えてから 1 回、次は OVERLAY_TAP_WAIT_S 待ってから
+    （フェード中に連打して、消えた後の問題画面の ← 戻るを押す事故への対策）
+    """
     frames = [
         {"grid": BASE}, {"grid": BASE}, {"grid": BASE},
         OVERLAY, OVERLAY,                                # ANSWERING: popup 2 枚 → RESULT
-        OVERLAY, OVERLAY, OVERLAY,                       # RESULT: × を 3 回タップ
+        OVERLAY, OVERLAY, OVERLAY,                       # RESULT: 1 枚目は確認・以降 × をタップ
         {"popup": True, "state": "correct"},             # RESULT: オーバーレイが消えた → correct
         {"popup": True, "state": "correct"},
     ]
@@ -1321,11 +1373,17 @@ def test_controller_result_closes_overlay_then_takes_verdict(tmp_path):
     c.step()
     c.step(); c.step()
     assert c.state == "RESULT"
-    for _ in range(3):
-        c.step()
-        assert c.state == "RESULT" and adb.taps[-1] == (40, 50)
-    assert adb.taps.count((40, 50)) == 3
+    c.step()                                             # 1 枚目: 確認だけ（タップしない）
+    assert c.state == "RESULT" and adb.taps == []
+    c.step()                                             # 2 枚目: × を 1 回
+    assert c.state == "RESULT" and adb.taps == [(40, 50)]
+    c.step()                                             # 待ちの間は 2 回目を押さない
+    assert adb.taps == [(40, 50)]
+    clock.advance(2.0)
+    c.step()
+    assert c.state == "RESULT" and adb.taps == [(40, 50)] * 2
     assert any("オーバーレイ" in m for m in gui.logs)
+    clock.advance(2.0)
     c.step()
     assert c.state == "NEXT" and c.stats["correct"] == 1
 
@@ -1334,27 +1392,62 @@ def test_controller_overlay_taps_are_capped(tmp_path):
     """閉じられないオーバーレイは OVERLAY_MAX_TAPS で打ち切る（無限タップにしない）"""
     c, gui, adb, clock = _controller([OVERLAY], tmp_path, max_consecutive_errors=9)
     c.activate()
+    c.step()                                             # 1 枚目は確認だけ
+    assert adb.taps == []
     for _ in range(al.OVERLAY_MAX_TAPS):
         c.step()
+        clock.advance(2.0)
     assert adb.taps == [(40, 50)] * al.OVERLAY_MAX_TAPS and c.stats["failed"] == 0
     c.step()
     assert adb.taps == [(40, 50)] * al.OVERLAY_MAX_TAPS and c.stats["failed"] == 1
     assert c.state == "AWAIT_PROBLEM"                    # 状態は変えない
 
 
+def test_controller_overlay_needs_two_frames_and_waits(tmp_path):
+    """× は 2 フレーム連続で見えてから 1 回だけ。待ちが明けるまで次のタップは撃たない"""
+    c, gui, adb, clock = _controller([OVERLAY], tmp_path)
+    c.activate()
+    c.step()
+    assert adb.taps == [] and c._overlay_seen == 1
+    c.step()
+    assert adb.taps == [(40, 50)] and c._overlay_taps == 1
+    for _ in range(3):                                   # 待ちの間は何回 step しても増えない
+        c.step()
+    assert adb.taps == [(40, 50)]
+    clock.advance(al.OVERLAY_TAP_WAIT_S + 0.1)
+    c.step()
+    assert adb.taps == [(40, 50)] * 2
+
+
+def test_controller_overlay_without_close_glyph_never_taps(tmp_path):
+    """× が見つからないフレームでは 1 回もタップしない（比率フォールバックは廃止）"""
+    c, gui, adb, clock = _controller([dict(OVERLAY, close=None)], tmp_path, max_consecutive_errors=9)
+    c.activate()
+    for _ in range(al.OVERLAY_MAX_TAPS + 2):
+        c.step()
+        clock.advance(2.0)
+    assert adb.taps == [] and c.stats["failed"] == 1
+    assert any("× が見つかりません" in m for m in gui.logs)
+
+
 def test_controller_overlay_counter_resets_when_gone(tmp_path):
-    """オーバーレイが消えたらカウンタは 0 に戻る（次の認定証も 5 回まで粘れる）"""
+    """オーバーレイが消えたらカウンタは 0 に戻る（次の認定証も 3 回まで粘れる）"""
     c, gui, adb, clock = _controller([OVERLAY], tmp_path)
     c.activate()
     c.step(); c.step()
-    assert c._overlay_taps == 2
+    assert c._overlay_taps == 1 and c._overlay_seen == 2
+    clock.advance(2.0)
     c.adb.frames = [{"grid": BASE}]
     c.step()
-    assert c._overlay_taps == 0
+    assert c._overlay_taps == 0 and c._overlay_seen == 0
 
 
 def test_controller_next_taps_are_capped(tmp_path):
-    """popup が消えないまま NEXT を繰り返したら × を1回挟み、さらに続いたら失敗として打ち切る"""
+    """popup が消えないまま NEXT を繰り返したら、当てずっぽうの × を撃たずに失敗で打ち切る
+
+    spec 追記4: 旧実装は上限超えで CLOSE_FALLBACK_POINT(0.045,0.035) を撃っていたが、
+    そこは問題画面ではヘッダの ← 戻る＝アプリをホームへ飛ばす座標だった
+    """
     c, gui, adb, clock = _controller([{"popup": True, "state": "correct"}], tmp_path, max_consecutive_errors=9)
     c.activate()
 
@@ -1366,13 +1459,10 @@ def test_controller_next_taps_are_capped(tmp_path):
     for _ in range(al.NEXT_MAX_TAPS):
         next_round()
     assert adb.taps == [nxt] * al.NEXT_MAX_TAPS and c.stats["failed"] == 0
-    next_round()                                         # 上限超え → × を 1 回
-    assert adb.taps[-1] == (40, 50) and c.stats["failed"] == 0
-    for _ in range(al.NEXT_MAX_TAPS - 1):
-        next_round()
-    assert c.stats["failed"] == 0
-    next_round()                                         # 2 倍を超えた → 打ち切り
+    next_round()                                         # 上限超え → × は撃たずに打ち切り
+    assert adb.taps == [nxt] * (al.NEXT_MAX_TAPS + 1)
     assert c.stats["failed"] == 1 and c._next_taps == 0
+    assert not hasattr(al, "CLOSE_FALLBACK_POINT")
 
 
 def test_controller_next_taps_reset_when_board_appears(tmp_path):
