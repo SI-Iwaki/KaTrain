@@ -724,6 +724,26 @@ def test_controller_await_deadline_does_not_tap_without_board(tmp_path):
     assert adb.taps == [] and c.state == "IDLE" and c.stats["failed"] == 1
 
 
+def test_controller_next_does_not_tap_without_board_or_popup(tmp_path):
+    """spec 追記6: NEXT でも盤もポップアップも見えない画面に bar_next を撃たない。
+
+    実測 2026-08-24: 昇段カード（旧閾値では未知画面）の上で bar_next の比率座標は
+    「問題を見る」ボタンに当たり、別画面へ迷い込む。タップせずスクショを 1 枚残し、
+    AWAIT_PROBLEM の締切処理（盤が見えなければタップしない→error）に委ねる
+    """
+    frames = [
+        {"popup": True, "state": "correct"},  # AWAIT: popup → NEXT
+        {"popup": False, "grid": None},       # NEXT: 盤もポップアップも無い → タップしない
+    ]
+    c, gui, adb, clock = _controller(frames, tmp_path, vision=_NoRectVision(3))
+    c.activate()
+    c.step()
+    assert c.state == "NEXT"
+    c.step()
+    assert adb.taps == [] and c.state == "AWAIT_PROBLEM"
+    assert any("タップしません" in m for m in gui.logs)
+
+
 def test_controller_activate_resets_stats(tmp_path):
     """finding 3: activate() は stats をゼロへリセットする"""
     c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path)
@@ -1380,6 +1400,45 @@ def test_find_close_glyph_none_on_problem_screen():
     assert al.find_close_glyph(_frame("problem.png")) is None
 
 
+def test_popup_present_on_rankup_card_with_dense_board():
+    """昇段カード（「現在のあなたの解答力」）は結果ポップアップの変種として扱う（spec 追記6）。
+
+    実機 2026-08-24 の停止事故フレーム: 認定証（5200勝）を閉じた直後に出る昇段カードは
+    紙色＋濃紺バッジ＋中央に小盤＋ボタン行が結果ポップアップと同配置（次の問題=popup_next）。
+    出題が太極詰碁（9路・77子）で小盤がほぼ石に覆われ、内側の小盤の黄色率が 0.371 まで落ち、
+    旧閾値では popup(>=0.5) にも overlay(<0.2) にも入らない死角に落ちて STALLED で凍った。
+    判定文は通常の正解ポップアップと同一文（「…の問題を解きました！」＝tail の MAD 0.0）なので
+    verdict は correct と確定する＝RESULT → NEXT（popup_next はカードの「次の問題」と同座標）。
+    """
+    frame = _frame("popup_rankup_dense.png")
+    assert al.popup_present(frame) is True
+    assert al.overlay_present(frame) is False
+    assert al.popup_state(frame, al.load_templates()) == "correct"
+
+
+def test_inner_board_split_has_margin_on_both_sides():
+    """小盤の黄色率はしきい値1本（INNER_BOARD_YELLOW_SPLIT）で盤あり/なしを分ける＝死角を残さない。
+
+    旧実装は popup>=0.5 / overlay<0.2 の2定数で、0.2〜0.5 がどちらにも分類されない死角だった。
+    実測: 盤なし（認定証2種）0.0 / 盤あり最小（昇段カード・石で覆われた小盤）0.371。
+    石で覆われた盤の黄色率の床は石の円の隙間で決まり、全埋めの帯でも 0.26 を下回らない
+    （事故フレームの石のみの横帯の実測 0.256〜0.319）。両側に 0.1 以上の余白を要求する。
+    """
+    ratio = al.yellow_ratio
+    dense = ratio(_frame("popup_rankup_dense.png"), al.POPUP_INNER_BOARD_BOX)
+    assert abs(dense - 0.37) < 0.02
+    assert dense >= al.INNER_BOARD_YELLOW_SPLIT + 0.1
+    for name in ("certificate_device.png", "certificate_wins.png"):
+        assert ratio(_frame(name), al.POPUP_INNER_BOARD_BOX) <= al.INNER_BOARD_YELLOW_SPLIT - 0.1
+
+
+def test_overlay_present_on_wins_certificate():
+    """勝数の認定証（5200勝）も従来の認定証と同じ署名で閉じられる（実機 2026-08-24 に閉じた実績フレーム）"""
+    frame = _frame("certificate_wins.png")
+    assert al.overlay_present(frame) is True
+    assert al.popup_present(frame) is False
+
+
 def test_overlay_present_only_on_certificate():
     """結果ポップアップ（中央に小盤）・問題画面（盤の上端が黄色）はオーバーレイではない"""
     assert al.overlay_present(_frame("certificate_device.png")) is True
@@ -1396,7 +1455,7 @@ def test_overlay_present_measurements_on_certificate():
     """認定証ダイアログの署名の実測（spec 追記5）: 盤の帯 0.017 / 中央の小盤 0.0 / 紙 247.2"""
     frame = _frame("certificate_device.png")
     assert al.yellow_ratio(frame, al.POPUP_STRIP) < al.POPUP_STRIP_YELLOW_MAX
-    assert al.yellow_ratio(frame, al.POPUP_INNER_BOARD_BOX) < al.OVERLAY_INNER_BOARD_YELLOW_MAX
+    assert al.yellow_ratio(frame, al.POPUP_INNER_BOARD_BOX) < al.INNER_BOARD_YELLOW_SPLIT
     assert abs(al._band_mean(frame, al.OVERLAY_PAPER_BAND) - 247.2) < 1.0
     # 結果ポップアップの同じ帯も 215.4 で明るい＝紙の条件だけでは分離しない（分離は小盤と ×）
     assert al._band_mean(_frame("popup_wrong.png"), al.OVERLAY_PAPER_BAND) >= al.OVERLAY_PAPER_MIN

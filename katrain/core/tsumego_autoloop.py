@@ -39,7 +39,12 @@ DEFAULT_UI_POINTS = {
 POPUP_STRIP = (0.02, 0.181, 0.98, 0.19)  # 大盤の上端の帯。実測: 問題画面 黄 0.957 / ポップアップ 0.074
 POPUP_STRIP_YELLOW_MAX = 0.5
 POPUP_INNER_BOARD_BOX = (0.25, 0.42, 0.75, 0.62)  # 結果ポップアップが常に出す内側の小盤
-POPUP_INNER_BOARD_YELLOW_MIN = 0.5  # 実測: popup_wrong 0.87 / popup_correct 0.83 / animating 0.86 / 認定証 0.0
+# 内側の小盤の「盤あり/なし」を分けるしきい値は **1本**（spec 追記6）。旧実装は popup>=0.5 /
+# overlay<0.2 の2定数で、0.2〜0.5 がどちらにも分類されない死角だった＝石で小盤がほぼ覆われる
+# 出題（実測 2026-08-24 太極詰碁 9路77子: 0.371）の昇段カードがそこへ落ち、STALLED で凍った。
+# 実測: 盤なし（認定証2種）0.0 / 盤あり最小 0.371（覆われた盤の床は石の円の隙間で決まり、
+# 石のみの横帯でも 0.256〜0.319）/ 通常の結果ポップアップ 0.83〜0.87。0.15 は両側に 0.1 超の余白
+INNER_BOARD_YELLOW_SPLIT = 0.15
 VERDICT_BAND = (0.10, 0.289, 0.90, 0.325)  # 判定文 1 行目（実測 文字 y 481..511）
 VERDICT_DARK_SUM = 300  # 文字画素: R+G+B < 300（紙色は 600 超）
 VERDICT_TAIL_W = 140  # 文字列の右端に寄せた切り出し幅（中央寄せ文の長さ差を吸収）
@@ -62,7 +67,6 @@ OVERLAY_TITLE_BAND = (0.08, 0.145, 0.45, 0.175)  # 結果ポップアップで�
 RESULT_TITLE_DARK_MAX = 140.0  # 結果ポップアップの署名。実測 81.1（正誤とも）/ 100.5（出現途中）
 OVERLAY_PAPER_BAND = (0.2, 0.25, 0.8, 0.28)  # 認定証ダイアログの紙の帯（実測 247.2 / 結果ポップアップ 215.4）
 OVERLAY_PAPER_MIN = 200.0
-OVERLAY_INNER_BOARD_YELLOW_MAX = 0.2  # 認定証は中央に盤が無い（実測 0.0 / 結果ポップアップ 0.83〜0.87）
 
 
 def _is_red(r, g, b):
@@ -162,7 +166,7 @@ def popup_present(frame):
     return (
         yellow_ratio(frame, POPUP_STRIP) < POPUP_STRIP_YELLOW_MAX
         and result_title_band_dark(frame)
-        and yellow_ratio(frame, POPUP_INNER_BOARD_BOX) >= POPUP_INNER_BOARD_YELLOW_MIN
+        and yellow_ratio(frame, POPUP_INNER_BOARD_BOX) >= INNER_BOARD_YELLOW_SPLIT
     )
 
 
@@ -247,7 +251,7 @@ def overlay_present(frame):
     """
     return (
         yellow_ratio(frame, POPUP_STRIP) < POPUP_STRIP_YELLOW_MAX
-        and yellow_ratio(frame, POPUP_INNER_BOARD_BOX) < OVERLAY_INNER_BOARD_YELLOW_MAX
+        and yellow_ratio(frame, POPUP_INNER_BOARD_BOX) < INNER_BOARD_YELLOW_SPLIT
         and _band_mean(frame, OVERLAY_PAPER_BAND) >= OVERLAY_PAPER_MIN
         and find_close_glyph(frame) is not None
     )
@@ -1228,8 +1232,17 @@ class AutoLoopController:
             pass
         if self.problem is not None and self.problem.base:
             self.last_initial = self.problem.base
-        name = "popup_next" if self.vision.popup_present(frame) else "bar_next"
-        self._tap(*self.vision.ui_point(name, frame))
+        if self.vision.popup_present(frame):
+            self._tap(*self.vision.ui_point("popup_next", frame))
+        elif self._board_visible(frame):
+            self._tap(*self.vision.ui_point("bar_next", frame))
+        else:
+            # 盤もポップアップも見えない画面に比率座標を撃たない（spec 追記4 と同じ方針）。実測
+            # 2026-08-24: 昇段カードの上では bar_next が「問題を見る」に当たり別画面へ迷い込む。
+            # タップせず AWAIT_PROBLEM の締切処理（盤が見えなければタップしない→error）に委ねる
+            self.gui.log("autoloop: 盤もポップアップも見えないため「次の問題」をタップしません")
+            if self._next_taps == 0:
+                self._save_shot(frame, "unknown_screen")
         self._next_taps += 1
         if self._next_taps > NEXT_MAX_TAPS:
             # 「次の問題」が効いていない＝知らない画面の可能性。当てずっぽうの × は撃たない
