@@ -49,18 +49,20 @@ HINT_ICON = (0.833, 0.775, 18)  # (cx比, cy比, 半径px)。実測 平均輝度
 HINT_ICON_ENABLED_MIN = 126.0  # 実測 2026-08-23: 有効 160.4 / 無効 92.7（中点）
 HEADER_BAND = (0.10, 0.15, 0.90, 0.18)
 RED_RING_MIN_PIXELS = 80
-# 認定証などのフルスクリーン画面（spec 追記2）。× は左上の暗いグリフ、背景は紙色 (251,249,225) 前後
-CLOSE_GLYPH_BOX = (0.0, 0.005, 0.13, 0.10)
+# 認定証（spec 追記2・追記5）。実機は**問題画面の上に載るダイアログ**で、アプリのヘッダ
+# （左上の ← 戻る ≈(0.045,0.05)・「囲碁詰めチャレ」・難易度/出典 y≈0.16）はダイアログの上に残る。
+# ダイアログは y 0.175〜0.83・紙色 (251,249,225) 前後、閉じる × は**ダイアログの左上** ≈(0.09,0.20)。
+CLOSE_GLYPH_BOX = (0.04, 0.17, 0.125, 0.225)
 CLOSE_GLYPH_DARK_SUM = 450  # 暗画素: R+G+B < 450
-CLOSE_GLYPH_WARM_MAX = 40  # 金の装飾枠を落とす: R-B がこれを超える暖色は数えない（実測 × -6 / 金 +78）
+CLOSE_GLYPH_WARM_MAX = 40  # 金の装飾（鳥）を落とす: R-B がこれを超える暖色は数えない（実測 × -6 / 金 +78）
 CLOSE_GLYPH_MIN_PIXELS = 30
 CLOSE_GLYPH_MIN_PX = 12  # bbox の辺の下限（900 幅基準・フレーム幅でスケール）
-CLOSE_GLYPH_MAX_PX = 90  # 同・上限
-CLOSE_GLYPH_Y_WINDOW = 90  # 最初に暗画素が出た行から採る高さ（900 幅基準）
+CLOSE_GLYPH_MAX_PX = 70  # 同・上限（実測 実機の × は 36x35 px）
 OVERLAY_TITLE_BAND = (0.08, 0.145, 0.45, 0.175)  # 結果ポップアップでは濃紺の「囲碁詰めチャレ」帯
-OVERLAY_TITLE_LIGHT_MIN = 160.0  # 実測: 結果ポップアップ 81〜100 / 認定証（紙色）247
-RESULT_TITLE_DARK_MAX = 140.0  # 結果ポップアップの署名。実測 81.1（正誤とも）/ 100.5（出現途中）/ 認定証 247.2
-# 140〜160 は「濃紺でも紙色でもない」帯＝結果ポップアップでも認定証でもない＝どちらの経路もタップしない
+RESULT_TITLE_DARK_MAX = 140.0  # 結果ポップアップの署名。実測 81.1（正誤とも）/ 100.5（出現途中）
+OVERLAY_PAPER_BAND = (0.2, 0.25, 0.8, 0.28)  # 認定証ダイアログの紙の帯（実測 247.2 / 結果ポップアップ 215.4）
+OVERLAY_PAPER_MIN = 200.0
+OVERLAY_INNER_BOARD_YELLOW_MAX = 0.2  # 認定証は中央に盤が無い（実測 0.0 / 結果ポップアップ 0.83〜0.87）
 
 
 def _is_red(r, g, b):
@@ -139,9 +141,10 @@ def _band_mean(frame, ratio_box):
 def result_title_band_dark(frame):
     """結果ポップアップの濃紺タイトル帯（「囲碁詰めチャレ」）が出ているか。
 
-    実測（tests/data/autoloop）: popup_wrong / popup_correct 81.1・出現途中 100.5 に対し
-    認定証（紙色）247.2。問題画面（53.7）・遷移（43.5）もアプリの青いヘッダなので暗い側に出る
-    ＝この帯だけでは問題画面と分離できない。分離は popup_present の黄色帯の条件が担う。
+    実測（tests/data/autoloop）: popup_wrong / popup_correct 81.1・出現途中 100.5。
+    問題画面（53.7）・遷移（43.5）・**認定証（44.5）** もアプリの青いヘッダなので暗い側に出る
+    ＝この帯だけでは問題画面とも認定証とも分離できない（認定証はダイアログで、この帯はその
+    上に残るヘッダ＝spec 追記5）。分離は popup_present の黄色帯と内側の小盤の条件が担う。
     """
     return _band_mean(frame, OVERLAY_TITLE_BAND) < RESULT_TITLE_DARK_MAX
 
@@ -163,54 +166,91 @@ def popup_present(frame):
     )
 
 
-def find_close_glyph(frame):
-    """左上の × ボタンの中心 (x, y)。見つからなければ None。
-
-    暗い（R+G+B < CLOSE_GLYPH_DARK_SUM）画素の bbox を採るが、そのままでは金色の装飾枠が
-    混ざって bbox が広がる（実測 認定証: × だけなら 22x22 px、金込みなら 54x53 px で
-    サイズ判定を外れる）。落とし方は 2 つ: (1) 暖色を数えない（× は濃紺で R-B=-6、金は +78）、
-    (2) y 方向は最初に暗画素が現れた行から CLOSE_GLYPH_Y_WINDOW px 以内だけを採る。
-    フレームは実機（900x1600）の切り抜きでも来るので、px の閾値は幅の比でスケールする。
-    """
-    x0, y0, x1, y1 = _box(frame, CLOSE_GLYPH_BOX)
+def _glyph_pixels(frame, ratio_box):
+    """ratio_box の中の「暗くて暖色でない」画素（× の色。金の装飾は R-B が大きいので落ちる）"""
+    x0, y0, x1, y1 = _box(frame, ratio_box)
     px = frame.load()
-    scale = frame.size[0] / float(DEVICE_W)
-    rows = {}
+    pts = []
     for y in range(y0, y1):
         for x in range(x0, x1):
             r, g, b = px[x, y][:3]
             if r + g + b < CLOSE_GLYPH_DARK_SUM and r - b <= CLOSE_GLYPH_WARM_MAX:
-                rows.setdefault(y, []).append(x)
-    if not rows:
+                pts.append((x, y))
+    return pts
+
+
+def _pts_bbox(pts):
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _blobs(pts):
+    """8 近傍で連結した塊に分ける（探索窓は高々 100x100 px 程度なので素朴な BFS でよい）"""
+    remaining = set(pts)
+    out = []
+    while remaining:
+        seed = remaining.pop()
+        blob, stack = [seed], [seed]
+        while stack:
+            x, y = stack.pop()
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    p = (x + dx, y + dy)
+                    if p in remaining:
+                        remaining.discard(p)
+                        blob.append(p)
+                        stack.append(p)
+        out.append(blob)
+    return out
+
+
+def find_close_glyph(frame):
+    """認定証ダイアログを閉じる × の中心 (x, y)。見つからなければ None。
+
+    探索窓は**ダイアログの左上**（CLOSE_GLYPH_BOX ≈ x 0.04〜0.125 / y 0.17〜0.225）。実機の
+    認定証は問題画面の上に載るダイアログなので、画面の左上を探すとアプリのヘッダ（← 戻る）に
+    当たる＝押すとホームへ飛ぶ（spec 追記5）。窓の中でも 3 つの夾雑物を落とす必要がある:
+    (1) 金の装飾（鳥）は暖色なので数えない（× は R-B=-6 / 金は +78）、(2) 窓の上端に掛かる
+    ヘッダの帯・ダイアログ左外の暗い背景は、暗画素をまとめた bbox を膨らませる。そこで bbox が
+    サイズ判定（12〜70px・900 幅基準でスケール）を外れたら 8 近傍の塊に分け、判定に収まる塊の
+    うち最も左上のもの（× はこの窓で唯一のコンパクトな暗い物体）を採る。UI の帯は窓の幅いっぱいに
+    伸びるので上限で落ち、ダイアログ外の暗い縁は幅が足りず下限で落ちる。
+    """
+    pts = _glyph_pixels(frame, CLOSE_GLYPH_BOX)
+    if len(pts) < CLOSE_GLYPH_MIN_PIXELS:
         return None
-    top = min(rows)
-    window = CLOSE_GLYPH_Y_WINDOW * scale
-    kept = [(y, xs) for y, xs in rows.items() if y - top <= window]
-    n = sum(len(xs) for _y, xs in kept)
-    if n < CLOSE_GLYPH_MIN_PIXELS:
-        return None
-    xs = [x for _y, row in kept for x in row]
-    ys = [y for y, row in kept for _x in row]
-    bw, bh = max(xs) - min(xs), max(ys) - min(ys)
+    scale = frame.size[0] / float(DEVICE_W)
     lo, hi = CLOSE_GLYPH_MIN_PX * scale, CLOSE_GLYPH_MAX_PX * scale
-    if not (lo <= bw <= hi and lo <= bh <= hi):
-        return None
-    return (min(xs) + max(xs)) // 2, (min(ys) + max(ys)) // 2
+
+    def fits(bb):
+        return lo <= bb[2] - bb[0] <= hi and lo <= bb[3] - bb[1] <= hi
+
+    bbox = _pts_bbox(pts)
+    if not fits(bbox):
+        boxes = (_pts_bbox(b) for b in _blobs(pts) if len(b) >= CLOSE_GLYPH_MIN_PIXELS)
+        found = [bb for bb in boxes if fits(bb)]
+        if not found:
+            return None
+        bbox = min(found, key=lambda bb: (bb[1], bb[0]))
+    return (bbox[0] + bbox[2]) // 2, (bbox[1] + bbox[3]) // 2
 
 
 def overlay_present(frame):
-    """認定証など、結果ポップアップではないフルスクリーン画面が出ているか。
+    """認定証ダイアログが出ているか（spec 追記5）。
 
-    盤が覆われている（黄色の帯が消えている）＋ タイトル帯が濃紺ではない（＝結果ポップアップ
-    ではない）＋ 紙色（OVERLAY_TITLE_LIGHT_MIN 以上）＋ 左上に × がある、の 4 条件。
-    結果ポップアップを誤って「閉じる」と判定が飛ぶので、帯の輝度で先に切る。
+    実機のジオメトリは**全画面ではなくダイアログ**で、アプリのヘッダ（← 戻る・「囲碁詰めチャレ」・
+    難易度/出典）はその上に残る＝OVERLAY_TITLE_BAND は認定証でも濃紺（実測 44.5）のままなので、
+    旧実装の「タイトル帯が紙色」という条件は実機で常に偽だった。署名は 4 つ:
+    盤の上端の黄色帯が消えている（POPUP_STRIP）・中央に結果ポップアップの小盤が無い・
+    ダイアログの紙の帯が明るい（OVERLAY_PAPER_BAND）・ダイアログ左上に × がある。
     """
-    if yellow_ratio(frame, POPUP_STRIP) >= POPUP_STRIP_YELLOW_MAX:
-        return False
-    mean = _band_mean(frame, OVERLAY_TITLE_BAND)
-    if mean < RESULT_TITLE_DARK_MAX or mean < OVERLAY_TITLE_LIGHT_MIN:
-        return False
-    return find_close_glyph(frame) is not None
+    return (
+        yellow_ratio(frame, POPUP_STRIP) < POPUP_STRIP_YELLOW_MAX
+        and yellow_ratio(frame, POPUP_INNER_BOARD_BOX) < OVERLAY_INNER_BOARD_YELLOW_MAX
+        and _band_mean(frame, OVERLAY_PAPER_BAND) >= OVERLAY_PAPER_MIN
+        and find_close_glyph(frame) is not None
+    )
 
 
 def _dark_bbox(frame, ratio_box):
@@ -1394,6 +1434,7 @@ def main(argv=None):
     print("title_band", round(_band_mean(frame, OVERLAY_TITLE_BAND), 1), "dark", result_title_band_dark(frame))
     print("hint_enabled", vision.hint_enabled(frame), "header", vision.header_hash(frame))
     print("overlay_present", vision.overlay_present(frame), "close_glyph", vision.find_close_glyph(frame))
+    print("paper_band", round(_band_mean(frame, OVERLAY_PAPER_BAND), 1), "(認定証ダイアログなら 200 以上)")
     try:
         read = vision.read_board(frame)
         print("board", read.rect, "size", read.size, "stones", sum(v != EMPTY for row in read.grid for v in row))

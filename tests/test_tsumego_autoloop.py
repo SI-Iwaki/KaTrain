@@ -41,7 +41,7 @@ def test_popup_present_on_real_frames():
     assert al.popup_present(_frame("hint.png")) is False
     assert al.popup_present(_frame("hint_disabled.png")) is False
     assert al.popup_present(_frame("transition.png")) is False
-    assert al.popup_present(_frame("certificate.png")) is False
+    assert al.popup_present(_frame("certificate_device.png")) is False
 
 
 def test_popup_present_inner_board_measurements():
@@ -55,7 +55,7 @@ def test_popup_present_inner_board_measurements():
     assert abs(ratio(_frame("popup_wrong.png"), al.POPUP_INNER_BOARD_BOX) - 0.87) < 0.02
     assert abs(ratio(_frame("popup_correct.png"), al.POPUP_INNER_BOARD_BOX) - 0.83) < 0.02
     assert abs(ratio(_frame("popup_correct_animating.png"), al.POPUP_INNER_BOARD_BOX) - 0.86) < 0.02
-    assert ratio(_frame("certificate.png"), al.POPUP_INNER_BOARD_BOX) == 0.0
+    assert ratio(_frame("certificate_device.png"), al.POPUP_INNER_BOARD_BOX) == 0.0
 
 
 def test_popup_present_false_without_inner_board():
@@ -76,20 +76,20 @@ def test_popup_present_false_without_inner_board():
 
 
 def test_result_title_band_dark_measurements():
-    """帯の実測値（閾値 140 の両側に 39.5 / 107 の余裕）。
+    """帯の実測値（閾値 140 の下に 39.5 の余裕）。
 
-    実測: popup_wrong / popup_correct 81.1・出現途中 100.5（＜140＝濃紺）／認定証 247.2（紙色）。
-    問題画面 53.7・遷移 43.5 もアプリの青ヘッダなので**暗い側**に出る＝この帯だけでは問題画面と
-    分離できない（分離するのは popup_present の黄色帯の条件）。
+    実測: popup_wrong / popup_correct 81.1・出現途中 100.5（＜140＝濃紺）。
+    問題画面 53.7・遷移 43.5・**認定証 44.5** もアプリの青ヘッダなので**暗い側**に出る
+    ＝この帯だけでは問題画面とも認定証とも分離できない（認定証は問題画面の上に載るダイアログで、
+    この帯はその上に残るヘッダ＝spec 追記5）。分離するのは popup_present の黄色帯と内側の小盤。
     """
     band = al._band_mean
     assert abs(band(_frame("popup_wrong.png"), al.OVERLAY_TITLE_BAND) - 81.1) < 1.0
     assert abs(band(_frame("popup_correct_animating.png"), al.OVERLAY_TITLE_BAND) - 100.5) < 1.0
-    assert abs(band(_frame("certificate.png"), al.OVERLAY_TITLE_BAND) - 247.2) < 1.0
+    assert abs(band(_frame("certificate_device.png"), al.OVERLAY_TITLE_BAND) - 44.5) < 1.0
     assert al.result_title_band_dark(_frame("popup_wrong.png")) is True
     assert al.result_title_band_dark(_frame("popup_correct.png")) is True
     assert al.result_title_band_dark(_frame("popup_correct_animating.png")) is True
-    assert al.result_title_band_dark(_frame("certificate.png")) is False
     assert al.result_title_band_dark(_frame("problem.png")) is True  # 青ヘッダ（黄色帯で切る）
 
 
@@ -1362,29 +1362,49 @@ OVERLAY = {"popup": True, "state": "unknown", "overlay": True}
 
 
 def test_find_close_glyph_on_certificate():
-    """認定証の左上 × を見つける（実機フレームと縦横比が違う切り抜きでも比率×フレーム幅でスケール）"""
-    frame = _frame("certificate.png")
+    """認定証**ダイアログ**の左上 × を見つける（実機 900x1600 のフレームで ≈(0.09, 0.20)）。
+
+    認定証は全画面ではなく問題画面の上に載るダイアログで、アプリのヘッダ（← 戻る ≈(0.045,0.05)）
+    はその上に残る＝画面の左上を探すと ← を押してホームへ飛ぶ（spec 追記5）。
+    """
+    frame = _frame("certificate_device.png")
     w, h = frame.size
     point = al.find_close_glyph(frame)
     assert point is not None
     x, y = point
-    assert 0 < x < 0.13 * w and 0 < y < 0.10 * h
+    assert abs(x / w - 0.09) < 0.02 and abs(y / h - 0.20) < 0.02
+
+
+def test_find_close_glyph_none_on_problem_screen():
+    """問題画面のヘッダの ← を × と取り違えない（取り違えるとアプリをホームへ飛ばす）"""
+    assert al.find_close_glyph(_frame("problem.png")) is None
 
 
 def test_overlay_present_only_on_certificate():
-    """結果ポップアップ（濃紺のタイトル帯）・問題画面（popup 無し）はオーバーレイではない"""
-    assert al.overlay_present(_frame("certificate.png")) is True
+    """結果ポップアップ（中央に小盤）・問題画面（盤の上端が黄色）はオーバーレイではない"""
+    assert al.overlay_present(_frame("certificate_device.png")) is True
     assert al.overlay_present(_frame("popup_correct.png")) is False
     assert al.overlay_present(_frame("popup_correct_animating.png")) is False
     assert al.overlay_present(_frame("popup_wrong.png")) is False
     assert al.overlay_present(_frame("problem.png")) is False
     assert al.overlay_present(_frame("hint.png")) is False
+    assert al.overlay_present(_frame("hint_disabled.png")) is False
     assert al.overlay_present(_frame("transition.png")) is False
+
+
+def test_overlay_present_measurements_on_certificate():
+    """認定証ダイアログの署名の実測（spec 追記5）: 盤の帯 0.017 / 中央の小盤 0.0 / 紙 247.2"""
+    frame = _frame("certificate_device.png")
+    assert al.yellow_ratio(frame, al.POPUP_STRIP) < al.POPUP_STRIP_YELLOW_MAX
+    assert al.yellow_ratio(frame, al.POPUP_INNER_BOARD_BOX) < al.OVERLAY_INNER_BOARD_YELLOW_MAX
+    assert abs(al._band_mean(frame, al.OVERLAY_PAPER_BAND) - 247.2) < 1.0
+    # 結果ポップアップの同じ帯も 215.4 で明るい＝紙の条件だけでは分離しない（分離は小盤と ×）
+    assert al._band_mean(_frame("popup_wrong.png"), al.OVERLAY_PAPER_BAND) >= al.OVERLAY_PAPER_MIN
 
 
 def test_vision_exposes_overlay_helpers():
     v = al.Vision((9, 13, 19), templates={})
-    frame = _frame("certificate.png")
+    frame = _frame("certificate_device.png")
     assert v.overlay_present(frame) is True
     assert v.find_close_glyph(frame) == al.find_close_glyph(frame)
 
