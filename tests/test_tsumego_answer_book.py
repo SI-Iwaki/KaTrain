@@ -1,4 +1,5 @@
 """tsumego_answer_book のユニットテスト（KataGo/Kivy/humanSL モデル不要）。"""
+
 from types import SimpleNamespace
 
 import pytest
@@ -13,6 +14,7 @@ from katrain.core.tsumego_answer_book import (
     moves_to_canonical,
     next_move,
     point_to_gtp,
+    should_record_line,
     transform_point,
 )
 
@@ -73,9 +75,7 @@ class TestCanonicalize:
     def test_same_key_for_all_8_orientations(self):
         base_key, _ = canonicalize(REF_BLACK, REF_WHITE, SIZE, "B")
         for t in range(1, 8):
-            key, _ = canonicalize(
-                _transform_set(REF_BLACK, t, SIZE), _transform_set(REF_WHITE, t, SIZE), SIZE, "B"
-            )
+            key, _ = canonicalize(_transform_set(REF_BLACK, t, SIZE), _transform_set(REF_WHITE, t, SIZE), SIZE, "B")
             assert key == base_key, f"transform {t} gave different key"
 
     def test_different_problem_different_key(self):
@@ -278,6 +278,31 @@ class TestLineStatus:
         entry["lines"].append(moves_to_canonical(list(zip(REF_LINE, ["B", "W"] * 3)), transforms[0], SIZE))
         played = list(zip(REF_LINE[:3], ["B", "W", "B"]))
         assert line_status(entry, transforms, played, SIZE) == "playing"
+
+
+class TestShouldRecordLine:
+    """正解した手順の自動記録（自動ループ）: 回答帳どおりに解答した問題は再記録しない。"""
+
+    def test_records_when_not_in_book(self):
+        played = list(zip(REF_LINE, ["B", "W"] * 3))
+        assert should_record_line(None, None, played, SIZE) is True
+
+    def test_skips_fully_replayed_line(self):
+        _, transforms, entry = _entry_for(REF_BLACK, REF_WHITE, REF_LINE, SIZE)
+        played = list(zip(REF_LINE, ["B", "W"] * 3))
+        assert should_record_line(entry, transforms, played, SIZE) is False
+
+    def test_skips_prefix_of_recorded_line(self):
+        # アプリが記録手順の途中で正解を出した＝回答帳が解いた問題。再記録しない
+        _, transforms, entry = _entry_for(REF_BLACK, REF_WHITE, REF_LINE, SIZE)
+        played = list(zip(REF_LINE[:3], ["B", "W", "B"]))
+        assert should_record_line(entry, transforms, played, SIZE) is False
+
+    def test_records_new_line_after_white_deviation(self):
+        # 白が記録から逸脱して通常パイプラインで正解した手順は新しい line として記録する
+        _, transforms, entry = _entry_for(REF_BLACK, REF_WHITE, REF_LINE, SIZE)
+        played = [(REF_LINE[0], "B"), ((6, 6), "W"), ((2, 1), "B")]
+        assert should_record_line(entry, transforms, played, SIZE) is True
 
 
 class TestBookStatusFromGame:

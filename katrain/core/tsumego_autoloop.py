@@ -1131,7 +1131,17 @@ class AutoLoopController:
             self._save_shot(frame, "unknown_popup")
         self.stats["correct"] += 1
         self._errors = 0
-        self._record(p, "correct" if verdict == "correct" else "unknown_popup")
+        harvest = line_len = None
+        if verdict == "correct" and p is not None and p.token is not None:
+            # 正解した手順も回答帳へ（再出題を解析なしの0秒即答にし、拮抗局面で run ごとに
+            # 揺れる正解を凍結する）。回答帳どおりに解答した問題は GUI 側が "book" を返して
+            # 再記録しない。unknown_popup はアプリの受理を確認できていないので記録しない
+            try:
+                harvest, n = self.gui.record_correct(p.token)
+                line_len = n or None
+            except Exception as e:
+                harvest = f"skipped:record_failed:{e!r}"
+        self._record(p, "correct" if verdict == "correct" else "unknown_popup", harvest=harvest, line_len=line_len)
         self.state = "NEXT"
 
     def _enter_capture_failed(self):

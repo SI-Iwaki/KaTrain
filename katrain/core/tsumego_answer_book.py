@@ -114,6 +114,18 @@ def line_status(entry: dict, transforms: Sequence[int], moves: List[Tuple[Option
     return "done" if done else "off"
 
 
+def should_record_line(entry, transforms, moves, size) -> bool:
+    """正解した手順を回答帳へ自動記録すべきか（自動ループの正解時に使う）。
+
+    回答帳の記録どおりに解答した問題（"playing"=記録の途中でアプリが正解を出した /
+    "done"=記録手順を打ち切った）は再記録しない。エントリが無い問題と、白が記録から
+    逸脱して通常パイプラインで解いた手順（"off"）は新しい情報なので記録する。
+    """
+    if not entry or not transforms:
+        return True
+    return line_status(entry, transforms, moves, size) == "off"
+
+
 DEFAULT_PATH = os.path.expanduser("~/.katrain/tsumego_answers.json")
 
 

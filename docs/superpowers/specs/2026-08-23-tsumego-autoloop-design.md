@@ -358,3 +358,13 @@ serial を全部集めてから前面パッケージが `fm.wars.goquest`（`APP
 
 1. **内側の小盤の「盤あり/なし」しきい値を1本化** `INNER_BOARD_YELLOW_SPLIT`=0.15（`POPUP_INNER_BOARD_YELLOW_MIN`(0.5) と `OVERLAY_INNER_BOARD_YELLOW_MAX`(0.2) を置換。popup は `>=`・overlay は `<` で使うので**この軸の死角は構造的に消える**）。実測の分離: 盤なし（認定証2種）**0.0** / 盤あり最小（昇段カード）**0.371** / 通常の結果ポップアップ 0.83〜0.87。石で覆われた盤の黄色率の床は石の円の隙間で決まり、事故フレームの石のみの横帯でも 0.256〜0.319＝0.15 は両側に 0.1 超の余白。これで昇段カードは `popup_present`=True → RESULT が verdict=correct を取り → NEXT の `popup_next`(230,1249) がカードの「次の問題」ボタン中心（実測 ≈(225,1245)）に当たって次の問題へ進む。**同じ修正が「石の多い出題の通常の結果ポップアップ」の潜在バグも塞ぐ**（同じ小盤を出すので黄色率 0.371 は正誤どちらのポップアップでも死角に落ちていた＝正解しても誤答しても凍る）。
 2. **NEXT の当てずっぽうタップ廃止**（追記4 の不変条件「知らない画面では 1 タップも撃たない」を NEXT にも適用）: `popup_present` なら `popup_next`、`board_rect` が読めるなら `bar_next`、**どちらでもなければタップせず** `unknown_screen` のスクショを 1 枚残して AWAIT_PROBLEM の締切処理（盤が見えなければタップしない→`_error_step`）に委ねる。次に未知のカード変種が来ても「別画面へ迷い込む」が「有界の再試行→スクショ付きで停止」になる。
+
+## 追記7（2026-08-24）— 正解した手順も回答帳へ自動記録する
+
+従来の収穫は誤答時のヒント歩きだけだった。正解時も、打った手順そのもの（黒＝AI のタップ列＋白＝監視が注入した応手）が**アプリ受理済みの正解**なので、追加コストゼロで回答帳へ入れられる。狙いは (1) 再出題を解析なしの 0 秒即答にする（時間・解析コスト・電力の節約）、(2) **確率的な勝ちの凍結**＝ambiguous 帯（正答率 76.6%）の正解はコイン投げの当たりを含み、再出題のたびに引き直していたのを、一度受理された手順で以後 100% にする。回すほど漸近する自動ループの収束が「誤答した問題だけ」より速くなる。
+
+- 発火は `_step_result` の **verdict == "correct" のみ**（unknown_popup はアプリの受理を確認できていないので記録しない＝壊れた line が永久再生される汚染を防ぐ）。`p.token`（出題時の `id(game)`）が無い CAPTURE_FAILED 由来は対象外。
+- GUI 側 `_record_correct_answer(token)` が判定と保存を担う（コールバック `record_correct`）。**回答帳の記録どおりに解答した問題は再記録しない**＝純関数 `tsumego_answer_book.should_record_line`（entry なし → 記録 / `line_status` が "playing"・"done" → スキップ（"book"） / "off"＝白が記録から逸脱して通常パイプラインで正解 → **新しい line として記録**）。局面が既に別の問題に変わっていたら（token 不一致）何もしない。
+- 保存は既存 `_save_answer_line` の共用＝ログ保護（`.keep`）も従来どおり掛かる（全問記録で実質全ログ保護になるが、30日超の zip アーカイブが吸収する＝実測レンジ年 4GB 内）。
+- 台帳には `harvest`（"saved" / "duplicate" / "book" / "skipped:*"）と `line_len` が乗る。記録失敗はループを止めない（`skipped:record_failed:*`）。
+- 回帰: `tests/test_tsumego_autoloop.py`（correct フローの記録・book スキップ・失敗継続・unknown 非記録・`__main__` フック）＋ `tests/test_tsumego_answer_book.py::TestShouldRecordLine`。

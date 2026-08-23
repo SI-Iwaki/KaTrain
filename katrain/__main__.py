@@ -593,6 +593,37 @@ class KaTrainGui(Screen, KaTrainBase):
             self.log(f"tsumego_answer_book: このログを保護しました（自動削除しません）: {kept}", OUTPUT_INFO)
         return added, len(line)
 
+    def _record_correct_answer(self, token):
+        """自動ループ: 正解した問題の実際の手順を回答帳へ自動保存する。
+
+        目的は再出題の解析なし0秒即答（時間・解析コストの節約）と、拮抗局面で run ごとに
+        揺れる正解の凍結（一度アプリが受理した手順は以後100%になる）。回答帳の記録どおりに
+        解答した問題（should_record_line が False）は再記録しない。白が記録から逸脱して
+        通常パイプラインで正解した手順は新しい line として同じ entry に追記される。
+
+        ワーカースレッドから呼ばれる（_save_answer_line と同じ扱い）。token は出題時の
+        id(game) で、局面が既に別の問題に変わっていたら何もしない。
+        戻り値 (状態, 手数): 状態は "saved" / "duplicate" / "book" / "skipped:<理由>"。
+        """
+        from katrain.core import tsumego_answer_book as answer_book
+        from katrain.core.tsumego_solver_api import moves_from_game
+
+        game = self.game
+        if id(game) != token:
+            return "skipped:game_changed", 0
+        base = getattr(game, "tsumego_app_grid", None)
+        if not getattr(game, "tsumego_book_key", None) or not base:
+            return "skipped:no_capture", 0
+        moves = moves_from_game(game)
+        if not moves or moves[0][1] != "B":
+            return "skipped:bad_moves", 0
+        entry = getattr(game, "tsumego_book_entry", None)
+        transforms = getattr(game, "tsumego_book_transforms", None)
+        if not answer_book.should_record_line(entry, transforms, moves, len(base)):
+            return "book", 0
+        added, n = self._save_answer_line(base, moves)
+        return ("saved" if added else "duplicate"), n
+
     def _do_redo(self, n_times=1):
         self.board_gui.animating_pv = None
         self.game.redo(n_times)
@@ -1912,6 +1943,9 @@ class KaTrainGui(Screen, KaTrainBase):
             if self._stop_board_watcher(kinds=("tsumego",)):
                 self._board_watch_status("", "")
 
+        def record_correct(token):
+            return self._record_correct_answer(token)
+
         def notify(kind, text):
             self._tsumego_message(text, kind=kind)
 
@@ -1919,7 +1953,12 @@ class KaTrainGui(Screen, KaTrainBase):
             self.log(text, OUTPUT_INFO)
 
         return SimpleNamespace(
-            trigger_capture=trigger_capture, save_line=save_line, stop_watch=stop_watch, notify=notify, log=log
+            trigger_capture=trigger_capture,
+            save_line=save_line,
+            stop_watch=stop_watch,
+            record_correct=record_correct,
+            notify=notify,
+            log=log,
         )
 
     def _do_capture_fullboard_apply(self, grid):

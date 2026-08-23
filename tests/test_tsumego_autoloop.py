@@ -466,6 +466,9 @@ class FakeGui:
         self.stopped = 0
         self.notes = []
         self.logs = []
+        self.record_calls = []
+        self.record_result = ("saved", 3)
+        self.record_error = None
 
     def trigger_capture(self):
         self.captures += 1
@@ -477,6 +480,12 @@ class FakeGui:
         self.saved.append((base_grid, moves))
         self.protect_flags.append(protect_log)
         return True, len(moves)
+
+    def record_correct(self, token):
+        if self.record_error is not None:
+            raise self.record_error
+        self.record_calls.append(token)
+        return self.record_result
 
     def stop_watch(self):
         self.stopped += 1
@@ -556,6 +565,73 @@ def test_controller_correct_flow_taps_black_and_advances(tmp_path):
     assert adb.taps[-1] == al.ui_point("popup_next", (900, 1600)) and c.state == "AWAIT_PROBLEM"
     rec = json.loads((tmp_path / "l.jsonl").read_text(encoding="utf-8").splitlines()[0])
     assert rec["outcome"] == "correct" and rec["key"] == "k1" and rec["route"] == "frame"
+
+
+def _drive_to_result(c, key="k1", route="frame"):
+    """AWAIT→CAPTURING→ANSWERING→RESULT まで進める（frames は呼び出し側が用意）"""
+    c.activate()
+    c.step(); c.step(); c.step()
+    c.on_problem_ready(token=7, base_grid=BASE, key=key, route=route)
+    c.on_black_move(token=7, coords_xy=(1, 1))
+    c.step()                                             # ANSWERING: タップ
+    c.step()                                             # popup 1 枚目
+    c.step()                                             # popup 2 枚目 → RESULT
+    assert c.state == "RESULT"
+
+
+def _correct_frames():
+    return [
+        {"grid": BASE}, {"grid": BASE}, {"grid": BASE}, {"grid": BASE},
+        {"popup": True, "state": "correct"},             # ANSWERING: popup 1 枚目
+        {"popup": True, "state": "correct"},             # ANSWERING: 2 枚目 → RESULT
+        {"popup": True, "state": "correct"},             # RESULT: correct → NEXT
+    ]
+
+
+def test_controller_correct_flow_records_answer_line(tmp_path):
+    c, gui, adb, clock = _controller(_correct_frames(), tmp_path)
+    _drive_to_result(c)
+    c.step()                                             # correct → 自動記録して NEXT
+    assert c.state == "NEXT" and gui.record_calls == [7]
+    rec = json.loads((tmp_path / "l.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert rec["outcome"] == "correct" and rec["harvest"] == "saved" and rec["line_len"] == 3
+
+
+def test_controller_correct_record_skips_book_answer(tmp_path):
+    gui = FakeGui()
+    gui.record_result = ("book", 0)                      # 回答帳どおりに解答＝再記録しない
+    c, gui, adb, clock = _controller(_correct_frames(), tmp_path, gui=gui)
+    _drive_to_result(c, route="book")
+    c.step()
+    assert c.state == "NEXT" and gui.record_calls == [7]
+    rec = json.loads((tmp_path / "l.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert rec["harvest"] == "book" and rec["line_len"] is None
+
+
+def test_controller_correct_record_failure_still_advances(tmp_path):
+    gui = FakeGui()
+    gui.record_error = RuntimeError("boom")
+    c, gui, adb, clock = _controller(_correct_frames(), tmp_path, gui=gui)
+    _drive_to_result(c)
+    c.step()                                             # 記録失敗はループを止めない
+    assert c.state == "NEXT" and c.stats["correct"] == 1
+    rec = json.loads((tmp_path / "l.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert rec["outcome"] == "correct" and rec["harvest"].startswith("skipped:record_failed")
+
+
+def test_controller_unknown_popup_does_not_record(tmp_path):
+    frames = [
+        {"grid": BASE}, {"grid": BASE}, {"grid": BASE}, {"grid": BASE},
+        {"popup": True, "state": "unknown"},
+        {"popup": True, "state": "unknown"},
+    ] + [{"popup": True, "state": "unknown"}] * 8         # RESULT: unknown を粘った末に確定
+    c, gui, adb, clock = _controller(frames, tmp_path)
+    _drive_to_result(c)
+    for _ in range(al.RESULT_UNKNOWN_RETRIES + 1):
+        c.step()
+    assert c.state == "NEXT" and gui.record_calls == []   # 受理が確認できない手順は回答帳に入れない
+    rec = json.loads((tmp_path / "l.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert rec["outcome"] == "unknown_popup" and rec["harvest"] is None
 
 
 def test_controller_wrong_flow_harvests_and_saves(tmp_path):
@@ -893,6 +969,17 @@ def test_main_has_autoloop_hooks():
     assert "_autoloop_instances" in src
     # 設定セクション名。ast.unparse は文字列リテラルの引用符を単引用符に正規化するので生ソースで見る
     assert '"tsumego_autoloop"' in _main_source()
+
+
+def test_main_has_correct_record_hook():
+    import ast
+
+    tree = _main_tree()
+    names = {n.name for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+    assert "_record_correct_answer" in names
+    src = ast.unparse(tree)
+    # 正解の自動記録: コールバック公開 ＋ 回答帳どおりの解答は再記録しない判定
+    assert "record_correct" in src and "should_record_line" in src
 
 
 def test_package_config_has_autoloop_section():
