@@ -112,6 +112,23 @@ def test_adb_screencap_raises_on_empty():
         adb.screencap()
 
 
+def test_foreground_package_parses_current_focus_line():
+    runner = FakeRunner(
+        {
+            "-s 127.0.0.1:5565 shell dumpsys window": (
+                "  mCurrentFocus=Window{d04619f u0 fm.wars.goquest/fm.wars.goquest_flutter.MainActivity}\n"
+            )
+        }
+    )
+    adb = al.AdbClient("HD-Adb.exe", "127.0.0.1:5565", runner=runner)
+    assert adb.foreground_package() == "fm.wars.goquest"
+
+
+def test_foreground_package_none_on_empty_output():
+    adb = al.AdbClient("HD-Adb.exe", "127.0.0.1:5565", runner=FakeRunner())
+    assert adb.foreground_package() is None
+
+
 def test_discover_serial_reads_bluestacks_conf(tmp_path):
     conf = tmp_path / "bluestacks.conf"
     conf.write_text('bst.instance.Pie64.adb_port="5555"\nbst.instance.Pie64_3.adb_port="5585"\n', encoding="utf-8")
@@ -128,6 +145,42 @@ def test_discover_serial_none_when_nothing_answers(tmp_path):
     conf = tmp_path / "bluestacks.conf"
     conf.write_text('bst.instance.Pie64.adb_port="5555"\n', encoding="utf-8")
     assert al.discover_serial("HD-Adb.exe", str(conf), runner=FakeRunner()) is None
+
+
+def test_discover_serial_prefers_instance_with_app_in_foreground(tmp_path):
+    """複数インスタンスが応答するとき、詰碁アプリが前面のものを選ぶ（最初に応答した port ではない）"""
+    conf = tmp_path / "bluestacks.conf"
+    conf.write_text(
+        'bst.instance.Pie64.adb_port="5555"\nbst.instance.Pie64_2.adb_port="5565"\n', encoding="utf-8"
+    )
+    runner = FakeRunner(
+        {
+            "connect 127.0.0.1:5555": "connected to 127.0.0.1:5555",
+            "connect 127.0.0.1:5565": "connected to 127.0.0.1:5565",
+            "devices": "List of devices attached\n127.0.0.1:5555\tdevice\n127.0.0.1:5565\tdevice\n",
+            "-s 127.0.0.1:5555 shell dumpsys window": "  mCurrentFocus=Window{x u0 com.other.app/com.other.Main}\n",
+            "-s 127.0.0.1:5565 shell dumpsys window": (
+                "  mCurrentFocus=Window{x u0 fm.wars.goquest/fm.wars.goquest_flutter.MainActivity}\n"
+            ),
+        }
+    )
+    assert al.discover_serial("HD-Adb.exe", str(conf), runner=runner) == "127.0.0.1:5565"
+
+
+def test_discover_serial_falls_back_to_first_responding_when_no_app_match(tmp_path):
+    """どちらの前面も詰碁アプリでなければ、従来どおり最初に応答した serial を返す"""
+    conf = tmp_path / "bluestacks.conf"
+    conf.write_text(
+        'bst.instance.Pie64.adb_port="5555"\nbst.instance.Pie64_2.adb_port="5565"\n', encoding="utf-8"
+    )
+    runner = FakeRunner(
+        {
+            "connect 127.0.0.1:5555": "connected to 127.0.0.1:5555",
+            "connect 127.0.0.1:5565": "connected to 127.0.0.1:5565",
+            "devices": "List of devices attached\n127.0.0.1:5555\tdevice\n127.0.0.1:5565\tdevice\n",
+        }
+    )
+    assert al.discover_serial("HD-Adb.exe", str(conf), runner=runner) == "127.0.0.1:5555"
 
 
 def test_ledger_appends_jsonl(tmp_path):
@@ -1123,7 +1176,8 @@ def test_discover_serial_passes_timeout(tmp_path):
         return "connected to 127.0.0.1:5585" if args[1] == "connect" else "127.0.0.1:5585\tdevice\n"
 
     assert al.discover_serial("HD-Adb.exe", str(conf), runner=runner, timeout_s=1.5) == "127.0.0.1:5585"
-    assert seen == [1.5, 1.5]
+    # connect + devices + foreground_package(dumpsys window) の3本、全部が同じ短いタイムアウトで飛ぶ
+    assert seen == [1.5, 1.5, 1.5]
 
 
 def test_ledger_records_header_hash_and_log_name(tmp_path):
@@ -1188,6 +1242,8 @@ def test_main_autoloop_start_is_guarded():
     assert "_autoloop_serial" in src
     find = _main_func_src("_autoloop_find_serial")   # 前回 serial を先に試す・探索は短いタイムアウト
     assert "timeout_s=3.0" in find and "_autoloop_serial" in find
+    # 前回の serial も詰碁アプリが前面かどうかを確認してから使う（複数インスタンス対策）
+    assert "foreground_package" in find and "APP_PACKAGE" in find
 
 
 def test_main_capture_trigger_reports_whether_it_ran():

@@ -320,3 +320,15 @@ AWAIT→CAPTURING へ入るフレームのヘッダ帯（`vision.header_hash`）
 段位が上がるとアプリは「認定証」の**フルスクリーン画面**を出す（紙色の背景・金の装飾枠・左上に ×）。盤が覆われるので `popup_present` は真になり、判定文が無いので RESULT は unknown → 正解扱い → NEXT → `popup_next` をタップ → 効かない → AWAIT → popup → NEXT … と**無限にタップし続けていた**（`_step_await_problem` は popup を見た瞬間 NEXT へ行くので AWAIT の締切に届かない）。
 
 対策は 2 段。(1) `overlay_present`＝「popup_present ∧ タイトル帯が紙色（平均輝度 >= `OVERLAY_TITLE_LIGHT_MIN`=160。実測 結果ポップアップの濃紺帯 81〜100 / 認定証 247）∧ 左上に × がある」なら、`_step_result` / `_step_await_problem` / `_step_next` の先頭で `find_close_glyph` の点をタップして 1 周待つ（状態は変えない・`OVERLAY_MAX_TAPS`=5 を超えたら失敗として打ち切る）。`find_close_glyph` は左上の暗画素の bbox 中心だが、**素の「R+G+B<450」では金の装飾枠が混ざって bbox が 22x22 → 54x53 に膨らみサイズ判定を外す**ので、暖色（R−B > `CLOSE_GLYPH_WARM_MAX`=40。実測 × は −6・金は +78）を数えず、y も最初の暗行から 90px（900 幅基準）で切る。fixture は `tests/data/autoloop/certificate.png`（実機窓の切り抜き 505x657＝**縦横比が実機 900x1600 と違う**ので px 閾値はフレーム幅の比でスケールする）。(2) 種類を問わない保険として `_step_next` の連続タップを数え、`NEXT_MAX_TAPS`=4 を超えたら × 相当の点（見つからなければ比率 (0.045, 0.035)）を 1 回タップ、2 倍を超えたら `_error_step` で打ち切る（AWAIT で石のある盤が読めたら 0 に戻す）。
+
+## 追記3（2026-08-23）— 複数インスタンスの接続先選択
+
+複数の BlueStacks インスタンス（`bluestacks.conf` の adb_port 5555/5565/5575/5585）がある環境では、
+`discover_serial` が「最初に `devices` へ device で応答した port」を返すため、詰碁アプリが前面に
+無いインスタンスへ誤接続することがあった。`AdbClient.foreground_package()`（`dumpsys window` の
+`mCurrentFocus=`/`mFocusedApp=` 行から `u0 <pkg>/` を読む）を追加し、`discover_serial` は応答した
+serial を全部集めてから前面パッケージが `fm.wars.goquest`（`APP_PACKAGE`）のものを優先して返す
+（一致が無ければ従来どおり最初の1本）。`__main__._autoloop_find_serial` は前回記憶した serial も
+同じ確認をしてから使い、外れていれば discover へフォールバックする。`tsumego_autoloop.adb_serial`
+を明示指定した場合はこの探索を通らず、指定値をそのまま使う（`_autoloop_trigger_locked` が
+`settings.adb_serial or self._autoloop_find_serial(settings)` で分岐）。

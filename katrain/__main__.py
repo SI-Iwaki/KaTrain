@@ -1851,6 +1851,8 @@ class KaTrainGui(Screen, KaTrainBase):
             adb.connect()
             if not adb.is_device():
                 raise RuntimeError(f"{serial} が device として見えません")
+            pkg = adb.foreground_package()
+            self.log(f"autoloop: ADB 接続先 {serial}（前面: {pkg or '不明'}）", OUTPUT_INFO)
             sizes = [int(s) for s in (cap.get("board_sizes") or [9, 13, 19])]
             controller = AutoLoopController(
                 adb,
@@ -1864,7 +1866,7 @@ class KaTrainGui(Screen, KaTrainBase):
             controller.start()
             self._autoloop_serial = serial  # 次回はここから試す（探索の数秒を省く）
             self.log(f"autoloop: 開始しました（{serial}）", OUTPUT_INFO)
-            self._tsumego_message("自動ループを開始しました（ctrl+alt+a で停止）", kind="info")
+            self._tsumego_message(f"自動ループを開始しました（{serial}・ctrl+alt+a で停止）", kind="info")
         except Exception as e:
             self.log(f"autoloop: 開始できません: {e!r}", OUTPUT_ERROR)
             self._tsumego_message(f"自動ループを開始できません: {e}", kind="warn", seconds=8)
@@ -1872,15 +1874,20 @@ class KaTrainGui(Screen, KaTrainBase):
     def _autoloop_find_serial(self, settings):
         """前回つながった serial を先に試し、だめなら bluestacks.conf を探索する。
 
+        前回の serial は「詰碁アプリが前面にあるか」（foreground_package）も確認する。複数の
+        BlueStacks インスタンスを行き来していると、前回繋がった serial は生きていても別アプリが
+        前面のことがあり、そのまま使うと誤ったインスタンスへ着手を打ち続けてしまう。前面が違えば
+        探索（discover_serial の prefer_package）に回してアプリが前面のインスタンスを選び直す。
+
         探索は 1 本あたり 3 秒で切る（既定 10 秒だと応答しない port の数だけ GUI が固まる）
         """
-        from katrain.core.tsumego_autoloop import AdbClient, discover_serial
+        from katrain.core.tsumego_autoloop import APP_PACKAGE, AdbClient, discover_serial
 
         remembered = getattr(self, "_autoloop_serial", "")
         if remembered:
             try:
                 probe = AdbClient(settings.adb_path, remembered, timeout_s=3.0)
-                if probe.connect() and probe.is_device():
+                if probe.connect() and probe.is_device() and probe.foreground_package() == APP_PACKAGE:
                     return remembered
             except Exception as e:
                 self.log(f"autoloop: 前回の serial {remembered} は使えません（{e}）", OUTPUT_INFO)

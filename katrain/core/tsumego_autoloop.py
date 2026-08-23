@@ -27,6 +27,7 @@ from katrain.core.tsumego_capture import CaptureError, _is_yellow, detect_board,
 DEVICE_W, DEVICE_H = 900, 1600
 DEFAULT_ADB_PATH = r"C:\Program Files\BlueStacks_nxt\HD-Adb.exe"
 BLUESTACKS_CONF = r"C:\ProgramData\BlueStacks_nxt\bluestacks.conf"
+APP_PACKAGE = "fm.wars.goquest"  # 詰碁アプリ（囲碁詰めチャレ）のパッケージ名
 TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "img", "autoloop")
 DEFAULT_UI_POINTS = {
     "bar_next": (0.472, 0.784),
@@ -436,9 +437,30 @@ class AdbClient:
     def tap(self, x, y):
         self._adb("-s", self.serial, "shell", "input", "tap", str(int(round(x))), str(int(round(y))))
 
+    def foreground_package(self):
+        """前面に出ているアプリのパッケージ名。取れなければ None（AdbError も握って握り潰す）。
 
-def discover_serial(adb_path, conf_path=BLUESTACKS_CONF, runner=None, timeout_s=10):
-    """bluestacks.conf の adb_port を順に connect し、devices に 'device' で現れた最初のものを返す
+        `mCurrentFocus=`/`mFocusedApp=` を含む最初の行だけを見る（複数行あっても遷移中の
+        古い行に引きずられないよう、最初に見つかった行で確定させる）。
+        """
+        try:
+            out = self._adb("-s", self.serial, "shell", "dumpsys", "window")
+        except AdbError:
+            return None
+        for line in out.splitlines():
+            if "mCurrentFocus=" in line or "mFocusedApp=" in line:
+                m = re.search(r"u0 ([A-Za-z0-9_.]+)/", line)
+                return m.group(1) if m else None
+        return None
+
+
+def discover_serial(adb_path, conf_path=BLUESTACKS_CONF, runner=None, timeout_s=10, prefer_package=APP_PACKAGE):
+    """bluestacks.conf の adb_port を順に connect し、応答した中から詰碁アプリが前面のものを返す
+
+    devices に 'device' で現れた serial を**全部**集めてから、それぞれの foreground_package() を
+    見て prefer_package と一致する最初の 1 本を返す（複数の BlueStacks インスタンスがある環境で
+    「最初に応答した port」が別インスタンスだと誤接続になるため）。一致が無ければ従来どおり
+    最初に応答した serial にフォールバックする。prefer_package=None で従来動作（最初の1本）。
 
     timeout_s は 1 本あたりの adb 実行の上限。GUI のホットキーから呼ぶときは短く（3 秒）指定する
     ＝応答しない port が複数あると既定の 10 秒×本数ぶん画面が固まって見える
@@ -452,16 +474,24 @@ def discover_serial(adb_path, conf_path=BLUESTACKS_CONF, runner=None, timeout_s=
                     ports.append(m.group(1))
     except OSError:
         return None
+    responding = []
     for port in ports:
         serial = f"127.0.0.1:{port}"
         client = AdbClient(adb_path, serial, runner=runner, timeout_s=timeout_s)
         try:
             client.connect()
             if client.is_device():
-                return serial
+                responding.append(serial)
         except AdbError:
             continue
-    return None
+    if not responding:
+        return None
+    if prefer_package:
+        for serial in responding:
+            client = AdbClient(adb_path, serial, runner=runner, timeout_s=timeout_s)
+            if client.foreground_package() == prefer_package:
+                return serial
+    return responding[0]
 
 
 # --- 台帳 ---
@@ -1282,7 +1312,7 @@ def main(argv=None):
         return 0
     frame = adb.screencap()
     vision = Vision((9, 13, 19))
-    print("serial", serial, "frame", frame.size)
+    print("serial", serial, "foreground_package", adb.foreground_package(), "frame", frame.size)
     print("popup_present", vision.popup_present(frame), "popup_state", vision.popup_state(frame))
     print("hint_enabled", vision.hint_enabled(frame), "header", vision.header_hash(frame))
     print("overlay_present", vision.overlay_present(frame), "close_glyph", vision.find_close_glyph(frame))
