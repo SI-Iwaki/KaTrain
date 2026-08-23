@@ -162,6 +162,8 @@ class KaTrainGui(Screen, KaTrainBase):
         self.last_focus_event = 0
         self._tsumego_flash_event = None  # バナー一時メッセージの消去タイマー
         self._autoloop = None  # 詰碁自動ループのコントローラ（ctrl+alt+a で開始/停止）
+        self._autoloop_lock = threading.Lock()  # ホットキーの二重起動を排他（起動処理は数秒かかる）
+        self._autoloop_instances = []  # 起動したコントローラ全部（孤児が出ても停止で取りこぼさない）
 
     def log(self, message, level=OUTPUT_INFO):
         super().log(message, level)
@@ -1753,7 +1755,34 @@ class KaTrainGui(Screen, KaTrainBase):
             self._board_watch_busy = False
 
     def _autoloop_trigger(self):
-        """ctrl+alt+a のワーカースレッド。OFF なら ADB に接続して開始、ON なら停止する"""
+        """ctrl+alt+a のワーカースレッド。OFF なら ADB に接続して開始、ON なら停止する。
+
+        本体は `_autoloop_lock` で直列化する（実機 2026-08-23: 起動は discover_serial の
+        connect で数秒かかるので、その間に来た 2 回目のホットキーが `current is None` のまま
+        2 本目のコントローラを作り、片方が孤児になって盤を壊した）。取れなければ何もしない。
+        """
+        if not self._autoloop_lock.acquire(blocking=False):
+            self.log("autoloop: 起動/停止の処理中です", OUTPUT_INFO)
+            return
+        try:
+            self._autoloop_trigger_locked()
+        finally:
+            self._autoloop_lock.release()
+
+    def _autoloop_stop_all(self, current=None):
+        """起動済みコントローラを全部止める（孤児が残っていても必ず止まる）"""
+        targets = list(self._autoloop_instances)
+        if current is not None and current not in targets:
+            targets.append(current)
+        for controller in targets:
+            try:
+                controller.stop()
+            except Exception as e:
+                self.log(f"autoloop: 停止に失敗しました: {e!r}", OUTPUT_INFO)
+        self._autoloop_instances = []
+        self._autoloop = None
+
+    def _autoloop_trigger_locked(self):
         from katrain.core.tsumego_autoloop import (
             AdbClient,
             AutoLoopController,
@@ -1772,13 +1801,11 @@ class KaTrainGui(Screen, KaTrainBase):
             # ループが自分で止まった後（max_problems 到達・連続失敗）。スレッドは IDLE のまま
             # 回り続けるので `running` は真だが、ユーザーから見れば「止まっている」。
             # このキーは「もう一度回す」の意味なので、片付けてから開始側へ落とす
-            current.stop()
-            self._autoloop = None
+            self._autoloop_stop_all(current)
             self.log("autoloop: 停止状態のループを破棄して再開します", OUTPUT_INFO)
             current = None
         if current is not None:
-            current.stop()
-            self._autoloop = None
+            self._autoloop_stop_all(current)
             self.log("autoloop: 停止しました", OUTPUT_INFO)
             self._tsumego_message("自動ループを停止しました", kind="info")
             return
@@ -1807,6 +1834,7 @@ class KaTrainGui(Screen, KaTrainBase):
             Ledger(settings.ledger_path),
         )
         self._autoloop = controller
+        self._autoloop_instances.append(controller)
         controller.start()
         self.log(f"autoloop: 開始しました（{serial}）", OUTPUT_INFO)
         self._tsumego_message("自動ループを開始しました（ctrl+alt+a で停止）", kind="info")

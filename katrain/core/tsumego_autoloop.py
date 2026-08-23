@@ -525,6 +525,7 @@ class Harvester:
 
 # --- 状態機械 ---
 STALL_EXTRA_S = 60.0  # STALLED からポップアップをさらに待つ秒数
+RESULT_UNKNOWN_RETRIES = 3  # RESULT で verdict が unknown のとき粘るフレーム数（出現アニメーション対策）
 CAPTURE_FAILED_WAIT_S = 45.0  # CAPTURE_FAILED でポップアップ（結果）を待つ秒数
 FRAME_FAIL_RECONNECT = 3
 FRAME_FAIL_GIVEUP = 6
@@ -560,6 +561,8 @@ class AutoLoopController:
         self._errors = 0
         self._cf_tapped = False
         self._cf_base = None
+        self._popup_seen = False  # ポップアップを 1 フレーム見た（2 フレーム目で RESULT へ）
+        self._result_tries = 0  # RESULT で unknown を粘った回数
         self._pending_taps = []
         self._shots = []
         self._shot_seq = 0
@@ -578,6 +581,8 @@ class AutoLoopController:
         self._await_retapped = False
         self._deadline = self.clock() + self.settings.answer_timeout_s
         self._shots = []
+        self._popup_seen = False
+        self._result_tries = 0
 
     def start(self):
         self._stop.clear()
@@ -592,6 +597,8 @@ class AutoLoopController:
         t = self._thread
         if t is not None and t.is_alive() and t is not threading.current_thread():
             t.join(timeout=2.0)
+            if t.is_alive():  # 孤児化の診断（このスレッドは daemon なのでプロセスは終われる）
+                self.gui.log(f"autoloop: スレッド {t.name} が 2 秒で止まりませんでした")
 
     def _run(self):
         me = threading.current_thread()
@@ -660,6 +667,7 @@ class AutoLoopController:
                     self.problem = _Problem(token, base_grid, key, route, self.clock())
                     self.stats["problems"] += 1
                     self._shots = []
+                    self._popup_seen = False
                     self.state = "ANSWERING"
                     self.gui.notify("info", self._banner("解答中"))
                 else:
@@ -676,6 +684,27 @@ class AutoLoopController:
                     self._pending_taps.append(coords_xy)
                 else:
                     self.gui.log(f"autoloop: black_move を無視しました（state={self.state}, token={token}）")
+
+    def _popup_stable(self, frame):
+        """ポップアップが 2 フレーム連続で見えたか（ANSWERING / STALLED / CAPTURE_FAILED で使う）。
+
+        出現アニメーション途中のフレームは判定帯（VERDICT_BAND）に別の行が掛かり、tail が
+        テンプレートとずれて unknown になる（実機 2026-08-23: 6 問中 2 問）。1 枚目では
+        `_popup_seen` を立てるだけにして、次のフレームで確定させる。
+        呼び出し側は「present だが 1 枚目」を `self._popup_seen` で判別する。
+        """
+        if not self.vision.popup_present(frame):
+            self._popup_seen = False
+            return False
+        if not self._popup_seen:
+            self._popup_seen = True
+            return False
+        return True
+
+    def _enter_result(self):
+        self._popup_seen = False
+        self._result_tries = 0
+        self.state = "RESULT"
 
     def _step_await_problem(self, frame):
         if self.vision.popup_present(frame):
@@ -720,13 +749,16 @@ class AutoLoopController:
 
     def _step_answering(self, frame):
         p = self.problem
-        if self.vision.popup_present(frame):
-            self.state = "RESULT"
+        if self._popup_stable(frame):
+            self._enter_result()
             return
+        if self._popup_seen:
+            return  # ポップアップ 1 枚目。次のフレームで確定させる
         # 締切チェックは pending_taps の処理より前に置く: board_rect が読めない盤が
         # 続く場合でも（pending_taps が残ったままでも）STALLED に必ず抜けられるようにする
         if self.clock() - p.started > self.settings.answer_timeout_s:
             self.state = "STALLED"
+            self._popup_seen = False
             self._deadline = self.clock() + STALL_EXTRA_S
             self._save_shot(frame, "stalled")
             return
@@ -736,6 +768,7 @@ class AutoLoopController:
                 self._save_shot(frame, "tap_cap")
                 self.gui.log(f"autoloop: 1問あたりのタップ上限（{MAX_TAPS_PER_PROBLEM}）に達しました")
                 self.state = "STALLED"
+                self._popup_seen = False
                 self._deadline = self.clock() + STALL_EXTRA_S
                 return
             try:
@@ -752,6 +785,10 @@ class AutoLoopController:
     def _step_result(self, frame):
         verdict = self.vision.popup_state(frame)
         p = self.problem
+        if verdict == "unknown" and self._result_tries < RESULT_UNKNOWN_RETRIES:
+            # 出現アニメーション途中で撮れた回は判定帯が壊れて unknown になる。次のフレームで測り直す
+            self._result_tries += 1
+            return
         if verdict == "none":
             self._record(p, "unknown_popup", harvest="skipped:popup_vanished")
             self.state = "NEXT"  # ポップアップが消えた（ユーザー操作等）
@@ -779,6 +816,7 @@ class AutoLoopController:
 
     def _enter_capture_failed(self):
         self.state = "CAPTURE_FAILED"
+        self._popup_seen = False
         self.problem = _Problem(None, None, None, None, self.clock())
         self.stats["problems"] += 1  # キャプチャ失敗も 1 問（max_problems の対象）
         self._shots = []
@@ -787,13 +825,15 @@ class AutoLoopController:
         self._deadline = self.clock() + CAPTURE_FAILED_WAIT_S
 
     def _step_capture_failed(self, frame):
-        if self.vision.popup_present(frame):
+        if self._popup_stable(frame):
             p = self.problem
             p.base = self._cf_base
             if p.base:
                 p.size = len(p.base)
-            self.state = "RESULT"
+            self._enter_result()
             return
+        if self._popup_seen:
+            return  # ポップアップ 1 枚目
         if not self._cf_tapped:
             try:
                 read = self.vision.read_board(frame)
@@ -833,9 +873,11 @@ class AutoLoopController:
         self.state = "NEXT"
 
     def _step_stalled(self, frame):
-        if self.vision.popup_present(frame):
-            self.state = "RESULT"
+        if self._popup_stable(frame):
+            self._enter_result()
             return
+        if self._popup_seen:
+            return  # ポップアップ 1 枚目
         if self.clock() >= self._deadline:
             self._record(self.problem, "stalled")
             self._error_step("stalled: 結果が出ません")

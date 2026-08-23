@@ -400,7 +400,8 @@ def test_controller_correct_flow_taps_black_and_advances(tmp_path):
         {"grid": BASE}, {"grid": BASE},                  # AWAIT: 2 フレーム同じ → キャプチャ起動
         {"grid": BASE},                                  # CAPTURING（完了は on_problem_ready）
         {"grid": BASE},                                  # ANSWERING: 黒の着手イベントを処理してタップ
-        {"popup": True, "state": "correct"},             # ANSWERING: ポップアップ → RESULT
+        {"popup": True, "state": "correct"},             # ANSWERING: ポップアップ 1 枚目（まだ RESULT にしない）
+        {"popup": True, "state": "correct"},             # ANSWERING: 2 枚目 → RESULT
         {"popup": True, "state": "correct"},             # RESULT: correct → NEXT
         {"popup": True, "state": "correct"},             # NEXT: ポップアップの「次の問題」をタップ
         {"grid": [list("..."), list("..."), list("..W")]},
@@ -415,7 +416,9 @@ def test_controller_correct_flow_taps_black_and_advances(tmp_path):
     c.step()
     assert c.state == "ANSWERING"
     assert adb.taps[-1] == al.board_to_device(1, 1, FakeVision.RECT, 3)
-    c.step()                                             # popup → RESULT
+    c.step()                                             # popup 1 枚目（2 フレーム規則）
+    assert c.state == "ANSWERING"
+    c.step()                                             # popup 2 枚目 → RESULT
     assert c.state == "RESULT"
     c.step()                                             # correct → NEXT
     assert c.state == "NEXT" and c.stats["correct"] == 1
@@ -429,7 +432,8 @@ def test_controller_wrong_flow_harvests_and_saves(tmp_path):
     g1 = al.apply_move_to_grid(BASE, 1, 1, "B")
     frames = [
         {"grid": BASE}, {"grid": BASE}, {"grid": BASE}, {"grid": BASE},
-        {"popup": True, "state": "wrong"},               # ANSWERING → RESULT
+        {"popup": True, "state": "wrong"},               # ANSWERING: popup 1 枚目
+        {"popup": True, "state": "wrong"},               # ANSWERING: 2 枚目 → RESULT
         {"popup": True, "state": "wrong"},               # RESULT: wrong → HARVEST
         {"popup": True},                                 # harvest close: 問題を見る
         {"grid": BASE},                                  # rewind: 初期局面 → ヒント押下
@@ -443,7 +447,8 @@ def test_controller_wrong_flow_harvests_and_saves(tmp_path):
     c.on_problem_ready(token=7, base_grid=BASE, key="k1", route="solver")
     c.on_black_move(token=7, coords_xy=(0, 2))
     c.step()
-    c.step()                                             # RESULT
+    c.step()                                             # popup 1 枚目（2 フレーム規則）
+    c.step()                                             # popup 2 枚目 → RESULT
     c.step()                                             # wrong → HARVEST（監視停止）
     assert c.state == "HARVEST" and gui.stopped == 1
     for _ in range(6):
@@ -465,7 +470,8 @@ def test_controller_capture_failed_taps_empty_point_then_harvests(tmp_path):
     assert c.state == "CAPTURE_FAILED"
     assert adb.taps[-1] == al.board_to_device(0, 0, FakeVision.RECT, 3)
     c.step()                                             # タップ済み・結果待ち
-    c.step()                                             # popup → RESULT（base は ADB フレームから読んだ BASE）
+    c.step()                                             # popup 1 枚目（2 フレーム規則）
+    c.step()                                             # popup 2 枚目 → RESULT（base は ADB フレームから読んだ BASE）
     assert c.state == "RESULT"
     c.step()                                             # wrong → HARVEST
     assert c.state == "HARVEST"
@@ -649,7 +655,8 @@ def test_controller_result_popup_vanished_records_ledger(tmp_path):
     c.step(); c.step()
     c.on_problem_ready(token=1, base_grid=BASE, key="k1", route="frame")
     c.step()
-    c.step()                                             # ANSWERING: popup -> RESULT
+    c.step()                                             # ANSWERING: popup 1 枚目（2 フレーム規則）
+    c.step()                                             # ANSWERING: popup 2 枚目 -> RESULT
     assert c.state == "RESULT"
     c.step()                                             # RESULT: verdict none -> NEXT（台帳に記録）
     assert c.state == "NEXT"
@@ -710,6 +717,9 @@ def test_main_has_autoloop_hooks():
     assert {"_autoloop_trigger", "_autoloop_callbacks", "_save_answer_line"} <= names
     src = ast.unparse(tree)
     assert "on_problem_ready(" in src and "on_capture_failed(" in src and "on_black_move(" in src
+    # S1: ホットキーの二重起動を排他し、孤児コントローラも含めて全部止める
+    assert "_autoloop_lock" in src
+    assert "_autoloop_instances" in src
     # 設定セクション名。ast.unparse は文字列リテラルの引用符を単引用符に正規化するので生ソースで見る
     assert '"tsumego_autoloop"' in _main_source()
 
@@ -743,3 +753,102 @@ def test_find_hint_circle_ignores_last_move_marker():
     # hint_with_marker.png: 赤丸 (2,9) ＋ 四角マーカー → 赤丸だけを返す
     fr2 = _frame("hint_with_marker.png")
     assert al.find_hint_circle(fr2, al.board_rect_of(fr2), 13) == (2, 9)
+
+
+# --- 実機スモーク修正（Task 6b: S1 二重起動 / S2 ポップアップ判定の安定化） ---
+
+
+def test_controller_answering_needs_two_popup_frames(tmp_path):
+    """S2: ポップアップ 1 枚では RESULT に行かない。出現アニメーション途中のフレームは判定帯に
+    別の行が掛かって unknown になる（実機 2/6）ので、2 フレーム連続で見えてから RESULT へ"""
+    frames = [
+        {"grid": BASE}, {"grid": BASE},                  # AWAIT → CAPTURING
+        {"grid": BASE},                                  # ANSWERING
+        {"popup": True, "state": "correct"},             # popup 1 枚目（据え置き）
+        {"grid": BASE},                                  # ポップアップが消えた → 数え直し
+        {"popup": True, "state": "correct"},             # popup 1 枚目
+        {"popup": True, "state": "correct"},             # popup 2 枚目 → RESULT
+    ]
+    c, gui, adb, clock = _controller(frames, tmp_path)
+    c.activate()
+    c.step(); c.step()
+    c.on_problem_ready(token=7, base_grid=BASE, key="k1", route="frame")
+    c.step()
+    assert c.state == "ANSWERING"
+    c.step()                                             # popup 1 枚目 → まだ ANSWERING
+    assert c.state == "ANSWERING"
+    c.step()                                             # 非ポップアップ → カウントはリセット
+    assert c.state == "ANSWERING"
+    c.step()                                             # popup 1 枚目（数え直し）
+    assert c.state == "ANSWERING"
+    c.step()                                             # popup 2 枚目 → RESULT
+    assert c.state == "RESULT"
+
+
+def test_controller_stalled_needs_two_popup_frames(tmp_path):
+    """S2: STALLED から RESULT に入る経路も 2 フレーム規則を使う"""
+    c, gui, adb, clock = _controller([{"grid": BASE}, {"popup": True, "state": "correct"}], tmp_path)
+    c.activate()
+    c.state = "STALLED"
+    c._deadline = clock() + 999
+    c.problem = al._Problem(1, BASE, "k", "frame", clock())
+    c.step()                                             # 非ポップアップ
+    assert c.state == "STALLED"
+    c.step()                                             # popup 1 枚目
+    assert c.state == "STALLED"
+    c.step()                                             # popup 2 枚目 → RESULT
+    assert c.state == "RESULT"
+
+
+def test_controller_result_retries_unknown_then_takes_correct(tmp_path):
+    """S2: RESULT の verdict が unknown なら数フレーム粘る（アニメーション途中で撮れた回の救済）"""
+    frames = [
+        {"grid": BASE}, {"grid": BASE}, {"grid": BASE},
+        {"popup": True, "state": "unknown"},             # ANSWERING: popup 1 枚目
+        {"popup": True, "state": "unknown"},             # ANSWERING: 2 枚目 → RESULT
+        {"popup": True, "state": "unknown"},             # RESULT: 再試行 1
+        {"popup": True, "state": "unknown"},             # RESULT: 再試行 2
+        {"popup": True, "state": "correct"},             # RESULT: 判定できた → correct
+    ]
+    c, gui, adb, clock = _controller(frames, tmp_path)
+    c.activate()
+    c.step(); c.step()
+    c.on_problem_ready(token=7, base_grid=BASE, key="k1", route="frame")
+    c.step()
+    c.step(); c.step()
+    assert c.state == "RESULT"
+    c.step(); c.step()                                   # unknown ×2 → まだ判定しない
+    assert c.state == "RESULT"
+    c.step()                                             # correct → 即処理
+    assert c.state == "NEXT" and c.stats["correct"] == 1
+    rec = json.loads((tmp_path / "l.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert rec["outcome"] == "correct"
+
+
+def test_controller_result_gives_up_after_repeated_unknown(tmp_path):
+    """S2: 粘っても unknown のままなら従来どおり unknown_popup として処理して次へ"""
+    frames = [
+        {"grid": BASE}, {"grid": BASE}, {"grid": BASE},
+        {"popup": True, "state": "unknown"},             # 以後この frame が繰り返る
+    ]
+    c, gui, adb, clock = _controller(frames, tmp_path)
+    c.activate()
+    c.step(); c.step()
+    c.on_problem_ready(token=7, base_grid=BASE, key="k1", route="frame")
+    c.step()
+    c.step(); c.step()                                   # ANSWERING: popup 2 枚 → RESULT
+    assert c.state == "RESULT"
+    for _ in range(al.RESULT_UNKNOWN_RETRIES):           # 再試行ぶんは判定しない
+        c.step()
+        assert c.state == "RESULT"
+    c.step()                                             # 打ち切り → unknown_popup で次へ
+    assert c.state == "NEXT"
+    rec = json.loads((tmp_path / "l.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert rec["outcome"] == "unknown_popup"
+
+
+def test_popup_state_animating_frame_is_unknown():
+    """実機 2026-08-23 の 20260823_085947_002_unknown_popup.png（正解ポップアップの出現途中）。
+    判定帯に別の行が掛かり tail がテンプレとずれる → unknown（wrong と誤判定しないことを固定）"""
+    templates = al.load_templates()
+    assert al.popup_state(_frame("popup_correct_animating.png"), templates) == "unknown"
