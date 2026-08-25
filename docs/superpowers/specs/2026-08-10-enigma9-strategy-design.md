@@ -663,3 +663,13 @@ def enigma9_yose_probe_skippable(lead, target, max_loss, margin=ENIGMA9_FAST_YOS
 - 期待効果: ヨセの `着手決定` 1.3 秒 → 約 0.2 秒（残りは温まっている子局面プローブ）。
   応手検出→着手までの往復は 1.6 秒 → 約 0.5 秒。接戦では Probe が残るが、先読み的中時は
   1.1 秒 → 0.1 秒級。
+
+---
+
+## 追記8（2026-08-25）: 13/19路の局所性オプション（設計）
+
+13路・19路で着手が盤の各所へ飛び飛びになる（実測: 外した手の 69% が最善手から
+チェビシェフ距離 4 以上、序盤は own_rare だけで別の隅へ飛ぶ）問題への調整版。
+own_rare を「相手の直前手／KataGo 最善手」の近傍で減衰させ、net の同点帯では最も近い
+手を採るオプション（`enigma{13,19}_locality_stddev` / `_locality_slack`・既定 OFF）。
+設計・実測・検証計画は別 spec `2026-08-25-enigma-locality-design.md`。
