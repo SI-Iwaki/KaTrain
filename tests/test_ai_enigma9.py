@@ -396,6 +396,7 @@ class TestYoseSkipsProbeEndToEnd:
             next_player="W",
             player="B",
             depth=depth,
+            move=None,  # locality アンカー計算が読む（相手の直前手なし=root扱い）
             analysis_complete=True,
             analysis={"root": {"scoreLead": -lead}},  # 白番なので黒視点は符号反転
             candidate_moves=[
@@ -618,6 +619,12 @@ class TestChooseLocal:
         assert enigma9_choose_local([self.entry("C3", 5.0)], "E5", 0.0, 0.3, 3.0) == (None, [])
         assert enigma9_choose_local([self.entry("E5", 1.0)], "E5", 0.0, 0.3, 3.0) == (None, [])
 
+
+class TestLocalitySettings:
+    def test_all_enigma_classes_default_locality_off(self):
+        for cls in (Enigma9Strategy, Enigma13Strategy, Enigma19Strategy):
+            assert cls.SETTING_DEFAULTS["locality_stddev"] == 0.0
+            assert cls.SETTING_DEFAULTS["locality_slack"] == 0.3
 
 
 class TestAimCap:

@@ -2394,6 +2394,8 @@ class Enigma9Strategy(AIStrategy):
         "unsettled_max": 8,
         "target_score": 2.0,
         "aim_jigo": False,
+        "locality_stddev": 0.0,   # 局所性 σ（0=OFF）。spec 2026-08-25-enigma-locality-design.md
+        "locality_slack": 0.3,    # 同点帯の幅（目相当）
     }
 
     def _setting(self, suffix):
@@ -2873,6 +2875,20 @@ class Enigma9Strategy(AIStrategy):
         # ヨセでは「自手の意外さ」を net から外す（`enigma9_own_rarity_weight`）
         w_own = enigma9_own_rarity_weight(in_yose)
 
+        # ---- 局所性オプション（13/19路・既定 OFF）----
+        # own_rare を「相手の直前手／KataGo 最善手」の近傍で減衰させ、net の同点帯では最も
+        # 近い手を採る。σ<=0 なら prox は全候補 1.0・選択は従来 choose＝ビット同一
+        loc_stddev = float(self._setting("locality_stddev") or 0.0)
+        loc_slack = float(self._setting("locality_slack") or 0.0)
+        last_coords = self.cn.move.coords if (self.cn.move and not self.cn.move.is_pass) else None
+        anchors = enigma9_anchors(last_coords, best_gtp) if loc_stddev > 0 else []
+        if loc_stddev > 0:
+            anchor_txt = ", ".join(
+                f"{'last' if i == 0 and last_coords is not None else 'best'}({Move(a, player=player).gtp()})"
+                for i, a in enumerate(anchors)
+            )
+            self._log(f"Locality: anchors=[{anchor_txt}] stddev={loc_stddev:.1f} slack={loc_slack:.2f}")
+
         # ---- ゲート3: 安全な外し候補があるか（クエリ0本）----
         # プールは visits >= ENIGMA9_POOL_MIN_VISITS まで広げる（二段の漏斗）。
         # 生 loss の cap 判定は浅い候補でも安全側（楽観バイアス＝過小評価なので
@@ -2947,22 +2963,30 @@ class Enigma9Strategy(AIStrategy):
             e_punish, coverage = enigma9_expected_punish(replies, hp_of)
             findability = enigma9_reply_findability(replies, hp_of)
             own_hp = own_hp_of(c["gtp"])
+            prox = enigma9_locality(Move.from_gtp(c["gtp"]).coords, anchors, loc_stddev)
             net = enigma9_net_score(
-                vloss, e_punish, findability, own_hp, w_own=w_own, cost_weight=cost_weight
+                vloss, e_punish, findability, own_hp, w_own=w_own, cost_weight=cost_weight,
+                locality=prox,
             )
             scored.append(
                 {**c, "loss": vloss, "raw_loss": c["loss"], "wr_after": wr_after,
                  "e": e_punish, "cov": coverage, "find": findability,
-                 "own_hp": own_hp, "reply": best_reply, "net": net}
+                 "own_hp": own_hp, "reply": best_reply, "net": net, "prox": prox}
             )
             wr_txt = "n/a" if wr_after is None else f"{wr_after:.1%}"
             self._log(
                 f"Score {c['gtp']}: vloss={vloss:.2f} (raw {c['loss']:.2f}) wr={wr_txt} "
                 f"E={e_punish:.2f} cov={coverage:.2f} find_hp={findability:.3f} "
-                f"own_hp={own_hp:.3f} (w_own={w_own:.1f}) reply={best_reply} net={net:.2f}"
+                f"own_hp={own_hp:.3f} (w_own={w_own:.1f}) prox={prox:.2f} reply={best_reply} net={net:.2f}"
             )
 
-        chosen = enigma9_choose(scored, best_gtp, margin)
+        chosen, band = enigma9_choose_local(scored, best_gtp, margin, loc_slack, loc_stddev)
+        if band:
+            self._log(
+                f"Band: {len(band)} within slack {loc_slack:.2f} of top net -> "
+                f"nearest {chosen['gtp'] if chosen else 'none'}"
+                + (f" (prox {chosen['prox']:.2f}, net {chosen['net']:.2f})" if chosen else "")
+            )
         if chosen is None:
             self._log("Best move wins the confusion race -> best move")
             self._start_ponder(best_gtp, probes.get(best_gtp), player)
@@ -2973,7 +2997,8 @@ class Enigma9Strategy(AIStrategy):
         wr_txt = "n/a" if chosen.get("wr_after") is None else f"{chosen['wr_after']:.1%}"
         self._log(
             f"Deviate: played {chosen['gtp']} (net={chosen['net']:.2f}, vloss={chosen['loss']:.2f}, "
-            f"E={chosen['e']:.2f}, find_hp={chosen['find']:.3f}, wr={wr_txt}) instead of {best_gtp}"
+            f"E={chosen['e']:.2f}, find_hp={chosen['find']:.3f}, prox={chosen.get('prox', 1.0):.2f}, "
+            f"wr={wr_txt}) instead of {best_gtp}"
         )
         self._start_ponder(chosen["gtp"], probes.get(chosen["gtp"]), player)
         return (
@@ -3014,6 +3039,8 @@ class Enigma13Strategy(Enigma9Strategy):
         "unsettled_max": 16,
         "target_score": 2.0,
         "aim_jigo": False,
+        "locality_stddev": 0.0,   # 局所性 σ（0=OFF）。spec 2026-08-25-enigma-locality-design.md
+        "locality_slack": 0.3,    # 同点帯の幅（目相当）
     }
 
 
@@ -3049,6 +3076,8 @@ class Enigma19Strategy(Enigma9Strategy):
         "unsettled_max": 36,
         "target_score": 2.0,
         "aim_jigo": False,
+        "locality_stddev": 0.0,   # 局所性 σ（0=OFF）。spec 2026-08-25-enigma-locality-design.md
+        "locality_slack": 0.3,    # 同点帯の幅（目相当）
     }
 
 

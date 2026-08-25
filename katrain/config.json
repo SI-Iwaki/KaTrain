@@ -225,7 +225,9 @@
             "enigma9_target_score": 2.0,
             "enigma9_aim_jigo": false,
             "enigma9_endgame_move": 30,
-            "enigma9_unsettled_max": 8
+            "enigma9_unsettled_max": 8,
+            "enigma9_locality_stddev": 0.0,
+            "enigma9_locality_slack": 0.3
         },
         "ai:enigma13": {
             "enigma13_max_loss": 1.5,
@@ -235,7 +237,9 @@
             "enigma13_target_score": 2.0,
             "enigma13_aim_jigo": false,
             "enigma13_endgame_move": 75,
-            "enigma13_unsettled_max": 16
+            "enigma13_unsettled_max": 16,
+            "enigma13_locality_stddev": 0.0,
+            "enigma13_locality_slack": 0.3
         },
         "ai:enigma19": {
             "enigma19_max_loss": 2.0,
@@ -245,7 +249,9 @@
             "enigma19_target_score": 2.0,
             "enigma19_aim_jigo": false,
             "enigma19_endgame_move": 150,
-            "enigma19_unsettled_max": 36
+            "enigma19_unsettled_max": 36,
+            "enigma19_locality_stddev": 0.0,
+            "enigma19_locality_slack": 0.3
         },
         "ai:scoreloss": {
             "strength": 0.2

@@ -304,6 +304,10 @@ AI_OPTION_VALUES = {
     "enigma9_aim_jigo": "bool",
     "enigma9_endgame_move": [22, 26, 30, 34, 38],
     "enigma9_unsettled_max": [4, 6, 8, 10, 12],
+    # 局所性（spec 2026-08-25-enigma-locality-design.md）: 9路は既定 OFF（問題なし）。GUI/config の
+    # キー集合を3クラスで揃える不変条件（TestGuiConfigConsistency）のために露出する
+    "enigma9_locality_stddev": [(0.0, "OFF"), (1.5, "1.5"), (2.0, "2.0"), (2.5, "2.5"), (3.0, "3.0")],
+    "enigma9_locality_slack": [0.0, 0.2, 0.3, 0.5, 1.0],
     # ===== Enigma13Strategy（13路専用・難解） =====
     # 9路の「2目以上の損失手は打たない」は挽回が難しい9路向けの締め方。13路は
     # 悪手フィルタの盤サイズ比（NORMAL 3.3→5.6 ≒ ×1.7）に合わせて天井 3.0 まで開ける
@@ -316,6 +320,10 @@ AI_OPTION_VALUES = {
     "enigma13_aim_jigo": "bool",
     "enigma13_endgame_move": [55, 65, 75, 85, 95],
     "enigma13_unsettled_max": [8, 12, 16, 20, 24],
+    # 局所性（spec 2026-08-25-enigma-locality-design.md）: own_rare を相手の直前手／KataGo
+    # 最善手の近傍で減衰させ、net の同点帯では最も近い手を採る。0 = OFF（従来とビット同一）
+    "enigma13_locality_stddev": [(0.0, "OFF"), (2.0, "2.0"), (2.5, "2.5"), (3.0, "3.0"), (4.0, "4.0"), (5.0, "5.0")],
+    "enigma13_locality_slack": [0.0, 0.2, 0.3, 0.5, 1.0],
     # ===== Enigma19Strategy（19路専用・難解） =====
     # 悪手フィルタは13路と同じ NORMAL=5.6 だが、19路は挽回機会が多いぶん天井 4.0 まで開ける
     # （5.6=悪手フィルタまでは開けない＝「難解だが悪手ではない」帯に留める）
@@ -328,6 +336,8 @@ AI_OPTION_VALUES = {
     "enigma19_aim_jigo": "bool",
     "enigma19_endgame_move": [120, 135, 150, 165, 180],
     "enigma19_unsettled_max": [24, 30, 36, 42, 48],
+    "enigma19_locality_stddev": [(0.0, "OFF"), (3.0, "3.0"), (4.0, "4.0"), (5.0, "5.0"), (6.0, "6.0"), (7.0, "7.0")],
+    "enigma19_locality_slack": [0.0, 0.2, 0.3, 0.5, 1.0],
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）
@@ -428,6 +438,8 @@ AI_OPTION_ORDER = {
     "enigma9_aim_jigo": 5,
     "enigma9_endgame_move": 6,
     "enigma9_unsettled_max": 7,
+    "enigma9_locality_stddev": 8,
+    "enigma9_locality_slack": 9,
     "enigma13_max_loss": 0,
     "enigma13_large_lead_max_loss": 1,
     "enigma13_min_winrate": 2,
@@ -436,6 +448,8 @@ AI_OPTION_ORDER = {
     "enigma13_aim_jigo": 5,
     "enigma13_endgame_move": 6,
     "enigma13_unsettled_max": 7,
+    "enigma13_locality_stddev": 8,
+    "enigma13_locality_slack": 9,
     "enigma19_max_loss": 0,
     "enigma19_large_lead_max_loss": 1,
     "enigma19_min_winrate": 2,
@@ -444,6 +458,8 @@ AI_OPTION_ORDER = {
     "enigma19_aim_jigo": 5,
     "enigma19_endgame_move": 6,
     "enigma19_unsettled_max": 7,
+    "enigma19_locality_stddev": 8,
+    "enigma19_locality_slack": 9,
 }
 
 AI_KEY_PROPERTIES = {
