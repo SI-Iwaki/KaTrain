@@ -2323,6 +2323,32 @@ def enigma9_choose(scored, best_gtp, margin):
     return None
 
 
+def enigma9_choose_local(scored, best_gtp, margin, slack, stddev):
+    """同点帯タイブレーク付きの選択（局所性オプション）。返り値 (pick or None, band)。
+
+    挑戦者の net 最大 top から slack 以内の帯を作り、帯の中で prox（`enigma9_locality`）最大
+    ＝最もアンカーに近い手を pick する（同点は net 大 → loss 小）。**pick 自身の net が
+    最善手 + margin 以上のときだけ外す**（帯の最大 net で代理しない＝打つ手そのものが
+    最善手に勝っていること）。slack <= 0 または stddev <= 0 は従来の `enigma9_choose` を
+    そのまま返す＝OFF は採用判断がビット同一（net が完全同値の挑戦者があっても prox で
+    並べ替えない）。
+    """
+    if slack is None or slack <= 0 or stddev is None or stddev <= 0:
+        return enigma9_choose(scored, best_gtp, margin), []
+    best_entry = next((c for c in scored if c["gtp"] == best_gtp), None)
+    if best_entry is None:
+        return None, []
+    challengers = [c for c in scored if c["gtp"] != best_gtp]
+    if not challengers:
+        return None, []
+    top = max(challengers, key=lambda c: (c["net"], -c["loss"]))
+    band = [c for c in challengers if c["net"] >= top["net"] - slack]
+    pick = max(band, key=lambda c: (c.get("prox", 1.0), c["net"], -c["loss"]))
+    if pick["net"] >= best_entry["net"] + margin:
+        return pick, band
+    return None, band
+
+
 @register_strategy(AI_ENIGMA_9)
 class Enigma9Strategy(AIStrategy):
     """9路専用「難解」戦略。

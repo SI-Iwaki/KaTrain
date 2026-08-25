@@ -1,5 +1,6 @@
 # tests/test_ai_enigma9.py
 """「難解」戦略 ai:enigma9（9路）/ ai:enigma13（13路）/ ai:enigma19（19路）の純関数テスト（KataGo/Kivy 不要）。"""
+
 import math
 import json
 from pathlib import Path
@@ -21,6 +22,7 @@ from katrain.core.ai import (
     enigma9_aim_cap,
     enigma9_anchors,
     enigma9_choose,
+    enigma9_choose_local,
     enigma9_expected_punish,
     enigma9_hp_lookup,
     enigma9_locality,
@@ -45,10 +47,10 @@ class TestHpLookup:
     def make_policy(self):
         # 9x9: 81 + pass。E5 = coords (4,4) -> idx (9-1-4)*9+4 = 40
         policy = [0.0] * 82
-        policy[40] = 0.25   # E5
-        policy[72] = 0.03   # A1 = (0,0) -> (8)*9+0
+        policy[40] = 0.25  # E5
+        policy[72] = 0.03  # A1 = (0,0) -> (8)*9+0
         policy[81] = 0.001  # pass
-        policy[0] = -1.0    # A9 相当のどこか非合法（humanPolicy の非合法値）
+        policy[0] = -1.0  # A9 相当のどこか非合法（humanPolicy の非合法値）
         return policy
 
     def test_lookup_coords(self):
@@ -76,12 +78,12 @@ class TestHpLookup:
 class TestAdmissible:
     def test_filters_best_pass_loss_wr(self):
         candidates = [
-            cand("E5", 0.0),            # best -> 除外
-            cand("C3", 0.5),            # OK
-            cand("D4", 1.5),            # loss > cap -> 除外
-            cand("pass", 0.1),          # pass -> 除外
-            cand("G7", 0.3, wr=0.2),    # wr < floor -> 除外
-            cand("B2", 0.8, wr=None),   # wr 不明は許可
+            cand("E5", 0.0),  # best -> 除外
+            cand("C3", 0.5),  # OK
+            cand("D4", 1.5),  # loss > cap -> 除外
+            cand("pass", 0.1),  # pass -> 除外
+            cand("G7", 0.3, wr=0.2),  # wr < floor -> 除外
+            cand("B2", 0.8, wr=None),  # wr 不明は許可
         ]
         pool = enigma9_admissible(candidates, "E5", cap=1.0, min_winrate=0.3)
         assert [c["gtp"] for c in pool] == ["C3", "B2"]
@@ -108,10 +110,10 @@ class TestShortlist:
     def test_two_tiers_trusted_first(self):
         # 浅い候補（visits < trusted）は生 loss が最安でも第2段に回る
         pool = [
-            cand("A1", 0.05, visits=3),    # 浅い・生 loss 最安
-            cand("B2", 0.6, visits=40),    # 信用できる
-            cand("C3", 0.4, visits=15),    # 信用できる
-            cand("D4", 0.1, visits=7),     # 浅い・visits 多め
+            cand("A1", 0.05, visits=3),  # 浅い・生 loss 最安
+            cand("B2", 0.6, visits=40),  # 信用できる
+            cand("C3", 0.4, visits=15),  # 信用できる
+            cand("D4", 0.1, visits=7),  # 浅い・visits 多め
         ]
         top = enigma9_shortlist(pool, 4)
         assert [c["gtp"] for c in top] == ["C3", "B2", "D4", "A1"]
@@ -127,16 +129,12 @@ class TestShortlist:
 
 class TestVerifiedMetrics:
     def test_black_perspective_passthrough(self):
-        lead, wr = enigma9_verified_metrics(
-            {"rootInfo": {"scoreLead": 2.5, "winrate": 0.62}}, "B"
-        )
+        lead, wr = enigma9_verified_metrics({"rootInfo": {"scoreLead": 2.5, "winrate": 0.62}}, "B")
         assert lead == pytest.approx(2.5)
         assert wr == pytest.approx(0.62)
 
     def test_white_perspective_flipped(self):
-        lead, wr = enigma9_verified_metrics(
-            {"rootInfo": {"scoreLead": 2.5, "winrate": 0.62}}, "W"
-        )
+        lead, wr = enigma9_verified_metrics({"rootInfo": {"scoreLead": 2.5, "winrate": 0.62}}, "W")
         assert lead == pytest.approx(-2.5)
         assert wr == pytest.approx(0.38)
 
@@ -150,8 +148,8 @@ class TestReplyTable:
         # scoreLead は常に黒視点。白の応手なので低いほど良い
         infos = [
             {"move": "C3", "scoreLead": -2.0, "visits": 300},  # 白最善（白視点 +2.0）
-            {"move": "D4", "scoreLead": 1.0, "visits": 100},   # 白視点 -1.0 -> loss 3.0
-            {"move": "E5", "scoreLead": 4.0, "visits": 20},    # 白視点 -4.0 -> loss 6.0
+            {"move": "D4", "scoreLead": 1.0, "visits": 100},  # 白視点 -1.0 -> loss 3.0
+            {"move": "E5", "scoreLead": 4.0, "visits": 20},  # 白視点 -4.0 -> loss 6.0
         ]
         replies, best = enigma9_reply_table(infos, "W")
         assert best == "C3"
@@ -176,8 +174,8 @@ class TestReplyTable:
         # 損失は 0 にクランプされる
         infos = [
             {"move": "C3", "scoreLead": -2.0, "visits": 300},
-            {"move": "H8", "scoreLead": -9.0, "visits": 1},   # include からも外れる（< 2）
-            {"move": "G2", "scoreLead": -8.0, "visits": 3},   # include はされるが基準ではない
+            {"move": "H8", "scoreLead": -9.0, "visits": 1},  # include からも外れる（< 2）
+            {"move": "G2", "scoreLead": -8.0, "visits": 3},  # include はされるが基準ではない
         ]
         replies, best = enigma9_reply_table(infos, "W")
         assert best == "C3"
@@ -219,9 +217,9 @@ class TestExpectedPunish:
 class TestReplyFindability:
     def test_max_hp_among_adequate(self):
         replies = [
-            {"gtp": "C3", "loss": 0.0, "visits": 300},   # 十分・hp 0.02
-            {"gtp": "D4", "loss": 0.2, "visits": 100},   # 十分・hp 0.4 -> これが見つけやすさ
-            {"gtp": "E5", "loss": 5.0, "visits": 100},   # 不十分・hp 0.9 は無関係
+            {"gtp": "C3", "loss": 0.0, "visits": 300},  # 十分・hp 0.02
+            {"gtp": "D4", "loss": 0.2, "visits": 100},  # 十分・hp 0.4 -> これが見つけやすさ
+            {"gtp": "E5", "loss": 5.0, "visits": 100},  # 不十分・hp 0.9 は無関係
         ]
         hp = {"C3": 0.02, "D4": 0.4, "E5": 0.9}
         assert enigma9_reply_findability(replies, lambda g: hp[g]) == pytest.approx(0.4)
@@ -295,9 +293,8 @@ class TestOwnRarityWeight:
         assert weird < best
         # 中盤（従来どおり）では意外さ項が勝ち、外しが成立していたことも押さえる
         w_mid = enigma9_own_rarity_weight(False)
-        assert (
-            enigma9_net_score(0.27, 0.32, 0.828, 0.001, w_own=w_mid)
-            > enigma9_net_score(0.0, 0.19, 0.891, 0.957, w_own=w_mid)
+        assert enigma9_net_score(0.27, 0.32, 0.828, 0.001, w_own=w_mid) > enigma9_net_score(
+            0.0, 0.19, 0.891, 0.957, w_own=w_mid
         )
 
 
@@ -344,16 +341,14 @@ class TestFastYoseLead:
         import types
 
         katrain = types.SimpleNamespace(log=lambda *a, **k: None)
-        node = types.SimpleNamespace(
-            next_player="W", analysis={"root": {"scoreLead": score_lead}}
-        )
+        node = types.SimpleNamespace(next_player="W", analysis={"root": {"scoreLead": score_lead}})
         game = types.SimpleNamespace(katrain=katrain, current_node=node, **game_attrs)
         s = Enigma9Strategy(game, {})
         return s
 
     def test_watch_and_yose_uses_root_lead_with_sign(self):
         s = self._stub(in_yose_attrs=True, board_watch_active=True)
-        assert s._fast_yose_lead(True, 1) == pytest.approx(12.0)    # 黒番
+        assert s._fast_yose_lead(True, 1) == pytest.approx(12.0)  # 黒番
         assert s._fast_yose_lead(True, -1) == pytest.approx(-12.0)  # 白番＝符号反転
 
     def test_not_watching_falls_back_to_the_probe(self):
@@ -373,9 +368,7 @@ class TestFastYoseLead:
 
         katrain = types.SimpleNamespace(log=lambda *a, **k: None)
         node = types.SimpleNamespace(next_player="W", analysis={})
-        game = types.SimpleNamespace(
-            katrain=katrain, current_node=node, board_watch_active=True
-        )
+        game = types.SimpleNamespace(katrain=katrain, current_node=node, board_watch_active=True)
         assert Enigma9Strategy(game, {})._fast_yose_lead(True, 1) is None
 
 
@@ -418,7 +411,7 @@ class TestYoseSkipsProbeEndToEnd:
     def test_watching_and_saturated_skips_the_probe(self):
         s, logs = self._strategy(watch=True, lead=12.0)
         move, reason = s.generate_move()
-        assert s.queries == []                       # 追加クエリ0本
+        assert s.queries == []  # 追加クエリ0本
         assert move.gtp() == "E5"
         assert any("probe skipped" in m for m in logs)
         assert s.game.board_watch_probe_warm is False  # 温めも要らない手番
@@ -428,12 +421,12 @@ class TestYoseSkipsProbeEndToEnd:
         s, logs = self._strategy(watch=True, lead=1.2)
         s.generate_move()
         assert s.queries == ["Probe"]
-        assert s.game.board_watch_probe_warm is True   # 次手番ぶんを先読みで温める
+        assert s.game.board_watch_probe_warm is True  # 次手番ぶんを先読みで温める
 
     def test_without_watching_nothing_changes(self):
         s, logs = self._strategy(watch=False, lead=12.0)
         s.generate_move()
-        assert s.queries == ["Probe"]                  # 監視していない経路は従来どおり
+        assert s.queries == ["Probe"]  # 監視していない経路は従来どおり
         assert not any("probe skipped" in m for m in logs)
 
 
@@ -559,6 +552,62 @@ class TestChoose:
             self.entry("D4", 2.0, loss=0.3),
         ]
         assert enigma9_choose(scored, "E5", margin=0.0)["gtp"] == "D4"
+
+
+class TestChooseLocal:
+    """同点帯タイブレーク（2026-08-25・spec enigma-locality §4.3）。"""
+
+    def entry(self, gtp, net, prox=1.0, loss=0.5):
+        return {"gtp": gtp, "net": net, "loss": loss, "prox": prox}
+
+    def test_off_paths_delegate_to_legacy_choose(self):
+        scored = [self.entry("E5", 1.0, loss=0.0), self.entry("C3", 1.5, prox=0.1), self.entry("D4", 1.4, prox=1.0)]
+        for slack, stddev in [(0.0, 3.0), (0.3, 0.0), (0.0, 0.0), (-1.0, 3.0)]:
+            pick, band = enigma9_choose_local(scored, "E5", 0.0, slack, stddev)
+            assert pick == enigma9_choose(scored, "E5", 0.0)
+            assert pick["gtp"] == "C3" and band == []
+
+    def test_band_prefers_nearest(self):
+        # C3 が net 最大だが遠い。D4 は 0.1 劣るだけで近い → 帯 0.3 内なら D4
+        scored = [self.entry("E5", 1.0, loss=0.0), self.entry("C3", 1.5, prox=0.1), self.entry("D4", 1.4, prox=1.0)]
+        pick, band = enigma9_choose_local(scored, "E5", 0.0, 0.3, 3.0)
+        assert pick["gtp"] == "D4"
+        assert sorted(c["gtp"] for c in band) == ["C3", "D4"]
+
+    def test_clearly_better_far_trap_survives(self):
+        # 帯の外（0.5 差 > slack 0.3）なら遠い罠が残る
+        scored = [self.entry("E5", 1.0, loss=0.0), self.entry("C3", 2.0, prox=0.1), self.entry("D4", 1.4, prox=1.0)]
+        pick, band = enigma9_choose_local(scored, "E5", 0.0, 0.3, 3.0)
+        assert pick["gtp"] == "C3" and [c["gtp"] for c in band] == ["C3"]
+
+    def test_pick_itself_must_beat_best_plus_margin(self):
+        # 帯の最大 net（C3 1.5）では代理しない: 近い D4 の net 1.1 が best 1.0 + margin 0.2 に届かなければ None
+        scored = [self.entry("E5", 1.0, loss=0.0), self.entry("C3", 1.5, prox=0.1), self.entry("D4", 1.1, prox=1.0)]
+        pick, _ = enigma9_choose_local(scored, "E5", 0.2, 0.5, 3.0)
+        assert pick is None
+
+    def test_prox_tie_breaks_by_net_then_loss(self):
+        scored = [
+            self.entry("E5", 1.0, loss=0.0),
+            self.entry("C3", 1.5, prox=0.5, loss=0.4),
+            self.entry("D4", 1.5, prox=0.5, loss=0.2),
+            self.entry("F6", 1.3, prox=0.5),
+        ]
+        pick, _ = enigma9_choose_local(scored, "E5", 0.0, 0.3, 3.0)
+        assert pick["gtp"] == "D4"
+
+    def test_missing_prox_counts_as_one(self):
+        scored = [
+            self.entry("E5", 1.0, loss=0.0),
+            {"gtp": "C3", "net": 1.5, "loss": 0.5},
+            self.entry("D4", 1.4, prox=0.3),
+        ]
+        pick, _ = enigma9_choose_local(scored, "E5", 0.0, 0.3, 3.0)
+        assert pick["gtp"] == "C3"
+
+    def test_fail_safes(self):
+        assert enigma9_choose_local([self.entry("C3", 5.0)], "E5", 0.0, 0.3, 3.0) == (None, [])
+        assert enigma9_choose_local([self.entry("E5", 1.0)], "E5", 0.0, 0.3, 3.0) == (None, [])
 
 
 class TestAimCap:
@@ -728,9 +777,7 @@ class TestCancelPonder:
         from katrain.core.game import Game
 
         eng = _RecordingEngine()
-        game = types.SimpleNamespace(
-            _enigma_ponder=(eng, ["n1", "n2"]), _enigma_ponder_owner="W"
-        )
+        game = types.SimpleNamespace(_enigma_ponder=(eng, ["n1", "n2"]), _enigma_ponder_owner="W")
         # 発行者（W）自身の着手では打ち切らない
         Game._cancel_enigma_ponder(game, types.SimpleNamespace(player="W"))
         assert game._enigma_ponder is not None
