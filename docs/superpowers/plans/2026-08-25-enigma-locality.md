@@ -16,7 +16,7 @@
 - 近さ: `prox = max_a exp(-|m-a|^2 / (2σ^2))`、ユークリッド距離、アンカー無し／σ≤0 で 1.0（spec §4.1）。
 - 局所化 net: `E + w_reply·reply_rare + w_own·prox·own_rare − cost_weight·max(0, loss)`（spec §4.2）。
 - 帯タイブレーク: 帯 `net ≥ top.net − slack` の中で prox 最大（同点は net 大 → loss 小）、**pick 自身が `best.net + margin` 以上**のときだけ外す（spec §4.3）。
-- 設定キー: `enigma13_locality_stddev`（候補 0/2/2.5/3/4/5・既定 0）/ `enigma13_locality_slack`（0/0.2/0.3/0.5/1.0・既定 0.3）/ `enigma19_locality_stddev`（0/3/4/5/6/7・既定 0）/ `enigma19_locality_slack`（同・既定 0.3）。9路には GUI・config を出さないが `Enigma9Strategy.SETTING_DEFAULTS` にも 0.0 / 0.3 を置く（spec §5）。
+- 設定キー: `enigma13_locality_stddev`（候補 0/2/2.5/3/4/5・既定 0）/ `enigma13_locality_slack`（0/0.2/0.3/0.5/1.0・既定 0.3）/ `enigma19_locality_stddev`（0/3/4/5/6/7・既定 0）/ `enigma19_locality_slack`（同・既定 0.3）。9路にも `enigma9_locality_stddev`（0/1.5/2/2.5/3・既定 0）/ `enigma9_locality_slack`（同・既定 0.3）を既定 OFF で出す（spec §5・裁定 2026-08-25＝既存テスト `TestGuiConfigConsistency` / `test_same_setting_suffixes` の不変条件「SETTING_DEFAULTS ＝ config.json ＝ AI_OPTION_VALUES を3クラス同一」を維持）。**Task 3（SETTING_DEFAULTS）と Task 4（constants / パッケージ config）は同一コミットに載せないとこのテストが赤くなる**ので、実行時は1ディスパッチで Task 3→4 を続けて行う。
 - コミットメッセージは日本語・Conventional Commits。`black` を既存ファイル全体に掛けない。
 - **ユーザー `C:\Users\iwaki\.katrain\config.json` はサブエージェントに委任せずメインセッションで直接 Edit**、編集前に KaTrain が起動していないことを確認（起動中は終了時に上書きされる）。
 - `.claude/rules/*.md` の Edit が拒否されたらサブエージェント経由で編集・コミット。
@@ -339,7 +339,7 @@ Expected: FAIL（KeyError: 'locality_stddev'）
 3クラスとも `"aim_jigo": False,` の直後に:
 
 ```python
-        "locality_stddev": 0.0,   # 局所性 σ（0=OFF）。9路は GUI/config に出さない＝常に OFF
+        "locality_stddev": 0.0,   # 局所性 σ（0=OFF）。spec 2026-08-25-enigma-locality-design.md
         "locality_slack": 0.3,    # 同点帯の幅（目相当）
 ```
 
@@ -389,7 +389,7 @@ Expected: FAIL（KeyError: 'locality_stddev'）
 
 - [ ] **Step 5: テストと OFF の同一性確認**
 
-Run: `pytest tests/test_ai_enigma9.py -v` → 全 PASS。
+Run: `pytest tests/test_ai_enigma9.py -v -k "not GuiConfigConsistency"` → 全 PASS（`TestGuiConfigConsistency` は Task 4 の constants / config.json が入るまで赤＝Task 4 完了後に全体を通す）。
 Run: `pytest tests --ignore=tests/test_ai.py -q` → 全 PASS（既存 941 前後）。
 Run（KataGo 起動・約30秒。OFF で従来どおり動くことの煙テスト）:
 ```bash
@@ -409,8 +409,8 @@ git commit -m "feat(enigma): 難解 13/19路に局所性オプションを配線
 ### Task 4: 設定の露出（constants / config.json ×2 / i18n）
 
 **Files:**
-- Modify: `katrain/core/constants.py`（`AI_OPTION_VALUES` の `"enigma13_unsettled_max"` / `"enigma19_unsettled_max"` 行の直後、`AI_OPTION_ORDER` の同キー直後）
-- Modify: `katrain/config.json`（`"ai:enigma13"` / `"ai:enigma19"`）
+- Modify: `katrain/core/constants.py`（`AI_OPTION_VALUES` の `"enigma9_unsettled_max"` / `"enigma13_unsettled_max"` / `"enigma19_unsettled_max"` 行の直後、`AI_OPTION_ORDER` の同キー直後）
+- Modify: `katrain/config.json`（`"ai:enigma9"` / `"ai:enigma13"` / `"ai:enigma19"`）
 - Modify: `C:\Users\iwaki\.katrain\config.json`（**メインセッションで直接 Edit**）
 - Modify: `katrain/i18n/locales/jp/LC_MESSAGES/katrain.po`, `katrain/i18n/locales/en/LC_MESSAGES/katrain.po`
 
@@ -420,11 +420,11 @@ git commit -m "feat(enigma): 難解 13/19路に局所性オプションを配線
 python - <<'EOF'
 import json, io
 from katrain.core.constants import AI_OPTION_VALUES, AI_OPTION_ORDER
-keys = ["enigma13_locality_stddev", "enigma13_locality_slack", "enigma19_locality_stddev", "enigma19_locality_slack"]
+keys = ["enigma9_locality_stddev", "enigma9_locality_slack", "enigma13_locality_stddev", "enigma13_locality_slack", "enigma19_locality_stddev", "enigma19_locality_slack"]
 pkg = json.load(io.open("katrain/config.json", encoding="utf-8"))["ai"]
 usr = json.load(io.open(r"C:/Users/iwaki/.katrain/config.json", encoding="utf-8"))["ai"]
 for k in keys:
-    sec = "ai:enigma13" if "13" in k else "ai:enigma19"
+    sec = "ai:" + k.split("_")[0]
     assert k in AI_OPTION_VALUES and k in AI_OPTION_ORDER, k
     assert k in pkg[sec] and k in usr[sec], (k, sec)
 print("ok")
@@ -434,7 +434,16 @@ Expected: AssertionError（未追加）
 
 - [ ] **Step 2: `constants.py`**
 
-`AI_OPTION_VALUES` の `"enigma13_unsettled_max": [8, 12, 16, 20, 24],` の直後:
+`AI_OPTION_VALUES` の `"enigma9_unsettled_max": [4, 6, 8, 10, 12],` の直後:
+
+```python
+    # 局所性（spec 2026-08-25-enigma-locality-design.md）: 9路は既定 OFF（問題なし）。GUI/config の
+    # キー集合を3クラスで揃える不変条件（TestGuiConfigConsistency）のために露出する
+    "enigma9_locality_stddev": [(0.0, "OFF"), (1.5, "1.5"), (2.0, "2.0"), (2.5, "2.5"), (3.0, "3.0")],
+    "enigma9_locality_slack": [0.0, 0.2, 0.3, 0.5, 1.0],
+```
+
+`"enigma13_unsettled_max": [8, 12, 16, 20, 24],` の直後:
 
 ```python
     # 局所性（spec 2026-08-25-enigma-locality-design.md）: own_rare を相手の直前手／KataGo
@@ -450,19 +459,19 @@ Expected: AssertionError（未追加）
     "enigma19_locality_slack": [0.0, 0.2, 0.3, 0.5, 1.0],
 ```
 
-`AI_OPTION_ORDER` の `"enigma13_unsettled_max": 7,` の直後に `"enigma13_locality_stddev": 8,` `"enigma13_locality_slack": 9,`、`"enigma19_unsettled_max": 7,` の直後に `"enigma19_locality_stddev": 8,` `"enigma19_locality_slack": 9,`。
+`AI_OPTION_ORDER` の `"enigma9_unsettled_max": 7,` の直後に `"enigma9_locality_stddev": 8,` `"enigma9_locality_slack": 9,`、`"enigma13_unsettled_max": 7,` の直後に `"enigma13_locality_stddev": 8,` `"enigma13_locality_slack": 9,`、`"enigma19_unsettled_max": 7,` の直後に `"enigma19_locality_stddev": 8,` `"enigma19_locality_slack": 9,`。
 
 - [ ] **Step 3: パッケージ `katrain/config.json`**
 
-`"enigma13_unsettled_max": 16` を `"enigma13_unsettled_max": 16,\n            "enigma13_locality_stddev": 0.0,\n            "enigma13_locality_slack": 0.3` に、`"enigma19_unsettled_max": 36` を同様に `enigma19_` で置換（末尾カンマの有無に注意＝JSON として `python -c "import json;json.load(open('katrain/config.json'))"` が通ること）。
+`"enigma9_unsettled_max": 8` を `"enigma9_unsettled_max": 8,\n            "enigma9_locality_stddev": 0.0,\n            "enigma9_locality_slack": 0.3` に、`"enigma13_unsettled_max": 16` / `"enigma19_unsettled_max": 36` を同様に `enigma13_` / `enigma19_` で置換（末尾カンマの有無に注意＝JSON として `python -c "import json;json.load(open('katrain/config.json'))"` が通ること）。
 
 - [ ] **Step 4: ユーザー `C:\Users\iwaki\.katrain\config.json`（メインセッション）**
 
-先に `tasklist | grep -a -i "python\|katrain"` で KaTrain が起動していないことを確認。`"enigma13_unsettled_max": 16` / `"enigma19_unsettled_max": 36` の行に同じ2キーを追加（値は 0.0 / 0.3）。`python -c "import json;json.load(open(r'C:/Users/iwaki/.katrain/config.json'))"` で検証。
+先に `tasklist | grep -a -i "python\|katrain"` で KaTrain が起動していないことを確認。`"enigma9_unsettled_max"` / `"enigma13_unsettled_max"` / `"enigma19_unsettled_max"` の行に同じ2キーを追加（値は 0.0 / 0.3）。`python -c "import json;json.load(open(r'C:/Users/iwaki/.katrain/config.json'))"` で検証。
 
 - [ ] **Step 5: i18n**
 
-`katrain/i18n/locales/jp/LC_MESSAGES/katrain.po` の `msgid "enigma13_unsettled_max"` ブロックの直後（空行の後）:
+`katrain/i18n/locales/jp/LC_MESSAGES/katrain.po` の `msgid "enigma9_unsettled_max"` ブロックの直後（空行の後）に `[9路]` で2本（下と同文・`enigma9_`）、`msgid "enigma13_unsettled_max"` ブロックの直後（空行の後）:
 
 ```
 msgid "enigma13_locality_stddev"
@@ -480,7 +489,7 @@ msgstr "[13路] 局所性の同点帯（目）"
 enigma13_locality_stddev: 局所性（OFF=従来）。ON にすると「自手の意外さ」ボーナスを相手の直前手と KataGo 最善手の近傍でだけ満額買い、遠いほど減衰させ（σ=この値の正規分布）、さらに難解さが同点帯（enigma13_locality_slack 目以内）で並ぶ候補の中では最も近い手を選びます＝別の隅へ飛び飛びに打って手抜きに見える癖を抑えつつ、明確に優る遠くの罠はそのまま打ちます。
 ```
 
-`msgid "aihelp:enigma19"` も同様（`grep -n 'msgid "aihelp:enigma19"' -A1` で末尾文を確認し、その直前に `enigma19_` に読み替えた同文を挿入）。
+`msgid "aihelp:enigma9"` / `msgid "aihelp:enigma19"` も同様（`grep -n 'msgid "aihelp:enigma9"' -A1` 等で末尾文を確認し、その直前に `enigma9_` / `enigma19_` に読み替えた同文を挿入。9路版は文末に「（9路は既定 OFF）」を足す）。
 
 `katrain/i18n/locales/en/LC_MESSAGES/katrain.po`: `msgid "enigma13_unsettled_max"` ブロック直後に
 
@@ -492,13 +501,13 @@ msgid "enigma13_locality_slack"
 msgstr "[13x13] Locality tie band (pts)"
 ```
 
-（`enigma19_` は `[19x19]`）。`aihelp:enigma13` の末尾 `On other board sizes it simply plays the best move."` の直前に:
+（`enigma9_` は `[9x9]`、`enigma19_` は `[19x19]`）。`aihelp:enigma13` の末尾 `On other board sizes it simply plays the best move."` の直前に:
 
 ```
 enigma13_locality_stddev: locality (OFF = classic behaviour). When on, the own-move surprise bonus is paid in full only near the opponent's last move and KataGo's best move and decays with distance (Gaussian with this stddev), and among candidates whose difficulty ties within enigma13_locality_slack points the nearest one is chosen - this curbs the habit of hopping to another corner every move (which looks like serial tenuki) while still playing a distant trap that is clearly better. 
 ```
 
-`aihelp:enigma19` も同様に `enigma19_`。
+`aihelp:enigma9` / `aihelp:enigma19` も同様に `enigma9_` / `enigma19_`（9路版は末尾に " (off by default on 9x9)" を足す）。
 
 - [ ] **Step 6: `.mo` コンパイルと検証**
 

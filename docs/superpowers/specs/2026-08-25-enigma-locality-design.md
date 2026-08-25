@@ -102,14 +102,20 @@ net = E + w_reply·reply_rare + w_own·prox(m)·own_rare − cost_weight·max(0,
 
 | キー | 候補値 | 既定 | 意味 |
 |---|---|---|---|
+| `enigma9_locality_stddev` | 0 / 1.5 / 2 / 2.5 / 3 | **0**（OFF） | 9路（既定 OFF・不変条件維持のため露出） |
+| `enigma9_locality_slack` | 0 / 0.2 / 0.3 / 0.5 / 1.0 | 0.3 | 同上 |
 | `enigma13_locality_stddev` | 0 / 2 / 2.5 / 3 / 4 / 5 | **0**（OFF） | 近さの σ。0 で現行とビット同一 |
 | `enigma13_locality_slack` | 0 / 0.2 / 0.3 / 0.5 / 1.0 | 0.3 | 同点帯の幅（目相当）。stddev>0 のときだけ効く |
 | `enigma19_locality_stddev` | 0 / 3 / 4 / 5 / 6 / 7 | **0**（OFF） | 同上（Hunt の focus_stddev 13路 5.0 / 19路 7.0 の約半分を初期目安に） |
 | `enigma19_locality_slack` | 0 / 0.2 / 0.3 / 0.5 / 1.0 | 0.3 | 同上 |
 
-- 9路（`Enigma9Strategy` 本体）には追加しない。`SETTING_DEFAULTS` に無いキーは
-  `_setting` が `KeyError` を出さないよう、両キーとも既定 0.0 / 0.3 を `Enigma9Strategy`
-  の `SETTING_DEFAULTS` にも置く（9路の GUI・config には出さない＝常に OFF）。
+- **9路にも同じ2キーを既定 OFF で出す**（`enigma9_locality_stddev` 候補 0/1.5/2/2.5/3・
+  `enigma9_locality_slack` 同）。当初案は「9路には出さない」だったが、既存テスト
+  `TestGuiConfigConsistency`（`tests/test_ai_enigma9.py`）が **SETTING_DEFAULTS のキー集合 ＝
+  パッケージ config.json ＝ `AI_OPTION_VALUES`/`AI_OPTION_ORDER`** を3クラスすべてに要求し、
+  `test_same_setting_suffixes` が3クラスのキー集合一致を要求している（「片方にだけ設定を
+  足すと GUI と SETTING_DEFAULTS がずれる」）ため、この不変条件を壊さない側に倒した
+  （実装時の裁定 2026-08-25）。9路は既定 OFF なので挙動は不変。
 - GUI 表示には **パッケージ `katrain/config.json` とユーザー `~/.katrain/config.json` の
   両方**へキー追加が要る（ユーザー側はメインセッションで直接 Edit・KaTrain 終了を確認して
   から）。
@@ -120,11 +126,11 @@ net = E + w_reply·reply_rare + w_own·prox(m)·own_rare − cost_weight·max(0,
   `enigma9_net_score(..., locality=1.0)`、`Enigma9Strategy._generate_move` のアンカー組立・
   スコア・選択分岐・ログ、`Enigma13Strategy` / `Enigma19Strategy` / `Enigma9Strategy` の
   `SETTING_DEFAULTS`。
-- `katrain/core/constants.py`: `AI_OPTION_VALUES` に4キー。
-- `katrain/config.json` / `C:\Users\iwaki\.katrain\config.json`: `ai:enigma13` / `ai:enigma19`
-  に4キー。
-- `katrain/i18n/locales/{en,jp}/katrain.po`: 短ラベル4本＋`aihelp:enigma13` / `aihelp:enigma19`
-  本文に動作説明 → `python tools/compile_mo.py`。
+- `katrain/core/constants.py`: `AI_OPTION_VALUES` / `AI_OPTION_ORDER` に6キー（9/13/19路 × 2）。
+- `katrain/config.json` / `C:\Users\iwaki\.katrain\config.json`: `ai:enigma9` / `ai:enigma13` /
+  `ai:enigma19` に各2キー。
+- `katrain/i18n/locales/{en,jp}/LC_MESSAGES/katrain.po`: 短ラベル6本＋`aihelp:enigma9` /
+  `aihelp:enigma13` / `aihelp:enigma19` 本文に動作説明 → `python tools/compile_mo.py`。
 - `.claude/rules/ai-parameters.md`（Enigma13/19 の表に2行ずつ）・`.claude/rules/ai-strategies.md`
   （難解の段落に1文）・`docs/superpowers/specs/INDEX.md`（本 spec の行）・親 spec に追記8
   として本ファイルへのポインタ。
