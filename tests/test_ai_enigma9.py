@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 import katrain
+from katrain.core.sgf_parser import Move
 from katrain.core.ai import (
     ENIGMA9_HP_BOOK,
     ENIGMA9_JIGO_TARGET,
@@ -21,8 +22,8 @@ from katrain.core.ai import (
     enigma9_aim_cap,
     enigma9_anchors,
     enigma9_choose,
-    enigma9_expected_punish,
     enigma9_choose_local,
+    enigma9_expected_punish,
     enigma9_hp_lookup,
     enigma9_locality,
     enigma9_net_score,
@@ -529,6 +530,11 @@ class TestLocality:
     def test_defaults_are_off(self):
         assert ENIGMA9_LOCALITY_STDDEV == 0.0
         assert ENIGMA9_LOCALITY_SLACK == 0.3
+
+    def test_best_move_prox_is_one_through_real_anchor_path(self):
+        # 最善手はアンカー自身なので prox=1.0 ＝ 局所性 ON でも最善手の net は不変
+        anchors = enigma9_anchors((2, 3), "K10")
+        assert enigma9_locality(Move.from_gtp("K10").coords, anchors, 3.0) == pytest.approx(1.0)
 
 
 class TestChoose:

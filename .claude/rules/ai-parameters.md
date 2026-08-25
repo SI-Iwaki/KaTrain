@@ -562,7 +562,7 @@ move 40（+4.4 リード）はヨセ予算内に候補なしで最善 / move 39�
 | `enigma13_endgame_move` | ヨセ切替手数（AND の片側・sticky）。13路の対局長（〜120手）へスケール | 55/65/75/85/95 | **75** |
 | `enigma13_unsettled_max` | ヨセ判定の未確定点上限（≒169点の10%） | 8/12/16/20/24 | **16** |
 | `enigma13_locality_stddev` | **局所性（2026-08-25・spec `2026-08-25-enigma-locality-design.md`）**。own_rare（自手の意外さ）を「相手の直前手／KataGo 最善手」の2アンカー max Gaussian（σ=この値）で減衰させ、net の同点帯では最もアンカーに近い手を採る。0=OFF＝採用判断・解析条件とも従来とビット同一。実測 13路（白50手×3run平均）: dist(選択手, 直前の相手手)>=4 が off 18.67→σ3 14.00→σ4 13.67、dist(選択手, KataGo最善手)>=4 が off 25.33→σ3 18.00（−29%）→σ4 20.00（−21%）と一貫して減少。mean_ptloss は off 1.739→σ3 1.710（ノイズ内）→σ4 1.780（σ3比 +0.070 は実差でσ4が悪化）。point_loss 5.9〜7.4・チェビシェフ距離5〜10の遠い罠3手番はσ3 の ON でも `Band: 1`（帯に対抗馬なし）で全件そのまま選択され保持された | OFF/2/2.5/3/4/5 | **0（OFF）**・推奨 **3.0** |
-| `enigma13_locality_slack` | 同点帯の幅（目相当）。stddev>0 のときだけ効く。帯の中で prox 最大の手を pick し、**pick 自身が最善 net + margin 以上**のときだけ外す | 0/0.2/0.3/0.5/1.0 | 0.3 |
+| `enigma13_locality_slack` | 同点帯の幅（目相当）。stddev>0 のときだけ効く。帯の中で prox 最大の手を pick し、**pick 自身が最善 net + margin 以上**のときだけ外す。slack は net 単位。勝勢時の消費モードでは loss 項が cost_weight で割引されているので、0.3 net ≒ 0.3/cost_weight 目の生損失差まで帯に入る（cap で有界）。raw 目単位の帯にする案は 19路 3run 再測時の検討項目 | 0/0.2/0.3/0.5/1.0 | 0.3 |
 
 CLI: `python -m katrain_debug --sgf <13路SGF> --move N --strategy enigma13`（batch 可）。
 **13路の実戦校正は未実施**（GUI 実戦ログ `[Enigma13Strategy]` と batch 3-run 平均で行う）。
@@ -586,8 +586,8 @@ CLI: `python -m katrain_debug --sgf <13路SGF> --move N --strategy enigma13`（b
 | `enigma19_aim_jigo` | ON で狙いを「持碁〜2目以内の負け」に差し替え（9路版 `enigma9_aim_jigo` と同一機構・spec 追記5） | bool | **false** |
 | `enigma19_endgame_move` | ヨセ切替手数（AND の片側・sticky）。jigo の19路ヨセ委譲既定・deception phase3 開始と同じ150 | 120/135/150/165/180 | **150** |
 | `enigma19_unsettled_max` | ヨセ判定の未確定点上限（≒361点の10%） | 24/30/36/42/48 | **36** |
-| `enigma19_locality_stddev` | 13路と同じ機構（own_rare の2アンカー減衰＋同点帯タイブレーク）。0=OFF＝採用判断・解析条件とも従来とビット同一。実測 19路（`tests/data/ogs.sgf` 白56手・**1run のみ**）: dist(選択手, 直前の相手手)>=4 が off 24→σ5 17 と減少方向だが `mean_ptloss` は 0.312→0.519（+0.207・run間ノイズ閾値±0.05を大きく超える）・`total_loss` も 17.45→29.08 とほぼ倍増。増加は終盤の数手番（move_num 94/100/108 付近）に集中しており、個別再現では3手番とも `Band: 1`（同点帯に対抗馬なし）で局所性タイブレーク自体は発火していない＝損失増の原因はタイブレーク機構よりKataGo解析のプロセス間非決定性の可能性が高い。**19路は方向確認のみ・未校正・要3run再測**（本タスクのスコープ外） | OFF/3/4/5/6/7 | **0（OFF）** |
-| `enigma19_locality_slack` | 同上（13路と同じ意味） | 0/0.2/0.3/0.5/1.0 | 0.3 |
+| `enigma19_locality_stddev` | 13路と同じ機構（own_rare の2アンカー減衰＋同点帯タイブレーク）。0=OFF＝採用判断・解析条件とも従来とビット同一。実測 19路（`tests/data/ogs.sgf` 白56手・**1run のみ**）: dist(選択手, 直前の相手手)>=4 が off 24→σ5 17 と減少方向だが `mean_ptloss` は 0.312→0.519（+0.207・run間ノイズ閾値±0.05を大きく超える）・`total_loss` も 17.45→29.08 とほぼ倍増。増加は終盤の数手番（move_num 94/100/108 付近）に集中しており、個別再現では3手番とも `Band: 1`（同点帯に対抗馬なし）で局所性タイブレーク自体は発火していない。**原因は未特定**（Band=1 は局所性が効かなかった証拠にならない＝own_rare減衰はBand=1でもnetを変える。単発runの+11.6目は想定ノイズの約4倍でOFFの2本目も未取得。3run再測=OFF最低2本まで結論しない）。**19路は方向確認のみ・未校正・要3run再測**（本タスクのスコープ外） | OFF/3/4/5/6/7 | **0（OFF）** |
+| `enigma19_locality_slack` | 同上（13路と同じ意味）。slack は net 単位。勝勢時の消費モードでは loss 項が cost_weight で割引されているので、0.3 net ≒ 0.3/cost_weight 目の生損失差まで帯に入る（cap で有界）。raw 目単位の帯にする案は 19路 3run 再測時の検討項目 | 0/0.2/0.3/0.5/1.0 | 0.3 |
 
 CLI: `python -m katrain_debug --sgf <19路SGF> --move N --strategy enigma19`（batch 可）。
 **19路の実戦校正は未実施**（GUI 実戦ログ `[Enigma19Strategy]` と batch 3-run 平均で行う）。

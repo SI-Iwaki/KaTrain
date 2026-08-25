@@ -2004,7 +2004,7 @@ ENIGMA9_PONDER_REPLIES = 3         # 着手後に温める相手の有力応手�
 # 収束ノイズ（検証済み損失の ±0.3 程度）の上振れがそのまま勝ち（帯の外）になる
 ENIGMA9_JIGO_TARGET = -1.0
 
-# 局所性オプション（13/19路・spec 2026-08-25-enigma-locality-design.md）。own_rare（自手の
+# 局所性オプション（13/19路・9路にも既定 OFF で露出。spec 2026-08-25-enigma-locality-design.md）。own_rare（自手の
 # 意外さ）を「相手の直前手／KataGo 最善手」の近傍でだけ満額買い、net の同点帯では最も
 # アンカーに近い手を採る。stddev 0 = OFF（採用判断・解析条件とも従来とビット同一）
 ENIGMA9_LOCALITY_STDDEV = 0.0      # 近さの σ（盤座標・ユークリッド）。0 で無効
@@ -2394,8 +2394,8 @@ class Enigma9Strategy(AIStrategy):
         "unsettled_max": 8,
         "target_score": 2.0,
         "aim_jigo": False,
-        "locality_stddev": 0.0,   # 局所性 σ（0=OFF）。spec 2026-08-25-enigma-locality-design.md
-        "locality_slack": 0.3,    # 同点帯の幅（目相当）
+        "locality_stddev": ENIGMA9_LOCALITY_STDDEV,   # 局所性 σ（0=OFF）。spec 2026-08-25-enigma-locality-design.md
+        "locality_slack": ENIGMA9_LOCALITY_SLACK,    # 同点帯の幅（目相当）
     }
 
     def _setting(self, suffix):
@@ -2875,7 +2875,7 @@ class Enigma9Strategy(AIStrategy):
         # ヨセでは「自手の意外さ」を net から外す（`enigma9_own_rarity_weight`）
         w_own = enigma9_own_rarity_weight(in_yose)
 
-        # ---- 局所性オプション（13/19路・既定 OFF）----
+        # ---- 局所性オプション（13/19路・9路にも既定 OFF で露出）----
         # own_rare を「相手の直前手／KataGo 最善手」の近傍で減衰させ、net の同点帯では最も
         # 近い手を採る。σ<=0 なら prox は全候補 1.0・選択は従来 choose＝ビット同一
         loc_stddev = float(self._setting("locality_stddev") or 0.0)
@@ -3039,8 +3039,8 @@ class Enigma13Strategy(Enigma9Strategy):
         "unsettled_max": 16,
         "target_score": 2.0,
         "aim_jigo": False,
-        "locality_stddev": 0.0,   # 局所性 σ（0=OFF）。spec 2026-08-25-enigma-locality-design.md
-        "locality_slack": 0.3,    # 同点帯の幅（目相当）
+        "locality_stddev": ENIGMA9_LOCALITY_STDDEV,   # 局所性 σ（0=OFF）。spec 2026-08-25-enigma-locality-design.md
+        "locality_slack": ENIGMA9_LOCALITY_SLACK,    # 同点帯の幅（目相当）
     }
 
 
@@ -3076,8 +3076,8 @@ class Enigma19Strategy(Enigma9Strategy):
         "unsettled_max": 36,
         "target_score": 2.0,
         "aim_jigo": False,
-        "locality_stddev": 0.0,   # 局所性 σ（0=OFF）。spec 2026-08-25-enigma-locality-design.md
-        "locality_slack": 0.3,    # 同点帯の幅（目相当）
+        "locality_stddev": ENIGMA9_LOCALITY_STDDEV,   # 局所性 σ（0=OFF）。spec 2026-08-25-enigma-locality-design.md
+        "locality_slack": ENIGMA9_LOCALITY_SLACK,    # 同点帯の幅（目相当）
     }
 
 
