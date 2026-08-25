@@ -2004,6 +2004,12 @@ ENIGMA9_PONDER_REPLIES = 3         # 着手後に温める相手の有力応手�
 # 収束ノイズ（検証済み損失の ±0.3 程度）の上振れがそのまま勝ち（帯の外）になる
 ENIGMA9_JIGO_TARGET = -1.0
 
+# 局所性オプション（13/19路・spec 2026-08-25-enigma-locality-design.md）。own_rare（自手の
+# 意外さ）を「相手の直前手／KataGo 最善手」の近傍でだけ満額買い、net の同点帯では最も
+# アンカーに近い手を採る。stddev 0 = OFF（採用判断・解析条件とも従来とビット同一）
+ENIGMA9_LOCALITY_STDDEV = 0.0      # 近さの σ（盤座標・ユークリッド）。0 で無効
+ENIGMA9_LOCALITY_SLACK = 0.3       # 同点帯の幅（目相当）。stddev > 0 のときだけ効く
+
 # 「二段の漏斗」: 9路の通常解析（1000visits・wRN=0.04）は visits を1〜3手に集中させる
 # ため、visits >= 10 の候補だけでは外し候補が 0〜1 手しか残らない（実測 2026-08-10・
 # 校正局 move 8: moveInfos 74手のうち visits>=10 は 2手・visits>=2 でも 3手）。そこで
@@ -2163,6 +2169,39 @@ def enigma9_rarity(hp, book=ENIGMA9_HP_BOOK):
     return max(0.0, 1.0 - max(0.0, hp) / book)
 
 
+def enigma9_locality(coords, anchors, stddev):
+    """候補手のアンカー近傍度 0〜1 ＝ max_a exp(-|m-a|^2 / (2σ^2))。
+
+    アンカーは「相手の直前手」と「KataGo 最善手」の2点 max（Hunt の Focus と同形。平均は
+    盤の反対側の2点で幻影中心になるので取らない）。coords が None（pass）・アンカー無し・
+    σ<=0 は 1.0＝局所性なし（OFF と同値）。
+    """
+    if coords is None or not anchors or stddev is None or stddev <= 0:
+        return 1.0
+    x, y = coords
+    var = float(stddev) ** 2
+    best = 0.0
+    for ax, ay in anchors:
+        d2 = (x - ax) ** 2 + (y - ay) ** 2
+        best = max(best, math.exp(-0.5 * d2 / var))
+    return best
+
+
+def enigma9_anchors(last_move_coords, best_gtp):
+    """局所性のアンカー座標列。相手の直前手（None/pass は省く）＋ KataGo 最善手（pass は省く）。"""
+    anchors = []
+    if last_move_coords is not None:
+        anchors.append(tuple(last_move_coords))
+    if best_gtp and best_gtp != "pass":
+        try:
+            coords = Move.from_gtp(best_gtp).coords
+        except Exception:
+            coords = None
+        if coords is not None:
+            anchors.append(tuple(coords))
+    return anchors
+
+
 def enigma9_spending_plan(lead, target, max_loss, large_cap):
     """勝勢時の外し予算を (cap, cost_weight, budget) で返す（ヨセ前専用）。
 
@@ -2250,15 +2289,16 @@ def enigma9_yose_probe_skippable(lead, target, max_loss, margin=ENIGMA9_FAST_YOS
 
 def enigma9_net_score(loss, e_punish, reply_findability, own_hp,
                       w_reply=ENIGMA9_W_REPLY_RARE, w_own=ENIGMA9_W_OWN_RARE,
-                      cost_weight=1.0):
-    """難解さの正味スコア（目相当）＝ E + 応手の見つけにくさ + 自手の意外さ − 損失×重み。
+                      cost_weight=1.0, locality=1.0):
+    """難解さの正味スコア（目相当）＝ E + 応手の見つけにくさ + 近さ×自手の意外さ − 損失×重み。
 
     cost_weight は勝勢時の損失割引（`enigma9_spending_plan`）。通常は 1.0。
+    locality は own_rare の局所化係数（`enigma9_locality`）。OFF なら 1.0＝従来式。
     """
     return (
         e_punish
         + w_reply * enigma9_rarity(reply_findability)
-        + w_own * enigma9_rarity(own_hp)
+        + w_own * locality * enigma9_rarity(own_hp)
         - cost_weight * max(0.0, loss)
     )
 

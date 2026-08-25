@@ -1,5 +1,6 @@
 # tests/test_ai_enigma9.py
 """「難解」戦略 ai:enigma9（9路）/ ai:enigma13（13路）/ ai:enigma19（19路）の純関数テスト（KataGo/Kivy 不要）。"""
+import math
 import json
 from pathlib import Path
 
@@ -9,6 +10,8 @@ import katrain
 from katrain.core.ai import (
     ENIGMA9_HP_BOOK,
     ENIGMA9_JIGO_TARGET,
+    ENIGMA9_LOCALITY_SLACK,
+    ENIGMA9_LOCALITY_STDDEV,
     ENIGMA9_PUNISH_CAP,
     ENIGMA9_W_OWN_RARE,
     Enigma13Strategy,
@@ -16,9 +19,11 @@ from katrain.core.ai import (
     Enigma9Strategy,
     enigma9_admissible,
     enigma9_aim_cap,
+    enigma9_anchors,
     enigma9_choose,
     enigma9_expected_punish,
     enigma9_hp_lookup,
+    enigma9_locality,
     enigma9_net_score,
     enigma9_own_rarity_weight,
     enigma9_rarity,
@@ -477,6 +482,51 @@ class TestSpendingPlan:
 
     def test_zero_max_loss_keeps_base(self):
         assert enigma9_spending_plan(30.0, 2.0, 0.0, 5.0) == (0.0, 1.0, 28.0)
+
+
+class TestLocality:
+    """own_rare の局所化（2026-08-25・spec enigma-locality §4.1〜4.2）。"""
+
+    def test_zero_stddev_is_one_everywhere(self):
+        assert enigma9_locality((0, 0), [(10, 10)], 0.0) == 1.0
+        assert enigma9_locality((0, 0), [(10, 10)], -1.0) == 1.0
+
+    def test_no_anchors_is_one(self):
+        assert enigma9_locality((3, 3), [], 3.0) == 1.0
+
+    def test_none_coords_is_one(self):
+        assert enigma9_locality(None, [(3, 3)], 3.0) == 1.0
+
+    def test_on_anchor_is_one_and_decays_with_distance(self):
+        assert enigma9_locality((3, 3), [(3, 3)], 3.0) == pytest.approx(1.0)
+        # d=3, σ=3 → exp(-0.5) ≒ 0.607 / d=6 → exp(-2) ≒ 0.135（spec §4.1 の目安）
+        assert enigma9_locality((6, 3), [(3, 3)], 3.0) == pytest.approx(math.exp(-0.5))
+        assert enigma9_locality((9, 3), [(3, 3)], 3.0) == pytest.approx(math.exp(-2.0))
+
+    def test_two_anchors_take_max_not_mean(self):
+        # 盤の反対側にある2点の平均は幻影中心（CLAUDE.md）。max なら片方に近ければ 1.0
+        assert enigma9_locality((0, 0), [(0, 0), (12, 12)], 3.0) == pytest.approx(1.0)
+        assert enigma9_locality((6, 6), [(0, 0), (12, 12)], 3.0) == pytest.approx(math.exp(-0.5 * 72 / 9))
+
+    def test_anchors_from_last_move_and_best(self):
+        # 相手の直前手 (x=2, y=3) と最善手 K10（13路: x=9, y=9）
+        assert enigma9_anchors((2, 3), "K10") == [(2, 3), (9, 9)]
+
+    def test_anchors_skip_missing_last_move_and_pass(self):
+        assert enigma9_anchors(None, "K10") == [(9, 9)]
+        assert enigma9_anchors((2, 3), "pass") == [(2, 3)]
+        assert enigma9_anchors(None, "pass") == []
+
+    def test_net_score_locality_scales_only_own_rarity(self):
+        base = enigma9_net_score(0.2, 1.0, 0.05, 0.0)  # own_hp 0 → own_rare 1.0
+        half = enigma9_net_score(0.2, 1.0, 0.05, 0.0, locality=0.5)
+        assert base - half == pytest.approx(0.5 * ENIGMA9_W_OWN_RARE)
+        # locality=1.0（既定）は従来式とビット同一
+        assert enigma9_net_score(0.2, 1.0, 0.05, 0.0, locality=1.0) == base
+
+    def test_defaults_are_off(self):
+        assert ENIGMA9_LOCALITY_STDDEV == 0.0
+        assert ENIGMA9_LOCALITY_SLACK == 0.3
 
 
 class TestChoose:
