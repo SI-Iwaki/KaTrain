@@ -484,7 +484,9 @@ move 15 では 3目の候補が「高くても難解でない」（E 0.06・find
 `ENIGMA9_PUNISH_CAP=8.0` / `ENIGMA9_ADEQUATE_LOSS=0.3` / `ENIGMA9_HP_BOOK=0.25` /
 `ENIGMA9_W_REPLY_RARE=1.0` / `ENIGMA9_W_OWN_RARE=1.0` / `ENIGMA9_MIN_BUDGET=0.05` /
 `ENIGMA9_FAST_YOSE_MARGIN=0.5`（監視モードのヨセで Probe を省ける余剰の余裕・目） /
-`ENIGMA9_PONDER_REPLIES=3`（着手後の先読み応手数・0で無効） /
+`ENIGMA9_PONDER_REPLIES=5`（着手後の先読み応手数＝humanSL 順 top-K・0で無効） /
+`ENIGMA9_PONDER_WAVE2=2`（子プローブ wave2 まで温める応手数） /
+`ENIGMA9_PONDER_LANES=3`（先読みジョブの同時実行本数） /
 `PRIORITY_ENIGMA_PONDER=-50`（constants.py）
 
 **着手時間の短縮（2026-08-11・精度不変・9路/13路共通・spec 追記3）**:
@@ -495,10 +497,13 @@ TensorRT バッチ非決定性で揺れる**〈別プロセス実測: 1000v 同�
 上位10手の順位入替。8v vs 1000v の差はそのレンジ内〉＝visits を落としても既存分散に
 上乗せなし)。
 (2) **着手後の先読み（ponder）**＝`_start_ponder`/`_ponder_worker`。着手を返す直前に
-選択手の clean プローブから相手の応手 top-3（KataGo 本命 visits 最多 1 手＋humanSL 直感順）を
-選び、使い捨て複製ゲームで wave1: 応手後局面を GUI の通常解析と同条件（visits/ownership=
-config 解決）で解析 → wave2: その top-8 候補（order 順）の子プローブ（clean 500v +
-humanSL 8v）を `_probe_children` と同条件で発行。**結果は全部捨てる＝判定影響ゼロ**。
+選択手の humanSL プローブ（相手の応手分布）から応手 top-5（`enigma9_ponder_order`＝humanSL 順。
+**2026-08-27 追記9で KataGo 本命1+humanSL 2 から変更**、下記）を選び、使い捨て複製ゲームで
+wave1: 応手後局面を GUI の通常解析と同条件（visits/ownership=config 解決）で解析 → wave2:
+上位2手についてその top-8 候補（order 順）の子プローブ（clean 500v + humanSL 8v）を
+`_probe_children` と同条件で発行。ジョブは `enigma9_ponder_jobs` の価値順（root#1, root#2,
+wave2#1, root#3, wave2#2, root#4, root#5）を `PonderLanes` で同時3本ずつ流す。
+**結果は全部捨てる＝判定影響ゼロ**。
 発火は 自分=AI かつ 相手=人間 のときだけ（`_ponder_applies`。デバッグスタブ／バッチ評価／
 AI 同士では発火しない）。残骸の掃除は2段: 主経路 `Game._cancel_enigma_ponder`（**相手の
 着手が入った瞬間**に terminate。相手が消化前に応手すると実クエリが温めと GPU を取り合い
@@ -528,6 +533,39 @@ AI 同士では発火しない）。残骸の掃除は2段: 主経路 `Game._can
 wRN=0・visits 既定）のクエリを1本ずつ足す（結果は捨てる＝判定影響ゼロ・的中率 top-5 68.7%）。
 監視 OFF では `_stop_board_watcher` が `board_watch_active` / `board_watch_prefetch_replies` /
 `board_watch_probe_warm` を戻す。ログは `Endgame budget: lead~… (watch: probe skipped)`。
+
+**盤面監視モードの先読みの再設計（2026-08-27・精度不変・9/13/19路共通・spec 追記9）**:
+ユーザー要望「難解の監視対局（特に13路）の着手をさらに速く」。今日の13路監視対局
+（`game_20260827_155133`・70手）は 1手の root 解析＋`着手決定` が中央値 **2.1 秒**（ヨセ前 1.85 /
+ヨセ 2.2。先読み的中 0.2〜0.9・外れ 2.4〜3.0）。原因3つとも解析条件・採用判断はビット同一のまま直した。
+(1) **監視フラグが新規対局で落ちるバグ**: `_do_new_game` は `Game` を作り直すので
+`board_watch_active` / `board_watch_prefetch_replies` が初期値に戻るのに、監視スレッド（kind="game"）は
+生き続ける。セッション2局目では追記7の Probe 省略が一度も発火せず（lead 16〜17 なのに `probe skipped`
+0件＝ヨセ31手 × Probe 中央値 1.1 秒）、応手先読みも 0 本だった。`board_watch.apply_game_watch_flags` を
+`_do_board_watch_start` と `_do_new_game`（kind=="game" のとき）の両方から呼ぶ。
+(2) **温めの一本化**: 1局目は逆に ponder 3本＋応手先読み 5本＋自ノード解析＝2000visits の root 9本が
+横並びで走り、アプリの約 2.8 秒（考慮時間の下限推定・中央値）では何も温まり切らず的中 28%。
+`_maybe_board_watch_prefetch` は `_enigma_ponder_owner == node.move.player`（ponder がこの着手で
+発火済み）なら撃たない。ponder が発火しない手番（早期 return）は従来どおり先読みが担当し、
+`board_watch_probe_warm` の Probe 温めは ponder 側の root ジョブにも同条件で足した。
+(3) **選手を humanSL 順に**: 監視対局3局 148局面をオフライン再解析（`ponder_pick_probe.py`）した
+実際の応手の的中率は KataGo visits 順(500v) top-1/3/5/8 = 18.9/38.5/47.3/55.4%、2000v 順 top-5 42.6%、
+humanSL 9d 全盤順 top-1/3/5/8 = **35.1/53.4/62.2/74.3%**、旧 K1+H2 = 50.0%（局別 48/20/71%）。
+このアプリは KataGo の PV でなく humanSL 順で打つ。KataGo 本命は humanSL 6番手（+6pt）より
+寄与が小さい（K1 単独 18.9% のうち humanSL 1位と重なるのが 15.5%）ので外した。
+9路も同じ傾向（2026-08-27 追試・9路 Enigma9 監視対局5局 130局面）: KataGo visits順 top-1/3/5/8 = 23.8/40.8/53.8/69.2%、humanSL 9d 全盤順 top-1/3/5/8 = 60.8/**69.2**/76.9%、旧 K1+H2 = 56.2%（局別 84/48/83/21/52%＝アプリの局ごとの振れが大きい）。19路は監視対局のログが無く未計測（機構は共通・root 2000v が重いぶんレーン順の「上位から温まり切る」が効く側）。
+(4) **自ノード解析を後回し**: 着手直後の自ノード 2000visits 解析（1.6〜2.1 秒）が温めと GPU を
+分け合っていた（KataGo は priority で並べ替えるだけで同時実行を絞らない）。監視モードで ponder が
+armed なら `Game.play` は fast（100v）だけ出し（`_enigma_ponder_defers_own_analysis`）、フルは
+ponder の own ジョブが温めの後に発行（相手が先に打てば fast のまま＝表示だけの差）。温めを
+1本も出せない手番はその場でフル解析（`issue_own_now`）。
+GPU 予算の目安: 2000visits ≒ 1 本・4 本で飽和（1本 1250v/s・4本 2500v/s）、アプリ考慮時間の下限推定
+中央値 2.8〜4.8 秒 ≒ 7〜12k visits ＝ root 5本（10k）がちょうど収まる規模。
+回帰: `tests/test_ai_enigma9.py`（TestPonderOrder/Jobs/Lanes/Worker/WorkerFallback 14件）、
+`tests/test_board_watch_prefetch.py`（prefetch の譲り・fast 解析・フラグ復元 9件）。
+GUI 実戦での確認: 2局目以降のログに `(watch: probe skipped)` が出る／`Ponder: warming replies`
+が5手／ponder が発火した手番に `board_watch prefetch:` が出ない／的中率は `ponder_pick_probe.py`
+と同じ集計で測れる。
 
 **二段の漏斗と同深さ検証**（2026-08-10 実測で確定）: 9路の通常解析は visits を 1〜3 手に
 集中させるため、`visits>=10` のプールでは外し候補が 0〜1 手しか残らない（実測 move 8:

@@ -673,3 +673,112 @@ def enigma9_yose_probe_skippable(lead, target, max_loss, margin=ENIGMA9_FAST_YOS
 own_rare を「相手の直前手／KataGo 最善手」の近傍で減衰させ、net の同点帯では最も近い
 手を採るオプション（`enigma{13,19}_locality_stddev` / `_locality_slack`・既定 OFF）。
 設計・実測・検証計画は別 spec `2026-08-25-enigma-locality-design.md`。
+
+---
+
+## 追記9（2026-08-27）: 盤面監視モードの先読みの再設計（精度不変・9/13/19路共通）
+
+ユーザー要望「難解の盤面監視モード中の着手をさらに速く（特に13路）」。追記3の先読みと
+追記7のヨセ即応が載った状態で、今日の13路監視対局を実測してから3つの原因を直した。
+**解析条件・採用判断はどれもビット同一**（変えたのは温めるもの・温める順番・フラグ・
+自ノードの表示用解析の出し方だけ）。
+
+### 実測（改修前）
+
+`~/.katrain/logs/game_20260827_155133.log`（13路・AI 黒・70手・監視モード・セッション2局目）:
+
+| 項目 | 値 |
+|---|---|
+| 1手の所要（相手の着手後の root 解析＋`着手決定`） | 中央値 **2.1 秒**（ヨセ前 1.85 / ヨセ 2.2） |
+| 先読み的中時 / 外れ時 | 0.2〜0.9 秒 / 2.4〜3.0 秒 |
+| 先読み的中率（K1+H2） | 44%（1局目 `154802` は 28%、`0823_051702` は 70%） |
+| ヨセ判定 Probe（2000v・ownership・wRN=0） | 中央値 **1.1 秒** × ヨセ31手（lead 16〜17 なのに1手も省かれていない） |
+| 子局面プローブ 500v | 中央値 1.0 秒（外れ時） |
+| アプリの考慮時間（クエリ完了連鎖からの下限推定） | 中央値 2.8 / 4.5 / 4.8 秒（3局） |
+
+**原因1（バグ）**: `_do_new_game` は `Game` を作り直すので `board_watch_active` /
+`board_watch_prefetch_replies` が初期値（False / 0）に戻るが、監視スレッド（kind="game"）は
+`_stop_board_watcher(kinds=("tsumego",))` で生き残る。2局目では追記7の Probe 省略が一度も
+発火せず（`probe skipped` 0 件）、応手先読み（board-watch spec 追記4）も 0 本だった。
+
+**原因2（二重温め）**: フラグが生きている1局目（`154802`）は逆に、enigma の ponder（root 3本）
+＋応手先読み（root 5本）＋自ノード解析（2000v）＝**2000visits の root が 9 本横並び**で走り、
+アプリの約 2.8 秒では 1 本も温まり切らず的中 28%。KataGo の analysis engine は priority で
+並べ替えるだけで同時実行本数を絞らない（numAnalysisThreads=12 まで全部走り GPU を分け合う）
+ので、有力な応手から順に温まり切る、にはこちらで本数を絞るしかない。
+
+**原因3（選手）**: 監視対局3局・148局面をオフラインで再解析し（`calibration-data/enigma9/ponder_pick_probe.py`。
+着手後局面に clean 500v＝プローブ相当・humanSL 8v・2000v を撃ち、実際の応手の順位を測る）:
+
+| 上位K | KataGo visits順(500v) | KataGo visits順(2000v) | humanSL 9d 順（clean候補内） | humanSL 9d 順（全盤） | 旧 K1+H2 |
+|---|---|---|---|---|---|
+| 1 | 18.9% | — | 35.8% | **35.1%** | — |
+| 3 | 38.5% | 32.4% | 52.0% | **53.4%** | 50.0% |
+| 5 | 47.3% | 42.6% | 60.1% | **62.2%** | — |
+| 8 | 55.4% | 54.7% | 68.2% | **74.3%** | — |
+
+このアプリは KataGo の PV ではなく humanSL 順で打つ。KataGo 本命（K1 18.9%）は humanSL 1位と
+15.5% 重なり、単独の寄与は humanSL 6番手（+6pt）より小さいので選手から外した。
+局別（K1 / K3 / K5 / 旧）: `155133` 17/35/42/48%、`154802` 3/13/20/20%、`0823_051702` 31/59/71/71%。
+
+9路も同じ傾向（2026-08-27 追試・9路 Enigma9 監視対局5局 130局面）: KataGo visits順 top-1/3/5/8 = 23.8/40.8/53.8/69.2%、humanSL 9d 全盤順 top-1/3/5/8 = 60.8/**69.2**/76.9%、旧 K1+H2 = 56.2%（局別 84/48/83/21/52%＝アプリの局ごとの振れが大きい）。19路は監視対局のログが無く未計測（機構は共通・root 2000v が重いぶんレーン順の「上位から温まり切る」が効く側）。
+
+### 設計
+
+1. **監視フラグの復元** — `board_watch.apply_game_watch_flags(game, cfg)` を新設し、
+   `_do_board_watch_start` と `_do_new_game`（`_board_watch_kind == "game"` のとき）の両方から呼ぶ。
+   → 2局目以降もヨセの Probe 省略（追記7）と応手先読みが生きる。
+2. **温めの一本化** — `_maybe_board_watch_prefetch` は `_enigma_ponder_owner == node.move.player`
+   （ponder がこの着手で発火済み）なら撃たない。ponder が発火しない手番（早期 return＝プローブ無し）
+   は従来どおり応手先読みが担当。追記7 (2) の `board_watch_probe_warm`（接戦ヨセの Probe 温め）は
+   ponder 側の root ジョブにも同条件で足した（ponder が発火する手番でも失わない）。
+3. **選手と順序** — `enigma9_ponder_order`（humanSL 全盤順・非合法/pass 除外）top-`ENIGMA9_PONDER_REPLIES`(5)。
+   ジョブは `enigma9_ponder_jobs` の価値順 `root#1, root#2, wave2#1, root#3, wave2#2, root#4, root#5`
+   （wave2＝子プローブ 8本×(500v+8v) は root の約2倍の visits を食うので上位 `ENIGMA9_PONDER_WAVE2`(2)
+   手だけ）を `PonderLanes`（同時 `ENIGMA9_PONDER_LANES`(3) 本）で流す。wave2 は自分の root が
+   返るまでレーンを持って待つ。GPU 予算の目安: 1本 1250v/s・4本で 2500v/s に飽和、アプリの
+   考慮時間 2.8〜4.8 秒 ≒ 7〜12k visits ＝ root 5本（10k）がちょうど収まる規模。
+4. **自ノード解析の後回し** — 監視モードで ponder が armed（`_enigma_ponder_owner == move.player`）なら
+   `Game.play` は自ノードに fast（100v）解析だけを出し（`_enigma_ponder_defers_own_analysis`）、
+   config visits のフル解析は ponder の own ジョブ（末尾）が温めの後に発行する。相手が先に打てば
+   fast のまま＝**表示（勝率グラフの AI 手の精度）だけの差**で、判定はこのノードの解析を読まない。
+   温めを 1 本も出せない手番（humanPolicy 無し・複製ゲーム不可・合法な応手無し）はその場で
+   フル解析を出す（`issue_own_now`）。監視モード外は従来どおり即時にフル解析。
+
+掃除は従来どおり gen 方式（`Game._cancel_enigma_ponder` が相手の着手で gen を進め、発行済みは
+`_enigma_ponder` のノード単位で terminate。own のフル解析を出した後は本譜ノードもそのリストに入る）。
+
+### 実測（改修後・実エンジン E2E `calibration-data/enigma9/ponder_e2e_watch.py`・13路校正局・考慮 5 秒）
+
+| 局面 | 選手（humanSL 順） | 応手 | 次手番: root 解析 + generate |
+|---|---|---|---|
+| mv45 的中 | L9 F9 J10 G7 D11 | L9 | **0.36 + 0.52 = 0.88 秒** |
+| mv77 的中 | J1 K1 D11 H12 E6 | J1 | **0.22 + 0.38 = 0.59 秒** |
+| mv45 外れ | L9 F9 K9 J10 G7 | K10（KataGo 本命） | 0.42 + 0.31 = 0.73 秒（本命は選択手の 500v プローブが部分的に温めている） |
+| mv77 外れ | J1 H1 H3 F1 D11 | G11 | 1.28 + 1.88 = 3.16 秒（従来の外れと同水準） |
+
+期待効果（今日の対局に当てはめると）: ヨセ 2.2 → 約 1.1 秒（Probe 省略が生きる）、ヨセ前は
+的中率 50 → 62% で中央値 1.85 → 約 1.3 秒。外れた手番は従来どおり。
+
+### 変更ファイル
+
+| ファイル | 変更 |
+|---|---|
+| `katrain/core/ai.py` | `enigma9_ponder_order` / `enigma9_ponder_jobs` / `PonderLanes`、`_ponder_worker` の再実装（humanSL 選手・レーン・probe_warm・own ジョブ・`issue_own_now`）、`_start_ponder` の発火条件を hp 有りに、定数 `ENIGMA9_PONDER_REPLIES` 3→5・`ENIGMA9_PONDER_WAVE2`・`ENIGMA9_PONDER_LANES` |
+| `katrain/core/game.py` | `Game.play` の自ノード解析を `analyze_fast=_enigma_ponder_defers_own_analysis(move)` に、`_maybe_board_watch_prefetch` の ponder への譲り |
+| `katrain/core/board_watch.py` | `apply_game_watch_flags` / `PREFETCH_REPLIES_DEFAULT` |
+| `katrain/__main__.py` | `_do_board_watch_start` / `_do_new_game` から `apply_game_watch_flags` |
+| `tests/test_ai_enigma9.py` | TestPonderOrder / Jobs / Lanes / Worker / WorkerFallback（14件） |
+| `tests/test_board_watch_prefetch.py` | prefetch の譲り・fast 解析・フラグ復元（静的検査含む 9件） |
+
+### 検証
+
+- `pytest --ignore=tests/test_ai.py`: 1100 passed（`test_collapsable_panel.py` の 6 件は既知の順序依存フレーク＝単体では 6 passed）。
+- 実エンジン E2E（上表）: 例外なし・選手が humanSL 順・own のフル解析が温めの後に出る（考慮 5 秒では
+  wave2 の後なので fast のまま終わることが多い＝設計どおり表示だけの差）。
+- **GUI 実戦での確認ポイント**: 2局目以降のログに `Endgame budget: … (watch: probe skipped)` が出る／
+  `Ponder: warming replies […]` が 5 手／ponder が発火した手番に `board_watch prefetch:` が出ない／
+  的中率は `ponder_pick_probe.py` と同じ集計（`Ponder:` 行と `相手の着手` 行の突き合わせ）で測れる。
+- 既知: E2E ハーネスの終了時に `_write_stdin_thread` の `AttributeError`（engine.shutdown 後に
+  温めクエリが 1 本流れる）が出るが、デーモンスレッド内で無害。GUI は監視 OFF/新規対局で
+  `_cancel_enigma_ponder` / `on_new_game` が先に走る。

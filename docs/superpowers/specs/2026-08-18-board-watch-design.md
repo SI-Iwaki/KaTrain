@@ -542,3 +542,23 @@ next_player が AI 側になり、**先読みが1本も発火しないまま両�
 `tests/test_board_watch_prefetch.py`（10本）。実クエリと同条件で撃つこと・複製ゲームの
 子ノードに紐づくこと・top-K の打ち切り・pass の除外・相手の手番でだけ発火すること・
 リージョンありでは発火しないこと・cancel が先読みノードだけを terminate すること。
+
+---
+
+## 15. 追記5（2026-08-27）: 新規対局で監視フラグが落ちるバグと、難解の ponder との一本化
+
+- **バグ**: `_do_new_game` は `Game` を作り直すので `board_watch_active` / `board_watch_prefetch_replies` が
+  初期値（False / 0）に戻るが、対局監視スレッド（kind="game"）は `_stop_board_watcher(kinds=("tsumego",))`
+  で生き残る。セッション2局目以降、応手先読み（追記4）と難解のヨセ即応（enigma spec 追記7＝
+  `board_watch_active` で発火）が黙って死んでいた（実測 `game_20260827_155133`: 先読み 0 本・ヨセ31手すべてが
+  省けるはずの Probe 1.1 秒を払う）。`board_watch.apply_game_watch_flags(game, cfg)` を新設し、
+  `_do_board_watch_start` と `_do_new_game`（kind=="game" のとき）の両方から呼ぶ。静的検査
+  `test_new_game_reapplies_the_watch_flags_while_the_game_watcher_runs` が両方の呼び出しを固定する。
+- **一本化**: 難解（enigma）の着手後 ponder がその着手で発火済み（`game._enigma_ponder_owner == node.move.player`）
+  なら `_maybe_board_watch_prefetch` は撃たない。両方が撃つと 2000visits の root が 9 本横並びになり
+  アプリの約 2.8 秒では 1 本も温まり切らない（実測 `game_20260827_154802`: 的中 28%）。ponder が発火しない
+  手番（難解の早期 return や他の戦略）は従来どおりここが担当。`board_watch_probe_warm` の Probe 温めは
+  ponder 側にも同条件で足してある。
+- **自ノード解析**: 監視モードで ponder が armed なら `Game.play` は自ノードに fast（100v）解析だけを出し、
+  フル解析は ponder が温めの後に発行する（`Game._enigma_ponder_defers_own_analysis`）。詳細・実測は
+  enigma spec 追記9。

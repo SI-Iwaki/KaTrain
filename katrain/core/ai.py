@@ -1995,7 +1995,9 @@ ENIGMA9_MIN_BUDGET = 0.05          # ヨセの余剰予算がこれ以下なら�
 # min(max_loss, lead - target) が max_loss 側で飽和していることを、通常解析 root の
 # lead（wideRootNoise=0.04）で判断するためのマージン（`enigma9_yose_probe_skippable`）
 ENIGMA9_FAST_YOSE_MARGIN = 0.5
-ENIGMA9_PONDER_REPLIES = 3         # 着手後に温める相手の有力応手数（0 で無効・結果は捨てるだけ）
+ENIGMA9_PONDER_REPLIES = 5         # 着手後に温める相手の応手数（humanSL 順 top-K・0 で無効・結果は捨てるだけ）
+ENIGMA9_PONDER_WAVE2 = 2           # 子局面プローブ（wave2）まで温める応手数（humanSL 順の上位から）
+ENIGMA9_PONDER_LANES = 3           # 先読みジョブの同時実行本数（root 2000v ≒ 1本。GPU は 4 本で飽和）
 # aim_jigo（持碁〜2目以内の負けを狙うオプション）の狙い点。許容帯 [-2, 0]（持碁 >
 # 2目以内の負け > それ超の負け）の中心 -1.0 を狙う: 9路 area scoring の整数コミ
 # （komi 7 ⇒ 最終目差は偶数パリティ = 0 / ±2 / …）では -1 の両隣 0 と -2 がどちらも
@@ -2019,6 +2021,86 @@ ENIGMA9_LOCALITY_SLACK = 0.3       # 同点帯の幅（目相当）。stddev > 0
 # ＝事前足切りの向きは安全、逆に「生 loss <= cap だが真は超える」1visit の蜃気楼は
 # プローブ後の検証 cap が落とす。スコアの真偽を分離できるのは同深さ検証だけ、という
 # ai:tsumego の教訓と同じ形（あちらは gain、こちらは loss/勝率）。
+
+
+def enigma9_ponder_order(human_policy, board_size):
+    """先読みで温める相手の応手の順序＝humanSL humanPolicy（相手の応手分布）の降順（盤上全点）。
+
+    KataGo の visits 順ではなく humanSL 順にするのは実測による（2026-08-27・13路 監視対局 3局
+    148局面・オフライン検証 `ponder_pick_probe.py`）: 実際の応手が上位 K に入る率は
+    KataGo visits 順(500v) top-1/3/5 = 18.9/38.5/47.3%、humanSL 9d 全盤順 top-1/3/5 = 35.1/53.4/62.2%、
+    旧 K1+H2 = 50.0%。KataGo 本命は humanSL 順の6番手（+6pt）より寄与が小さいので外した。
+    非合法点（-1）・hp 0 の点・pass は候補にしない。合法性の最終判定は発行側（sim.play）。
+    """
+    bx, by = board_size
+    hp_of = enigma9_hp_lookup(human_policy, board_size)
+    scored = []
+    for x in range(bx):
+        for y in range(by):
+            gtp = Move((x, y)).gtp()
+            scored.append((hp_of(gtp), gtp))
+    return [gtp for hp, gtp in sorted(scored, key=lambda t: -t[0]) if hp > 0]
+
+
+def enigma9_ponder_jobs(picks, wave2=ENIGMA9_PONDER_WAVE2):
+    """先読みジョブを価値順に並べる: root#1, root#2, wave2#1, root#3, wave2#2, root#4, ...
+
+    root（応手局面の通常解析・2000v）は的中時に 1.1〜1.4 秒、wave2（その局面の子プローブ
+    8本×(500v+8v)）は 1.0〜1.4 秒を削るが、wave2 は root の約2倍の visits を食うので
+    「次の root を先に、wave2 は上位 `wave2` 本だけ」の並びにする。own（自ノードのフル解析）は
+    呼び出し側が末尾に足す。
+    """
+    picks = list(picks)
+    jobs, w = [], 0
+    for i, gtp in enumerate(picks):
+        jobs.append(("root", gtp))
+        if i >= 1 and w < wave2 and w < len(picks):
+            jobs.append(("wave2", picks[w]))
+            w += 1
+    while w < min(wave2, len(picks)):
+        jobs.append(("wave2", picks[w]))
+        w += 1
+    return jobs
+
+
+class PonderLanes:
+    """価値順のジョブ列を同時 `lanes` 本まで流す小さなスケジューラ。
+
+    KataGo の analysis engine は priority で**並べ替える**だけで同時実行本数は絞れない
+    （numAnalysisThreads=12 まで全部走り GPU を分け合う）ので、「最も有力な応手から順に
+    温まり切る」にはこちらで本数を絞る必要がある（実測 2026-08-27: 全部同時発行だと 2000v×9 が
+    横並びで進み、アプリの約 2.8 秒では 1 本も温まり切らなかった）。
+    `start(job, done)` は発行だけして返り、完了時に `done()` を呼ぶ（同期的に呼んでもよい）。
+    `cancelled()` が真になったら以降は発行しない。
+    """
+
+    def __init__(self, jobs, lanes, start, cancelled):
+        self._jobs = list(jobs)
+        self._lanes = max(1, int(lanes))
+        self._start = start
+        self._cancelled = cancelled
+        self._running = 0
+        self._lock = threading.Lock()
+
+    def run(self):
+        self._fill()
+
+    def _fill(self):
+        while True:
+            with self._lock:
+                if self._running >= self._lanes or not self._jobs:
+                    return
+                if self._cancelled():
+                    self._jobs = []
+                    return
+                job = self._jobs.pop(0)
+                self._running += 1
+            self._start(job, self._done)  # ロックの外＝start が同期的に done を呼んでもよい
+
+    def _done(self):
+        with self._lock:
+            self._running -= 1
+        self._fill()
 
 
 def enigma9_hp_lookup(human_policy, board_size):
@@ -2603,8 +2685,8 @@ class Enigma9Strategy(AIStrategy):
         応手すると、状態未設定のため terminate が空振りして温めクエリが漏れ、
         次局面の実クエリが 1.6→4.4 秒に伸びた）。
         """
-        clean = (probe or {}).get("clean") or {}
-        if not clean.get("moveInfos") or not self._ponder_applies():
+        hp_analysis = (probe or {}).get("hp") or {}
+        if not hp_analysis.get("humanPolicy") or not self._ponder_applies():
             return
         node = self.cn
         game = self.game
@@ -2615,98 +2697,173 @@ class Enigma9Strategy(AIStrategy):
         ).start()
 
     def _ponder_worker(self, node, gtp, probe, player, gen):
+        """相手の考慮時間中の NN キャッシュ温め（結果は全部捨てる＝判定影響ゼロ）。
+
+        選手は humanSL 順 top-`ENIGMA9_PONDER_REPLIES`（`enigma9_ponder_order`）、ジョブは
+        `enigma9_ponder_jobs` の価値順を `PonderLanes` で同時 `ENIGMA9_PONDER_LANES` 本ずつ流す:
+          root:  応手後局面を GUI の通常解析と同条件（visits/ownership とも config 解決）で解析。
+                 `board_watch_probe_warm` が立っていれば難解のヨセ判定 Probe と同条件
+                 （ownership=True・wRN=0）も1本足す（enigma spec 追記7 (2) の担当をここへ移した）
+          wave2: その解析の top-`ENIGMA9_SHORTLIST` 候補の子プローブ（clean 500v + hp 8v）を
+                 `_probe_children` と同条件で発行（root が未着なら着くまでレーンを持って待つ）
+          own:   監視モードでは Game.play が自ノードの即時解析を fast だけにしている
+                 （`_enigma_ponder_defers_own_analysis`）ので、温めが終わった後に config visits の
+                 フル解析を発行する（相手が先に打てば発行されず、fast のまま）
+        すべて gen 不一致で自己回収（相手の着手＝`Game._cancel_enigma_ponder` が gen を進め、
+        発行済みは `_enigma_ponder` のノード単位で terminate される）。
+        """
+        game = self.game
+        engine = game.engines[player]
+        defer_own = bool(getattr(game, "board_watch_active", False))
+
+        def find_played():
+            # Game.play が作る本譜の自ノード（ワーカーはスレッドなので、着手が本譜に乗った後に探す）
+            return next(
+                (c for c in node.children if c.move and c.move.player == player and c.move.gtp() == gtp),
+                None,
+            )
+
+        def issue_own_now():
+            # 監視モードでは Game.play が自ノードの即時解析を fast だけにしている
+            # （`_enigma_ponder_defers_own_analysis`）。温めを1本も出せない手番でフル解析を誰も
+            # 出さないと自ノードが fast のまま取り残されるので、その場で出して従来の挙動に戻す
+            # （相手が既に着手した gen 不一致の経路では出さない＝fast のままでよい）
+            if not defer_own:
+                return
+            played = find_played()
+            if played is not None:
+                played.analyze(engine, priority=PRIORITY_ENIGMA_PONDER)
+
         try:
             opponent = "W" if player == "B" else "B"
-            clean = probe.get("clean") or {}
-            hp_analysis = probe.get("hp") or {}
-            human_policy = hp_analysis.get("humanPolicy")
-            hp_of = (
-                enigma9_hp_lookup(human_policy, self.game.board_size)
-                if human_policy else (lambda _g: 0.0)
-            )
-            entries = [
-                d for d in clean.get("moveInfos", [])
-                if d.get("move") and d["move"] != "pass"
-                and d.get("visits", 0) >= ENIGMA9_REPLY_MIN_VISITS
-            ]
-            if not entries:
+            human_policy = (probe.get("hp") or {}).get("humanPolicy")
+            if not human_policy:
+                issue_own_now()
                 return
-            # KataGo 本命（visits 最多）は強い相手が見つける手、残り枠は humanSL の
-            # 直感順＝人間が実際に打ちやすい手。両方の外れ方をカバーする
-            picks = [max(entries, key=lambda d: d.get("visits", 0))["move"]]
-            for d in sorted(entries, key=lambda d: -hp_of(d["move"])):
-                if d["move"] not in picks:
-                    picks.append(d["move"])
-                if len(picks) >= ENIGMA9_PONDER_REPLIES:
-                    break
-            sim = tsumego_simulation_game(self.game, node)
+            order = enigma9_ponder_order(human_policy, game.board_size)
+            sim = tsumego_simulation_game(game, node)
             if sim is None:
+                issue_own_now()
                 return
             sim.play(Move.from_gtp(gtp, player=player), ignore_ko=True)
             base = sim.current_node
-            engine = self.game.engines[player]
+            children, picks = {}, []
+            for reply in order:
+                if len(picks) >= ENIGMA9_PONDER_REPLIES:
+                    break
+                if getattr(game, "_enigma_ponder_gen", 0) != gen:
+                    return  # 相手が既に着手した（発行前に気づけた分は発行しない）
+                sim.set_current_node(base)
+                try:
+                    children[reply] = sim.play(Move.from_gtp(reply, player=opponent), ignore_ko=True)
+                except IllegalMoveException:
+                    continue
+                picks.append(reply)
+            if not picks:
+                issue_own_now()
+                return
+            probe_warm = bool(getattr(game, "board_watch_probe_warm", False))
+            nodes = [children[g] for g in picks]  # own ジョブが本譜ノードを後から足す（terminate 対象）
+            game._enigma_ponder = (engine, nodes)
+            self._log(f"Ponder: warming replies {picks} to {gtp}")
+            if getattr(game, "_enigma_ponder_gen", 0) != gen:
+                game._enigma_ponder = None  # 発行前に相手が着手した＝何も出さない
+                return
+
+            state_lock = threading.Lock()
+            root_results, waiting = {}, {}
 
             def discard(*_args, **_kwargs):
                 return None
 
-            reply_nodes = []
-            for reply in picks:
-                if getattr(self.game, "_enigma_ponder_gen", 0) != gen:
-                    return  # 相手が既に着手した（発行前に気づけた分は発行しない）
-                sim.set_current_node(base)
-                try:
-                    child = sim.play(Move.from_gtp(reply, player=opponent), ignore_ko=True)
-                except IllegalMoveException:
-                    continue
+            def cancelled():
+                return getattr(game, "_enigma_ponder_gen", 0) != gen
 
-                def wave2(analysis, partial_result, child=child):
-                    # 応手局面の解析が返り次第、その top 候補（order 順＝次手番の
-                    # shortlist の近似）の子局面プローブも同条件で温める。gen が
-                    # 進んでいたら相手は既に着手済み＝発行しない
-                    if partial_result or getattr(self.game, "_enigma_ponder_gen", 0) != gen:
+            def issue_wave2(reply, done):
+                analysis = root_results.get(reply)
+                infos = sorted((analysis or {}).get("moveInfos") or [], key=lambda d: d.get("order", 10 ** 6))
+                targets = [d["move"] for d in infos[:ENIGMA9_SHORTLIST] if d.get("move") and d["move"] != "pass"]
+                if not targets or cancelled():
+                    done()
+                    return
+                child = children[reply]
+                pending = [2 * len(targets)]
+
+                def one_done(_analysis=None, partial_result=False):
+                    if partial_result:
                         return
-                    infos = sorted(
-                        (analysis or {}).get("moveInfos") or [],
-                        key=lambda d: d.get("order", 10 ** 6),
-                    )
-                    for d in infos[:ENIGMA9_SHORTLIST]:
-                        g2 = d.get("move")
-                        if not g2 or g2 == "pass":
-                            continue
-                        mv2 = Move.from_gtp(g2, player=player)
-                        engine.request_analysis(
-                            child, next_move=mv2, callback=discard, error_callback=discard,
-                            include_policy=False, visits=ENIGMA9_CHILD_VISITS,
-                            extra_settings={"ignorePreRootHistory": False},
-                            priority=PRIORITY_ENIGMA_PONDER,
-                        )
-                        engine.request_analysis(
-                            child, next_move=mv2, callback=discard, error_callback=discard,
-                            include_policy=True, visits=ENIGMA9_HP_CHILD_VISITS,
-                            extra_settings={
-                                "humanSLProfile": ENIGMA9_HUMAN_PROFILE,
-                                "ignorePreRootHistory": False,
-                            },
-                            priority=PRIORITY_ENIGMA_PONDER,
-                        )
+                    with state_lock:
+                        pending[0] -= 1
+                        last = pending[0] == 0
+                    if last:
+                        done()
 
-                # visits / ownership は渡さない＝GUI の通常解析と同じ config 解決に
-                # なり、実クエリと同一条件で温まる（ownerMap 有無はキャッシュキー）
-                engine.request_analysis(
-                    child, callback=wave2, error_callback=discard,
-                    priority=PRIORITY_ENIGMA_PONDER,
-                )
-                reply_nodes.append(child)
-            if reply_nodes:
-                self.game._enigma_ponder = (engine, reply_nodes)
-                self._log(f"Ponder: warming replies {picks} to {gtp}")
-                if getattr(self.game, "_enigma_ponder_gen", 0) != gen:
-                    # 発行中に相手の着手（Game.play）や次の generate の cancel と
-                    # 交錯した＝共有属性を経由せずローカルのリストを直接 terminate
-                    # する（tsumego の prefetch と同じ後始末。二重 terminate は無害）
-                    self.game._enigma_ponder = None
-                    for child in reply_nodes:
-                        engine.terminate_queries(only_for_node=child)
+                for g2 in targets:
+                    mv2 = Move.from_gtp(g2, player=player)
+                    engine.request_analysis(
+                        child, next_move=mv2, callback=one_done, error_callback=one_done,
+                        include_policy=False, visits=ENIGMA9_CHILD_VISITS,
+                        extra_settings={"ignorePreRootHistory": False},
+                        priority=PRIORITY_ENIGMA_PONDER,
+                    )
+                    engine.request_analysis(
+                        child, next_move=mv2, callback=one_done, error_callback=one_done,
+                        include_policy=True, visits=ENIGMA9_HP_CHILD_VISITS,
+                        extra_settings={
+                            "humanSLProfile": ENIGMA9_HUMAN_PROFILE,
+                            "ignorePreRootHistory": False,
+                        },
+                        priority=PRIORITY_ENIGMA_PONDER,
+                    )
+
+            def start(job, done):
+                kind, reply = job
+                if kind == "root":
+                    child = children[reply]
+
+                    def on_root_end(analysis):
+                        with state_lock:
+                            root_results[reply] = analysis
+                            w = waiting.pop(reply, None)
+                        done()
+                        if w is not None:
+                            issue_wave2(reply, w)
+
+                    def on_root(analysis, partial_result):
+                        if not partial_result:
+                            on_root_end(analysis)
+
+                    # visits / ownership は渡さない＝GUI の通常解析と同じ config 解決に
+                    # なり、実クエリと同一条件で温まる（ownerMap 有無はキャッシュキー）
+                    engine.request_analysis(
+                        child, callback=on_root, error_callback=lambda a: on_root_end(None),
+                        priority=PRIORITY_ENIGMA_PONDER,
+                    )
+                    if probe_warm:
+                        engine.request_analysis(
+                            child, callback=discard, error_callback=discard,
+                            include_policy=False, ownership=True,
+                            extra_settings={"ignorePreRootHistory": False, "wideRootNoise": 0.0},
+                            priority=PRIORITY_ENIGMA_PONDER,
+                        )
+                elif kind == "wave2":
+                    with state_lock:
+                        ready = reply in root_results
+                        if not ready:
+                            waiting[reply] = done
+                    if ready:
+                        issue_wave2(reply, done)
+                else:  # own: 本譜の自ノード（Game.play が作る）のフル解析を温めの後に
+                    played = find_played()
+                    if played is not None:
+                        nodes.append(played)
+                        played.analyze(engine, priority=PRIORITY_ENIGMA_PONDER)
+                    done()
+
+            jobs = enigma9_ponder_jobs(picks, ENIGMA9_PONDER_WAVE2)
+            if defer_own:
+                jobs.append(("own", gtp))
+            PonderLanes(jobs, ENIGMA9_PONDER_LANES, start, cancelled).run()
         except Exception as e:
             self.game.katrain.log(
                 f"[{type(self).__name__}] ponder error: {e!r}", OUTPUT_DEBUG

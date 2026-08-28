@@ -186,3 +186,112 @@ def test_worker_bails_when_opponent_already_moved():
     game.current_node = GameNode()  # 先読みを組み立てる前に局面が進んだ
     game._board_watch_prefetch_worker(node, 3)
     assert engine.requests == []
+
+
+# ---- 難解の ponder との一本化・自ノード解析の後回し・監視フラグの復元（2026-08-27 enigma spec 追記9） ----
+import ast  # noqa: E402
+import os  # noqa: E402
+import types  # noqa: E402
+
+from katrain.core import game as game_module  # noqa: E402
+from katrain.core.board_watch import apply_game_watch_flags  # noqa: E402
+
+
+def _no_thread(monkeypatch):
+    started = []
+
+    def fake_thread(*args, **kwargs):
+        started.append(kwargs.get("target"))
+        return types.SimpleNamespace(start=lambda: None)
+
+    monkeypatch.setattr(game_module.threading, "Thread", fake_thread)
+    return started
+
+
+def test_prefetch_yields_to_the_enigma_ponder_armed_for_the_same_move(monkeypatch):
+    """難解の ponder がこの着手で発火済み（owner＝着手側の色）なら応手先読みは撃たない＝二重温めの解消。
+    実測 2026-08-27（game_20260827_154802・13路）: 両方が発火すると 2000visits の root が 9 本同時に走り、
+    アプリの約 2.8 秒では何も温まり切らず的中 28%"""
+    game, node, engine = _watch_game()
+    game._enigma_ponder_owner = node.move.player
+    started = _no_thread(monkeypatch)
+    game._maybe_board_watch_prefetch(node)
+    assert started == []
+
+
+def test_prefetch_fires_when_no_ponder_is_armed(monkeypatch):
+    game, node, engine = _watch_game()
+    game._enigma_ponder_owner = None  # 難解が早期 return した手番（プローブ無し）や他の戦略
+    started = _no_thread(monkeypatch)
+    game._maybe_board_watch_prefetch(node)
+    assert started == [game._board_watch_prefetch_worker]
+
+
+def _playable_watch_game(watch=True, owner="B"):
+    """Game.play() を実際に通せる素の Game（エンジン起動・解析スレッドなし）"""
+    katrain = FakeKatrain()
+    base = BaseGame(katrain, move_tree=GameNode(properties={"SZ": 9, "RU": "chinese", "KM": 7.0}))
+    engine = FakeEngine()
+    game = Game.__new__(Game)
+    game.__dict__.update(base.__dict__)
+    game.engines = {"B": engine, "W": engine}
+    game.region_of_interest = None
+    game.board_watch_active = watch
+    game.board_watch_prefetch_replies = 0
+    game.board_watch_probe_warm = False
+    game._board_watch_prefetch_nodes = []
+    game._region_prefetch_nodes = []
+    game._early_speculation_nodes = []
+    game._enigma_ponder_owner = owner
+    return game, engine
+
+
+def test_play_requests_only_a_fast_analysis_when_the_ponder_is_armed_in_watch_mode():
+    """自ノードの 2000visits 解析は温めと GPU を取り合う（実測 1.6〜2.1 秒）。監視モードで ponder が
+    この着手を温めるなら、即時は fast（100visits）だけにし、フル解析は ponder が wave1 の後に発行する"""
+    game, engine = _playable_watch_game(watch=True, owner="B")
+    game.play(Move.from_gtp("E5", player="B"))
+    assert [r[1].get("analyze_fast") for r in engine.requests] == [True]
+
+
+def test_play_keeps_the_full_analysis_outside_watch_mode():
+    game, engine = _playable_watch_game(watch=False, owner="B")
+    game.play(Move.from_gtp("E5", player="B"))
+    assert [bool(r[1].get("analyze_fast")) for r in engine.requests] == [False]
+
+
+def test_play_keeps_the_full_analysis_when_no_ponder_is_armed():
+    game, engine = _playable_watch_game(watch=True, owner=None)
+    game.play(Move.from_gtp("E5", player="B"))
+    assert [bool(r[1].get("analyze_fast")) for r in engine.requests] == [False]
+
+
+def test_apply_game_watch_flags_sets_active_and_prefetch_from_config():
+    game = types.SimpleNamespace(board_watch_active=False, board_watch_prefetch_replies=0)
+    assert apply_game_watch_flags(game, {"prefetch_replies": 4}) == 4
+    assert game.board_watch_active is True
+    assert game.board_watch_prefetch_replies == 4
+
+
+def test_apply_game_watch_flags_defaults_when_config_is_missing():
+    game = types.SimpleNamespace()
+    assert apply_game_watch_flags(game, None) == 5
+    assert game.board_watch_active is True and game.board_watch_prefetch_replies == 5
+
+
+def test_new_game_reapplies_the_watch_flags_while_the_game_watcher_runs():
+    """静的検査: `_do_new_game` は Game を作り直す（＝フラグが初期値に戻る）が監視スレッド（kind="game"）は
+    生き続けるので、`_do_board_watch_start` と同じ `apply_game_watch_flags` で張り直さなければならない。
+    実測 2026-08-27（game_20260827_155133・セッション2局目）: フラグが落ちたままヨセ31手すべてが
+    省けるはずの Probe（中央値 1.1 秒）を払い、応手先読みも 0 本だった"""
+    main_path = os.path.join(os.path.dirname(__file__), "..", "katrain", "__main__.py")
+    with open(main_path, encoding="utf-8") as f:
+        tree = ast.parse(f.read())
+    funcs = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+    for name in ("_do_new_game", "_do_board_watch_start"):
+        calls = [
+            n.func.id if isinstance(n.func, ast.Name) else getattr(n.func, "attr", None)
+            for n in ast.walk(funcs[name])
+            if isinstance(n, ast.Call)
+        ]
+        assert "apply_game_watch_flags" in calls, f"{name} が apply_game_watch_flags を呼んでいない"

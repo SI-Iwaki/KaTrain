@@ -850,3 +850,255 @@ class TestCancelPonder:
         # 2回目は状態なし＝gen だけ進む
         s._cancel_ponder()
         assert s.game._enigma_ponder_gen == 2
+
+
+# ---- 着手後の先読み（ponder）の選手・順序・レーン・own 解析の後回し（2026-08-27 追記9） ----
+from katrain.core.ai import (  # noqa: E402
+    ENIGMA9_CHILD_VISITS,
+    ENIGMA9_HP_CHILD_VISITS,
+    ENIGMA9_HUMAN_PROFILE,
+    ENIGMA9_PONDER_LANES,
+    ENIGMA9_PONDER_REPLIES,
+    ENIGMA9_PONDER_WAVE2,
+    Enigma9Strategy,
+    PonderLanes,
+    enigma9_ponder_jobs,
+    enigma9_ponder_order,
+)
+from katrain.core.constants import PLAYER_AI, PLAYER_HUMAN, PRIORITY_ENIGMA_PONDER  # noqa: E402
+from katrain.core.game import BaseGame, GameNode  # noqa: E402
+
+
+def _hp_array(size, values):
+    """{gtp: hp} → KataGo の humanPolicy フラット配列（末尾 pass・非合法は -1 のまま渡せる）"""
+    bx = by = size
+    arr = [0.0] * (bx * by + 1)
+    for gtp, v in values.items():
+        if gtp == "pass":
+            arr[-1] = v
+            continue
+        x, y = Move.from_gtp(gtp).coords
+        arr[(by - 1 - y) * bx + x] = v
+    return arr
+
+
+class TestPonderOrder:
+    def test_orders_board_points_by_human_policy_and_drops_illegal_and_pass(self):
+        hp = _hp_array(9, {"E5": 0.4, "C3": 0.3, "G7": 0.1, "D4": -1.0, "pass": 0.9})
+        order = enigma9_ponder_order(hp, (9, 9))
+        assert order == ["E5", "C3", "G7"]  # hp 0 の点・非合法点（-1）・pass は温めない
+
+    def test_defaults_match_the_measured_budget(self):
+        # 13路実測 148局面: humanSL 全盤順 top-5 62.2%（KataGo visits 順 top-5 47.3%・旧 K1+H2 50.0%）
+        assert ENIGMA9_PONDER_REPLIES == 5
+        assert ENIGMA9_PONDER_WAVE2 == 2
+        assert ENIGMA9_PONDER_LANES == 3
+
+
+class TestPonderJobs:
+    def test_interleaves_wave2_behind_the_next_root(self):
+        jobs = enigma9_ponder_jobs(["a", "b", "c", "d", "e"], wave2=2)
+        assert jobs == [
+            ("root", "a"),
+            ("root", "b"),
+            ("wave2", "a"),
+            ("root", "c"),
+            ("wave2", "b"),
+            ("root", "d"),
+            ("root", "e"),
+        ]
+
+    def test_fewer_picks_than_wave2(self):
+        assert enigma9_ponder_jobs(["a"], wave2=2) == [("root", "a"), ("wave2", "a")]
+        assert enigma9_ponder_jobs([], wave2=2) == []
+
+
+class TestPonderLanes:
+    def test_keeps_at_most_n_jobs_in_flight(self):
+        started, dones = [], {}
+
+        def start(job, done):
+            started.append(job)
+            dones[job] = done
+
+        PonderLanes(["j1", "j2", "j3", "j4"], lanes=2, start=start, cancelled=lambda: False).run()
+        assert started == ["j1", "j2"]
+        dones["j1"]()
+        assert started == ["j1", "j2", "j3"]
+        dones["j3"]()
+        dones["j2"]()
+        assert started == ["j1", "j2", "j3", "j4"]
+
+    def test_stops_issuing_when_cancelled(self):
+        started, dones, flag = [], {}, {"c": False}
+
+        def start(job, done):
+            started.append(job)
+            dones[job] = done
+
+        PonderLanes(["j1", "j2", "j3"], lanes=1, start=start, cancelled=lambda: flag["c"]).run()
+        assert started == ["j1"]
+        flag["c"] = True
+        dones["j1"]()
+        assert started == ["j1"]
+
+    def test_synchronous_done_inside_start_does_not_deadlock(self):
+        started = []
+
+        def start(job, done):
+            started.append(job)
+            done()
+
+        PonderLanes(["a", "b", "c"], lanes=1, start=start, cancelled=lambda: False).run()
+        assert started == ["a", "b", "c"]
+
+
+class _PonderEngine:
+    def __init__(self):
+        self.requests = []
+        self.terminated = []
+
+    def request_analysis(self, node, callback=None, error_callback=None, **kwargs):
+        self.requests.append({"node": node, "callback": callback, **kwargs})
+
+    def terminate_queries(self, only_for_node=None, lock=True):
+        self.terminated.append(only_for_node)
+
+    def check_alive(self, exception_if_dead=False):
+        return True
+
+
+def _ponder_game(watch=False, probe_warm=False):
+    """黒 AI が E5 を返す直前（root 局面・相手＝白は人間）。"""
+    import types
+
+    katrain = types.SimpleNamespace(
+        log=lambda *a, **k: None,
+        players_info={"B": _player(PLAYER_AI), "W": _player(PLAYER_HUMAN)},
+    )
+    game = BaseGame(katrain, move_tree=GameNode(properties={"SZ": 9, "RU": "chinese", "KM": 7.0}))
+    engine = _PonderEngine()
+    game.engines = {"B": engine, "W": engine}
+    game.board_watch_active = watch
+    game.board_watch_probe_warm = probe_warm
+    return game, engine
+
+
+_REPLY_HP = {"E4": 0.30, "D4": 0.20, "E6": 0.15, "F5": 0.10, "D6": 0.05, "C3": 0.02}
+_ROOT_ANALYSIS = {
+    "moveInfos": [
+        {"move": g, "order": i, "visits": 50 - i}
+        for i, g in enumerate(["D5", "F4", "C4", "G5", "E3", "D3", "F6", "C6", "G3", "B5"])
+    ],
+    "rootInfo": {"visits": 2000},
+}
+
+
+def _run_ponder(game, engine, gen=0):
+    strategy = Enigma9Strategy(game, {})
+    probe = {
+        "clean": {"moveInfos": [{"move": "D5", "visits": 50}]},
+        "hp": {"humanPolicy": _hp_array(9, _REPLY_HP)},
+    }
+    strategy._ponder_worker(game.current_node, "E5", probe, "B", gen)
+    return strategy
+
+
+def _roots(engine):
+    return [r for r in engine.requests if "next_move" not in r and not r.get("ownership")]
+
+
+class TestPonderWorker:
+    def test_wave1_starts_with_the_top_human_replies_under_the_lane_cap(self):
+        game, engine = _ponder_game()
+        _run_ponder(game, engine)
+        roots = _roots(engine)
+        # lanes=3: root#1・root#2 と、root#1 の完了を待つ wave2#1（クエリはまだ出ない）
+        assert [r["node"].move.gtp() for r in roots] == ["E4", "D4"]
+        for r in roots:
+            assert r["node"].parent.move.gtp() == "E5"  # 複製ゲーム上で E5 を進めた子
+            assert r["node"].move.player == "W"
+            assert r["priority"] == PRIORITY_ENIGMA_PONDER
+            assert r.get("visits") is None and r.get("ownership") is None  # 実クエリ（config 解決）と同条件
+        assert len(engine.requests) == 2
+        engine_, nodes = game._enigma_ponder
+        assert engine_ is engine and [n.move.gtp() for n in nodes] == ["E4", "D4", "E6", "F5", "D6"]
+
+    def test_root_completion_issues_its_wave2_probes_and_the_next_root(self):
+        game, engine = _ponder_game()
+        _run_ponder(game, engine)
+        _roots(engine)[0]["callback"](_ROOT_ANALYSIS, False)  # root#1（E4）が返った
+        wave2 = [r for r in engine.requests if "next_move" in r]
+        assert [r["next_move"].gtp() for r in wave2[0::2]] == ["D5", "F4", "C4", "G5", "E3", "D3", "F6", "C6"]
+        clean, hp = wave2[0], wave2[1]
+        assert clean["node"].move.gtp() == "E4" and clean["next_move"].player == "B"
+        assert clean["visits"] == ENIGMA9_CHILD_VISITS and clean["include_policy"] is False
+        assert clean["extra_settings"] == {"ignorePreRootHistory": False}
+        assert hp["visits"] == ENIGMA9_HP_CHILD_VISITS and hp["include_policy"] is True
+        assert hp["extra_settings"] == {"humanSLProfile": ENIGMA9_HUMAN_PROFILE, "ignorePreRootHistory": False}
+        assert all(r["priority"] == PRIORITY_ENIGMA_PONDER for r in wave2)
+        assert [r["node"].move.gtp() for r in _roots(engine)] == ["E4", "D4", "E6"]  # 空いたレーンに root#3
+
+    def test_cancelled_generation_stops_further_issue(self):
+        game, engine = _ponder_game()
+        _run_ponder(game, engine)
+        game._enigma_ponder_gen = 1  # 相手が着手した
+        _roots(engine)[0]["callback"](_ROOT_ANALYSIS, False)
+        assert len(engine.requests) == 2
+
+    def test_probe_warm_adds_the_yose_probe_query_per_root(self):
+        game, engine = _ponder_game(probe_warm=True)
+        _run_ponder(game, engine)
+        probes = [r for r in engine.requests if r.get("ownership")]
+        assert [r["node"].move.gtp() for r in probes] == ["E4", "D4"]
+        assert probes[0]["extra_settings"] == {"ignorePreRootHistory": False, "wideRootNoise": 0.0}
+        assert probes[0]["include_policy"] is False and probes[0].get("visits") is None
+
+    def _drain(self, engine, game):
+        seen = 0
+        while seen < len(engine.requests):
+            r = engine.requests[seen]
+            seen += 1
+            if r["node"] is game.current_node:
+                continue  # 本譜ノードの解析（own）は返さなくてよい
+            r["callback"](_ROOT_ANALYSIS if "next_move" not in r else {"moveInfos": [], "humanPolicy": []}, False)
+
+    def test_own_node_full_analysis_is_issued_last_in_watch_mode(self):
+        game, engine = _ponder_game(watch=True)
+        _run_ponder(game, engine)
+        played = game.play(Move.from_gtp("E5", player="B"))  # GUI の Game.play が作る本譜ノード
+        self._drain(engine, game)
+        own = [r for r in engine.requests if r["node"] is played]
+        assert len(own) == 1 and own[0]["priority"] == PRIORITY_ENIGMA_PONDER and not own[0].get("analyze_fast")
+        assert own[0] is engine.requests[-1]
+        assert played in game._enigma_ponder[1]  # 相手の着手で terminate される側に入る
+
+    def test_own_node_analysis_is_not_touched_outside_watch_mode(self):
+        game, engine = _ponder_game(watch=False)
+        _run_ponder(game, engine)
+        played = game.play(Move.from_gtp("E5", player="B"))
+        self._drain(engine, game)
+        assert not [r for r in engine.requests if r["node"] is played]
+
+
+class TestPonderWorkerFallback:
+    def test_own_node_full_analysis_is_issued_at_once_when_nothing_can_be_warmed(self):
+        """Game.play は ponder が armed なら fast 解析しか出さない。ワーカーが温める応手を1本も作れなかった
+        （humanPolicy が全部 0＝合法な応手が無い等）ときにフル解析を誰も出さないと、自ノードは fast のまま
+        取り残される。監視モードではその場でフル解析を出して従来の挙動に戻す"""
+        game, engine = _ponder_game(watch=True)
+        played = game.play(Move.from_gtp("E5", player="B"))
+        strategy = Enigma9Strategy(game, {})
+        probe = {"clean": {"moveInfos": []}, "hp": {"humanPolicy": _hp_array(9, {})}}
+        strategy._ponder_worker(played.parent, "E5", probe, "B", 0)
+        own = [r for r in engine.requests if r["node"] is played]
+        assert len(own) == 1 and not own[0].get("analyze_fast") and own[0]["priority"] == PRIORITY_ENIGMA_PONDER
+        assert len(engine.requests) == 1
+
+    def test_no_fallback_analysis_outside_watch_mode(self):
+        game, engine = _ponder_game(watch=False)
+        played = game.play(Move.from_gtp("E5", player="B"))
+        strategy = Enigma9Strategy(game, {})
+        probe = {"clean": {"moveInfos": []}, "hp": {"humanPolicy": _hp_array(9, {})}}
+        strategy._ponder_worker(played.parent, "E5", probe, "B", 0)
+        assert engine.requests == []

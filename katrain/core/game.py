@@ -598,9 +598,24 @@ class Game(BaseGame):
                 self._maybe_region_prefetch(played_node)
                 self._maybe_early_speculation(played_node)
             else:
-                played_node.analyze(self.engines[played_node.next_player])
+                played_node.analyze(
+                    self.engines[played_node.next_player],
+                    analyze_fast=self._enigma_ponder_defers_own_analysis(move),
+                )
                 self._maybe_board_watch_prefetch(played_node)
         return played_node
+
+    def _enigma_ponder_defers_own_analysis(self, move):
+        """監視モードで難解の ponder がこの着手（自分の手）を温めるなら、自ノードの即時解析は fast だけ。
+
+        自ノードの config visits 解析（実測 13路 1.6〜2.1 秒）は温めと同時に走って GPU を分け合うのに、
+        アプリは KataGo の PV でなく humanSL 順で打つので温めにはほぼ寄与しない。フル解析は
+        `Enigma9Strategy._ponder_worker` の own ジョブが温めの後に発行する（相手が先に打てば fast のまま＝
+        表示だけの差。判定には使われない）。監視モード外は従来どおり即時にフル解析。
+        """
+        return bool(getattr(self, "board_watch_active", False)) and (
+            move is not None and getattr(self, "_enigma_ponder_owner", None) == move.player
+        )
 
     def _cancel_enigma_ponder(self, move):
         """難解（enigma）戦略の着手後先読みを、相手の着手が入った時点で打ち切る。
@@ -778,6 +793,13 @@ class Game(BaseGame):
         replies = int(getattr(self, "board_watch_prefetch_replies", 0) or 0)
         if replies <= 0 or self.region_of_interest:
             return  # リージョンありは詰碁経路＝_maybe_region_prefetch の担当（二重発火させない）
+        owner = getattr(self, "_enigma_ponder_owner", None)
+        if owner is not None and node.move is not None and owner == node.move.player:
+            # 難解の ponder がこの着手の応手を温めている（humanSL 順 top-K＋子プローブ）。重ねて撃つと
+            # 2000visits の root が 9 本横並びになり、アプリの約 2.8 秒では 1 本も温まり切らない
+            # （実測 2026-08-27 game_20260827_154802: 的中 28%）。ponder が発火しない手番（早期 return）だけ
+            # ここが担当する
+            return
         players_info = getattr(self.katrain, "players_info", None)
         if not players_info:
             return  # デバッグスタブ等、対局者情報が無い環境では先読みしない

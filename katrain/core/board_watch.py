@@ -306,6 +306,25 @@ def watch_settings_from_config(cfg):
     )
 
 
+PREFETCH_REPLIES_DEFAULT = 5  # 相手の応手 top-K の子局面を先読みする既定本数（spec 追記4）
+
+
+def apply_game_watch_flags(game, cfg):
+    """対局監視モードの Game 側フラグを張り、先読み本数を返す。
+
+    監視 ON（`_do_board_watch_start`）と、**監視中の新規対局**（`_do_new_game`）の両方から呼ぶ。
+    監視スレッド（kind="game"）は新規対局をまたいで生きるが、`Game` を作り直すと
+    `board_watch_active` / `board_watch_prefetch_replies` は初期値（False / 0）に戻る。張り直さないと
+    応手先読みと難解のヨセ即応（enigma spec 追記7＝`board_watch_active` で発火）が2局目から
+    黙って死ぬ（実測 2026-08-27 `game_20260827_155133`: ヨセ31手すべてが省けるはずの Probe 1.1 秒を払い、
+    先読みは 0 本）。
+    """
+    prefetch = int((cfg or {}).get("prefetch_replies", PREFETCH_REPLIES_DEFAULT))
+    game.board_watch_active = True
+    game.board_watch_prefetch_replies = prefetch
+    return prefetch
+
+
 STATUS_WATCHING = "bw-watching"
 STATUS_WARN = "bw-warn"
 WATCHING_TEXT = "盤面監視中（相手の手を自動反映）"

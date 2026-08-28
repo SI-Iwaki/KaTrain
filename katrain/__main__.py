@@ -64,7 +64,7 @@ from kivy.properties import BooleanProperty, NumericProperty, ObjectProperty, St
 from kivy.clock import Clock
 from kivy.metrics import dp
 from katrain.core.ai import generate_ai_move, tsumego_book_status as compute_tsumego_book_status
-from katrain.core.board_watch import STATUS_WARN as BW_STATUS_WARN
+from katrain.core.board_watch import STATUS_WARN as BW_STATUS_WARN, apply_game_watch_flags
 
 from katrain.core.lang import DEFAULT_LANGUAGE, i18n
 from katrain.core.constants import (
@@ -416,6 +416,11 @@ class KaTrainGui(Screen, KaTrainBase):
             analyze_fast=analyze_fast or not move_tree,
             sgf_filename=sgf_filename,
         )
+        if getattr(self, "_board_watch_kind", None) == "game":
+            # 対局監視は新規対局をまたいで生きる（上の _stop_board_watcher は詰碁用しか止めない）が、
+            # Game を作り直すと board_watch_active / prefetch_replies は初期値に戻る。張り直さないと
+            # 応手先読みと難解のヨセ即応（enigma spec 追記7）が2局目から黙って死ぬ（実測 2026-08-27）
+            apply_game_watch_flags(self.game, self._config.get("board_watch"))
 
         def _reset_book_props(_dt):
             self.tsumego_book_ready = False
@@ -775,9 +780,7 @@ class KaTrainGui(Screen, KaTrainBase):
         self._board_watch_kind = "game"  # _do_new_game の詰碁専用フックに巻き込まれないように
         # 相手の応手 top-K の子局面を先読みして NN キャッシュを温める（spec 追記4）。
         # 監視 OFF まで有効。0 で無効＝先読み導入前と同じ挙動
-        prefetch = int((self._config.get("board_watch") or {}).get("prefetch_replies", 5))
-        self.game.board_watch_prefetch_replies = prefetch
-        self.game.board_watch_active = True
+        prefetch = apply_game_watch_flags(self.game, self._config.get("board_watch"))
         watcher.start()
         self.log(f"board_watch: 監視を開始しました（応手先読み {prefetch} 手）", OUTPUT_INFO)
 
