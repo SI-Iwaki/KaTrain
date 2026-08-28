@@ -783,6 +783,15 @@ def _area_scoring_should_pass(moves, pass_loss, pass_margin=_AREA_PASS_MARGIN):
             pass_weight = w if pass_weight is None else max(pass_weight, w)
         elif best_non_pass is None or w > best_non_pass:
             best_non_pass = w
+    return _pass_preferred(pass_weight, best_non_pass, pass_loss, pass_margin)
+
+
+def _pass_preferred(pass_weight, best_non_pass, pass_loss, pass_margin=_AREA_PASS_MARGIN):
+    """`_area_scoring_should_pass` の判定本体（humanPolicy の重み比較 AND 目数条件）。
+
+    pass_weight / best_non_pass は humanPolicy 由来の重み（None＝無い）。
+    Enigma の終局判定（`enigma9_terminal_pass`）と共有する。
+    """
     if pass_weight is None:
         return False
     if pass_loss is None or pass_loss >= pass_margin:
@@ -2369,6 +2378,80 @@ def enigma9_yose_probe_skippable(lead, target, max_loss, margin=ENIGMA9_FAST_YOS
     return (lead - target) >= max_loss + margin
 
 
+def enigma9_pass_loss(candidate_moves):
+    """通常解析の候補に pass があればその損失（relativePointsLost・打つ側視点に符号済み）。
+
+    無ければ None（＝KataGo が pass を読んでいない＝終局の証拠なし）。
+    policy フォールバック分岐の dict には relativePointsLost が無いので pointsLost。
+    """
+    for d in candidate_moves:
+        if d.get("move") == "pass":
+            return d.get("relativePointsLost", d.get("pointsLost"))
+    return None
+
+
+def enigma9_human_top(human_policy, board_size):
+    """humanPolicy から (盤上最上位の gtp, その値, pass の値) を返す。壊れていれば None。
+
+    配列長は 盤点数 + 1（末尾 pass）でなければならない。非合法点（-1）は
+    `enigma9_hp_lookup` が 0 にクランプするので最上位には来ない。
+    """
+    bx, by = board_size
+    if not human_policy or len(human_policy) != bx * by + 1:
+        return None
+    hp_of = enigma9_hp_lookup(human_policy, board_size)
+    top_gtp, top_hp = None, -1.0
+    for y in range(by):
+        for x in range(bx):
+            gtp = Move((x, y)).gtp()
+            v = hp_of(gtp)
+            if v > top_hp:
+                top_gtp, top_hp = gtp, v
+    return top_gtp, top_hp, hp_of("pass")
+
+
+def enigma9_terminal_pass(pass_loss, pass_hp, top_hp, margin=_AREA_PASS_MARGIN):
+    """終局判定: pass の損失が margin 未満 かつ 9d の humanPolicy で pass が最上位なら True。
+
+    判定は `_area_scoring_should_pass`（HumanStyle / Fighting / Siege / Hunt が共有）と
+    同一の `_pass_preferred`。目数だけで決めないのは area scoring ではダメが残っていても
+    pass の損失が 0.1 目程度にしか出ないため（実測 2026-08-06・13路ダメ13個: pass_loss 0.10
+    なのに humanPolicy(pass)=0.0000。ダメを詰め切ると 0.37〜0.75）。逆に humanPolicy
+    だけで決めないのは、9d が「もう打つ手が無い」と見ても KataGo の chinese ルールでは
+    死石の取り込みが残っていて pass が大損になる局面があるため（実測 game_20260828_065952
+    move 80: PV に相手の pass が並ぶのに自分の pass は 126 目損）。
+    """
+    return _pass_preferred(pass_hp, top_hp, pass_loss, margin)
+
+
+# 相手のパス後に「盤が決着している」と見なす |ownership| の下限（全点がこれ以上ならパス）。
+# 実測 2026-08-28（2000visits・wRN=0）: 死石が盤に残る終局図でも全点 0.97〜1.00、ダメ・
+# セキ・未決着の群は 0〜0.7 に落ちる。PARITY9_UNSETTLED_ABS(0.5) より厳しいのは、この
+# 判定が KataGo の pass 評価（未取り込みの死石を生きと数える）を上書きする側だから
+ENIGMA9_SETTLED_ABS = 0.9
+
+
+def enigma9_board_settled(ownership, settled_abs=ENIGMA9_SETTLED_ABS):
+    """全点の |ownership| >= settled_abs なら True（ownership が無ければ False＝保守側）。"""
+    return bool(ownership) and all(abs(o) >= settled_abs for o in ownership)
+
+
+def enigma9_terminal_move(top_gtp, candidate_moves, margin=_AREA_PASS_MARGIN):
+    """9d の最上位の盤上の手を「終局処理の手」として採れるなら、その KataGo 損失を返す。
+
+    KataGo の候補に無い手・損失が margin 以上の手は None（採らない＝最善手へ倒す）。
+    終局帯の 9d の手は ダメ詰め・死石の取り込み・ツギ で、KataGo が読んでいれば
+    損失はほぼ 0。読んでいない手や margin 以上の損と出る手は 9d の癖より KataGo を信じる。
+    """
+    if top_gtp is None or top_gtp == "pass":
+        return None
+    for d in candidate_moves:
+        if d.get("move") == top_gtp:
+            loss = d.get("relativePointsLost", d.get("pointsLost"))
+            return loss if (loss is not None and loss < margin) else None
+    return None
+
+
 def enigma9_net_score(loss, e_punish, reply_findability, own_hp,
                       w_reply=ENIGMA9_W_REPLY_RARE, w_own=ENIGMA9_W_OWN_RARE,
                       cost_weight=1.0, locality=1.0):
@@ -2904,6 +2987,88 @@ class Enigma9Strategy(AIStrategy):
         if best_gtp == "pass":
             # パスが最善＝終局処理。ダメ詰め・終局判定はエンジンに委ねる
             return self._best_move(f"{self.LABEL}: best move is pass, playing it.")
+
+        # ---- ゲート1b: 終局帯（pass が margin 未満の損失で候補に居る＝盤上に margin 以上の
+        # 手が無い）では難解さの選択をしない ----
+        # area scoring では終局後も自陣埋めが 0 目損で候補に並び、KataGo の最善手が pass に
+        # ならないまま「最も難解な 0 目損の埋め手」を選び続けていた（実測 game_20260828_064054
+        # move 57: pass 3位・損失 0.07、0目損の候補25手 → H1 へ外し）。終局処理は 9d に倣う:
+        # (1) 相手が直前にパス → パス（クエリ0本）、(2) 9d の最上位が pass → パス、
+        # (3) 9d の最上位の盤上の手が KataGo 候補で margin 未満の損 → その手（ダメ・取り込み・
+        # ツギ）、(4) それ以外は最善手。humanSL はプローブバッチの親 humanSL と同一条件の
+        # 8visits（子プローブ無し）。pass の損失が margin 以上の手番はビット同一
+        pass_loss = enigma9_pass_loss(cands)
+        if self.cn.move is not None and self.cn.move.is_pass:
+            # 相手がパス → 難解さで惑わす相手はもう居ない。(a) pass の損失 < margin → パス
+            # （クエリ0本）。(b) そうでなければ ownership を1本撃ち、全点が決着
+            # （`enigma9_board_settled`）ならパス＝pass が大損に出るのは chinese ルールが
+            # 未取り込みの死石を生きと数えるためで、終局すれば ownership どおりに数えられる
+            # （実測 game_20260828_065952 @82+4: pass 126 目損なのに全81点 |o| >= 0.97。旧実装は
+            # 白がパスし続ける中で死石を 25 手かけて1子ずつ取り込んだ）。(c) 未決着点が
+            # あれば最善手（ダメ・本当の未決着＝KataGo に任せる。外しはしない）
+            if pass_loss is not None and pass_loss < _AREA_PASS_MARGIN:
+                self._log(
+                    f"Terminal: opponent passed, pass loses {pass_loss:.2f} < {_AREA_PASS_MARGIN} -> pass"
+                )
+                return (
+                    Move(None, player=player),
+                    f"{self.LABEL}: opponent passed and passing loses only {pass_loss:.2f}, passing.",
+                )
+            probe = self._run_query(
+                "Probe",
+                include_policy=False,
+                ownership=True,
+                extra_settings={"ignorePreRootHistory": False, "wideRootNoise": 0.0},
+            )
+            ownership = (probe or {}).get("ownership")
+            n_unsettled = (
+                None if ownership is None else sum(1 for o in ownership if abs(o) < ENIGMA9_SETTLED_ABS)
+            )
+            loss_txt = "n/a" if pass_loss is None else f"{pass_loss:.2f}"
+            if enigma9_board_settled(ownership):
+                self._log(
+                    f"Terminal: opponent passed, pass loses {loss_txt} but every point is settled "
+                    f"(|own| >= {ENIGMA9_SETTLED_ABS}) -> pass"
+                )
+                return (
+                    Move(None, player=player),
+                    f"{self.LABEL}: opponent passed and the board is fully settled, passing.",
+                )
+            self._log(
+                f"Terminal: opponent passed, pass loses {loss_txt}, unsettled={n_unsettled} -> best move (no deviation)"
+            )
+            return self._best_move(f"{self.LABEL}: opponent passed but the board is not settled, playing best move.")
+        if pass_loss is not None and pass_loss < _AREA_PASS_MARGIN:
+            _, stage_hp = self._probe_children([], player, parent_hp=True)
+            human_top = enigma9_human_top((stage_hp or {}).get("humanPolicy"), self.game.board_size)
+            if human_top is None:
+                self._log(f"Terminal: pass loses {pass_loss:.2f} but humanSL unavailable -> best move")
+                return self._best_move(f"{self.LABEL}: game is nearly over, humanSL unavailable, playing best move.")
+            top_gtp, top_hp, pass_hp = human_top
+            if enigma9_terminal_pass(pass_loss, pass_hp, top_hp):
+                self._log(
+                    f"Terminal: pass loses {pass_loss:.2f}, humanSL pass {pass_hp:.1%} >= {top_gtp} {top_hp:.1%} -> pass"
+                )
+                return (
+                    Move(None, player=player),
+                    f"{self.LABEL}: game is over (pass loses {pass_loss:.2f}, a 9d would pass), passing.",
+                )
+            finish_loss = enigma9_terminal_move(top_gtp, cands)
+            if finish_loss is not None:
+                self._log(
+                    f"Terminal: pass loses {pass_loss:.2f}, humanSL prefers {top_gtp} {top_hp:.1%} over pass "
+                    f"{pass_hp:.1%} -> play it (loss {finish_loss:.2f}), no deviation"
+                )
+                return (
+                    Move.from_gtp(top_gtp, player=player),
+                    f"{self.LABEL}: game is nearly over, playing the 9d finishing move {top_gtp} "
+                    f"(loss {finish_loss:.2f}) instead of a deviation.",
+                )
+            self._log(
+                f"Terminal: pass loses {pass_loss:.2f}, humanSL top {top_gtp} {top_hp:.1%} is not a cheap "
+                f"KataGo candidate -> best move"
+            )
+            return self._best_move(f"{self.LABEL}: game is nearly over, playing best move (no deviation).")
 
         max_loss = float(self._setting("max_loss"))
         large_cap = float(self._setting("large_lead_max_loss"))

@@ -1102,3 +1102,197 @@ class TestPonderWorkerFallback:
         probe = {"clean": {"moveInfos": []}, "hp": {"humanPolicy": _hp_array(9, {})}}
         strategy._ponder_worker(played.parent, "E5", probe, "B", 0)
         assert engine.requests == []
+
+
+# ---- 終局判定（pass が KataGo 最善でなくても人間なら終局している局面）----
+from katrain.core.ai import (  # noqa: E402
+    _AREA_PASS_MARGIN,
+    ENIGMA9_SETTLED_ABS,
+    enigma9_board_settled,
+    enigma9_human_top,
+    enigma9_pass_loss,
+    enigma9_terminal_move,
+    enigma9_terminal_pass,
+)
+
+
+class TestTerminalHelpers:
+    def test_pass_loss_reads_the_pass_candidate(self):
+        cands = [
+            {"move": "J6", "relativePointsLost": 0.0},
+            {"move": "pass", "relativePointsLost": 0.07},
+        ]
+        assert enigma9_pass_loss(cands) == 0.07
+        assert enigma9_pass_loss(cands[:1]) is None
+        # policy フォールバック分岐（relativePointsLost が無い dict）は pointsLost
+        assert enigma9_pass_loss([{"move": "pass", "pointsLost": 0.3}]) == 0.3
+
+    def test_human_top_returns_board_top_and_pass(self):
+        hp = _hp_array(9, {"pass": 0.197, "J6": 0.297, "A1": 0.1, "D4": -1.0})
+        assert enigma9_human_top(hp, (9, 9)) == ("J6", pytest.approx(0.297), pytest.approx(0.197))
+
+    def test_human_top_rejects_malformed_arrays(self):
+        assert enigma9_human_top(None, (9, 9)) is None
+        assert enigma9_human_top([0.5] * 81, (9, 9)) is None  # pass エントリ無し
+        assert enigma9_human_top([], (9, 9)) is None
+
+    def test_passes_when_pass_is_cheap_and_human_top(self):
+        assert enigma9_terminal_pass(0.07, pass_hp=0.6, top_hp=0.3) is True
+        assert enigma9_terminal_pass(-0.2, pass_hp=0.6, top_hp=0.3) is True  # pass のほうが良い評価
+
+    def test_keeps_playing_when_human_prefers_a_board_point(self):
+        # 実測 game_20260828_064054 move 57（白 AI・lead +5.65・0目損の候補25手）:
+        # pass 3位・損失 0.07 だが 9d は J6 29.7% > pass 19.7% ＝ まだ埋める手が残っている
+        assert enigma9_terminal_pass(0.07, pass_hp=0.197, top_hp=0.297) is False
+
+    def test_dame_remaining_never_passes(self):
+        # 実測 2026-08-06（13路・ダメ13個）: pass_loss 0.10 でも humanPolicy(pass)=0.0000
+        assert enigma9_terminal_pass(0.10, pass_hp=0.0, top_hp=0.4) is False
+
+    def test_margin_is_the_boundary(self):
+        assert enigma9_terminal_pass(_AREA_PASS_MARGIN, pass_hp=0.9, top_hp=0.1) is False
+        assert enigma9_terminal_pass(_AREA_PASS_MARGIN - 0.01, pass_hp=0.9, top_hp=0.1) is True
+        assert enigma9_terminal_pass(None, pass_hp=0.9, top_hp=0.1) is False
+
+    def test_tie_goes_to_pass(self):
+        assert enigma9_terminal_pass(0.0, pass_hp=0.4, top_hp=0.4) is True
+
+    def test_board_settled_requires_every_point(self):
+        assert enigma9_board_settled([0.97] * 40 + [-0.99] * 41) is True  # 実測 065952 @82+4 の最小 0.97
+        assert enigma9_board_settled([0.97] * 80 + [0.0]) is False  # ダメ1点
+        assert enigma9_board_settled([0.97] * 80 + [0.6]) is False  # 未決着の群
+        assert enigma9_board_settled(None) is False
+        assert enigma9_board_settled([]) is False
+        assert ENIGMA9_SETTLED_ABS == 0.9
+
+    def test_terminal_move_requires_a_cheap_katago_candidate(self):
+        cands = [
+            {"move": "A9", "relativePointsLost": 0.0},
+            {"move": "J6", "relativePointsLost": 0.02},
+            {"move": "C5", "relativePointsLost": 1.3},
+            {"move": "pass", "relativePointsLost": 0.07},
+        ]
+        assert enigma9_terminal_move("J6", cands) == pytest.approx(0.02)
+        assert enigma9_terminal_move("C5", cands) is None  # 9d の手でも KataGo が margin 以上の損と読むなら採らない
+        assert enigma9_terminal_move("H1", cands) is None  # KataGo が読んでいない手は採らない
+        assert enigma9_terminal_move("pass", cands) is None
+
+
+class TestTerminalEndToEnd:
+    """_generate_move が終局帯で難解さの選択に入らないことの確認（呼び出し側の接続テスト）。"""
+
+    def _strategy(self, *, pass_loss, hp, last_move=None, ownership=None):
+        import types
+
+        logs = []
+        katrain = types.SimpleNamespace(log=lambda msg, *a, **k: logs.append(str(msg)))
+        cands = [
+            {"move": "J6", "pointsLost": 0.0, "relativePointsLost": 0.0, "visits": 196, "winrate": 0.3},
+            {"move": "H1", "pointsLost": 0.01, "relativePointsLost": 0.01, "visits": 150, "winrate": 0.3},
+        ]
+        if pass_loss is not None:
+            cands.append({"move": "pass", "pointsLost": pass_loss, "relativePointsLost": pass_loss, "visits": 179, "winrate": 0.3})
+        node = types.SimpleNamespace(
+            next_player="W",
+            player="B",
+            depth=57,
+            move=last_move,
+            analysis_complete=True,
+            analysis={"root": {"scoreLead": -5.65}},
+            candidate_moves=cands,
+        )
+        game = types.SimpleNamespace(
+            katrain=katrain,
+            current_node=node,
+            board_size=(9, 9),
+            _enigma9_endgame=True,
+            board_watch_active=True,  # 飽和帯＝Probe 省略（このテストの関心外）
+        )
+        s = Enigma9Strategy(game, {"enigma9_target_score": 0.2, "enigma9_max_loss": 1.6})
+        s.queries = []
+
+        def run_query(label, **kw):
+            s.queries.append(label)
+            return None if ownership is None else {"ownership": ownership, "rootInfo": {"scoreLead": -5.65}}
+
+        s._run_query = run_query
+        s.probe_calls = []
+
+        def probe(gtps, player, parent_hp=False):
+            s.probe_calls.append((list(gtps), parent_hp))
+            return {}, ({"humanPolicy": hp} if (parent_hp and hp is not None) else None)
+
+        s._probe_children = probe
+        return s, logs
+
+    def test_passes_when_humansl_top_is_pass(self):
+        s, logs = self._strategy(pass_loss=0.07, hp=_hp_array(9, {"pass": 0.6, "J6": 0.3}))
+        move, reason = s.generate_move()
+        assert move.is_pass
+        assert s.probe_calls == [([], True)]  # humanSL を1本（子プローブなし）
+        assert any("Terminal" in m and "pass" in m for m in logs)
+
+    def test_plays_the_humansl_finishing_move_instead_of_deviating(self):
+        # 9d が J6 を pass より好む → 難解さで H1 を選ばず J6（KataGo 候補・損失 0.0）を打つ
+        s, logs = self._strategy(pass_loss=0.07, hp=_hp_array(9, {"pass": 0.197, "J6": 0.297}))
+        move, reason = s.generate_move()
+        assert move.gtp() == "J6"
+        assert s.probe_calls == [([], True)]  # 子プローブ（難解さの採点）に入らない
+        assert not any("Deviate" in m for m in logs)
+
+    def test_falls_back_to_best_move_when_humansl_move_is_not_a_cheap_candidate(self):
+        s, logs = self._strategy(pass_loss=0.07, hp=_hp_array(9, {"pass": 0.1, "C5": 0.5}))
+        move, reason = s.generate_move()
+        assert move.gtp() == "J6"  # KataGo 最善手
+        assert s.probe_calls == [([], True)]
+
+    def test_opponent_pass_ends_the_game_without_a_query(self):
+        s, logs = self._strategy(pass_loss=0.07, hp=None, last_move=Move(None, player="B"))
+        move, reason = s.generate_move()
+        assert move.is_pass
+        assert s.probe_calls == []  # humanSL も撃たない
+
+    def test_opponent_pass_with_settled_board_passes_despite_katago_pass_value(self):
+        # 死石が盤に残ると chinese ルールの pass 評価は大損に出る（実測 126 目）が、全点決着ならパス
+        s, logs = self._strategy(
+            pass_loss=126.0, hp=None, last_move=Move(None, player="B"), ownership=[0.97] * 40 + [-0.99] * 41
+        )
+        move, reason = s.generate_move()
+        assert move.is_pass
+        assert s.queries == ["Probe"]  # ownership を1本
+        assert s.probe_calls == []  # humanSL も子プローブも撃たない
+
+    def test_opponent_pass_with_unsettled_board_plays_best_move_without_deviation(self):
+        s, logs = self._strategy(
+            pass_loss=3.0, hp=None, last_move=Move(None, player="B"), ownership=[0.97] * 80 + [0.0]
+        )
+        move, reason = s.generate_move()
+        assert move.gtp() == "J6"  # KataGo 最善手
+        assert s.queries == ["Probe"]
+        assert s.probe_calls == []  # 難解さの採点に入らない
+        assert any("unsettled=1" in m for m in logs)
+
+    def test_opponent_pass_without_ownership_falls_back_to_best_move(self):
+        s, logs = self._strategy(pass_loss=3.0, hp=None, last_move=Move(None, player="B"))
+        move, reason = s.generate_move()
+        assert not move.is_pass
+        assert move.gtp() == "J6"
+
+    def test_humansl_unavailable_falls_back_to_best_move(self):
+        s, logs = self._strategy(pass_loss=0.07, hp=None)
+        move, reason = s.generate_move()
+        assert move.gtp() == "J6"
+        assert s.probe_calls == [([], True)]
+
+    def test_expensive_pass_leaves_the_normal_path_untouched(self):
+        # pass が margin 以上の損 → 終局判定は走らず、従来どおり子プローブ（親 humanSL 込み）へ
+        s, logs = self._strategy(pass_loss=3.0, hp=_hp_array(9, {"pass": 0.9}))
+        s.generate_move()
+        assert s.probe_calls and s.probe_calls[0][0] != []  # 子局面プローブが発行されている
+        assert not any("Terminal" in m for m in logs)
+
+    def test_no_pass_candidate_leaves_the_normal_path_untouched(self):
+        s, logs = self._strategy(pass_loss=None, hp=_hp_array(9, {"pass": 0.9}))
+        s.generate_move()
+        assert s.probe_calls and s.probe_calls[0][0] != []
+        assert not any("Terminal" in m for m in logs)
