@@ -1347,9 +1347,78 @@ def test_reader_screen_point_is_none_before_calibration():
     reader = AppBoardReader("BlueStacks", [9])
     assert reader.screen_point(0, 0) is None
     reader._window_rect = (0, 0, 400, 400)
-    reader._board_rect = (0, 0, 179, 179)
     reader.size = 9
+    reader._set_board_rect((0, 0, 179, 179))
     assert reader.screen_point(4, 4) == (90, 90, 20)
+
+
+def test_reader_screen_point_never_mixes_new_window_with_old_board_rect(monkeypatch):
+    """窓が動いた瞬間に別スレッドが読んでも「新しい窓矩形＋古い盤矩形」を返さない。
+
+    返すのは古い組（整合している）か None のどちらかで、両者の混合＝窓の移動量ぶんずれた
+    座標は出さない。混合を返すと輪が交点の中心から少しずれる（ユーザー報告のずれ）
+    """
+    reader = AppBoardReader("BlueStacks", [9])
+    reader._window_rect = (0, 0, 400, 400)
+    reader.size = 9
+    reader._set_board_rect((0, 0, 179, 179))
+    before = reader.screen_point(4, 4)
+    reader._window_rect = (40, 40, 440, 440)  # read() が窓の移動を見つけた直後の中途状態
+    reader._forget_board_rect()
+    assert reader.screen_point(4, 4) is None
+    reader._set_board_rect((0, 0, 179, 179))  # 測り直しが終われば新しい窓矩形で答える
+    assert reader.screen_point(4, 4) == (before[0] + 40, before[1] + 40, before[2])
+
+
+def test_reader_redetects_board_rect_when_board_moves_inside_window(monkeypatch):
+    """窓は動いていないのにアプリの中で盤がずれた＝盤矩形を測り直して追従する"""
+    clock = FakeClock()
+    rect = {"now": (0, 0, 10, 10)}
+    frames = [_FakeImage("a"), _FakeImage("b"), _FakeImage("c")]
+    calls = {"detect_board": 0}
+
+    def fake_detect_board(_img):
+        calls["detect_board"] += 1
+        return rect["now"]
+
+    monkeypatch.setattr(bw, "_capture_api", lambda: (
+        lambda _title: (0, 0, 100, 100), lambda _r: frames.pop(0), fake_detect_board,
+        lambda _img, _board_rect, _sizes: (9, [["."] * 9 for _ in range(9)]),
+    ))
+    reader = bw.AppBoardReader("BlueStacks", [9], clock=clock)
+    reader.read()
+    assert reader.screen_point(0, 0)[0] == 11 / 18  # 盤矩形 (0,0,10,10)＝11px・9路 → 第1線は半セル内側
+    reader.read()  # 間隔内なので測り直さない
+    assert calls["detect_board"] == 1
+    clock.advance(bw.BOARD_RECT_RECHECK_SEC)
+    rect["now"] = (4, 4, 14, 14)  # アプリの中で盤が動いた
+    reader.read()
+    assert calls["detect_board"] == 2
+    assert reader._board_rect == (4, 4, 14, 14)
+    assert reader.screen_point(0, 0)[0] == 4 + 11 / 18
+
+
+def test_reader_recheck_failure_propagates_as_capture_failure(monkeypatch):
+    """測り直しで盤が見つからない＝アプリが盤以外の画面へ遷移した。撮影失敗として投げる"""
+    clock = FakeClock()
+    fail = {"now": False}
+    frames = [_FakeImage("a"), _FakeImage("b")]
+
+    def fake_detect_board(_img):
+        if fail["now"]:
+            raise RuntimeError("盤面を検出できません")
+        return (0, 0, 10, 10)
+
+    monkeypatch.setattr(bw, "_capture_api", lambda: (
+        lambda _title: (0, 0, 100, 100), lambda _r: frames.pop(0), fake_detect_board,
+        lambda _img, _board_rect, _sizes: (9, [["."] * 9 for _ in range(9)]),
+    ))
+    reader = bw.AppBoardReader("BlueStacks", [9], clock=clock)
+    reader.read()
+    clock.advance(bw.BOARD_RECT_RECHECK_SEC)
+    fail["now"] = True
+    with pytest.raises(RuntimeError):
+        reader.read()
 
 
 class AheadHarness(Harness):
@@ -1375,6 +1444,39 @@ def test_watcher_clears_ahead_on_mismatch():
     _current, observed, state = _ahead_case()
     h.step(observed, state)
     h.step(_grid(["W..", "...", "..."]), state)  # 1手で説明できない盤＝mismatch
+    assert h.ahead == [(1, 1), None]
+
+
+def test_watcher_clears_ahead_when_board_can_no_longer_be_captured():
+    """アプリが盤以外の画面へ遷移した＝輪の指す交点が画面に無い。出しっぱなしにしない"""
+    h = AheadHarness()
+    _current, observed, state = _ahead_case()
+    h.step(observed, state)
+    assert h.ahead == [(1, 1)]
+    for _ in range(bw.HIGHLIGHT_HIDE_AFTER_FAILURES):
+        h.step(bw.PermanentCaptureError("ウィンドウが見つかりません"))
+    assert h.ahead == [(1, 1), None]
+    h.step(RuntimeError("盤面を検出できません"))
+    assert h.ahead == [(1, 1), None]  # 消したあとは繰り返し通知しない
+
+
+def test_watcher_clears_ahead_on_transient_failures_before_the_warning():
+    """過渡失敗でも輪だけは早く消す（警告の failure_warn_frames=8 まで待たない）"""
+    h = AheadHarness(WatchSettings(failure_warn_frames=8))
+    _current, observed, state = _ahead_case()
+    h.step(observed, state)
+    for _ in range(bw.HIGHLIGHT_HIDE_AFTER_FAILURES):
+        h.step(RuntimeError("盤面の形が不正です"))
+    assert h.ahead == [(1, 1), None]
+    assert not [s for s in h.statuses if s[0] == bw.STATUS_WARN]  # まだ警告は出ていない
+
+
+def test_watcher_clears_ahead_when_state_is_gone():
+    h = AheadHarness()
+    _current, observed, state = _ahead_case()
+    h.step(observed, state)
+    h.state = None  # 対局が消えた・長方形の盤に切り替わった
+    h.step(observed)
     assert h.ahead == [(1, 1), None]
 
 

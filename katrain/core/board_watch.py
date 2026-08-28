@@ -337,6 +337,23 @@ STALL_TEXT = (
 )
 
 
+# 強調表示の輪（screen_marker）を消すまでに許す連続の撮影失敗回数。アプリが盤以外の画面へ
+# 遷移すると `detect_board` / `detect_size_and_classify` が毎周失敗するが、輪の位置は
+# 「アプリ盤の交点」なので盤が見えていない間は意味を持たない＝出しっぱなしにしない。
+# 警告と同じ `failure_warn_frames`(8) まで待たないのは、輪だけは早く消したいから
+# （警告は連続8回＝バックオフ込みで約10秒後）。1 にすると1フレームの過渡失敗で瞬く
+HIGHLIGHT_HIDE_AFTER_FAILURES = 2
+
+# 盤矩形を測り直す間隔[秒]。窓が動けば `read()` が矩形キャッシュを捨てるが、**窓が動かなくても
+# アプリの中で盤がずれる**ことがある（BlueStacks のツールバー表示・回転・アプリ側のレイアウト変更）。
+# その場合キャッシュした盤矩形は永久に古いままで、分類は多少ずれても通ってしまうため、
+# 強調表示の輪だけが交点の中心から少しずれ続ける。1秒に1回 detect_board を撃ち直して追従する。
+# detect_board は窓の大きさに比例する純 Python の走査で、実測 7.3ms(560x900) / 19.0ms(900x1440) /
+# 33.3ms(1200x1900)。撃つのは「盤の画素が動いた周」に限る（静止フレームは指紋の速い経路で先に返る）
+# ので、上限は 1秒あたり1回＝1コアの 0.7〜3.3%。窓が動いた回に元から払っていたのと同じコスト
+BOARD_RECT_RECHECK_SEC = 1.0
+
+
 class PermanentCaptureError(Exception):
     """すぐ直らない失敗（ウィンドウが無い等）。過渡失敗と違い即警告する。
 
@@ -417,6 +434,7 @@ class BoardWatcher:
         self._on_capture_success()
         state = self.get_state_fn()
         if state is None:
+            self._notify_ahead(None)  # 盤が読めない・対象外の盤＝輪を残さない
             return
         if self._pending is not None and not self._resolve_pending(state):
             if self._pending is not None:
@@ -538,6 +556,9 @@ class BoardWatcher:
             )
         # 恒久失敗は即警告、過渡失敗（アニメーション中の "?" 等）は連続 N 回まで黙る。
         # どちらも監視は止めない（最小化しただけで死なないように）
+        if permanent or self._fail_count >= HIGHLIGHT_HIDE_AFTER_FAILURES:
+            # 盤が見えていない＝輪の指す交点が画面に無い。警告より先に消す（上の定数の comment 参照）
+            self._notify_ahead(None)
         if permanent or self._fail_count >= self.settings.failure_warn_frames:
             self._warn(f"盤面を認識できません: {message}")
 
@@ -642,14 +663,21 @@ class AppBoardReader:
     最適化が丸ごと効かなくなるため。
     """
 
-    def __init__(self, window_title, board_sizes):
+    def __init__(self, window_title, board_sizes, clock=time.monotonic):
         self.window_title = window_title
         self.board_sizes = list(board_sizes)
         self.size = None
+        self.clock = clock
         self._window_rect = None
         self._board_rect = None
+        self._rect_checked = None  # 盤矩形を最後に測り直した時刻（BOARD_RECT_RECHECK_SEC）
         self._fingerprint = None
         self._grid = None
+        # screen_point は監視スレッド以外（GUI の `_do_ai_move`・設定変更）からも呼ばれる。
+        # 窓矩形・盤矩形・盤サイズを別々に読むと「新しい窓矩形＋古い盤矩形」という
+        # ありえない組み合わせを引けてしまい、輪が窓の移動量ぶんずれる。3つまとめて
+        # 1つの参照で差し替えることで、読む側は必ず整合した組を見る
+        self._calibration = None  # (window_rect, board_rect, size) or None
 
     def read(self):
         find_window_rect, capture_screen_rect, detect_board, detect_size_and_classify = _capture_api()
@@ -660,33 +688,67 @@ class AppBoardReader:
             raise PermanentCaptureError(str(e)) from e
         if rect != self._window_rect:  # 窓が動いた・リサイズされた
             self._window_rect = rect
-            self._board_rect = None
+            self._forget_board_rect()
         img = capture_screen_rect(rect)
         if self._board_rect is None:
             self._forget_frame()
             board_rect = detect_board(img)
             size, grid = detect_size_and_classify(img, board_rect, self.board_sizes)
-            self._board_rect = board_rect
             self.size = size
+            self._set_board_rect(board_rect)
             self._remember_frame(_board_fingerprint(img, board_rect), grid)
             return grid
         fingerprint = _board_fingerprint(img, self._board_rect)
         if fingerprint is not None and fingerprint == self._fingerprint:
             return self._grid  # 盤の画素が1つも変わっていない＝分類しても同じグリッドになる
+        # 画素が動いた回だけ盤矩形を測り直す。静止フレームで撃たないのは上の速い経路
+        # （1周 21〜23ms）を壊さないため＝盤が動けばその画素も必ず変わるので取りこぼさない
+        if self._recheck_board_rect(img, detect_board):
+            fingerprint = _board_fingerprint(img, self._board_rect)  # 矩形が変わった＝指紋も取り直す
         try:
             _size, grid = detect_size_and_classify(img, self._board_rect, [self.size])
         except Exception:
-            self._board_rect = None  # 次回はフル検出からやり直す
+            self._forget_board_rect()  # 次回はフル検出からやり直す
             self._forget_frame()  # 失敗した回の画素を覚えない（覚えると次周が古いグリッドを返す）
             raise
         self._remember_frame(fingerprint, grid)
         return grid
 
+    def _recheck_board_rect(self, img, detect_board):
+        """盤矩形を BOARD_RECT_RECHECK_SEC ごとに測り直し、ずれていれば張り替える。
+
+        窓矩形が変わらないまま盤だけがアプリ内で動く場合の追従。張り替えたら True を返す。
+        ここで detect_board が失敗したら盤が画面に無い（別画面へ遷移した）ということなので、
+        そのまま撮影失敗として投げる＝監視の警告と強調表示の消去が最短で走る。
+        """
+        now = self.clock()
+        if self._rect_checked is not None and now - self._rect_checked < BOARD_RECT_RECHECK_SEC:
+            return False
+        board_rect = detect_board(img)
+        if board_rect == self._board_rect:
+            self._rect_checked = now
+            return False
+        self._set_board_rect(board_rect)
+        self._forget_frame()  # 矩形が変わった＝前回の指紋とは比べられない（分類し直す）
+        return True
+
+    def _set_board_rect(self, board_rect):
+        self._board_rect = board_rect
+        self._rect_checked = self.clock()
+        self._calibration = (self._window_rect, board_rect, self.size) if self.size else None
+
+    def _forget_board_rect(self):
+        self._board_rect = None
+        self._rect_checked = None
+        self._calibration = None
+
     def screen_point(self, i, j):
         """交点 (i, j) の画面座標 (x, y, セル幅)。盤矩形がまだ確定していなければ None"""
-        if self._window_rect is None or self._board_rect is None or not self.size:
+        calibration = self._calibration  # 別スレッドから呼ばれる＝1回で読み切る（上の comment 参照）
+        if calibration is None:
             return None
-        return intersection_screen_point(self._window_rect, self._board_rect, self.size, i, j)
+        window_rect, board_rect, size = calibration
+        return intersection_screen_point(window_rect, board_rect, size, i, j)
 
     def _remember_frame(self, fingerprint, grid):
         self._fingerprint = fingerprint
