@@ -295,3 +295,50 @@ def test_new_game_reapplies_the_watch_flags_while_the_game_watcher_runs():
             if isinstance(n, ast.Call)
         ]
         assert "apply_game_watch_flags" in calls, f"{name} が apply_game_watch_flags を呼んでいない"
+
+
+def test_ai_move_highlight_is_wired_through_main():
+    """静的検査（追記6）: AI 着手の強調表示は (1) `_do_ai_move` が着手と同時に `_board_watch_ahead` を呼び、
+    (2) `_do_board_watch_start` が BoardWatcher に `on_ahead` を渡し、(3) 監視を止める2経路
+    （`_stop_board_watcher` / `_board_watch_trigger`）が `_board_watch_marker_close` で輪を消す"""
+    main_path = os.path.join(os.path.dirname(__file__), "..", "katrain", "__main__.py")
+    with open(main_path, encoding="utf-8") as f:
+        tree = ast.parse(f.read())
+    funcs = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+
+    def calls(name):
+        return [
+            n for n in ast.walk(funcs[name]) if isinstance(n, ast.Call)
+        ]
+
+    def callee(call):
+        return call.func.id if isinstance(call.func, ast.Name) else getattr(call.func, "attr", None)
+
+    assert "_board_watch_ahead" in [callee(c) for c in calls("_do_ai_move")]
+    watcher_calls = [c for c in calls("_do_board_watch_start") if callee(c) == "BoardWatcher"]
+    assert watcher_calls and any(kw.arg == "on_ahead" for kw in watcher_calls[0].keywords)
+    for name in ("_stop_board_watcher", "_board_watch_trigger"):
+        assert "_board_watch_marker_close" in [callee(c) for c in calls(name)], name
+
+
+def test_highlight_settings_are_exposed_in_the_config_popup():
+    """静的検査（追記6）: 強調表示の ON/OFF と色は設定画面（popups.kv の general 節）の**1つの**ドロップダウン
+    （「表示しない」＋色）から変えられ、保存時に走っている監視へ `_board_watch_highlight_refresh` で即反映される。
+    `_board_watch_ahead` が毎回 config を読む（監視の再起動は不要）。チェックボックスを別行にすると一般設定欄が
+    7行になり既存ラベルが重なる（実測 2026-08-28）ので、行を増やしていないことも固定する"""
+    from katrain.core.screen_marker import highlight_choices
+
+    root = os.path.join(os.path.dirname(__file__), "..", "katrain")
+    kv = open(os.path.join(root, "popups.kv"), encoding="utf-8").read()
+    assert "highlight_ai_move" not in kv  # ON/OFF は色の「表示しない」に統合＝行数を増やさない
+    assert 'input_property: "board_watch/highlight_color"' in kv
+    assert 'i18n_prefix: "board_watch:highlight_color:"' in kv
+    popups = open(os.path.join(root, "gui", "popups.py"), encoding="utf-8").read()
+    assert "_board_watch_highlight_refresh" in popups and "fill_highlight_colors" in popups
+    main = open(os.path.join(root, "__main__.py"), encoding="utf-8").read()
+    ahead = main.split("def _board_watch_ahead(")[1].split("\n    def ")[0]
+    assert '"highlight_color"' in ahead and "highlight_ai_move" not in ahead
+    for locale in ("en", "jp"):
+        po = open(os.path.join(root, "i18n", "locales", locale, "LC_MESSAGES", "katrain.po"), encoding="utf-8").read()
+        for name in highlight_choices():
+            assert f'msgid "board_watch:highlight_color:{name}"' in po, (locale, name)

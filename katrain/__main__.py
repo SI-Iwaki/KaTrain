@@ -473,6 +473,13 @@ class KaTrainGui(Screen, KaTrainBase):
                 autoloop = getattr(self, "_autoloop", None)
                 if autoloop is not None and move is not None and move.player == "B":
                     autoloop.on_black_move(id(self.game), move.coords)
+                # 対局監視モード: AI の手はユーザーが手でアプリへタップするので、その交点をアプリ盤の上に
+                # 強調表示する（監視スレッドの ahead 判定を待たず着手と同時に出す。消すのは監視側＝
+                # アプリ盤に石が現れて in_sync になった周。board_watch spec 追記6）
+                if getattr(self, "_board_watch_kind", None) == "game" and move is not None and move.coords is not None:
+                    from katrain.core.board_watch import move_to_grid
+
+                    self._board_watch_ahead(move_to_grid(move.coords, self.game.board_size[0]))
             else:
                 self.log(f"AI Mode {mode} not found!", OUTPUT_ERROR)
 
@@ -707,6 +714,7 @@ class KaTrainGui(Screen, KaTrainBase):
             stones_to_grid,
             watch_settings_from_config,
         )
+        from katrain.core.screen_marker import ScreenMarker
 
         ai_players = [bw for bw, info in self.players_info.items() if info.ai]
         if len(ai_players) != 1:
@@ -765,12 +773,21 @@ class KaTrainGui(Screen, KaTrainBase):
         def on_move(i, j, color, move_number, board_size):
             self("board-watch-play", grid_to_move(i, j, board_size), color, move_number)
 
+        watch_cfg = self._config.get("board_watch") or {}
+        # AI の手をアプリ盤の上に強調表示する輪（screen_marker・spec 追記6）。座標は reader が持つ
+        # 窓矩形＋盤矩形から引くので reader も持っておく。前回の輪が残っていれば捨てる
+        self._board_watch_marker_close()
+        self._board_watch_reader = reader
+        if ScreenMarker.available():
+            # ON/OFF・色は _board_watch_ahead が毎回設定を読む＝設定画面で変えれば走っている監視にも効く
+            self._board_watch_marker = ScreenMarker(log=lambda message: self.log(message, OUTPUT_INFO))
         watcher = BoardWatcher(
             capture_fn=reader.read,
             get_state_fn=self._board_watch_state,
             on_move=on_move,
             on_status=self._board_watch_status,
-            settings=watch_settings_from_config(self._config.get("board_watch")),
+            on_ahead=self._board_watch_ahead,
+            settings=watch_settings_from_config(watch_cfg),
         )
         existing = getattr(self, "_board_watcher", None)
         if existing is not None:
@@ -1563,6 +1580,42 @@ class KaTrainGui(Screen, KaTrainBase):
 
         Clock.schedule_once(_set, 0)
 
+    def _board_watch_ahead(self, move):
+        """「KaTrain が打ったがアプリにまだ無い手」(i, j) or None。アプリ盤の交点の上に輪を出す／消す。
+
+        監視スレッド（BoardWatcher.on_ahead＝ahead の間は毎周・解消で1回 None）と `_do_ai_move`
+        （着手と同時）の両方から呼ばれる。輪の座標は reader がキャッシュする窓矩形＋盤矩形から
+        毎回引き直すので、アプリの窓が動いても次の周で追い直す。ScreenMarker はスレッド安全
+        """
+        from katrain.core.screen_marker import ring_color
+
+        marker = getattr(self, "_board_watch_marker", None)
+        if marker is None:
+            return
+        cfg = self._config.get("board_watch") or {}
+        reader = getattr(self, "_board_watch_reader", None)
+        color = ring_color(cfg.get("highlight_color"))  # None ＝設定「表示しない」
+        point = reader.screen_point(*move) if (color and move is not None and reader is not None) else None
+        if point is None:
+            marker.hide()
+        else:
+            marker.set_color(color)
+            marker.show(*point)
+
+    def _board_watch_highlight_refresh(self):
+        """設定画面で強調表示の ON/OFF・色が変わった。対局監視が走っていれば今の ahead に当て直す"""
+        watcher = getattr(self, "_board_watcher", None)
+        if watcher is None or getattr(self, "_board_watch_kind", None) != "game":
+            return
+        self._board_watch_ahead(watcher.ahead_move)
+
+    def _board_watch_marker_close(self):
+        marker = getattr(self, "_board_watch_marker", None)
+        self._board_watch_marker = None
+        self._board_watch_reader = None
+        if marker is not None:
+            marker.close()
+
     def _board_watch_state(self):
         """監視スレッドが読む KaTrain 側のスナップショット（判定は board_watch 側で行う）"""
         from katrain.core.board_watch import WatchState, move_to_grid, previous_app_grid, stones_to_grid
@@ -1620,6 +1673,7 @@ class KaTrainGui(Screen, KaTrainBase):
         stopped_kind = getattr(self, "_board_watch_kind", None)
         self._board_watcher = None
         self._board_watch_kind = None
+        self._board_watch_marker_close()
         if stopped_kind == "game":
             # 監視 OFF で先読み系のフラグも戻す（game.py の board_watch_* の契約）。
             # 戻さないと監視を止めた後も応手先読みが回り続ける
@@ -1781,6 +1835,7 @@ class KaTrainGui(Screen, KaTrainBase):
                 watcher.stop()
                 self._board_watcher = None
                 self._board_watch_kind = None
+                self._board_watch_marker_close()
                 # 監視を止めたら先読みも止める（通常の対局・検討で GPU を焼かない）
                 if self.game:
                     self.game.board_watch_prefetch_replies = 0

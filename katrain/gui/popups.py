@@ -795,12 +795,18 @@ class ConfigPopup(BaseConfigPopup):
     def __init__(self, katrain):
         super().__init__(katrain)
         self.fill_board_themes()  # build_and_set_properties が選択中の値を当てる前に選択肢を揃える
+        self.fill_highlight_colors()
         Clock.schedule_once(self.check_katas)
         MDApp.get_running_app().bind(language=self.check_models)
         MDApp.get_running_app().bind(language=self.check_katas)
 
     def fill_board_themes(self, *_args):
         self.board_theme.value_refs = [name for name, _label in theme_manager.list_themes()]
+
+    def fill_highlight_colors(self, *_args):
+        from katrain.core.screen_marker import highlight_choices
+
+        self.highlight_color.value_refs = highlight_choices()  # "off" ＋ 色のキー。表示名は i18n_prefix + キー
 
     def apply_board_theme(self):
         applied = theme_manager.apply_theme(
@@ -816,6 +822,8 @@ class ConfigPopup(BaseConfigPopup):
 
         if "general/board_theme" in updated:
             self.apply_board_theme()
+        if any(key.startswith("board_watch/highlight_") for key in updated):
+            self.katrain._board_watch_highlight_refresh()  # 走っている対局監視の輪に即反映
 
         ignore = {"max_visits", "fast_visits", "max_time", "enable_ownership", "wide_root_noise"}
         detected_restart = [key for key in updated if "engine" in key and not any(ig in key for ig in ignore)]

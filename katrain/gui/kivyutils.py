@@ -324,13 +324,16 @@ class I18NSpinner(KeyValueSpinner):
     value_refs = ListProperty()
     selected_index = NumericProperty(0)
     font_name = StringProperty(Theme.DEFAULT_FONT)
+    # 表示名の i18n キーに付ける接頭辞。設定値（value_refs）は短いキーのまま（例 "cyan"）で、
+    # 表示名は "board_watch:highlight_color:cyan" のような名前空間つきキーで引ける
+    i18n_prefix = StringProperty("")
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         MDApp.get_running_app().bind(language=self.build_values)
 
     def build_values(self, *_args):
-        self.values = [i18n._(ref) for ref in self.value_refs]
+        self.values = [i18n._(self.i18n_prefix + ref) for ref in self.value_refs]
         super().build_values()
 
 

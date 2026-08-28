@@ -235,6 +235,7 @@ kv 側で触るのは4系統: ラベルのテキスト式（`detail` を最優�
 | `backoff_after_failures` | `3` | 連続失敗が何回でバックオフを始めるか |
 | `backoff_factor` | `2.0` | バックオフ時に周期を何倍にするか |
 | `poll_interval_max_ms` | `2000` | バックオフの上限（成功1回で既定周期へ即復帰） |
+| `highlight_color` | `"cyan"` | AI の着手をアプリ盤の該当交点の真上に出す輪の色（追記6）。`"off"` で表示しない。値は `screen_marker.highlight_choices()`＝off / cyan / magenta / lime / red / orange / white。設定画面 general 節のドロップダウン |
 
 パッケージ `katrain/config.json` と `C:\Users\iwaki\.katrain\config.json` の**両方**に追加する（後者はマージされない: `base_katrain.py:210-238` はファイル不在か `version < CONFIG_MIN_VERSION` のときだけ丸ごとコピーし、実測でユーザーの `general.version` は `1.17.0`）。ローカル側は **KaTrain を終了した状態でメインセッションから直接編集**する（起動中の編集は終了時の全体書き戻しで消える。`base_katrain.py:254-259`）。
 
@@ -562,3 +563,65 @@ next_player が AI 側になり、**先読みが1本も発火しないまま両�
 - **自ノード解析**: 監視モードで ponder が armed なら `Game.play` は自ノードに fast（100v）解析だけを出し、
   フル解析は ponder が温めの後に発行する（`Game._enigma_ponder_defers_own_analysis`）。詳細・実測は
   enigma spec 追記9。
+
+## 16. 追記6（2026-08-28）: AI の着手をアプリ盤の真上に強調表示する（`screen_marker`）
+
+**動機**: 同期は片方向（§1）なので KaTrain の AI が打った手はユーザーが手でアプリへタップする。そのたびに
+KaTrain の盤とアプリの盤を見比べる往復が要る（ユーザー報告）。自動タップ（ADB・autoloop と同じ機構）は
+今回も入れない＝対局アプリでは誤タップの取り消しが利かないため、輪を出すだけに留める。
+
+**設計**（`katrain/core/screen_marker.py`・Kivy 非依存・Windows 専用）:
+- 最前面（`WS_EX_TOPMOST`）・クリック透過（`WS_EX_TRANSPARENT`）・非アクティブ（`WS_EX_NOACTIVATE`）・
+  タスクバー非表示（`WS_EX_TOOLWINDOW`）の**ピクセル単位の透明度を持つレイヤード窓**（`WS_EX_LAYERED` +
+  `UpdateLayeredWindow`）に、アンチエイリアスした輪（外径＝セル幅・太さ 14%。PIL で 8 倍解像度に描いて
+  面積平均＝BOX で縮小・事前乗算 BGRA＝`ring_bgra`。LANCZOS は2値マスクでリンギングし線の内側が 253〜254 になる）を 1 枚載せてアプリ盤の交点の真上に置く。当初は窓を輪の形に
+  切り抜く `SetWindowRgn` 方式だったが、領域は画素単位の階段状にしかならず輪が荒かった（ユーザー報告・
+  同日差し替え。描画は表示・移動・色変更のたびに 80px 四方を 1 回作るだけで常時の負荷なし）。
+  **アプリには入力もフックも送らない**（DWM が上に合成するだけ。Android 側からは存在を知る手段がない）。
+- 窓の生成・移動・破棄は専用スレッド（メッセージループ）。他スレッドは目標状態を書いて `PostMessage`
+  （`WM_APP+1`）で起こすだけ＝`show`/`hide`/`close` はどのスレッドから呼んでもよい。
+- **要点＝監視スレッド自身の `ImageGrab` に写り込ませない**。写ると輪の画素が石でも空点でもない色なので
+  交点分類が `?`→認識失敗になり、盤矩形の fingerprint も毎周変わる。`SetWindowDisplayAffinity(hwnd,
+  WDA_EXCLUDEFROMCAPTURE=0x11)` で BitBlt から除外する。スパイク実測（2026-08-28・build 26200・
+  scale 100%・80px の輪）: 対照（region 窓）＝輪が **1764 画素**写る／`WDA_EXCLUDEFROMCAPTURE`＝差分
+  **0 画素**／`WS_EX_LAYERED` だけ＝1764 写る（レイヤードは除外にならない）／layered+WDA＝0。
+  AA レイヤード窓（`UpdateLayeredWindow`・採用版）でも 対照 2788 画素 → WDA で **0 画素**。
+  除外に失敗した環境（Win10 2004 未満）では `capture_excluded=False` にして**輪を出さない**
+  （監視を壊すより表示を諦める側に倒す。ログに1行）。
+
+**座標**: `board_watch.intersection_screen_point(window_rect, board_rect, size, i, j)`＝
+`classify_intersections` と同じ規則配置（セル幅＝盤幅/size・第1線は盤端から半セル内側）で、autoloop の
+`board_to_device` の画面座標版。`AppBoardReader.screen_point(i, j)` がキャッシュ済みの窓矩形＋盤矩形から
+毎回引くので、アプリの窓が動いても次の周で追い直す（reader が窓矩形の変化で盤矩形を再検出する）。
+座標系は `find_window_rect`（GetWindowRect）と同じ＝同一プロセス内で `CreateWindowExW` も同じ空間。
+
+**タイミング**（`__main__`）:
+- 表示: `_do_ai_move` が `generate_ai_move` から戻った直後（`_board_watch_kind == "game"` のとき）に
+  `_board_watch_ahead((i, j))`＝**着手と同時**。監視スレッドの ahead 判定（idle 周期 400ms）を待たない。
+- 監視側: `BoardWatcher(on_ahead=...)`（省略可能・既定 None＝従来どおり）。verdict が `ahead` の間は
+  毎周 `(i, j)` を、`ahead` でなくなったら `None` を**1回だけ**通知する（`_notify_ahead`）。
+  同じ `_board_watch_ahead` に入るので、ユーザーがタップしてアプリ盤に石が出た周（`in_sync`）で消え、
+  `mismatch`／`waiting` でも消える。undo 等で GUI 側フックを通らない ahead はここが拾う。
+- 後始末: `_stop_board_watcher` とトグル OFF（`_board_watch_trigger` の停止分岐）の両方が
+  `_board_watch_marker_close()` で窓を破棄する。開始時は前回の輪を捨ててから作り直す。
+
+**設定**: `board_watch.highlight_color`（既定 `"cyan"`・§5 表）の1キーだけ。`"off"` で表示しない＝ON/OFF と色を
+設定画面の**1つのドロップダウン**に統合する（パッケージとローカルの両 `config.json` に追加済み）。当初は チェックボックス＋色 の
+2行にしたが、設定画面の一般設定欄はエンジン設定欄と同じ高さに固定されており、5→7 行にすると既存の2行ラベル
+（手順アニメーション・デバッグレベル等）まで重なった（実測 2026-08-28・ユーザー報告のスクリーンショット）。6 行に戻し、
+あわせて `popups.kv` の高さ配分を Main Content Area 6→5.5 / Settings Area 4→4.5 に寄せている。
+**設定画面に出す**（`board_watch` 節で GUI に出す初のキー）: `popups.kv` の general 節「盤面テーマ」の下に手書き
+（動的生成は `ai/<strategy>` 専用のため）。選択肢は `screen_marker.highlight_choices()` を `ConfigPopup.fill_highlight_colors`
+が `value_refs` に流し込み、表示名は `I18NSpinner.i18n_prefix`（新設）＋キー＝`board_watch:highlight_color:<キー>` で
+i18n（en/jp）。保存時に `board_watch/highlight_*` が変わっていれば `_board_watch_highlight_refresh` が走っている監視の輪へ
+即反映（`BoardWatcher.ahead_move` を当て直す。`_board_watch_ahead` が毎回 config を読むので監視の再起動は不要）。
+色の差し替えは輪のビットマップを描き直して `UpdateLayeredWindow` で載せ直す（`ScreenMarker.set_color`）。
+
+**テスト**: `tests/test_screen_marker.py`（幾何の純関数／実窓を作って「画面には見える（`IsWindowVisible`）が
+自分の `ImageGrab` には写らない」、対照として除外を外すと同じ撮り方で写る／除外失敗時は出ない／close 後の
+show は無視）、`tests/test_board_watch.py`（`intersection_screen_point`・`screen_point` 未校正 None・
+`on_ahead` の「毎周／解消1回／mismatch で解消／未指定で不変」）、`tests/test_board_watch_prefetch.py`
+（配線の静的検査: `_do_ai_move`→`_board_watch_ahead`・`BoardWatcher(on_ahead=)`・停止2経路→`_board_watch_marker_close`）。
+
+**未検証・既知の限界**: 実対局での体感は未計測。BlueStacks を排他フルスクリーンにすると最前面窓が出ない
+可能性がある（ウィンドウモードで使う）。DPI 100% 以外は既存のキャプチャ座標系にそのまま従う。

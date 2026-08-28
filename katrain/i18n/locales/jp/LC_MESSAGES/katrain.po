@@ -436,6 +436,30 @@ msgstr "コンソールのデバッグレベル"
 msgid "general:board_theme"
 msgstr "盤面テーマ"
 
+msgid "board_watch:highlight_color"
+msgstr "AI 着手の強調表示（監視モード）"
+
+msgid "board_watch:highlight_color:off"
+msgstr "表示しない"
+
+msgid "board_watch:highlight_color:cyan"
+msgstr "シアン"
+
+msgid "board_watch:highlight_color:magenta"
+msgstr "マゼンタ"
+
+msgid "board_watch:highlight_color:lime"
+msgstr "緑"
+
+msgid "board_watch:highlight_color:red"
+msgstr "赤"
+
+msgid "board_watch:highlight_color:orange"
+msgstr "オレンジ"
+
+msgid "board_watch:highlight_color:white"
+msgstr "白"
+
 msgid "default"
 msgstr "デフォルト"
 

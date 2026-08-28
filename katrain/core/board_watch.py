@@ -371,11 +371,18 @@ class BoardWatcher:
         active_kinds=("in_sync",),
         stall_kinds=("in_sync", "ahead", "waiting"),
         stall_text=STALL_TEXT,
+        on_ahead=None,
     ):
         self.capture_fn = capture_fn
         self.get_state_fn = get_state_fn
         self.on_move = on_move
         self.on_status = on_status
+        # 「KaTrain が打ったがアプリにまだ無い手」(i, j) を外へ知らせる省略可能なフック（spec 追記6）。
+        # 対局モードは AI の手をユーザーが手でタップするので、その交点をアプリ盤の上に強調表示する
+        # （screen_marker）。ahead の間は毎周呼ぶ（アプリの窓が動いたら座標を追い直せるように）、
+        # ahead でなくなったら None を1回だけ。既定 None＝従来どおり何もしない
+        self.on_ahead = on_ahead
+        self._ahead_move = None
         self.settings = settings
         # 低遅延（poll_interval_active_ms）で回す無音状態の集合。既定は in_sync だけ＝対局
         # モードの従来どおり。詰碁は ahead（黒を打ったがまだアプリへタップしていない）が
@@ -416,6 +423,7 @@ class BoardWatcher:
                 self._active()  # 注入した手が反映されるまでは速く確認する（タイムアウト後は idle へ戻す）
             return
         verdict = reconcile(state, observed)
+        self._notify_ahead(state.last_move[:2] if verdict.kind == "ahead" and state.last_move else None)
         if verdict.kind == "mismatch":
             self._on_mismatch(verdict.reason)
             return
@@ -465,6 +473,19 @@ class BoardWatcher:
         self._pending = (move[0], move[1], state.move_number, self.clock() + self.settings.inject_timeout_ms / 1000.0)
         self._watching()
         self.on_move(move[0], move[1], state.to_play, state.move_number, state.board_size)
+
+    @property
+    def ahead_move(self):
+        """直近の周で ahead だった手 (i, j)。ahead でなければ None（設定変更時の強調表示の当て直しに使う）"""
+        return self._ahead_move
+
+    def _notify_ahead(self, move):
+        """ahead の最終手を on_ahead へ。ahead 中は毎周、解消（None）は1回だけ通知する"""
+        if move is None and self._ahead_move is None:
+            return
+        self._ahead_move = move
+        if self.on_ahead is not None:
+            self.on_ahead(move)
 
     def _on_mismatch(self, reason):
         self._stable_move = None
@@ -581,6 +602,20 @@ def _capture_api():
     return find_window_rect, capture_screen_rect, detect_board, detect_size_and_classify
 
 
+def intersection_screen_point(window_rect, board_rect, size, i, j):
+    """交点 (i, j) の画面座標 (x, y) とセル幅を返す（純関数）。
+
+    格子は `tsumego_capture.classify_intersections` と同じ規則配置（セル幅 = 盤幅/size・第1線は盤端から
+    半セル内側）で、autoloop の `board_to_device` の画面座標版。board_rect は窓画像内の座標なので
+    窓の左上（`find_window_rect`＝GetWindowRect）を足す。AI の手の強調表示（screen_marker）に使う
+    """
+    wx, wy = window_rect[0], window_rect[1]
+    x0, y0, x1, y1 = board_rect
+    cell_w = (x1 - x0 + 1) / size
+    cell_h = (y1 - y0 + 1) / size
+    return wx + x0 + cell_w * (j + 0.5), wy + y0 + cell_h * (i + 0.5), min(cell_w, cell_h)
+
+
 def _board_fingerprint(img, board_rect):
     """盤矩形の画素そのもの（バイト列）を返す。取れなければ None＝「比較しない」に倒す。
 
@@ -646,6 +681,12 @@ class AppBoardReader:
             raise
         self._remember_frame(fingerprint, grid)
         return grid
+
+    def screen_point(self, i, j):
+        """交点 (i, j) の画面座標 (x, y, セル幅)。盤矩形がまだ確定していなければ None"""
+        if self._window_rect is None or self._board_rect is None or not self.size:
+            return None
+        return intersection_screen_point(self._window_rect, self._board_rect, self.size, i, j)
 
     def _remember_frame(self, fingerprint, grid):
         self._fingerprint = fingerprint

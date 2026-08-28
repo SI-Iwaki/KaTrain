@@ -1329,3 +1329,57 @@ def test_stall_kinds_defaults_to_in_sync_ahead_waiting():
     )
     assert watcher.stall_kinds == ("in_sync", "ahead", "waiting")
     assert watcher.stall_text == bw.STALL_TEXT
+
+
+# --- 追記6: AI 着手の強調表示（screen_marker）へ渡す ahead の通知と、交点の画面座標 ---
+from katrain.core.board_watch import AppBoardReader, intersection_screen_point
+
+
+def test_intersection_screen_point_matches_classify_geometry():
+    # 窓 (100, 200) 起点・盤矩形は窓内 (10, 20)-(189, 199)＝180px・9路 → セル 20px、第1線は半セル内側
+    x, y, cell = intersection_screen_point((100, 200, 500, 600), (10, 20, 189, 199), 9, 0, 0)
+    assert (x, y, cell) == (100 + 10 + 10, 200 + 20 + 10, 20)
+    x, y, _cell = intersection_screen_point((100, 200, 500, 600), (10, 20, 189, 199), 9, 8, 3)
+    assert (x, y) == (100 + 10 + 20 * 3.5, 200 + 20 + 20 * 8.5)  # i=行（y）・j=列（x）
+
+
+def test_reader_screen_point_is_none_before_calibration():
+    reader = AppBoardReader("BlueStacks", [9])
+    assert reader.screen_point(0, 0) is None
+    reader._window_rect = (0, 0, 400, 400)
+    reader._board_rect = (0, 0, 179, 179)
+    reader.size = 9
+    assert reader.screen_point(4, 4) == (90, 90, 20)
+
+
+class AheadHarness(Harness):
+    def __init__(self, settings=None):
+        super().__init__(settings)
+        self.ahead = []
+        self.watcher.on_ahead = self.ahead.append
+
+
+def test_watcher_reports_ahead_move_every_frame_and_clears_once():
+    h = AheadHarness()
+    current, observed, state = _ahead_case()
+    h.step(observed, state)
+    h.step(observed, state)
+    assert h.ahead == [(1, 1), (1, 1)]  # ahead の間は毎周（アプリの窓が動いたら座標を追い直す）
+    h.step(current, state)  # ユーザーがタップした＝in_sync
+    h.step(current, state)
+    assert h.ahead == [(1, 1), (1, 1), None]  # 解消は1回だけ
+
+
+def test_watcher_clears_ahead_on_mismatch():
+    h = AheadHarness()
+    _current, observed, state = _ahead_case()
+    h.step(observed, state)
+    h.step(_grid(["W..", "...", "..."]), state)  # 1手で説明できない盤＝mismatch
+    assert h.ahead == [(1, 1), None]
+
+
+def test_watcher_without_on_ahead_is_unchanged():
+    h = Harness()
+    _current, observed, state = _ahead_case()
+    h.step(observed, state)  # on_ahead 未指定でも落ちない・注入もしない
+    assert h.moves == [] and h.watcher.ahead_move == (1, 1)

@@ -687,6 +687,30 @@ msgstr "Debug level in the console"
 msgid "general:board_theme"
 msgstr "Board theme"
 
+msgid "board_watch:highlight_color"
+msgstr "Highlight AI move (watch mode)"
+
+msgid "board_watch:highlight_color:off"
+msgstr "Off"
+
+msgid "board_watch:highlight_color:cyan"
+msgstr "Cyan"
+
+msgid "board_watch:highlight_color:magenta"
+msgstr "Magenta"
+
+msgid "board_watch:highlight_color:lime"
+msgstr "Green"
+
+msgid "board_watch:highlight_color:red"
+msgstr "Red"
+
+msgid "board_watch:highlight_color:orange"
+msgstr "Orange"
+
+msgid "board_watch:highlight_color:white"
+msgstr "White"
+
 msgid "default"
 msgstr "default"
 

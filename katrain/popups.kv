@@ -91,6 +91,7 @@
     humanlike_model_files: humanlike_model_files
     katago_files: katago_files
     board_theme: board_theme
+    highlight_color: highlight_color
     download_progress_box: download_progress_box
     katago_download_progress_box: katago_download_progress_box
 
@@ -120,7 +121,7 @@
     # Main Content Area
     MDBoxLayout:
         orientation: 'vertical'
-        size_hint: (1, 6)
+        size_hint: (1, 5.5)  # 6 → 5.5: 一般設定が6行になったぶん Settings Area へ回す（追記6）
         spacing: dp(15)
         padding: dp(10)
 
@@ -232,7 +233,7 @@
 
     # Settings Area
     MDBoxLayout:
-        size_hint: (1, 4)
+        size_hint: (1, 4.5)  # 4 → 4.5（上と対）
         orientation: 'horizontal'
         padding: dp(10)
         spacing: dp(20)
@@ -281,6 +282,20 @@
                 LabelledSpinner:
                     id: board_theme
                     input_property: "general/board_theme"
+                    size_hint: 0.95, 0.8
+                    font_size: sp(Theme.DESC_FONT_SIZE)
+
+            # 盤面監視: AI の着手をアプリ盤の真上に輪で示す（board_watch spec 追記6）。
+            # ON/OFF は選択肢「表示しない」に統合＝この欄はエンジン設定と同じ高さに固定されているので
+            # 行を増やさない（7行にすると既存の2行ラベルまで重なる。実測 2026-08-28）
+            DescriptionLabel:
+                text: i18n._("board_watch:highlight_color")
+                size_hint_x: 1.5
+            AnchorLayout:
+                LabelledSpinner:
+                    id: highlight_color
+                    input_property: "board_watch/highlight_color"
+                    i18n_prefix: "board_watch:highlight_color:"
                     size_hint: 0.95, 0.8
                     font_size: sp(Theme.DESC_FONT_SIZE)
 
