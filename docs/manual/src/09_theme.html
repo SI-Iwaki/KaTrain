@@ -1,0 +1,18 @@
+
+<h2 id="theme"><span class="num">09</span>盤面テーマ（盤と碁石のデザイン）</h2>
+<p>
+一般・エンジン設定の「盤面テーマ」ドロップダウンで、盤の木目・碁石・線の見た目を切り替えられます。同梱テーマは <code>default</code> / <code>koast</code> / <code>lizzie</code> / <code>milos</code> の 4 つ（元の KaTrain の themes に由来）。
+<b>盤の描画はその場で切り替わります</b>。右パネルの背景色やフォントなど盤以外の部分は再起動後に反映されます。
+</p>
+<div class="shots">
+  <figure class="shot"><img src="img/theme_default.png" alt="テーマ default"><figcaption>default</figcaption></figure>
+  <figure class="shot"><img src="img/theme_koast.png" alt="テーマ koast"><figcaption>koast</figcaption></figure>
+  <figure class="shot"><img src="img/theme_lizzie.png" alt="テーマ lizzie"><figcaption>lizzie</figcaption></figure>
+  <figure class="shot"><img src="img/theme_milos.png" alt="テーマ milos"><figcaption>milos</figcaption></figure>
+</div>
+<h3 id="theme-custom">自分でテーマを作る</h3>
+<ul>
+  <li><code>~/.katrain/themes/&lt;名前&gt;/</code> にフォルダを作り、<code>theme.json</code>（<code>katrain/gui/theme.py</code> の <code>Theme</code> クラスの属性を上書き）と、差し替えたい画像（<code>board.png</code> / <code>B_stone.png</code> / <code>W_stone.png</code> 等・同梱と同じファイル名）を置くと一覧に出ます。</li>
+  <li>従来どおり <code>~/.katrain/theme*.json</code> をベタ置きした設定は常時適用され、その上に選択テーマが重なります。</li>
+  <li>地合推定の表示スタイル（<code>TERRITORY_DISPLAY</code>: blended / shaded / marks / blocks）や石のマーク（<code>STONE_MARKS</code>: all / weak / none）、色（<code>OWNERSHIP_COLORS</code>）もテーマで変えられます。詳細は <code>THEMES.md</code>。</li>
+</ul>

@@ -1,0 +1,80 @@
+
+<h2 id="analyze"><span class="num">05</span>分析する</h2>
+
+<h3 id="analyze-load">棋譜を読み込む・保存する</h3>
+<ul>
+  <li><b>読込</b>: メニュー →「棋譜読込」（<kbd>Ctrl</kbd>+<kbd>L</kbd>）。SGF のほか NGF・GIB も読めます。ファイルをウィンドウにドラッグ＆ドロップしても開けます。</li>
+  <li><b>クリップボードから</b>: SGF のテキストをコピーして <kbd>Ctrl</kbd>+<kbd>V</kbd>。全手を簡易解析し、最終手だけ通常解析します。</li>
+  <li><b>保存</b>: 「棋譜保存」（<kbd>Ctrl</kbd>+<kbd>S</kbd>）／「名前をつけて棋譜保存」（<kbd>Ctrl</kbd>+<kbd>D</kbd>）／<kbd>Ctrl</kbd>+<kbd>C</kbd> でクリップボードへ。既定の保存先は一般設定の <code>sgf_save</code>（このリポジトリでは <code>sgfout/</code>）。</li>
+</ul>
+<figure class="shot half">
+  <img src="img/popup_load.png" alt="棋譜読込ダイアログ">
+  <figcaption><b>棋譜読込。</b>「簡易解析」を ON にすると全手を軽い探索で一気に解析します（あとから <kbd>F2</kbd> で深く解析できます）。「初手に巻戻す」を OFF にすると最終局面から開きます。</figcaption>
+</figure>
+
+<h3 id="analyze-toggles">盤上に表示するもの（上部のチェックボックス）</h3>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>キー</th><th>チェックボックス</th><th>表示されるもの</th></tr></thead>
+  <tbody>
+    <tr><td><kbd>q</kbd></td><th>次の着手</th><td>棋譜で次に打たれた手（分岐がある場合はすべて）。次の一手を当てる練習のときは OFF に。</td></tr>
+    <tr><td><kbd>w</kbd></td><th>ドット表示</th><td>着手の損失を色で示す点。3 状態（全部／直近だけ／なし）。</td></tr>
+    <tr><td><kbd>e</kbd></td><th>上位候補</th><td>KataGo が読んだ候補手を損失の色つきで表示。<b>候補にカーソルを載せると予想手順が盤上に流れます</b>。小さく薄い点は探索が浅く信頼度が低い手。</td></tr>
+    <tr><td><kbd>r</kbd></td><th>第一感</th><td>ニューラルネットの「読まずに感じる」第一候補（policy）。数字はその確率。ON にすると「上位候補」は自動で OFF になります。</td></tr>
+    <tr><td><kbd>t</kbd></td><th>地合推定</th><td>各交点がどちらの地になりそうか（ownership）を色の濃さで表示。</td></tr>
+  </tbody>
+</table>
+</div>
+<figure class="shot half">
+  <img src="img/main_policy.png" alt="第一感表示">
+  <figcaption><b>第一感（policy）表示。</b>読みを一切入れない「形の感覚」だけの評価。数字が大きいほど「その手が自然」と感じている。</figcaption>
+</figure>
+
+<h3 id="analyze-menu">分析オプション（深い分析のメニュー）</h3>
+<p>「分析オプション」ボタンを押すと次のメニューが開きます。各項目はキー 1 つでも呼び出せます。</p>
+<figure class="shot half">
+  <img src="img/analysis_menu.png" alt="分析オプションのメニュー">
+  <figcaption><b>分析オプションのメニュー。</b></figcaption>
+</figure>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>キー</th><th>項目</th><th>何をするか</th></tr></thead>
+  <tbody>
+    <tr><td><kbd>a</kbd></td><th>さらに深く分析</th><td>今の局面をより多くの探索手数で読み直し、評価の精度を上げます。</td></tr>
+    <tr><td><kbd>s</kbd></td><th>候補手を均等に分析</th><td>表示中の候補手をすべて最善手と同じ探索手数まで読ませ、薄い点の候補の信頼度を上げます。</td></tr>
+    <tr><td><kbd>d</kbd></td><th>盤上すべての手を簡易分析</th><td>打てる手を全部軽く評価します。「まともな手が何通りあるか」を見るのに便利。</td></tr>
+    <tr><td><kbd>f</kbd></td><th>他の候補手を分析</th><td>今の候補手を除外して新たな候補を探させます。</td></tr>
+    <tr><td><kbd>g</kbd></td><th>領域を絞って分析</th><td>盤上をドラッグして囲んだ範囲の中だけを読ませます。<b>詰碁や部分的な死活を調べるときに</b>。解除は範囲を指定するメッセージが出ている間に盤上の 1 点だけをクリック。</td></tr>
+    <tr><td><kbd>h</kbd></td><th>分析をリセット</th><td>追加分析の結果を捨て、通常の分析結果に戻します。</td></tr>
+    <tr><td><kbd>i</kbd></td><th>棋譜の途中に手を追加</th><td>「挿入モード」。途中に手を差し込んだあと、もう一度 <kbd>i</kbd> を押すと残りの手順がコピーされます。両者が見落とした手の交換を補って解析するときに。</td></tr>
+    <tr><td><kbd>l</kbd></td><th>終局まで簡易自動対局</th><td>今の局面から AI 同士で終局まで打ち、折り畳んだ分岐として追加します。ミスの影響を最後まで見たいときに。</td></tr>
+    <tr><td><kbd>F2</kbd></td><th>一局全体を深く分析</th><td>全手を指定の探索手数で読み直します（下記）。</td></tr>
+    <tr><td><kbd>F3</kbd></td><th>評価レポート</th><td>両者の正確度・平均損失・AI との一致率を序盤／中盤／終盤別に表示します（下記）。</td></tr>
+    <tr><td><kbd>F10</kbd></td><th>詰碁用の外枠</th><td>隅や辺に置いた死活問題の周りを石で埋め、AI が詰碁として正しく読めるようにします（→ <a href="#tsumego-frame">07</a>）。</td></tr>
+    <tr><td><kbd>Space</kbd></td><th>分析の継続・停止</th><td>他の解析が無い間、今の局面を読み続けます（Lizzie の「ponder」相当）。<kbd>Shift</kbd>+<kbd>Space</kbd> なら「上位候補」を ON にせずに開始。</td></tr>
+    <tr><td><kbd>Enter</kbd></td><th>AIの推奨手を打つ</th><td>今の手番の対局者設定に関係なく AI に 1 手打たせます。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h4 id="analyze-report">評価レポート（<kbd>F3</kbd>）</h4>
+<figure class="shot half">
+  <img src="img/popup_report.png" alt="評価レポート">
+  <figcaption><b>評価レポート。</b>全局／序盤／中盤／終盤ごとに、正確度の評点・平均損失目数・AI の最善手との一致率・上位 5 候補との一致率を黒白で比較します。
+  改修版の「一致率追随」「難解」戦略はこの <b>「AIの最善手との一致率」</b> を下げることを目的に設計されています。</figcaption>
+</figure>
+
+<h4 id="analyze-deep">一局全体を深く分析（<kbd>F2</kbd>）</h4>
+<figure class="shot half">
+  <img src="img/popup_reanalyze.png" alt="一局全体を深く分析">
+  <figcaption><b>一局全体を深く分析。</b>「着手毎の探索手数」を指定し、必要なら手数範囲や「悪手だけ」に限定して再分析します。</figcaption>
+</figure>
+
+<h3 id="analyze-tree">手順ツリーとグラフ</h3>
+<ul>
+  <li>分析モードの右下に<b>手順ツリー</b>が出ます。クリックで任意の手へ、<kbd>↑</kbd><kbd>↓</kbd> で分岐の切り替え、<kbd>b</kbd> で前の分岐点へ、<kbd>c</kbd> で分岐の折り畳み。</li>
+  <li>右クリックのメニューで「こちらを主分岐に」「この手以降を削除」「この枝だけ残して他を削除」ができます。</li>
+  <li>候補手の上でマウスホイールを回すと予想手順を 1 手ずつ進められ、<b>ホイールをクリックすると手順ツリーに追加</b>できます。</li>
+  <li><b>目差グラフ</b>は勝率／目差の推移。クリックでその手に飛べます。</li>
+  <li>「情報」タブの「AIの思考過程」には、AI 戦略がどの候補をどう比較して選んだかが 1 行で出ます（例: <code>[Enigma13] …</code>）。戦略の挙動を確かめるときに便利です。</li>
+</ul>

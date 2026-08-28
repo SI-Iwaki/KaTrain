@@ -1,0 +1,100 @@
+
+<h2 id="play"><span class="num">04</span>対局する</h2>
+
+<h3 id="play-new">新規対局を始める</h3>
+<p>メニュー →「新規対局・ルール変更」（<kbd>Ctrl</kbd>+<kbd>N</kbd>）で次のダイアログが開きます。</p>
+<figure class="shot">
+  <img src="img/popup_newgame.png" alt="新規対局の設定ダイアログ">
+  <figcaption><b>新規対局の設定。</b>上段のタブで「新規対局を開始」「局面を生成」「対局情報を編集」を切り替えます。中央で黒・白それぞれの「人間 / AI」と AI の戦略を選び、下でルール・コミ・碁盤サイズ・置き石を決めます。</figcaption>
+</figure>
+
+<div class="tablewrap">
+<table>
+  <thead><tr><th>項目</th><th>説明</th></tr></thead>
+  <tbody>
+    <tr><th>対局者名</th><td>棋譜（SGF）に記録される名前。空欄でも構いません。</td></tr>
+    <tr><th>プレイヤー（黒／白）</th><td>「人間」か「AI」。人間のときは「通常対局」「指導対局」を、AI のときは<b>AI の戦略</b>を選びます。丸いアイコンで黒白を入れ替えられます。</td></tr>
+    <tr><th>ルール</th><td>日本／中国／韓国／AGA／ニュージーランド／Tromp-Taylor／古代中国。<b>中国ルール（地＋石を数える）ではダメを詰めても目数が動かない</b>ため、AI 戦略の終局判定は「人間ならパスするか」も見て決めます。対局アプリと合わせて使う場合はアプリのルールに揃えてください。</td></tr>
+    <tr><th>コミ</th><td>白がもらう目数。19路は 6.5（日本）〜7.5（中国）、9路は 7.0 が一般的です。</td></tr>
+    <tr><th>碁盤サイズ</th><td>9／13／19 のほか、<code>19:9</code> のように書くと長方形の盤も作れます。<b>9路・13路・19路それぞれ専用の戦略があります</b>（持碁(9路)・一致率追随(9路)・難解(9/13/19路)）。</td></tr>
+    <tr><th>置き石</th><td>0〜9。置碁のときは「Kata置碁」戦略が置き石に合わせて手加減の度合いを自動調整します。</td></tr>
+    <tr><th>思考記録をクリア</th><td>ON にすると KataGo の探索キャッシュを捨てて始めます。<b>同じ手順を毎回再現してしまうのを防ぎたいとき</b>に使います。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h4>局面を生成（自己対局で途中局面を作る）</h4>
+<figure class="shot half">
+  <img src="img/popup_setup_position.png" alt="局面を生成タブ">
+  <figcaption><b>局面を生成。</b>「黒の何目リードを目標に」「何手目まで生成」を指定すると、AI 同士の自己対局でその条件に近い途中局面を作り、そこから打ち継げます。中盤・終盤の練習や、形勢が良い局面から強い AI に勝ち切る練習に。</figcaption>
+</figure>
+
+<h4>対局情報を編集</h4>
+<figure class="shot half">
+  <img src="img/popup_editgame.png" alt="対局情報を編集タブ">
+  <figcaption><b>対局情報を編集。</b>進行中の対局の対局者名・ルール・コミだけを変更します（盤面はそのまま）。</figcaption>
+</figure>
+
+<h3 id="play-players">対局者設定（人間 / AI・戦略の切り替え）</h3>
+<p>
+対局の途中でも、メイン画面の右パネル上部（またはメニュー →「対局者設定」）で黒白それぞれの「人間 / AI」と AI の戦略を切り替えられます。
+戦略の細かい設定は <kbd>F7</kbd>「AI設定」で行います（→ <a href="#ai">06</a>）。
+</p>
+<figure class="shot half">
+  <img src="img/menu.png" alt="メインメニュー">
+  <figcaption><b>メインメニュー（<kbd>Alt</kbd>）。</b>上部が対局者設定、その下に新規対局・棋譜保存／読込・時間設定・指導・分析設定・AI設定・一般・エンジン設定・分散訓練。最下部で言語を切り替えます。</figcaption>
+</figure>
+
+<h3 id="play-teach">指導対局（悪手を自動で待った）</h3>
+<p>
+人間側を「指導対局」にすると、KaTrain があなたの手を毎回分析し、<b>しきい値より損な手には自動で「待った」をかけて打ち直させます</b>。
+待ったの回数・しきい値は「指導・分析設定」（<kbd>F6</kbd>）で決めます。
+</p>
+<figure class="shot">
+  <img src="img/popup_teacher.png" alt="指導・分析設定">
+  <figcaption><b>指導・分析設定。</b>上段の表は「何目より損なら」その色のドットにするか、「再考を促す回数（指導対局時）」＝その色の手に何回まで待ったをかけるか（0.5 なら 50% の確率で 1 回）、ドットを表示するか、SGF に保存するかを色ごとに決めます。</figcaption>
+</figure>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>項目</th><th>意味</th></tr></thead>
+  <tbody>
+    <tr><th>何目より損なら</th><td>ドットの色分けのしきい値（既定 12 / 6 / 3 / 1.5 / 0.5 / 0 目）。</td></tr>
+    <tr><th>再考を促す回数</th><td>指導対局でその色の手に何回まで「待った」をかけるか。既定は紫・赤・オレンジが 1 回、黄が 0.5（確率 50%）、それ以下は 0。</td></tr>
+    <tr><th>カラーテーマ</th><td>ドットの配色。「赤緑色弱」向けのテーマがあります。</td></tr>
+    <tr><th>候補手上の表示</th><td>上位候補に表示する数字の種類（損失目数／目差／勝率／探索手数など）。2 つ目は副表示。</td></tr>
+    <tr><th>表示候補の最低探索数</th><td>これより探索手数が少ない候補は数字を出しません（小さく薄い点になる）。</td></tr>
+    <tr><th>直近何手のドットを表示</th><td>「ドット表示」が「直近だけ」のとき、何手ぶんまで点を付けるか。</td></tr>
+    <tr><th>AIの手にもドット／コメントをつける</th><td>OFF にすると人間の手だけに点やコメントが付きます。</td></tr>
+    <tr><th>分析結果をSGFに保存</th><td>ON にすると保存する棋譜に解析結果を埋め込み、次に開いたとき解析なしで表示できます（ファイルは大きくなります）。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="play-timer">時間設定</h3>
+<figure class="shot third">
+  <img src="img/popup_timer.png" alt="時間設定">
+  <figcaption><b>時間設定（<kbd>F5</kbd>）。</b>持ち時間（分）・秒読み時間・秒読み回数・「早打ち禁止秒数」（この秒数より速く打つと注意される）・音声のオンオフ。<kbd>Pause</kbd> キーで時計を一時停止できます。</figcaption>
+</figure>
+
+<h3 id="play-buttons">対局中の操作</h3>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>操作</th><th>ボタン / キー</th><th>説明</th></tr></thead>
+  <tbody>
+    <tr><th>着手</th><td>盤をクリック</td><td>自分の手番のときだけ有効。AI の手番は自動で進みます。</td></tr>
+    <tr><th>パス</th><td>「パス」／<kbd>p</kbd></td><td>連続パスで終局。終局時は地合推定に基づく結果が表示されます。</td></tr>
+    <tr><th>待った</th><td>「待った」／<kbd>←</kbd> <kbd>z</kbd></td><td><b>AI 相手のときは AI の手と自分の手の 2 手が戻ります</b>。<kbd>Shift</kbd> で 10 手、<kbd>Ctrl</kbd> で最初まで。</td></tr>
+    <tr><th>投了</th><td>「投了」</td><td>結果を記録して終局します。</td></tr>
+    <tr><th>AI に打たせる</th><td><kbd>Enter</kbd></td><td>今の手番が人間でも、選択中の戦略で AI に 1 手打たせます。</td></tr>
+    <tr><th>手を進める</th><td><kbd>→</kbd> <kbd>x</kbd></td><td>待ったで戻した手を進め直す。</td></tr>
+    <tr><th>座標表示</th><td><kbd>k</kbd></td><td>盤の座標（A〜T・1〜19）の表示切替。</td></tr>
+    <tr><th>手数表示</th><td><kbd>m</kbd></td><td>石に手数を表示。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout tip">
+  <span class="label">おすすめの最初の一局</span>
+  白を「AI」→「Human-like」にして、19路・コミ 6.5・日本ルールで始めてみてください。人間の 9 段相当の自然な手を打ちます。
+  強すぎるときは戦略を「段級位相応」にして級位を選ぶか、置き石を入れて「Kata置碁」にします。
+</div>

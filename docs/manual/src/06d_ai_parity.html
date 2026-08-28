@@ -1,0 +1,55 @@
+
+<h3 id="ai-lowmatch">AI らしさ（最善手との一致率）を下げる戦略</h3>
+<p>
+評価レポート（<kbd>F3</kbd>）の「AIの最善手との一致率」は、対局相手が AI かどうかを見分ける代表的な指標です。ここに挙げる戦略は<b>人間らしさを保ったまま、この一致率を意図的に下げる</b>ためのものです。
+</p>
+
+<div class="card" id="ai-diverge">
+  <h3>AI一致率低減 <code>ai:diverge_move</code></h3>
+  <div class="tags"><span class="tag ok">全盤サイズ</span><span class="tag hs">humanSL 必須</span></div>
+  <p>
+    候補手のスコアを <code>humanPolicy × (KataGo の順位 + 1)<sup>divergence_power</sup></code> で計算し、<b>KataGo の順位が下の手ほど持ち上げて</b>抽選します。損失が <code>diverge_score_filter</code> を超える手は除外。
+    目標は「最善手一致率 30% 以下・上位 5 手一致率 40% 以下・平均損失 1.0 目未満」です。
+  </p>
+  <figure class="shot half"><img src="img/ai_diverge_move.png" alt="AI設定: AI一致率低減"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>human_kyu_rank</td><td>−8（9段）</td><td>20級〜9段</td><td>土台にする人間モデルの段級位。</td><td>級側にすると弱く荒く</td></tr>
+      <tr><td>divergence_power</td><td>0.5</td><td>0.3〜1.5</td><td>下位の手をどれだけ持ち上げるか。</td><td><span class="up">上げる</span>一致率が下がる（0.3 刻みで調整）。<span class="down">下げる</span>Human-like に近づく</td></tr>
+      <tr><td>diverge_score_filter</td><td>2.5</td><td>1.0〜5.0</td><td>許す最大損失（目）。</td><td><span class="up">上げる</span>より損な手も混ざり一致率は下がるが弱くなる</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card" id="ai-parity9">
+  <h3>一致率追随（9路） <code>ai:parity9</code></h3>
+  <div class="tags"><span class="tag ok">9路専用</span><span class="tag no">13/19路では最善手のみ</span><span class="tag hs">humanSL 必須</span></div>
+  <p>
+    9路盤で、<b>終局レポートの最善手一致率を目標値（既定 40%）まで下げつつ、勝ち切る</b>ことを狙います。仕組みは次の 4 段階です。
+  </p>
+  <ol>
+    <li><b>いま最善手を打つと目標を超えるか</b>を先読みで判定（レートゲート）。超えないなら最善手。</li>
+    <li>超えるなら、候補のうち<b>着手後の勝率が <code>parity9_min_winrate</code> を割らない手</b>だけを残す（安全条件はこれ 1 つ。相手の最善応手込みの値なので「次の一手で逆転されない」保証）。</li>
+    <li>残った手のうち、<b>最も損の少ない手から <code>parity9_cost_slack</code> 目以内</b>の帯を作り、その中で humanPolicy が最大の手を選ぶ（安さを最優先＝コストと不自然さが同時に下がる）。</li>
+    <li>ヨセ（<code>parity9_endgame_move</code> 手以降かつ未確定点が <code>parity9_unsettled_max</code> 以下）に入ったら、損失上限を <code>parity9_yose_max_loss</code>（既定 0.1 目）に絞り、ダメ詰めや 1 目ヨセの手順入れ替えだけ許す。</li>
+  </ol>
+  <figure class="shot half"><img src="img/ai_parity9.png" alt="AI設定: 一致率追随（9路）"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>parity9_target_rate</td><td>40%</td><td>20〜60%</td><td>目標の最善手一致率。相手の一致率には連動しない絶対値。</td><td><span class="down">下げる</span>外す手番が増えるが、9路は「9段も同じ手を打つ」局面が多く 20% 台は不自然</td></tr>
+      <tr><td>parity9_min_winrate</td><td>70%</td><td>50〜90%</td><td>着手後の勝率フロア。<b>唯一の安全条件</b>。</td><td><span class="up">上げる</span>接戦ではほとんど外せず一致率が上がる（勝ちを優先）。<span class="down">下げる</span>負けるリスクと引き換えに一致率が下がる。黒番の序盤は勝率 50% ちょうどなので 50% 未満にしないと外せない</td></tr>
+      <tr><td>parity9_max_loss_per_move</td><td>5.0</td><td>0.5〜5.0</td><td>1 手あたりの損失上限（目）。</td><td><span class="down">下げる</span>（例 4.0）高価な外しが消える</td></tr>
+      <tr><td>parity9_cost_slack</td><td>0.5</td><td>0〜2.0</td><td>最安の外し手から何目まで「同じくらい安い」とみなして人間らしさで選ぶか。</td><td>0 で常に最安。<span class="up">上げる</span>人間らしい手を優先するぶん損が増える</td></tr>
+      <tr><td>parity9_min_human_policy</td><td>0.5%</td><td>0〜2%</td><td>採用候補の humanPolicy 下限。</td><td><span class="up">上げる</span>（1%）9段が打たない手が消えて一致率は上がる</td></tr>
+      <tr><td>parity9_endgame_move</td><td>30</td><td>22〜38</td><td>ヨセ判定の手数側の条件。</td><td><span class="down">下げる</span>早くヨセ扱いになり外しが減る</td></tr>
+      <tr><td>parity9_unsettled_max</td><td>8</td><td>4〜12</td><td>ヨセ判定の「未確定点（地合推定が ±0.5 未満の交点）」上限。手数条件との AND。</td><td><span class="up">上げる</span>早くヨセ扱いに</td></tr>
+      <tr><td>parity9_yose_max_loss</td><td>0.1</td><td>0〜0.5</td><td>ヨセに入ってからの 1 手損失上限。</td><td>0 でヨセは完全に最善手固定（一致率の最大の押し上げ要因）。<span class="up">上げる</span>ヨセを間違え始める</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout">
+    <span class="label">一致率は局面の余裕に比例します</span>
+    圧勝している対局では 40% 台まで下がり、接戦では 70% 台に上がります。これは「必ず勝つ」を最優先している設計どおりの挙動です。一致率を対局によらず一定にすることは「必ず勝つ」と両立しません。
+  </div>
+</div>

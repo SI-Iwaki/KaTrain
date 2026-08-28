@@ -1,0 +1,61 @@
+
+<h2 id="screen"><span class="num">03</span>画面の見方</h2>
+
+<h3 id="screen-main">メイン画面</h3>
+<figure class="shot">
+  <img src="img/main_play.png" alt="対局モードのメイン画面">
+  <figcaption><b>対局モード。</b>左が碁盤、右が操作パネル。上部にある 5 つのチェックボックスは分析表示の切り替え、右下に「パス」「待った」「投了」があります。</figcaption>
+</figure>
+
+<div class="tablewrap">
+<table>
+  <thead><tr><th>場所</th><th>役割</th></tr></thead>
+  <tbody>
+    <tr><th>左上 ≡（ハンバーガー）</th><td>メインメニューを開きます（<kbd>Alt</kbd> でも開きます）。新規対局・棋譜の保存／読込・各種設定・言語がここに集まっています。</td></tr>
+    <tr><th>上部のチェックボックス</th><td>「次の着手」「ドット表示」「上位候補」「第一感」「地合推定」。盤上に何を重ねて表示するかを切り替えます（<kbd>q</kbd> <kbd>w</kbd> <kbd>e</kbd> <kbd>r</kbd> <kbd>t</kbd>）。→ <a href="#analyze-toggles">05</a></td></tr>
+    <tr><th>「分析オプション」ボタン</th><td>さらに深く分析／評価レポート／詰碁用の外枠など、深い分析のメニューを開きます。→ <a href="#analyze-menu">05</a></td></tr>
+    <tr><th>碁盤</th><td>クリックで着手。候補手にカーソルを載せると予想手順が盤上に流れます。マウスホイールで手を進めたり戻したりできます。</td></tr>
+    <tr><th>右パネル上: 対局者</th><td>黒・白それぞれの「人間 / AI」と「AI の戦略」（AI のとき）または「通常対局 / 指導対局」（人間のとき）を切り替えます。丸いアイコンをクリックすると黒白を入れ替えます。</td></tr>
+    <tr><th>右パネル中: 対局／分析 の切替</th><td>「対局」「分析」ボタン（<kbd>Tab</kbd>）。<b>分析モードでは AI の自動着手・指導の待った・時計が止まります</b>。</td></tr>
+    <tr><th>右パネル: 目差／勝率／損失目数 タブ</th><td>現在の局面の評価と、直前の手で何目損したか。</td></tr>
+    <tr><th>右パネル: 情報／詳細／コメント</th><td>最善手・予想手順・AI の思考過程（戦略がどう手を選んだか）・SGF に保存するコメント欄。</td></tr>
+    <tr><th>右パネル下: 目差グラフ／手順ツリー</th><td>対局モードでは時計、分析モードでは手順ツリー（分岐）と目差の推移グラフ。</td></tr>
+    <tr><th>右下のランプ</th><td>エンジンの状態。<span class="dot" style="background:#1e9600"></span>緑＝空き、<span class="dot" style="background:#e66619"></span>オレンジ＝解析中、<span class="dot" style="background:#cc0000"></span>赤＝エンジン停止／起動失敗。</td></tr>
+    <tr><th>盤の下の ← → ボタン</th><td>手を戻す／進める。赤い矢印は「次（前）の悪手の直前」へジャンプ。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="screen-modes">対局モードと分析モード</h3>
+<p>
+右パネルの「対局」「分析」ボタン（または <kbd>Tab</kbd>）で切り替えます。それぞれのモードで「どのチェックボックスを ON にしていたか」「右パネルのどのタブを開いていたか」が<b>別々に記憶</b>されるので、
+「対局中はヒントを出さない／分析中はすべて表示」のように使い分けられます。
+</p>
+<figure class="shot">
+  <img src="img/main_analyze.png" alt="分析モードのメイン画面">
+  <figcaption><b>分析モード。</b>ドット・上位候補・地合推定を ON にした状態。右下は手順ツリーと目差グラフ。候補手の数字は「その手を打つと最善手より何目損か」（設定で勝率などにも変えられます）。</figcaption>
+</figure>
+
+<h3 id="screen-dots">ドットの色の意味</h3>
+<p>着手の上に付く色つきの点は「その手で何目損したか」を表します。既定のしきい値（指導・分析設定で変更可）は次のとおりです。</p>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>色</th><th>損失（目）</th><th>読み方</th></tr></thead>
+  <tbody>
+    <tr><td><span class="dot" style="background:#1e9600"></span>緑</td><td class="num">0.5 未満</td><td>ほぼ最善。</td></tr>
+    <tr><td><span class="dot" style="background:#abe62e"></span>黄緑</td><td class="num">0.5〜1.5</td><td>小さな緩手。</td></tr>
+    <tr><td><span class="dot" style="background:#f2f200"></span>黄</td><td class="num">1.5〜3</td><td>やや損。</td></tr>
+    <tr><td><span class="dot" style="background:#e66619"></span>オレンジ</td><td class="num">3〜6</td><td>はっきりした悪手。指導対局ではここから「待った」がかかります。</td></tr>
+    <tr><td><span class="dot" style="background:#cc0000"></span>赤</td><td class="num">6〜12</td><td>大きな悪手。</td></tr>
+    <tr><td><span class="dot" style="background:#72216b"></span>紫</td><td class="num">12 以上</td><td>致命的。</td></tr>
+  </tbody>
+</table>
+</div>
+<p>点の<b>大きさ</b>は「その損が実際に相手に咎められたか」を表します（最大＝丸ごと咎められた、最小＝結果的に目差は動かなかった）。級位者は赤・紫の大きい点だけ見れば十分で、有段者は小さな点も参考になります。</p>
+
+<h3 id="screen-zen">最小表示（集中モード）</h3>
+<p><kbd>F12</kbd>（または <kbd>`</kbd>）を押すたびに、右パネル → 上部トグルの順に非表示になり、碁盤だけの表示になります。もう一度押すと戻ります。</p>
+<figure class="shot half">
+  <img src="img/zen.png" alt="最小表示">
+  <figcaption><b>最小表示。</b>碁盤と下部のナビゲーションだけが残ります。</figcaption>
+</figure>

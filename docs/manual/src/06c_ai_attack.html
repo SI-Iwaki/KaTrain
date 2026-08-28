@@ -1,0 +1,166 @@
+
+<h3 id="ai-attack">攻撃型の戦略（力戦派・攻城・狩猟）</h3>
+<p>
+3 つとも「9段の人間の第一感（humanPolicy）に、戦略ごとの<b>重み</b>を掛けて抽選する」という同じ骨格です。違うのは<b>何を重くするか</b>と<b>どこまで損な手を候補に残すか</b>。
+どれも最後に安全弁（最高重みの手が 4 目以上損なら最善手に差し替え）と、ヨセに入ったら 9 段の第一感に戻る処理が入っています。設計の詳しい解説は <a href="../ai-strategy-guide.html">力戦派・攻城・狩猟 — 戦略ガイド</a>（開発者向け）にあります。
+</p>
+
+<div class="card" id="ai-fighting">
+  <h3>力戦派 <code>ai:p:fighting</code></h3>
+  <div class="tags"><span class="tag ok">全盤サイズ</span><span class="tag hs">Human拡張／複雑化は humanSL 必須</span><span class="tag">4 モード</span></div>
+  <p>
+    「まだどちらの地とも決まっていない場所」と「相手の石のそば」に重みを寄せて、接触戦を作りにいく戦略です。攻める対象を決めず、盤の状態だけから「戦いになりそうな場所」を選びます。
+    <code>fighting_mode</code> で 4 つの流儀を切り替えます。
+  </p>
+  <figure class="shot half"><img src="img/ai_p_fighting.png" alt="AI設定: 力戦派"><figcaption>力戦派の設定画面。項目が多いので、まず <code>fighting_mode</code> を決めてから、そのモードに効く項目だけ触ります。</figcaption></figure>
+  <div class="tablewrap"><table>
+    <caption>fighting_mode の 4 系統</caption>
+    <thead><tr><th>モード（画面表示）</th><th>土台</th><th>損失フィルタ</th><th>性格</th></tr></thead>
+    <tbody>
+      <tr><th>従来 <code>classic</code></th><td>第一感の上位から候補を抽出（盲点系と同じ）</td><td>なし</td><td>棋力を落として戦う。目数の歯止めが無い。humanSL 不要</td></tr>
+      <tr><th>ScoreLoss系 <code>scoreloss</code></th><td>損失が小さいほど高い重み × 力戦重み</td><td><code>fighting_max_loss</code></td><td>損失そのものを嫌う。humanSL 不要</td></tr>
+      <tr><th>Human拡張 <code>human</code></th><td>9段の humanPolicy × 力戦重み</td><td>序盤 2.8 目・中盤 5.6 目（<code>fighting_human_*</code> で調整）</td><td>Human-like と同じ骨格で戦いに寄せる。<b>最強・おすすめ</b>。着手は遅め</td></tr>
+      <tr><th>複雑化 <code>complex</code></th><td>Human拡張 × 切り点ボーナス</td><td>リードに応じて最大 10 目まで開く</td><td>盤面を紛れさせる。勝っているときほど勝負手を打つ</td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>全モード共通・力戦重みの設定</h4>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>fighting_mode</td><td>classic</td><td>4 択</td><td>上表のモード。</td><td>迷ったら <b>Human拡張</b></td></tr>
+      <tr><td>unsettled_power</td><td>2.0</td><td>1.0〜5.0</td><td>「未確定の場所」をどれだけ好むか（指数）。</td><td><span class="up">上げる</span>確定地・死んだ石の周りをほぼ無視し、争いの場所に集中。<span class="down">下げる</span>普通の手も混ざる</td></tr>
+      <tr><td>proximity_stddev</td><td>3.0</td><td>2.0〜10.0</td><td>相手の石からどれくらいの距離までを「近い」とみなすか（路）。</td><td><span class="down">下げる</span>くっつく手ばかりになる。<b>2.0 未満にしないこと</b>（下の 2 つのボーナスが効かなくなる）。<span class="up">上げる</span>離れた手も候補に</td></tr>
+      <tr><td>fighting_contact_boost</td><td>1.0</td><td>1.0〜5.0</td><td>相手の石に<b>接触する</b>手（ツケ・ハネ・ノゾキ等）の重み倍率。</td><td><span class="up">上げる</span>接触戦が増える。複雑化モードでは 2〜3 推奨</td></tr>
+      <tr><td>fighting_invasion_bonus</td><td>1.0</td><td>1.0〜5.0</td><td>相手の地（勢力圏）に<b>入り込む</b>手の重み倍率。</td><td><span class="up">上げる</span>打ち込み・荒らしが増える。contact_boost と両方 3.0 なら「相手の地で接触する手」は 9 倍</td></tr>
+      <tr><td>force_tengen_opening</td><td>OFF</td><td>ON/OFF</td><td>黒番の初手を天元にする。</td><td>ON で「天元から戦う碁」に</td></tr>
+      <tr><td>endgame</td><td>0.45</td><td>0.10〜0.75</td><td>盤のこの割合が埋まったら力戦重みをやめる（従来／ScoreLoss 系）。</td><td><span class="down">下げる</span>早めに普通の碁に戻る。Human拡張／複雑化では無視され、盤の 50% が固定</td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>従来（classic）モードだけに効く項目</h4>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>pick_n / pick_frac</td><td>10 / 0.2</td><td>候補に入れる手の数（固定数＋合法手の割合）。</td><td><span class="up">上げる</span>候補が増えて強く</td></tr>
+      <tr><td>pick_override</td><td>0.95</td><td>第一感の最有力手の確率がこれ以上なら無条件で打つ。</td><td><span class="down">下げる</span>強く</td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>ScoreLoss系モードだけに効く項目</h4>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>fighting_max_loss</td><td>3.0</td><td>0.5〜10.0</td><td>戦いを作るために許す損失（目）。<b>Human拡張・複雑化には効きません</b>。</td><td><span class="up">上げる</span>無理をしてでも殴り込む＝弱く。<span class="down">下げる</span>おとなしく</td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>Human拡張・複雑化に効く「悪手フィルタ」の上限</h4>
+  <p>9路と 13/19路、序盤と中盤以降で別々に持っています。既定は Human-like の悪手フィルタと同じ値です。</p>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>fighting_human_opening_max_loss</td><td>2.8</td><td>0.5〜6.0</td><td>13/19路・序盤（19路 50 手目まで）の損失上限（目）。</td><td><span class="up">上げる</span>序盤から乱暴に。<span class="down">下げる</span>布石はまとも</td></tr>
+      <tr><td>fighting_human_max_loss</td><td>5.6</td><td>1.0〜10.0</td><td>13/19路・中盤以降の損失上限。</td><td><span class="up">上げる</span>4.0 を超える手は安全弁で最善手に戻されがち＝実質の上限は 4 目付近。<span class="down">下げる</span>強く</td></tr>
+      <tr><td>fighting_human_opening_max_loss_9</td><td>0.5</td><td>0.1〜2.0</td><td>9路・序盤（12 手目まで）。9路は 1 手の損が致命傷なので厳しめ。</td><td>同上</td></tr>
+      <tr><td>fighting_human_max_loss_9</td><td>3.3</td><td>0.5〜6.0</td><td>9路・中盤以降。</td><td>同上</td></tr>
+      <tr><td>fighting_chaos_relax</td><td>0.0</td><td>0〜3.0</td><td>Human拡張のみ。相手の地への接触手に限って、上限をこの目数だけ緩める。</td><td><span class="up">上げる</span>荒らしの手だけ多少損でも通す</td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>複雑化（complex）モードだけに効く項目</h4>
+  <p>
+    複雑化は「切り点（相手の連が 2 つ以上隣接する空点）」を優遇し、損失の上限を<b>リードに応じて開く</b>のが特徴です。
+    上限の考え方は 3 段構え: ①<code>complexity_base_max_loss</code> までは無条件で通す → ②そこから実効上限までは「局面が鋭い（scoreStdev が大きい）」かつ「本当に紛れる点」の手だけ通す → ③それ以上は捨てる。
+    実効上限は、リードが <code>complexity_lead_threshold</code> を超えると 10 目ぶんのリード幅をかけて <code>complexity_max_loss</code> まで直線的に上がります。
+  </p>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>complexity_cut_boost</td><td>2.0</td><td>1.0〜5.0</td><td>切り点の重み倍率。</td><td><span class="up">上げる</span>切り・分断が増える</td></tr>
+      <tr><td>complexity_lead_threshold</td><td>15.0</td><td>5〜30</td><td>この目数以上リードしたら損失上限を緩め始める。</td><td><span class="down">下げる</span>少しの優勢でも勝負手を打ち始める（<b>勝ちを落としやすくなる</b>）</td></tr>
+      <tr><td>complexity_base_max_loss</td><td>5.6</td><td>1.0〜10.0</td><td>13/19路。リードに関係なく常時開ける「ゲート付き」帯の上限。</td><td><span class="up">上げる</span>互角でもゲートを通った勝負手を打つ。<code>fighting_human_max_loss</code> と同じ値なら互角時は上乗せなし</td></tr>
+      <tr><td>complexity_max_loss</td><td>10.0</td><td>1.0〜12.0</td><td>13/19路。大差リード時の損失上限（緩和の到達点）。</td><td><span class="up">上げる</span>大差のときの勝負手が大胆に</td></tr>
+      <tr><td>complexity_base_max_loss_9</td><td>3.3</td><td>0.5〜6.0</td><td>9路版の常時上限。</td><td>同上</td></tr>
+      <tr><td>complexity_max_loss_9</td><td>6.0</td><td>1.0〜10.0</td><td>9路版の緩和上限。</td><td>同上</td></tr>
+      <tr><td>complexity_sharpness_min</td><td>3.0</td><td>1〜10</td><td>ゲート通過に必要な「局面の鋭さ」（KataGo の scoreStdev）。</td><td><span class="down">下げる</span>穏やかな局面でも勝負手が通る。<span class="up">上げる</span>本当に読み筋が割れた局面だけ</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout tip">
+    <span class="label">おすすめ設定</span>
+    「戦い好きだが崩れない相手」なら <b>Human拡張・contact_boost 3.0・invasion_bonus 3.0・その他既定</b>。「勝っているときに紛れを求めてくる相手」なら <b>複雑化・contact_boost 2〜3・lead_threshold 5〜10</b>。
+  </div>
+</div>
+
+<div class="card" id="ai-siege">
+  <h3>攻城戦略 <code>ai:siege</code></h3>
+  <div class="tags"><span class="tag ok">19路・13路</span><span class="tag exp">9路は未校正</span><span class="tag hs">humanSL 必須</span></div>
+  <p>
+    「背水の陣」。序盤はわざと損をして相手に地を譲り（Concede フェーズ）、相手の厚みがまだ不安定なうちに中盤で大石群ごと包囲して逆転を狙います（Attack フェーズ）。
+    フェーズは<b>手数</b>と<b>攻める対象があるか</b>で切り替わり、対象が無くなれば譲るフェーズに戻ります。
+  </p>
+  <figure class="shot half"><img src="img/ai_siege.png" alt="AI設定: 攻城戦略"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定（19路 / 13路）</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>siege_transition_move</td><td>40 / 25</td><td>15〜60</td><td>攻撃フェーズに移れる最小手数。</td><td><span class="down">下げる</span>早く攻め始める。<span class="up">上げる</span>じっくり構える（譲る期間が長い）</td></tr>
+      <tr><td>siege_min_group_size</td><td>5 / 4</td><td>3〜10</td><td>攻撃対象にする相手の石群の最小の大きさ（石数）。</td><td><span class="down">下げる</span>小さい石も狙う。<span class="up">上げる</span>大石だけ狙う</td></tr>
+      <tr><td>concede_max_loss</td><td>4.0 / 3.0</td><td>1.0〜6.0</td><td>序盤（譲るフェーズ）で許す損失（目）。<b>損の大きい手ほど重みが高い</b>ので上限近くの手が選ばれやすい。</td><td><span class="up">上げる</span>より大きく譲る（劣勢が深くなる）。<span class="down">下げる</span>控えめ</td></tr>
+      <tr><td>siege_max_loss</td><td>5.0 / 4.0</td><td>1.0〜7.0</td><td>攻撃フェーズで許す損失。</td><td><span class="up">上げる</span>無理攻めが増える。<span class="down">下げる</span>安全な攻め</td></tr>
+      <tr><td>siege_proximity_stddev</td><td>3.0 / 2.5</td><td>2.0〜6.0</td><td>攻撃の集中度（ターゲットからの距離の広がり、路）。</td><td><span class="down">下げる</span>ターゲットに密着。<span class="up">上げる</span>広く攻める</td></tr>
+      <tr><td>siege_instability_min</td><td>0.3</td><td>0.1〜0.5</td><td>ターゲットとみなす最小の「不安定さ」（1 − 地合推定の確からしさ）。</td><td><span class="down">下げる</span>安定した石も狙う。<span class="up">上げる</span>本当に危ない石だけ</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout warn">
+    <span class="label">注意</span>
+    攻城は候補ゼロのとき緩和せず即座に最善手へ戻り、安全弁も最も素直に効きます。そのぶん「譲りすぎて負ける」ことはあまりありませんが、相手が厚みを固めてしまうと攻めどころが無いまま終わることもあります。
+  </div>
+</div>
+
+<div class="card" id="ai-hunt">
+  <h3>狩猟戦略 <code>ai:hunt</code></h3>
+  <div class="tags"><span class="tag ok">19路・13路</span><span class="tag no">9路はパスする（使用不可）</span><span class="tag hs">humanSL 必須</span></div>
+  <p>
+    最初から攻めます。攻める対象を 2 種類持つのが特徴で、①相手の弱い<b>石群</b>（攻城と同じ検出）に加えて、②<b>相手の勢力圏だがまだ確定していない場所</b>（地合推定が 0.2〜0.7 の交点）を「侵入対象」として毎手探します。
+    石群が無い局面でも侵入対象はほぼ必ずあるので、事実上「常に攻めている」相手になります。追撃・注意フォーカス・死石回避など付属機構が最も多い戦略です。
+  </p>
+  <figure class="shot half"><img src="img/ai_hunt.png" alt="AI設定: 狩猟戦略"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定（19路 / 13路）</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>hunt_max_loss</td><td>6.0 / 4.0</td><td>1.0〜10.0</td><td>石群を攻めるときに許す損失（目）。劣勢（−6 目以下）では自動的に 4.0 で頭打ち。</td><td><span class="up">上げる</span>無理攻め。<span class="down">下げる</span>手堅く</td></tr>
+      <tr><td>hunt_min_group_size</td><td>5 / 4</td><td>2〜10</td><td>ターゲットにする石群の最小石数。</td><td><span class="down">下げる</span>小さい石も追う</td></tr>
+      <tr><td>hunt_proximity_stddev</td><td>3.0 / 2.5</td><td>1.5〜6.0</td><td>石群攻撃の集中度（路）。</td><td><span class="down">下げる</span>密着。<span class="up">上げる</span>包囲網を広く</td></tr>
+      <tr><td>hunt_instability_min</td><td>0.3</td><td>0.1〜0.8</td><td>ターゲット判定の最小不安定度。</td><td><span class="down">下げる</span>安定した石も狙う</td></tr>
+      <tr><td>hunt_invasion_max_loss</td><td>8.0 / 6.0</td><td>2.0〜12.0</td><td>侵入するときに許す損失。<b>3 戦略で最も大きい上限</b>。</td><td><span class="up">上げる</span>無謀な打ち込みが増える。<span class="down">下げる</span>慎重</td></tr>
+      <tr><td>hunt_invasion_min</td><td>0.2</td><td>0.1〜0.5</td><td>侵入対象とする相手の地合推定の下限。</td><td><span class="down">下げる</span>薄い勢力圏にも入る</td></tr>
+      <tr><td>hunt_invasion_max</td><td>0.7</td><td>0.4〜0.9</td><td>同・上限。</td><td><span class="up">上げる</span>ほぼ確定地にも打ち込む（大損しやすい）</td></tr>
+      <tr><td>hunt_invasion_proximity_stddev</td><td>3.0</td><td>2.0〜8.0</td><td>侵入点まわりの候補の広がり。</td><td><span class="up">上げる</span>侵入先が散る</td></tr>
+      <tr><td>hunt_invasion_temperature</td><td>1.5</td><td>1.0〜3.0</td><td>侵入フェーズの抽選の「温度」。<b>大きい損失手が実際に打たれる確率を直接上げる唯一の項目</b>。</td><td><span class="up">上げる</span>下位候補も当たる＝多彩だが弱く。1.0 で重みどおり</td></tr>
+      <tr><td>hunt_focus_stddev</td><td>7.0 / 5.0</td><td>3.0〜10.0</td><td>注意フォーカスの広がり。直前の着手と最も不安定なターゲットの 2 点から遠い手にペナルティ。</td><td><span class="down">下げる</span>今の戦場に集中（手抜きしない）。<span class="up">上げる</span>広く見る</td></tr>
+      <tr><td>hunt_endgame_move</td><td>200</td><td>150〜250</td><td>19路でヨセモード（9段の第一感で打つ）に切り替える手数。13路以下は盤の 50% 固定。</td><td><span class="down">下げる</span>早めに攻めをやめる</td></tr>
+      <tr><td>hunt_pursue_enabled</td><td>ON</td><td>ON/OFF</td><td>攻め合い追撃。相手が勝負手を打っても手抜きせず詰め切る。</td><td>OFF で攻め合いの途中でも大場に回ることがある</td></tr>
+      <tr><td>hunt_winning_suppress_enabled</td><td>OFF</td><td>ON/OFF</td><td>15 目以上リードしているとき KataGo 最善手の重みを 0.3 倍にして一致率を下げる。</td><td>ON で勝勢時の「AI っぽさ」が減る</td></tr>
+      <tr><td>hunt_dead_stone_avoid_enabled</td><td>ON</td><td>ON/OFF</td><td>死んだ自分の石の周りをつつく無駄手を抑える。</td><td>OFF で「死石を助けようとする」人間っぽい無駄手も混ざる</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card" id="ai-hunt-diverge">
+  <h3>狩猟戦略（一致率低減） <code>ai:hunt_diverge</code></h3>
+  <div class="tags"><span class="tag ok">19路・13路</span><span class="tag no">9路は不可</span><span class="tag hs">humanSL 必須</span></div>
+  <p>
+    狩猟戦略と同じ棋風を保ちながら、評価レポートの「AI の最善手との一致率」を下げます。仕組みは <b>Best-move dodge</b>: 抽選で KataGo の最善手が選ばれたときだけ、
+    「損失が <code>hunt_dodge_max_loss</code> 以下」かつ「重み上位 <code>hunt_dodge_top_n</code> 位以内」の別の手のうち損失最小のものに差し替えます。該当が無ければ最善手のまま。
+    温度抽選は使わないので <code>hunt_invasion_temperature</code>・<code>hunt_focus_stddev</code>・<code>hunt_dead_stone_avoid_enabled</code> はありません。
+  </p>
+  <figure class="shot half"><img src="img/ai_hunt_diverge.png" alt="AI設定: 狩猟戦略（一致率低減）"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>hunt_dodge_max_loss</td><td>1.0</td><td>0.5〜3.0</td><td>差し替え先として許す損失（目）。</td><td><span class="up">上げる</span>差し替えの機会が増えて一致率は下がるが、弱い手も混ざる</td></tr>
+      <tr><td>hunt_dodge_top_n</td><td>3</td><td>2〜5</td><td>差し替え先を探す重み上位 N 手。</td><td><span class="down">下げる</span>自然な手だけが対象</td></tr>
+      <tr><td>（その他）</td><td colspan="4">狩猟戦略と同じ（<code>hunt_max_loss</code> 〜 <code>hunt_winning_suppress_enabled</code>）</td></tr>
+    </tbody>
+  </table></div>
+</div>

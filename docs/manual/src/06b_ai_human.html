@@ -1,0 +1,44 @@
+
+<h3 id="ai-humanlike">人間らしい AI（humanSL モデルを使う戦略）</h3>
+
+<div class="card" id="ai-human">
+  <h3>Human-like <code>ai:human</code></h3>
+  <div class="tags"><span class="tag ok">全盤サイズ</span><span class="tag hs">humanSL 必須</span><span class="tag">20級〜9段</span></div>
+  <p>
+    人間の棋譜から学習した humanSL モデルに「この段級位の人はどこに打つか」を聞き、その確率（humanPolicy）で手を抽選します。
+    改修版ではこれに<b>悪手フィルタ</b>が加わっています: 候補をいったん「きれいな」KataGo で読み直し、
+    <b>致命的に損な手（序盤 2.8 目・中盤以降 5.6 目より損。9路は 0.5 / 3.3 目）は人間らしくても打たない</b>ようにしました。
+    人間の「たまにやる大ポカ」だけを取り除いた、最も自然な対局相手です。
+  </p>
+  <figure class="shot half"><img src="img/ai_human.png" alt="AI設定: Human-like"><figcaption>Human-like の設定画面。</figcaption></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>human_kyu_rank</td><td>8（8級）</td><td>20級〜9段</td><td>真似する人間の段級位。<b>最も効く設定</b>。</td><td><span class="up">級数を上げる</span>弱く・荒く。<span class="down">段側へ</span>強く。9段（内部値 −8）が最強</td></tr>
+      <tr><td>modern_style</td><td>OFF</td><td>ON/OFF</td><td>ON で 2016 年以降の AI 風布石（三々入り等）を好むプロファイル。</td><td>ON にすると高段者ほど現代風。星打ちを強制したいときは OFF 推奨（現代風プロファイルは星に低い確率を付ける）</td></tr>
+      <tr><td>force_star_opening</td><td>OFF</td><td>ON/OFF</td><td>序盤に<b>二連星</b>（隅の星 2 つ）を強制する。自分の星が 0 なら空いている隅星（相手が星にいればその対角）、1 つなら同じ辺の星を打つ。</td><td>ON で布石が安定して「星の碁」になる。完成後や盤サイズ非対応なら通常選択に戻る</td></tr>
+      <tr><td>first_impression_deviation</td><td>OFF</td><td>ON/OFF</td><td><b>第一感ブレ</b>。中盤以降、悪手フィルタを通った候補の上位 3 手のうち「0.5 目以上・上限未満（9路 1.5 目・13/19路 2.0 目）損する手」があれば、その中で最も損の少ない手を<b>確定で</b>選ぶ。</td><td>ON で「最善ではないが大悪手でもない、いかにも人間らしい緩手」が毎手混ざる。一致率が下がる</td></tr>
+      <tr><td>first_impression_deviation_opening</td><td>OFF</td><td>ON/OFF</td><td>上のブレを序盤（19路 50 手目まで）にも適用する。</td><td>ON で布石も揺れる。序盤のミスは響くので既定 OFF</td></tr>
+      <tr><td>first_impression_green_blend</td><td>OFF</td><td>ON/OFF</td><td>ブレ ON のとき、第一感 1 位が「緑の手（0.5 目未満の損）」だった場合に、その緑の手とブレた手のどちらを打つかを確率で決める。</td><td>ON で毎局違う手順になり単調さが消える</td></tr>
+      <tr><td>green_blend_green_ratio</td><td>0.5</td><td>0.4 / 0.5 / 0.6</td><td>green_blend で緑の手を選ぶ確率。</td><td><span class="up">0.6（緑寄り）</span>手堅く。<span class="down">0.4（dev 寄り）</span>ブレが多い</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout tip">
+    <span class="label">内部の仕組み（知っておくと設定が読みやすい）</span>
+    Human-like 系はどれも <b>2 段階の解析</b>をします。①humanSL 付きの解析で「人間ならどこに打つか」を取り、②humanSL なしのクリーンな解析で「その手は何目損か」を測ります（①の目数は人間モデルに引きずられて甘く出るため）。
+    悪手フィルタ・第一感ブレ・後述の攻撃型戦略の損失判定はすべて②の値を使います。どちらの解析も探索手数はエンジン設定の「分析時の最大探索手数」です。
+  </div>
+</div>
+
+<div class="card" id="ai-pro">
+  <h3>Historical Pro <code>ai:pro</code></h3>
+  <div class="tags"><span class="tag ok">全盤サイズ</span><span class="tag hs">humanSL 必須</span></div>
+  <p>humanSL モデルの「プロ棋士・強い院生」プロファイルで、<b>指定した年代とその前後の棋譜</b>に基づく手を真似します。江戸時代風・昭和風など時代ごとの布石感覚を体験できます。悪手フィルタなどの改修は入っていません（元の KaTrain そのまま）。</p>
+  <figure class="shot third"><img src="img/ai_pro.png" alt="AI設定: Historical Pro"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>pro_year</td><td>1914</td><td>1800〜2023</td><td>真似する年代。</td><td><span class="up">近年へ</span>AI 以降の現代布石に。<span class="down">昔へ</span>古典的な打ち方（小目・シマリ中心）に</td></tr>
+    </tbody>
+  </table></div>
+</div>

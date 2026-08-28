@@ -1,0 +1,97 @@
+
+<h2 id="ai"><span class="num">06</span>AI 戦略ガイド</h2>
+
+<p class="lead">
+KaTrain の AI は「戦略」を選ぶことで棋風や強さが変わります。この章では、まず<b>どの戦略を選べばよいか</b>を目的別にまとめ、
+次に AI 設定画面の使い方、そして<b>戦略ごとの設定項目を「値を変えるとどうなるか」まで</b>解説します。
+</p>
+
+<h3 id="ai-chooser">戦略の選び方（早見表）</h3>
+<div class="chooser">
+  <div class="item"><b>本気で強い相手と打ちたい</b><span>→ <a href="#ai-default">手加減なし</a>（KataGo そのもの）</span></div>
+  <div class="item"><b>自分の棋力に合わせた相手が欲しい</b><span>→ <a href="#ai-rank">段級位相応</a>（15級〜3段）／置碁なら <a href="#ai-handicap">Kata置碁</a></span></div>
+  <div class="item"><b>人間らしい自然な手を打つ相手が欲しい</b><span>→ <a href="#ai-human">Human-like</a>（20級〜9段の人間モデル）／昔のプロ風なら <a href="#ai-pro">Historical Pro</a></span></div>
+  <div class="item"><b>戦い好きの相手と打ちたい</b><span>→ <a href="#ai-fighting">力戦派</a>（接触戦・複雑化）／<a href="#ai-hunt">狩猟戦略</a>（侵入と攻め）／<a href="#ai-siege">攻城戦略</a>（序盤に譲って中盤で大石を攻める）</span></div>
+  <div class="item"><b>AI っぽさ（最善手との一致率）を下げたい</b><span>→ <a href="#ai-diverge">AI一致率低減</a>／9路なら <a href="#ai-parity9">一致率追随（9路）</a>／狩猟の棋風で下げるなら <a href="#ai-hunt-diverge">狩猟戦略（一致率低減）</a></span></div>
+  <div class="item"><b>僅差で勝つ・持碁を狙う相手</b><span>→ <a href="#ai-jigo">Kata持碁</a>（13/19路）／<a href="#ai-jigo9">Kata持碁（9路）</a></span></div>
+  <div class="item"><b>定跡・手筋の勉強を無効化する「難しい」相手</b><span>→ <a href="#ai-enigma">難解（9路／13路／19路）</a></span></div>
+  <div class="item"><b>弱い・変わった相手（練習用）</b><span>→ <a href="#ai-scoreloss">損も混ぜて</a>／<a href="#ai-policy">第一感</a>系／<a href="#ai-local">おつきあい派</a>・<a href="#ai-tenuki">手抜き派</a>・<a href="#ai-influence">勢力派</a>・<a href="#ai-territory">実利派</a>／<a href="#ai-simple">簡明派</a></span></div>
+</div>
+
+<div class="tablewrap">
+<table>
+  <caption>全戦略一覧（AI設定画面のドロップダウン順）</caption>
+  <thead><tr><th>戦略名（画面表示）</th><th>内部名</th><th>盤サイズ</th><th>humanSL</th><th>ひとこと</th></tr></thead>
+  <tbody>
+    <tr><th><a href="#ai-default">手加減なし</a></th><td><code>ai:default</code></td><td>全部</td><td>—</td><td>KataGo の最善手。設定項目なし</td></tr>
+    <tr><th><a href="#ai-human">Human-like</a></th><td><code>ai:human</code></td><td>全部</td><td>必須</td><td>指定した段級位の人間らしい手。改修の土台</td></tr>
+    <tr><th><a href="#ai-pro">Historical Pro</a></th><td><code>ai:pro</code></td><td>全部</td><td>必須</td><td>指定した年代のプロ棋士風</td></tr>
+    <tr><th><a href="#ai-diverge">AI一致率低減</a></th><td><code>ai:diverge_move</code></td><td>全部</td><td>必須</td><td>人間らしさを保ちつつ最善手との一致率を下げる</td></tr>
+    <tr><th><a href="#ai-rank">段級位相応</a></th><td><code>ai:p:rank</code></td><td>全部</td><td>—</td><td>級位を指定して弱くする（校正済み）</td></tr>
+    <tr><th><a href="#ai-handicap">Kata置碁</a></th><td><code>ai:handicap</code></td><td>全部</td><td>—</td><td>置碁で置き石を最大限活かす打ち方</td></tr>
+    <tr><th><a href="#ai-simple">簡明派</a></th><td><code>ai:simple</code></td><td>全部</td><td>—</td><td>盤面を単純化する手を好む</td></tr>
+    <tr><th><a href="#ai-scoreloss">損も混ぜて</a></th><td><code>ai:scoreloss</code></td><td>全部</td><td>—</td><td>損の少ない手をランダムに混ぜる</td></tr>
+    <tr><th><a href="#ai-policy">第一感</a></th><td><code>ai:policy</code></td><td>全部</td><td>—</td><td>読みなしの直感手（約5段）</td></tr>
+    <tr><th><a href="#ai-weighted">第一感（比重）</a></th><td><code>ai:p:weighted</code></td><td>全部</td><td>—</td><td>直感の確率どおりに抽選（弱い）</td></tr>
+    <tr><th><a href="#ai-jigo">Kata持碁</a></th><td><code>ai:jigo</code></td><td>13・19</td><td>必須</td><td>指定の目差で僅差勝ちを狙う</td></tr>
+    <tr><th><a href="#ai-jigo9">Kata持碁（9路）</a></th><td><code>ai:jigo9</code></td><td>9</td><td>必須</td><td>同・9路専用</td></tr>
+    <tr><th><a href="#ai-parity9">一致率追随（9路）</a></th><td><code>ai:parity9</code></td><td>9</td><td>必須</td><td>一致率を目標値まで下げつつ勝ち切る</td></tr>
+    <tr><th><a href="#ai-enigma">難解（9路）</a></th><td><code>ai:enigma9</code></td><td>9</td><td>必須</td><td>相手が正しく応じにくい手を選ぶ</td></tr>
+    <tr><th><a href="#ai-enigma">難解（13路）</a></th><td><code>ai:enigma13</code></td><td>13</td><td>必須</td><td>同・13路専用</td></tr>
+    <tr><th><a href="#ai-enigma">難解（19路）</a></th><td><code>ai:enigma19</code></td><td>19</td><td>必須</td><td>同・19路専用</td></tr>
+    <tr><th><a href="#ai-antimirror">Kataマネ碁破り</a></th><td><code>ai:antimirror</code></td><td>全部</td><td>—</td><td>マネ碁をされたときの対策</td></tr>
+    <tr><th><a href="#ai-pick">第一感（盲点）</a></th><td><code>ai:p:pick</code></td><td>全部</td><td>—</td><td>盤の一部しか見えない弱い AI</td></tr>
+    <tr><th><a href="#ai-local">おつきあい派</a></th><td><code>ai:p:local</code></td><td>全部</td><td>—</td><td>直前の手の近くに打ちたがる</td></tr>
+    <tr><th><a href="#ai-tenuki">手抜き派</a></th><td><code>ai:p:tenuki</code></td><td>全部</td><td>—</td><td>直前の手から離れて打ちたがる</td></tr>
+    <tr><th><a href="#ai-territory">実利派</a></th><td><code>ai:p:territory</code></td><td>全部</td><td>—</td><td>低い手（1〜3線）を好む</td></tr>
+    <tr><th><a href="#ai-influence">勢力派</a></th><td><code>ai:p:influence</code></td><td>全部</td><td>—</td><td>高い手（4線以上）を好む</td></tr>
+    <tr><th><a href="#ai-fighting">力戦派</a></th><td><code>ai:p:fighting</code></td><td>全部</td><td>Human拡張/複雑化で必須</td><td>未確定地と相手石の近くで戦う</td></tr>
+    <tr><th><a href="#ai-siege">攻城戦略</a></th><td><code>ai:siege</code></td><td>13・19</td><td>必須</td><td>序盤は譲り、中盤に大石を攻める</td></tr>
+    <tr><th><a href="#ai-hunt">狩猟戦略</a></th><td><code>ai:hunt</code></td><td>13・19</td><td>必須</td><td>序盤から侵入し弱い石を攻め続ける</td></tr>
+    <tr><th><a href="#ai-hunt-diverge">狩猟戦略（一致率低減）</a></th><td><code>ai:hunt_diverge</code></td><td>13・19</td><td>必須</td><td>狩猟＋最善手の回避</td></tr>
+    <tr><th><a href="#ai-tsumego">詰碁</a></th><td><code>ai:tsumego</code></td><td>—</td><td>—</td><td>詰碁キャプチャが自動で使う（手動選択は非推奨）</td></tr>
+    <tr><th><a href="#ai-tsumego">詰碁ソルバ</a></th><td><code>ai:tsumego_solver</code></td><td>—</td><td>—</td><td>同上（死活を厳密に解く）</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout warn">
+  <span class="label">「humanSL 必須」の戦略について</span>
+  「必須」と書いた戦略は、人間の棋譜から学習した <b>humanSL モデル</b>（<code>b18c384nbt-humanv0.bin.gz</code>）の「人間ならここに打つ確率（humanPolicy）」を土台にしています。
+  一般・エンジン設定の「Path to human-like model」が空だと、これらの戦略は選べても<b>ただの KataGo 最善手</b>になります（→ <a href="#install-engine">02</a>）。
+  また humanSL 系は毎手 2 回以上の解析をするため、「手加減なし」より着手に時間がかかります（RTX 3080・19路で 1〜3 秒程度）。
+</div>
+
+<h3 id="ai-settings-ui">AI 設定画面の使い方</h3>
+<p>メニュー →「AI設定」（<kbd>F7</kbd>）で開きます。</p>
+<figure class="shot half">
+  <img src="img/ai_human.png" alt="AI設定画面（Human-like）">
+  <figcaption><b>AI設定画面。</b>上のドロップダウンで戦略を選ぶと、その戦略の説明文と設定項目が下に並びます。設定を変えたら「AI設定を更新」で保存。「デフォルトに戻す」でその戦略だけ初期値に戻せます。</figcaption>
+</figure>
+<ul>
+  <li><b>推定段級位</b>: 校正済みの戦略（段級位相応・損も混ぜて・第一感系）では、設定値から強さの目安が表示されます。humanSL 系は「?」のままです。</li>
+  <li><b>スライダー＋数値ボックス</b>: スライダーは決められた候補値に吸い付きます。<b>候補にない値は右の数値ボックスに直接入力すれば保存できます</b>が、その後スライダーを一度でも動かすと最寄りの候補値に戻ります。</li>
+  <li><b>色の薄いスライダー</b>（上のほうの項目）は「校正済み・強さに直結する」項目、濃いものは補助的な項目です。</li>
+  <li><b>チェックボックス</b>は ON/OFF の機能スイッチ。</li>
+  <li>設定は戦略ごとに別々に保存されます（例: 「難解（9路）」と「難解（13路）」は別の値）。</li>
+  <li>設定画面の項目名は英語のキー名のまま表示されるものがあります（例 <code>hunt_max_loss</code>）。本章の表は<b>そのキー名</b>で引けるようにしてあります。</li>
+  <li>本章のスクリーンショットに写っている数値は<b>撮影した環境の現在値</b>で、必ずしも既定値ではありません。既定値は各表の「既定」列を見てください。</li>
+</ul>
+
+<h3 id="ai-common">共通の考え方: 「損失」「humanPolicy」「安全弁」</h3>
+<p>改修版の戦略の設定項目を読むには、次の 3 つの言葉を押さえておくと楽です。</p>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>言葉</th><th>意味</th><th>設定でよく出る形</th></tr></thead>
+  <tbody>
+    <tr><th>損失（目）</th><td>KataGo の最善手と比べて「その手を打つと何目損するか」。0 が最善手。人間らしい戦略は、候補の中から<b>損失がしきい値以下の手だけ</b>を残してから選びます。</td><td><code>*_max_loss</code>「損失上限」。<span class="up">上げる</span>＝より損な手も打つ＝弱く・個性的に、<span class="down">下げる</span>＝最善手に近づく＝強く・AI っぽく</td></tr>
+    <tr><th>humanPolicy</th><td>humanSL モデルが出す「その段位の人間がその手を打つ確率」。高いほど自然な手。多くの戦略は候補をこの確率で重み付けして抽選します。</td><td><code>min_human_policy</code>「humanPolicy 下限」。<span class="down">下げる</span>と「人間があまり打たない手」まで候補に入る</td></tr>
+    <tr><th>安全弁</th><td>どの戦略にも入っている保険。重み付けで選ばれそうな手が 4 目以上損なら KataGo の最善手に差し替えます（<a href="#ai-attack">攻撃型</a>）／勝率が下限を割る手は打たない（<a href="#ai-parity9">一致率追随</a>・<a href="#ai-enigma">難解</a>）。<b>設定をどう変えても大崩れしない</b>のはこのためです。</td><td><code>*_min_winrate</code>「勝率フロア」など</td></tr>
+  </tbody>
+</table>
+</div>
+<div class="callout">
+  <span class="label">序盤・中盤・ヨセ</span>
+  多くの戦略は「序盤は厳しく、中盤は緩く、ヨセ（終盤）は最善手に戻す」という 3 段構えです。序盤の境界は盤の交点数の 14%（19路 51 手・13路 24 手・9路 12 手）、
+  ヨセの境界は戦略ごとの <code>*_endgame_move</code>（ヨセ切替手数）で決まります。ヨセで手を緩めると相手から見て露骨に不自然なので、ヨセは最善手か「9段の人間」に任せる設計になっています。
+</div>

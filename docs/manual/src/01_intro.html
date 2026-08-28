@@ -1,0 +1,29 @@
+
+<h2 id="intro"><span class="num">01</span>はじめに</h2>
+
+<h3 id="intro-what">KaTrain とは</h3>
+<p>
+KaTrain は、囲碁 AI <b>KataGo</b> を使って「AI と対局する」「棋譜を分析して悪手を教えてもらう」ことができるデスクトップアプリです。
+元のソフトは <a href="https://github.com/sanderland/katrain">sanderland/katrain</a>（オープンソース）で、
+このマニュアルが扱うのはそれに次の 3 系統の改修を加えた <b>v1.17.1.1 修正版</b>です。
+</p>
+
+<div class="chooser">
+  <div class="item"><b>① 人間らしい AI 戦略の追加</b><span>「9段の人間ならこう打つ」という humanSL モデルを土台に、力戦派・攻城・狩猟・持碁・一致率追随・難解など、<b>目的別の棋風</b>を選べる AI を多数追加。設定はスライダーで細かく調整できます（→ <a href="#ai">06 AI 戦略ガイド</a>）。</span></div>
+  <div class="item"><b>② 詰碁の自動解答</b><span>BlueStacks 上の詰碁アプリや Web の詰碁を<b>ホットキー一発で読み取り</b>、KaTrain 上に再現して AI が正解手を打ちます。死活ソルバ・回答帳・自動ループつき（→ <a href="#tsumego">07 詰碁機能</a>）。</span></div>
+  <div class="item"><b>③ 対局アプリの盤面監視</b><span>BlueStacks 上の対局アプリの相手の着手を自動で KaTrain に取り込み、AI の応手をアプリの盤の上に光る輪で示します（→ <a href="#watch">08 盤面監視モード</a>）。</span></div>
+</div>
+
+<h3 id="intro-howto">このマニュアルの読み方</h3>
+<ul>
+  <li><b>初めての方</b>は <a href="#install">02 インストール</a> → <a href="#screen">03 画面の見方</a> → <a href="#play">04 対局する</a> の順に読んでください。30 分で一局打てるようになります。</li>
+  <li><b>AI の棋風を変えたい方</b>は <a href="#ai">06 AI 戦略ガイド</a> へ。冒頭の「戦略の選び方」早見表から目的の戦略に飛べます。各設定項目には <span class="up">上げると</span> / <span class="down">下げると</span> どうなるかを書いてあります。</li>
+  <li>本文中の <kbd>F7</kbd> のような表記はキーボードのキー、「一般・エンジン設定」のような「」つきの語は画面に表示されるボタンやメニューの名前です。</li>
+  <li>専門用語（humanPolicy・ownership・visits・目 など）は <a href="#glossary">付録の用語集</a> にまとめました。</li>
+</ul>
+
+<div class="callout tip">
+  <span class="label">スクリーンショットについて</span>
+  本書の画面写真は、この改修版 KaTrain を実際に起動して自動撮影したものです（言語設定は日本語、ウィンドウサイズ 1500×1000）。
+  お使いの環境ではウィンドウサイズやテーマによって配置が多少変わりますが、ボタンやメニューの名前は同じです。
+</div>

@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KaTrain 改修版 完全マニュアル</title>
+<style>
+  :root {
+    --ground: #f6f5f1;
+    --surface: #ffffff;
+    --surface-2: #eeede8;
+    --ink: #1b1c1e;
+    --ink-soft: #44453f;
+    --muted: #6f6e67;
+    --rule: #dcdad2;
+    --rule-strong: #bdbab0;
+    --accent: #2a5d8f;
+    --accent-wash: rgba(42, 93, 143, 0.10);
+    --tip: #1f7a4d;
+    --tip-wash: rgba(31, 122, 77, 0.10);
+    --warn: #b8541a;
+    --warn-wash: rgba(184, 84, 26, 0.10);
+    --danger: #a3262e;
+    --danger-wash: rgba(163, 38, 46, 0.09);
+    --kbd-bg: #f2f1ec;
+    --sans: "Yu Gothic UI", "Yu Gothic", YuGothic, "游ゴシック", "Hiragino Sans", "Meiryo", system-ui, sans-serif;
+    --serif: "Yu Mincho", YuMincho, "游明朝", "Hiragino Mincho ProN", serif;
+    --mono: "Cascadia Mono", Consolas, "SFMono-Regular", ui-monospace, "MS Gothic", monospace;
+    --nav-w: 280px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #15161a; --surface: #1c1e23; --surface-2: #23262c; --ink: #e9e7e1; --ink-soft: #c7c5be;
+      --muted: #9a988f; --rule: #2f3239; --rule-strong: #474b54; --accent: #7fb0e0; --accent-wash: rgba(127,176,224,0.14);
+      --tip: #67c391; --tip-wash: rgba(103,195,145,0.14); --warn: #e2a06a; --warn-wash: rgba(226,160,106,0.14);
+      --danger: #e28a90; --danger-wash: rgba(226,138,144,0.14); --kbd-bg: #2a2d34;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #15161a; --surface: #1c1e23; --surface-2: #23262c; --ink: #e9e7e1; --ink-soft: #c7c5be;
+    --muted: #9a988f; --rule: #2f3239; --rule-strong: #474b54; --accent: #7fb0e0; --accent-wash: rgba(127,176,224,0.14);
+    --tip: #67c391; --tip-wash: rgba(103,195,145,0.14); --warn: #e2a06a; --warn-wash: rgba(226,160,106,0.14);
+    --danger: #e28a90; --danger-wash: rgba(226,138,144,0.14); --kbd-bg: #2a2d34;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--ground); color: var(--ink); font-family: var(--sans); font-size: 15.5px; line-height: 1.9; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ---- layout ---- */
+  .layout { display: flex; min-height: 100vh; }
+  nav.toc { width: var(--nav-w); flex: none; position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 22px 14px 40px 18px;
+            border-right: 1px solid var(--rule); background: var(--surface); font-size: 13px; line-height: 1.55; }
+  nav.toc .brand { font-family: var(--serif); font-size: 17px; font-weight: 700; margin: 0 0 4px; }
+  nav.toc .brand small { display: block; font-family: var(--mono); font-size: 10.5px; color: var(--muted); letter-spacing: .08em; }
+  nav.toc ul { list-style: none; margin: 0; padding: 0; }
+  nav.toc > ul > li { margin: 10px 0 0; }
+  nav.toc > ul > li > a { font-weight: 700; color: var(--ink); }
+  nav.toc ul ul { margin: 2px 0 0 10px; border-left: 1px solid var(--rule); padding-left: 10px; }
+  nav.toc ul ul li { margin: 1px 0; }
+  nav.toc ul ul a { color: var(--ink-soft); }
+  nav.toc a:hover { color: var(--accent); text-decoration: none; }
+  main { flex: 1; min-width: 0; padding: 0 44px 120px; }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  @media (max-width: 900px) {
+    .layout { display: block; }
+    nav.toc { position: static; width: auto; height: auto; border-right: none; border-bottom: 1px solid var(--rule); }
+    main { padding: 0 18px 80px; }
+  }
+
+  /* ---- masthead ---- */
+  .masthead { padding: 60px 0 30px; border-bottom: 2px solid var(--ink); margin-bottom: 36px; }
+  .eyebrow { font-family: var(--mono); font-size: 11.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); margin: 0 0 14px; }
+  h1 { font-family: var(--serif); font-size: clamp(30px, 4.6vw, 46px); font-weight: 600; line-height: 1.25; margin: 0 0 16px; }
+  .standfirst { font-size: 16.5px; color: var(--ink-soft); max-width: 700px; margin: 0; }
+
+  /* ---- headings ---- */
+  h2 { font-family: var(--serif); font-size: 27px; font-weight: 600; line-height: 1.4; margin: 84px 0 10px; padding-bottom: 8px; border-bottom: 1px solid var(--rule-strong); }
+  h2 .num { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; color: var(--muted); margin-right: 10px; }
+  h3 { font-size: 19px; font-weight: 700; margin: 48px 0 6px; }
+  h4 { font-size: 15px; font-weight: 700; margin: 30px 0 4px; color: var(--ink); }
+  h5 { font-family: var(--mono); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 26px 0 2px; }
+  p { margin: 12px 0; }
+  ul, ol { padding-left: 1.4em; margin: 10px 0; }
+  li { margin: 5px 0; }
+  li::marker { color: var(--muted); }
+  code { font-family: var(--mono); font-size: .86em; background: var(--surface-2); border: 1px solid var(--rule); padding: .06em .35em; border-radius: 3px; }
+  pre { font-family: var(--mono); font-size: 13px; line-height: 1.7; background: var(--surface); border: 1px solid var(--rule); padding: 14px 18px; overflow-x: auto; margin: 16px 0; }
+  pre code { background: none; border: none; padding: 0; font-size: inherit; }
+  kbd { font-family: var(--mono); font-size: .82em; background: var(--kbd-bg); border: 1px solid var(--rule-strong); border-bottom-width: 2px; border-radius: 4px; padding: .05em .45em; white-space: nowrap; }
+  hr { border: none; border-top: 1px solid var(--rule); margin: 50px 0; }
+  .lead { font-size: 17px; color: var(--ink-soft); }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+
+  /* ---- callouts ---- */
+  .callout { border-left: 4px solid var(--accent); background: var(--accent-wash); padding: 12px 18px; margin: 22px 0; border-radius: 0 6px 6px 0; }
+  .callout > :first-child { margin-top: 0; }
+  .callout > :last-child { margin-bottom: 0; }
+  .callout .label { display: block; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
+  .callout.tip { border-color: var(--tip); background: var(--tip-wash); } .callout.tip .label { color: var(--tip); }
+  .callout.warn { border-color: var(--warn); background: var(--warn-wash); } .callout.warn .label { color: var(--warn); }
+  .callout.danger { border-color: var(--danger); background: var(--danger-wash); } .callout.danger .label { color: var(--danger); }
+
+  /* ---- figures ---- */
+  figure.shot { margin: 26px 0 30px; }
+  figure.shot img { display: block; max-width: 100%; height: auto; border: 1px solid var(--rule-strong); border-radius: 6px; box-shadow: 0 6px 24px rgba(0,0,0,.14); background: #222; }
+  figure.shot.half img { max-width: min(560px, 100%); }
+  figure.shot.third img { max-width: min(420px, 100%); }
+  figure.shot figcaption { font-size: 13px; color: var(--muted); margin-top: 9px; line-height: 1.7; }
+  figure.shot figcaption b { color: var(--ink-soft); }
+  .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin: 22px 0; }
+  .shots figure.shot { margin: 0; }
+
+  /* ---- tables ---- */
+  .tablewrap { overflow-x: auto; margin: 18px 0 26px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; background: var(--surface); font-variant-numeric: tabular-nums; }
+  caption { text-align: left; font-family: var(--mono); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 0 0 8px; }
+  th, td { border: 1px solid var(--rule); padding: 8px 11px; text-align: left; vertical-align: top; line-height: 1.65; }
+  thead th { background: var(--surface-2); font-weight: 700; font-size: 12.5px; white-space: nowrap; }
+  tbody th { font-weight: 600; background: var(--surface-2); white-space: nowrap; }
+  td.num, th.num { text-align: right; font-family: var(--mono); white-space: nowrap; }
+  table.params td:nth-child(1) { font-family: var(--mono); font-size: 12.5px; white-space: nowrap; }
+  table.params td:nth-child(2) { white-space: nowrap; font-family: var(--mono); font-size: 12.5px; }
+  table.params .up::before { content: "↑ "; color: var(--warn); font-weight: 700; }
+  table.params .down::before { content: "↓ "; color: var(--accent); font-weight: 700; }
+  .jp { display: block; font-family: var(--sans); font-size: 12px; color: var(--muted); white-space: normal; }
+
+  /* ---- strategy cards ---- */
+  .card { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 18px 22px; margin: 22px 0; }
+  .card h3 { margin-top: 0; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 12px; }
+  .tag { display: inline-block; font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; padding: 1px 8px; border: 1px solid currentColor; border-radius: 999px; color: var(--muted); }
+  .tag.ok { color: var(--tip); } .tag.hs { color: var(--accent); } .tag.no { color: var(--danger); } .tag.exp { color: var(--warn); }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .grid2 > *, .shots > *, .chooser > * { min-width: 0; }
+  .card { min-width: 0; overflow: hidden; }
+  .grid2 table.params td { white-space: normal; }
+  .grid2 table.params td:nth-child(1) { white-space: normal; word-break: break-all; }
+  .chooser { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin: 18px 0; }
+  .chooser .item { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 16px; }
+  .chooser .item b { display: block; margin-bottom: 4px; }
+  .chooser .item span { font-size: 13px; color: var(--ink-soft); }
+  .steps { counter-reset: s; list-style: none; padding-left: 0; }
+  .steps li { counter-increment: s; position: relative; padding-left: 40px; margin: 10px 0; }
+  .steps li::before { content: counter(s); position: absolute; left: 0; top: 2px; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; font-family: var(--mono); font-size: 13px; display: flex; align-items: center; justify-content: center; }
+  .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: -1px; margin-right: 5px; border: 1px solid rgba(0,0,0,.25); }
+  .toplink { font-size: 12px; color: var(--muted); margin-top: 30px; display: block; }
+  @media print { nav.toc { display: none; } main { padding: 0; } figure.shot img { box-shadow: none; } h2 { page-break-before: always; } }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc" aria-label="目次">
+  <p class="brand">KaTrain 改修版<br>完全マニュアル<small>v1.17.1.1 · 2026-08-29</small></p>
+  <!--TOC-->
+</nav>
+<main>
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">KaTrain v1.17.1.1 修正版 — User Manual</p>
+  <h1>KaTrain 改修版<br>完全マニュアル</h1>
+  <p class="standfirst">
+    囲碁 AI「KataGo」で対局・分析・勉強ができるアプリ KaTrain の、改修版（Human-like AI 戦略・詰碁・盤面監視つき）の使い方を、
+    初めての方でも上から順に読めば分かるようにまとめました。AI の設定項目は「値を上げると／下げるとどうなるか」まで書いてあります。
+  </p>
+</header>

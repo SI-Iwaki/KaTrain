@@ -1,0 +1,708 @@
+[
+ {
+  "name": "main_play",
+  "crop": null,
+  "desc": "対局モードのメイン画面",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "menu",
+  "crop": null,
+  "desc": "メインメニュー",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "popup_newgame",
+  "crop": [
+   342,
+   42,
+   1158,
+   958
+  ],
+  "desc": "新規対局ダイアログ",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "popup_setup_position",
+  "crop": [
+   342,
+   42,
+   1158,
+   958
+  ],
+  "desc": "局面を生成",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "popup_editgame",
+  "crop": [
+   342,
+   42,
+   1158,
+   958
+  ],
+  "desc": "対局情報を編集",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_default",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 default",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_human",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 human",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_pro",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 pro",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_diverge_move",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 diverge_move",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_p_rank",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 p_rank",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_handicap",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 handicap",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_simple",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 simple",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_scoreloss",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 scoreloss",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_policy",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 policy",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_p_weighted",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 p_weighted",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_jigo",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 jigo",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_jigo9",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 jigo9",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_parity9",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 parity9",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_enigma9",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 enigma9",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_enigma13",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 enigma13",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_enigma19",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 enigma19",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_antimirror",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 antimirror",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_p_pick",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 p_pick",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_p_local",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 p_local",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_p_tenuki",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 p_tenuki",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_p_territory",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 p_territory",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_p_influence",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 p_influence",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_p_fighting",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 p_fighting",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_siege",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 siege",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_hunt",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 hunt",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_hunt_diverge",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 hunt_diverge",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_tsumego",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 tsumego",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_tsumego_solver",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 tsumego_solver",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "popup_settings",
+  "crop": [
+   142,
+   17,
+   1358,
+   983
+  ],
+  "desc": "一般・エンジン設定",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "popup_timer",
+  "crop": [
+   442,
+   242,
+   1058,
+   758
+  ],
+  "desc": "時間設定",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "popup_teacher",
+  "crop": [
+   342,
+   79,
+   1158,
+   920
+  ],
+  "desc": "指導・分析設定",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "main_analyze",
+  "crop": null,
+  "desc": "分析モードのメイン画面",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "main_policy",
+  "crop": [
+   0,
+   75,
+   1100,
+   925
+  ],
+  "desc": "第一感（policy）表示",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "analysis_menu",
+  "crop": null,
+  "desc": "分析オプションのメニュー",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "popup_report",
+  "crop": [
+   367,
+   117,
+   1133,
+   883
+  ],
+  "desc": "評価レポート",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "popup_reanalyze",
+  "crop": [
+   492,
+   317,
+   1008,
+   683
+  ],
+  "desc": "一局全体を深く分析",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "popup_tsumego_frame",
+  "crop": [
+   492,
+   317,
+   1008,
+   683
+  ],
+  "desc": "詰碁用の外枠",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "popup_load",
+  "crop": [
+   142,
+   92,
+   1358,
+   908
+  ],
+  "desc": "棋譜読込",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "zen",
+  "crop": null,
+  "desc": "最小表示（F12）",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "theme_default",
+  "crop": [
+   0,
+   75,
+   1100,
+   925
+  ],
+  "desc": "盤面テーマ default",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "theme_koast",
+  "crop": [
+   0,
+   75,
+   1100,
+   925
+  ],
+  "desc": "盤面テーマ koast",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "theme_lizzie",
+  "crop": [
+   0,
+   75,
+   1100,
+   925
+  ],
+  "desc": "盤面テーマ lizzie",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "theme_milos",
+  "crop": [
+   0,
+   75,
+   1100,
+   925
+  ],
+  "desc": "盤面テーマ milos",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "tsumego_raw",
+  "crop": [
+   0,
+   75,
+   1100,
+   925
+  ],
+  "desc": "枠を張る前の詰碁",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "tsumego_frame_board",
+  "crop": null,
+  "desc": "詰碁の枠を張った盤",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "tsumego_view",
+  "crop": null,
+  "desc": "詰碁ビュー（回答帳バナー: 解答中）",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "tsumego_banner_off",
+  "crop": null,
+  "desc": "回答帳バナー: 記録外の手順",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "board_watch_banner",
+  "crop": null,
+  "desc": "盤面監視モードのバナー",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "board_watch_warn",
+  "crop": null,
+  "desc": "盤面監視モードの警告バナー",
+  "size": [
+   1500,
+   1000
+  ]
+ }
+]

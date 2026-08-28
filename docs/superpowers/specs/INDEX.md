@@ -130,6 +130,14 @@
 
 ---
 
+## ドキュメント
+
+| spec | |
+|---|---|
+| `2026-08-29-user-manual-design.md` | 🟢 利用者向け完全マニュアル（`docs/manual/index.html`・スクショ自動撮影 `tools/manual_screenshots.py`） |
+
+---
+
 ## 実装プラン（`docs/superpowers/plans/`）
 
 45本。上の各 spec と**1対1で対応する実装チェックリスト**（ファイル名は spec から `-design` を

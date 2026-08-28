@@ -1,0 +1,16 @@
+
+<h3 id="ai-tsumego">詰碁用の戦略（自動で設定されるもの）</h3>
+<div class="card">
+  <h3>詰碁 <code>ai:tsumego</code> ／ 詰碁ソルバ <code>ai:tsumego_solver</code></h3>
+  <div class="tags"><span class="tag exp">詰碁キャプチャが自動で選ぶ</span><span class="tag">通常の対局には向かない</span></div>
+  <p>
+    この 2 つはドロップダウンに出ますが、<b>詰碁キャプチャ（→ <a href="#tsumego">07</a>）がプログラムから自動で設定する戦略</b>で、普通の対局で選ぶものではありません。
+    「詰碁」は盤全体の目数ではなく<b>対象の石群の死活（地合推定の変化量）</b>で手を選び、コウになる手は「コウダテがある前提」で評価します。
+    「詰碁ソルバ」は KataGo を使わず死活を厳密に解くプログラム（Rust 製 df-pn）で、解ける規模の問題だけに使われ、解けなければ「詰碁」に自動で切り替わります。
+  </p>
+  <div class="shots">
+    <figure class="shot"><img src="img/ai_tsumego.png" alt="AI設定: 詰碁"><figcaption>「詰碁」の設定。既定値は数百問の実測で校正済みなので、通常は触りません。</figcaption></figure>
+    <figure class="shot"><img src="img/ai_tsumego_solver.png" alt="AI設定: 詰碁ソルバ"><figcaption>「詰碁ソルバ」。設定はここではなく <code>config.json</code> の <code>tsumego_capture</code> セクション（<code>solver_*</code>）にあります。</figcaption></figure>
+  </div>
+  <p class="small muted">「詰碁」の各項目（max_points_behind・gain_epsilon・points_epsilon・tie_ko_screen・min_visits・gain_* ・ko_* ・promotion_dominant_requires_success）の意味と校正の経緯は開発者向け資料 <code>.claude/rules/tsumego-parameters.md</code> にあります。</p>
+</div>

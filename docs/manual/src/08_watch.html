@@ -1,0 +1,63 @@
+
+<h2 id="watch"><span class="num">08</span>盤面監視モード（対局アプリと連動）</h2>
+
+<p class="lead">
+BlueStacks 上の囲碁<b>対局</b>アプリと KaTrain を並べて使い、<b>アプリ側（相手）の着手を自動で KaTrain に取り込む</b>モードです。KaTrain では「AI vs 人間」の対局として扱われ、アプリの相手の手が人間側の着手として入り、KaTrain の AI が応手を決めます。
+AI の応手は<b>アプリの盤の該当する交点の真上に光る輪</b>で示されるので、あなたはそこをタップするだけです。
+</p>
+
+<h3 id="watch-setup">準備と使い方</h3>
+<ol class="steps">
+  <li>BlueStacks で対局アプリを開き、対局を始めます（空の盤でも、相手の初手が乗った盤でも可）。KaTrain と BlueStacks を<b>両方見える</b>ように並べます。</li>
+  <li>KaTrain で新規対局を作り、対局者設定で<b>自分の色を AI</b>（戦略は「難解」など何でも）、<b>相手の色を人間</b>にします。ルールとコミはアプリに合わせます。</li>
+  <li><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd> を押します。現在のアプリの盤面を取り込んでから監視が始まり、盤の上に緑の帯「盤面監視中」が出ます。</li>
+  <li>相手（アプリ）が打つと数百ミリ秒以内に KaTrain の盤に反映され、AI が応手を決めます。応手はアプリの盤の上に色つきの輪で表示されるので、その交点をアプリでタップします。</li>
+  <li>もう一度 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd> で監視を止めます。</li>
+</ol>
+<div class="shots">
+  <figure class="shot"><img src="img/board_watch_banner.png" alt="盤面監視中のバナー"><figcaption><b>監視中（緑）。</b>相手の手を自動反映しています。</figcaption></figure>
+  <figure class="shot"><img src="img/board_watch_warn.png" alt="盤面監視の警告バナー"><figcaption><b>警告（橙）。</b>アプリの盤が「KaTrain の局面＋相手の 1 手」で説明できないときは盤に触らず警告だけ出して監視を続けます（整地・投了・パスの後など）。</figcaption></figure>
+</div>
+
+<h3 id="watch-highlight">AI 着手の強調表示</h3>
+<p>
+一般・エンジン設定の「AI 着手の強調表示（監視モード）」で輪の色を選べます（表示しない／シアン／マゼンタ／緑／赤／オレンジ／白）。
+輪は最前面のクリック透過ウィンドウなので、アプリの操作を邪魔しません。監視の自前キャプチャからは除外されているため、輪が盤の認識を狂わせることもありません。
+</p>
+
+<h3 id="watch-limits">できること・できないこと</h3>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>項目</th><th>状態</th></tr></thead>
+  <tbody>
+    <tr><th>相手の着手の取り込み</th><td>○ 自動（アプリ→KaTrain の片方向）</td></tr>
+    <tr><th>AI の着手をアプリへ打つ</th><td>× 自動タップはしません。輪の位置をあなたがタップします（詰碁の自動ループは別で、ADB でタップします）</td></tr>
+    <tr><th>相手のパス</th><td>× 盤面が変わらないので検出できません。KaTrain 側で手動でパスしてください</td></tr>
+    <tr><th>終局・整地</th><td>× 盤面が大きく変わるので警告になります。監視を止めてください</td></tr>
+    <tr><th>コウの取り返し</th><td>△ 盤 1 枚では「1 手前に戻った」のと区別できないため、注入しない側に倒れます（安全側）</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="watch-speed">応答速度のしくみ</h3>
+<p>
+監視中は「相手が考えている間」に相手の有力応手（humanSL 9 段の順で上位 5 手）の局面を先読みして KataGo のキャッシュを温めるため、相手が打った直後の AI 応手が 0.5 秒前後で返ります（先読みが外れたときは通常どおり 1.5〜3 秒）。
+「難解」戦略と組み合わせるとヨセの追加解析も省かれ、秒読みのある対局でも間に合う速さになっています。
+</p>
+
+<h3 id="watch-settings">主な設定（<code>config.json</code> の <code>board_watch</code>）</h3>
+<div class="tablewrap">
+<table class="params">
+  <thead><tr><th>キー</th><th>既定</th><th>意味</th></tr></thead>
+  <tbody>
+    <tr><td>enabled</td><td>true</td><td>機能の有効化</td></tr>
+    <tr><td>hotkey</td><td>ctrl+alt+d</td><td>監視のトグル。KaTrain の機能キー（F2〜F12）と重ねない</td></tr>
+    <tr><td>window_title</td><td>""</td><td>空なら <code>tsumego_capture.window_title</code> を引き継ぐ</td></tr>
+    <tr><td>poll_interval_ms / poll_interval_active_ms</td><td>400 / 50</td><td>ポーリング周期（相手の手を待っていない間／待っている間）</td></tr>
+    <tr><td>prefetch_replies</td><td>5</td><td>先読みする相手の応手の数（0 で無効）</td></tr>
+    <tr><td>stable_frames</td><td>2</td><td>同じ変化が何回連続で見えたら確定するか（誤検出防止）</td></tr>
+    <tr><td>stall_warn_sec</td><td>20</td><td>何も変化しないまま経過したら警告する秒数</td></tr>
+    <tr><td>highlight_color</td><td>cyan</td><td>輪の色（設定画面のドロップダウンと同じ）</td></tr>
+  </tbody>
+</table>
+</div>

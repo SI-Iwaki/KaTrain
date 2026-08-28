@@ -1,0 +1,134 @@
+
+<h2 id="tsumego"><span class="num">07</span>詰碁機能</h2>
+
+<p class="lead">
+BlueStacks（Android エミュレータ）上の詰碁アプリや、Web サイトの詰碁を<b>ホットキー一発で読み取り</b>、KaTrain 上に同じ局面を再現して AI が正解手を打つ機能です。
+白の応手はアプリの盤を監視して自動で取り込まれ、正解手順は「回答帳」に記録して次回から 0 秒で再生できます。さらに ADB でアプリを操作する「自動ループ」で、出題→回答→採点→次の問題を人力ゼロで回せます。
+</p>
+
+<h3 id="tsumego-frame">詰碁用の外枠（<kbd>F10</kbd>）— 手動で詰碁を検討するとき</h3>
+<p>
+隅や辺に石を並べて死活問題を作ったら、「分析オプション」→「詰碁用の外枠」（<kbd>F10</kbd>）で盤の残りを石で埋めます。
+KataGo は全局の勝率で考えるため、盤が空いていると「他の場所へ手抜きしたほうが得」と判断して詰碁を解いてくれません。外枠は「この問題を解いた側が 5 目勝つ」ように周囲の地を調整するので、AI が問題そのものに集中します。
+</p>
+<div class="shots">
+  <figure class="shot"><img src="img/popup_tsumego_frame.png" alt="詰碁用の外枠ダイアログ"><figcaption><b>詰碁用の外枠。</b>「壁までの距離」（既定 4）と「劫でもOK」（コウダテを攻め方に与えるか）を指定。</figcaption></figure>
+  <figure class="shot"><img src="img/tsumego_raw.png" alt="枠を張る前の詰碁"><figcaption>枠を張る前（13路・左下隅の問題）。</figcaption></figure>
+</div>
+<figure class="shot">
+  <img src="img/tsumego_frame_board.png" alt="枠を張った盤">
+  <figcaption><b>枠を張った後。</b>問題の周囲に壁（攻め方の色）と充填の石が置かれ、解析範囲（青い枠）が問題の周りに限定されます。候補手も枠の中だけに出ます。</figcaption>
+</figure>
+
+<h3 id="tsumego-capture">詰碁キャプチャ（ホットキーで読み取る）</h3>
+<h4>準備</h4>
+<ol class="steps">
+  <li>BlueStacks で詰碁アプリ（実測済みは「囲碁詰めチャレ」など。盤が黄色系で石のコントラストが高いアプリ）を開き、問題を表示します。Web の詰碁（PlayGo.gg 等）ならブラウザで問題を表示します。</li>
+  <li><code>config.json</code> の <code>tsumego_capture.window_title</code>（既定 <code>"BlueStacks,Puzzle Run,PlayGo"</code>）に、対象ウィンドウのタイトルの一部が含まれていることを確認します（カンマ区切りで複数・先勝ち）。</li>
+  <li>KaTrain と対象ウィンドウを両方見える状態にします（ウィンドウが隠れていると「盤面を検出できません」になります）。</li>
+</ol>
+<h4>ホットキー（4 種類）</h4>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>設定キー</th><th>既定</th><th>いつ使うか</th></tr></thead>
+  <tbody>
+    <tr><th><code>hotkey</code></th><td><kbd>F4</kbd></td><td><b>通常のキャプチャ</b>。黒が攻め方か守り方かは石の配置から自動推定。</td></tr>
+    <tr><th><code>hotkey_attack</code></th><td><kbd>Shift</kbd>+<kbd>F4</kbd></td><td>「黒先白死」＝黒が<b>殺す</b>問題と分かっているとき。自動推定を上書き。</td></tr>
+    <tr><th><code>hotkey_defend</code></th><td><kbd>Ctrl</kbd>+<kbd>F4</kbd></td><td>「黒先活」＝黒が<b>生きる</b>問題と分かっているとき。</td></tr>
+    <tr><th><code>hotkey_noframe</code></th><td><kbd>Shift</kbd>+<kbd>Ctrl</kbd>+<kbd>F4</kbd></td><td><b>枠なし</b>でキャプチャ。正解手順が枠の外へ走り出る大型の問題用（枠の壁が正解の点をふさいでしまうとき）。</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="small muted">このリポジトリのローカル設定では <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Z</kbd> / <kbd>X</kbd> / <kbd>C</kbd> / <kbd>V</kbd> に割り当て直してあります（<code>~/.katrain/config.json</code> の <code>tsumego_capture</code> を参照）。グローバルホットキーなので他のアプリが前面でも効きますが、KaTrain の <kbd>F2</kbd>〜<kbd>F12</kbd> の機能キーと重ねないでください（重ねるとその機能キーが効かなくなります）。</p>
+
+<h4>押した後に起きること</h4>
+<ol class="steps">
+  <li>対象ウィンドウを画面キャプチャし、盤の矩形・盤サイズ（9/13/19）・各交点の石を認識します（1 秒以内）。認識に失敗するとステータス欄にエラーが出ます。</li>
+  <li>役割（黒が攻め方か守り方か）を決め、問題が小さければ<b>死活ソルバ</b>で厳密に解き、そうでなければ<b>枠を張って</b> KataGo で解析します。枠は「攻め方にコウダテを与える／与えない」の両方を試し、問題を壊していないほうを自動採用します（1〜3 秒）。</li>
+  <li>KaTrain のウィンドウが前面に来て、盤が拡大表示（詰碁ビュー）になり、黒番の AI が正解手を打ちます（<code>auto_ai_black</code>）。</li>
+  <li>あなたはアプリ側で同じ手をタップします。アプリが白の応手を返すと、KaTrain がアプリの盤を監視して<b>白の手を自動で取り込み</b>、次の黒を打ちます（<code>watch_white</code>）。以降繰り返し。</li>
+</ol>
+<figure class="shot">
+  <img src="img/tsumego_view.png" alt="詰碁ビュー">
+  <figcaption><b>詰碁ビュー。</b>右パネルと上部トグルが消えて盤が大きくなります。盤の上の帯は回答帳の状態（この例は黄＝回答帳の問題を解答中）、右下の「正解手順を記録」は回答帳の記録ボタン。<kbd>F12</kbd> または <kbd>`</kbd> で通常表示に戻ります。</figcaption>
+</figure>
+
+<div class="callout warn">
+  <span class="label">正答率について</span>
+  初見の問題の一次正答率は KataGo の読みに依存し、実測で約 6〜7 割です。不正解の多くは「アプリの想定とは別の正解手（別解）」や「コウ／セキの扱いの差」で、盤面に情報が無いため解析の改良では上がりません。
+  そこで<b>一度間違えた問題を回答帳に記録して二度と間違えない</b>設計になっています（下記）。同じ問題集を回すほど正答率は 100% に近づきます。
+</div>
+
+<h3 id="tsumego-book">回答帳（正解手順の記録と 0 秒再生）</h3>
+<p>
+詰碁アプリは同じ問題を盤の向きを変えて再出題します。回答帳は<b>盤の 8 通りの対称（回転・鏡映）を同一視したキー</b>で問題を照合し、記録済みなら解析なしで即座に正解手順を再生します。
+</p>
+<ol class="steps">
+  <li>不正解だった問題をアプリの解答で確認し、KaTrain でその問題を（キャプチャし直して）開きます。</li>
+  <li>右下の<b>「正解手順を記録」</b>を押すと記録モードになります（帯が青「記録モード開始」）。盤をクリックして正解手順を黒白交互に打ちます。</li>
+  <li>ボタンが<b>「この手順を保存」</b>に変わっているので押します。帯が緑「正解手順を回答帳に保存しました」になれば完了。保存先は <code>~/.katrain/tsumego_answers.json</code>。</li>
+</ol>
+<div class="tablewrap">
+<table>
+  <caption>盤の上の帯（バナー）の色</caption>
+  <thead><tr><th>色</th><th>文言</th><th>意味</th></tr></thead>
+  <tbody>
+    <tr><td><span class="dot" style="background:#f2f200"></span>黄</td><td>回答帳の問題を解答中</td><td>記録済みの問題。AI は記録どおりに打っている</td></tr>
+    <tr><td><span class="dot" style="background:#1e9600"></span>緑</td><td>回答帳の問題（記録手順は再生完了）</td><td>記録した手順を最後まで打ち終えた</td></tr>
+    <tr><td><span class="dot" style="background:#e66619"></span>橙</td><td>回答帳の問題（記録外の手順→通常の解析で着手）</td><td>白の応手が記録から外れたので、この手番から通常の解析で打つ</td></tr>
+    <tr><td><span class="dot" style="background:#3070d0"></span>青 / 緑 / 橙（数秒）</td><td>記録モード開始 / 保存しました / 記録できません</td><td>記録ボタンの操作結果</td></tr>
+    <tr><td>（なし）</td><td></td><td>回答帳に無い問題。帯は高さ 0 で消える</td></tr>
+  </tbody>
+</table>
+</div>
+<figure class="shot half"><img src="img/tsumego_banner_off.png" alt="回答帳バナー（記録外の手順）"><figcaption>橙の帯: 白が記録と違う手を打ったので、以降は通常の解析に切り替わった状態。</figcaption></figure>
+
+<h3 id="tsumego-autoloop">自動ループ（<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd>）</h3>
+<p>
+ADB（BlueStacks の <code>HD-Adb.exe</code>）でアプリを直接操作し、<b>新しい問題の検知 → キャプチャ → AI の黒をアプリにタップ → 白の応手を取り込み → 正解／不正解のポップアップを画面判定 → 次の問題</b>を自動で回します。
+正解なら打った手順をそのまま回答帳へ自動記録し、不正解なら「問題を見る」→「戻す」→「ヒント」の赤丸を順にたどって正解手順を収穫し、回答帳に保存してから次へ進みます。
+</p>
+<ul>
+  <li>開始／停止はどちらも <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd>。開始時に ADB へ接続し、詰碁アプリが前面の BlueStacks インスタンスを自動で選びます（<code>tsumego_autoloop.adb_serial</code> で固定も可）。</li>
+  <li>BlueStacks 側で「ADB アクセス」を有効にしておく必要があります（設定 → 詳細 → Android デバッグブリッジ）。</li>
+  <li>1 問 1 行の台帳が <code>~/.katrain/tsumego_ledger.jsonl</code> に、失敗時のスクリーンショットが <code>~/.katrain/logs/autoloop/</code> に残ります。</li>
+  <li><code>max_problems</code>（0＝無制限）で問題数を、<code>max_consecutive_errors</code>（既定 3）で連続エラー時の自動停止を決めます。</li>
+  <li>アプリの UI（ボタン位置・ポップアップの見た目）が変わると判定が外れます。その場合は <code>python -m katrain.core.tsumego_autoloop probe</code> で画面判定のしきい値を確認し直します。</li>
+</ul>
+
+<h3 id="tsumego-web">Web の詰碁（PlayGo.gg など）</h3>
+<p>
+BlueStacks 方式で認識できない画像は、自動的に<b>格子線検出＋座標ラベルの文字認識</b>にフォールバックします。Web の盤は問題に合わせて盤の一部だけを表示するため、ラベル（A〜T・1〜19）を読んで絶対座標と盤サイズを確定し、実盤サイズの盤に石を配置して同じ詰碁パイプラインに流します。
+19路の全体表示（4 辺すべてにラベル）は「盤面把握問題」とみなし、枠を張らずに通常の解析モードで開きます。
+</p>
+
+<h3 id="tsumego-log">ログと不具合報告</h3>
+<p>
+詰碁は <b>1 問 1 ファイル</b>のログ（<code>~/.katrain/logs/tsumego_&lt;日付&gt;_&lt;時刻&gt;.log</code>）に、認識した盤面・枠の採否・各手の判定が揃って残ります。誤答を報告するときはこのファイルを添えれば再現できます。
+回答帳に記録した問題のログは自動削除から保護され（<code>.keep</code>）、30 日より古いものは <code>logs/archive/tsumego_YYYYMM.zip</code> に自動でまとめられます（検索は <code>python tools/grep_tsumego_logs.py "正規表現"</code>）。
+</p>
+
+<h3 id="tsumego-settings">主な設定（<code>config.json</code> の <code>tsumego_capture</code>）</h3>
+<p>詰碁の設定は GUI の設定画面には無く、<code>~/.katrain/config.json</code> を KaTrain 終了後に直接編集します。よく触るものだけ挙げます。</p>
+<div class="tablewrap">
+<table class="params">
+  <thead><tr><th>キー</th><th>既定</th><th>意味</th></tr></thead>
+  <tbody>
+    <tr><td>enabled</td><td>true</td><td>詰碁キャプチャ機能全体の有効化（false でホットキーも登録しない）</td></tr>
+    <tr><td>hotkey / hotkey_attack / hotkey_defend / hotkey_noframe</td><td>f4 / shift+f4 / ctrl+f4 / shift+ctrl+f4</td><td>上述の 4 ホットキー</td></tr>
+    <tr><td>window_title</td><td>"BlueStacks,Puzzle Run,PlayGo"</td><td>対象ウィンドウのタイトル（部分一致・カンマ区切り）</td></tr>
+    <tr><td>board_sizes</td><td>[9, 13, 19]</td><td>認識を試す盤サイズ</td></tr>
+    <tr><td>frame_margin</td><td>4</td><td>枠の壁までの距離（大型の問題では自動で縮む）</td></tr>
+    <tr><td>frame_ko_auto</td><td>true</td><td>コウダテを攻め方に与える枠／与えない枠の両方を試して自動採用</td></tr>
+    <tr><td>maximize_on_capture</td><td>true</td><td>キャプチャ後に KaTrain を前面化して詰碁ビューにする</td></tr>
+    <tr><td>auto_ai_black</td><td>true</td><td>黒番の AI が自動で正解手を打つ（false なら自分で打つ）</td></tr>
+    <tr><td>analysis_visits</td><td>1800</td><td>枠内の解析に使う探索手数</td></tr>
+    <tr><td>watch_white</td><td>true</td><td>白の応手をアプリの盤から自動で取り込む（<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd> で一時停止）</td></tr>
+    <tr><td>watch_active_on_ahead</td><td>true</td><td>白待ちの間も 50ms 周期で監視（反映が速いぶん CPU を使う）</td></tr>
+    <tr><td>ponder_replies</td><td>3</td><td>白の有力応手を先読みして解析を温める本数（0 で無効）</td></tr>
+    <tr><td>solver_enabled</td><td>true</td><td>死活ソルバを使う。<code>solver_capture_max_region</code>（23 点）・<code>solver_capture_max_empties</code>（12 点）以下の小さい問題だけ</td></tr>
+    <tr><td>solver_time_limit_ms</td><td>5000</td><td>1 手の求解時間の上限。超えたら「詰碁」戦略へ</td></tr>
+    <tr><td>solver_cross_check</td><td>true</td><td>ソルバの答えを KataGo と突き合わせ、抽出が別問題だったときに見抜く安全網</td></tr>
+  </tbody>
+</table>
+</div>

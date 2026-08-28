@@ -1,0 +1,25 @@
+
+<h2 id="trouble"><span class="num">12</span>トラブルシューティング</h2>
+
+<div class="tablewrap">
+<table>
+  <thead><tr><th>症状</th><th>原因と対処</th></tr></thead>
+  <tbody>
+    <tr><th>起動後、右下のランプが赤いまま／「KataGo の起動に失敗」のダイアログ</th><td>一般・エンジン設定の KataGo 実行ファイル・モデル・設定ファイルのパスを確認。ダイアログの「別バージョンの KataGo をダウンロード」で OpenCL 版に切り替えると動くことがあります。GPU ドライバの更新後は <code>~/.katrain/trtcache</code> の再構築で初回起動が数分かかります。</td></tr>
+    <tr><th>Human-like 系の戦略を選んでいるのに、明らかに KataGo 最善手ばかり打つ</th><td>humanSL モデルが設定されていません。一般・エンジン設定「Path to human-like model」に <code>b18c384nbt-humanv0.bin.gz</code> のフルパスを入れて「設定を更新」。</td></tr>
+    <tr><th>AI の着手が遅い（数秒〜十数秒）</th><td>humanSL 系は毎手 2 回以上解析します。「分析時の最大探索手数」を下げる（1000 前後）、「難解」では先読みが効くよう相手（人間）側の考慮時間を確保する、CPU 版 KataGo なら GPU 版へ。</td></tr>
+    <tr><th>9 路で「狩猟戦略」がいきなりパスする</th><td>狩猟は 9 路非対応で、9 路ではパスを返す仕様です。9 路では「力戦派」「持碁（9路）」「一致率追随（9路）」「難解（9路）」を使ってください。</td></tr>
+    <tr><th>「難解（13路）」を 9 路で選んだら普通の最善手しか打たない</th><td>盤サイズ専用戦略は対応しない盤では常に最善手です。盤サイズに合った版を選んでください。</td></tr>
+    <tr><th>AI 設定画面に、追加したはずの項目が出ない</th><td>設定画面は <code>~/.katrain/config.json</code> に保存されているキーだけを表示します。「デフォルトに戻す」を押すとパッケージ既定のキーが全部書き込まれます。</td></tr>
+    <tr><th>設定ファイルを手で直したのに反映されない</th><td>KaTrain 起動中に編集すると、終了時にアプリが設定を丸ごと書き戻して上書きします。<b>終了してから</b>編集してください。</td></tr>
+    <tr><th><kbd>F4</kbd>（詰碁キャプチャ）や <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd> が効かない</th><td>①<code>tsumego_capture.enabled</code> / <code>board_watch.enabled</code> が true か、②他のアプリが同じグローバルホットキーを登録していないか（登録に失敗するとログに出ます）、③対象ウィンドウのタイトルが <code>window_title</code> に含まれているか、を確認。</td></tr>
+    <tr><th>キャプチャで「盤面を検出できません」</th><td>対象ウィンドウが他のウィンドウに隠れている、最小化されている、盤が画面外に出ている、盤の色が想定と違う（黄色系以外）。ウィンドウを前面に出して撮り直してください。Web の詰碁は格子線とラベル（A〜T・1〜19）が見えている必要があります。</td></tr>
+    <tr><th>詰碁で AI が不正解を打つ</th><td>役割の自動推定が外れている場合は <kbd>Shift</kbd>+<kbd>F4</kbd>（殺す）／<kbd>Ctrl</kbd>+<kbd>F4</kbd>（生きる）で撮り直し。正解手順が枠の外に出る大型問題は <kbd>Shift</kbd>+<kbd>Ctrl</kbd>+<kbd>F4</kbd>（枠なし）。それでも違えば正解を「回答帳」に記録すると次回から確実です。ログ <code>~/.katrain/logs/tsumego_*.log</code> に判定の根拠が残ります。</td></tr>
+    <tr><th>盤面監視で「同期できません」の警告が続く</th><td>アプリ側でパス・投了・整地が起きたか、KaTrain 側の局面とずれました。監視を止め（<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd>）、必要なら手動で局面を合わせてから再度 ON にすると現在の盤を取り込み直します。</td></tr>
+    <tr><th>盤面監視中に相手の手が反映されない</th><td>アプリの盤が KaTrain の盤と同じ手番・同じ局面から始まっているか確認。相手のパスは検出できないので KaTrain 側で手動パス。BlueStacks が別ウィンドウに隠れていると認識できません。</td></tr>
+    <tr><th>自動ループが「ADB に接続できません」</th><td>BlueStacks の設定 → 詳細 →「Android デバッグブリッジ」を ON にして BlueStacks を再起動。<code>tsumego_autoloop.adb_path</code> が <code>HD-Adb.exe</code> を指しているか確認。複数インスタンスがある場合は <code>adb_serial</code>（例 <code>127.0.0.1:5585</code>）で固定。</td></tr>
+    <tr><th>評価レポートの一致率が高すぎる（AI っぽい）</th><td>「一致率追随（9路）」「AI一致率低減」「狩猟（一致率低減）」「難解」を使う。難解は勝勢のときほど一致率が下がり、接戦では勝ちを優先して上がります。Human-like でも「第一感ブレ」を ON にすると下がります。</td></tr>
+    <tr><th>対局アプリと目差が合わない</th><td>ルール（日本／中国）とコミをアプリに合わせてください。中国ルールでは終局時のダメ詰めや死石の取り込みで目差が動きます。</td></tr>
+  </tbody>
+</table>
+</div>

@@ -1,0 +1,1685 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KaTrain 改修版 完全マニュアル</title>
+<style>
+  :root {
+    --ground: #f6f5f1;
+    --surface: #ffffff;
+    --surface-2: #eeede8;
+    --ink: #1b1c1e;
+    --ink-soft: #44453f;
+    --muted: #6f6e67;
+    --rule: #dcdad2;
+    --rule-strong: #bdbab0;
+    --accent: #2a5d8f;
+    --accent-wash: rgba(42, 93, 143, 0.10);
+    --tip: #1f7a4d;
+    --tip-wash: rgba(31, 122, 77, 0.10);
+    --warn: #b8541a;
+    --warn-wash: rgba(184, 84, 26, 0.10);
+    --danger: #a3262e;
+    --danger-wash: rgba(163, 38, 46, 0.09);
+    --kbd-bg: #f2f1ec;
+    --sans: "Yu Gothic UI", "Yu Gothic", YuGothic, "游ゴシック", "Hiragino Sans", "Meiryo", system-ui, sans-serif;
+    --serif: "Yu Mincho", YuMincho, "游明朝", "Hiragino Mincho ProN", serif;
+    --mono: "Cascadia Mono", Consolas, "SFMono-Regular", ui-monospace, "MS Gothic", monospace;
+    --nav-w: 280px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #15161a; --surface: #1c1e23; --surface-2: #23262c; --ink: #e9e7e1; --ink-soft: #c7c5be;
+      --muted: #9a988f; --rule: #2f3239; --rule-strong: #474b54; --accent: #7fb0e0; --accent-wash: rgba(127,176,224,0.14);
+      --tip: #67c391; --tip-wash: rgba(103,195,145,0.14); --warn: #e2a06a; --warn-wash: rgba(226,160,106,0.14);
+      --danger: #e28a90; --danger-wash: rgba(226,138,144,0.14); --kbd-bg: #2a2d34;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #15161a; --surface: #1c1e23; --surface-2: #23262c; --ink: #e9e7e1; --ink-soft: #c7c5be;
+    --muted: #9a988f; --rule: #2f3239; --rule-strong: #474b54; --accent: #7fb0e0; --accent-wash: rgba(127,176,224,0.14);
+    --tip: #67c391; --tip-wash: rgba(103,195,145,0.14); --warn: #e2a06a; --warn-wash: rgba(226,160,106,0.14);
+    --danger: #e28a90; --danger-wash: rgba(226,138,144,0.14); --kbd-bg: #2a2d34;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--ground); color: var(--ink); font-family: var(--sans); font-size: 15.5px; line-height: 1.9; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* ---- layout ---- */
+  .layout { display: flex; min-height: 100vh; }
+  nav.toc { width: var(--nav-w); flex: none; position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 22px 14px 40px 18px;
+            border-right: 1px solid var(--rule); background: var(--surface); font-size: 13px; line-height: 1.55; }
+  nav.toc .brand { font-family: var(--serif); font-size: 17px; font-weight: 700; margin: 0 0 4px; }
+  nav.toc .brand small { display: block; font-family: var(--mono); font-size: 10.5px; color: var(--muted); letter-spacing: .08em; }
+  nav.toc ul { list-style: none; margin: 0; padding: 0; }
+  nav.toc > ul > li { margin: 10px 0 0; }
+  nav.toc > ul > li > a { font-weight: 700; color: var(--ink); }
+  nav.toc ul ul { margin: 2px 0 0 10px; border-left: 1px solid var(--rule); padding-left: 10px; }
+  nav.toc ul ul li { margin: 1px 0; }
+  nav.toc ul ul a { color: var(--ink-soft); }
+  nav.toc a:hover { color: var(--accent); text-decoration: none; }
+  main { flex: 1; min-width: 0; padding: 0 44px 120px; }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  @media (max-width: 900px) {
+    .layout { display: block; }
+    nav.toc { position: static; width: auto; height: auto; border-right: none; border-bottom: 1px solid var(--rule); }
+    main { padding: 0 18px 80px; }
+  }
+
+  /* ---- masthead ---- */
+  .masthead { padding: 60px 0 30px; border-bottom: 2px solid var(--ink); margin-bottom: 36px; }
+  .eyebrow { font-family: var(--mono); font-size: 11.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); margin: 0 0 14px; }
+  h1 { font-family: var(--serif); font-size: clamp(30px, 4.6vw, 46px); font-weight: 600; line-height: 1.25; margin: 0 0 16px; }
+  .standfirst { font-size: 16.5px; color: var(--ink-soft); max-width: 700px; margin: 0; }
+
+  /* ---- headings ---- */
+  h2 { font-family: var(--serif); font-size: 27px; font-weight: 600; line-height: 1.4; margin: 84px 0 10px; padding-bottom: 8px; border-bottom: 1px solid var(--rule-strong); }
+  h2 .num { font-family: var(--mono); font-size: 12px; letter-spacing: .1em; color: var(--muted); margin-right: 10px; }
+  h3 { font-size: 19px; font-weight: 700; margin: 48px 0 6px; }
+  h4 { font-size: 15px; font-weight: 700; margin: 30px 0 4px; color: var(--ink); }
+  h5 { font-family: var(--mono); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 26px 0 2px; }
+  p { margin: 12px 0; }
+  ul, ol { padding-left: 1.4em; margin: 10px 0; }
+  li { margin: 5px 0; }
+  li::marker { color: var(--muted); }
+  code { font-family: var(--mono); font-size: .86em; background: var(--surface-2); border: 1px solid var(--rule); padding: .06em .35em; border-radius: 3px; }
+  pre { font-family: var(--mono); font-size: 13px; line-height: 1.7; background: var(--surface); border: 1px solid var(--rule); padding: 14px 18px; overflow-x: auto; margin: 16px 0; }
+  pre code { background: none; border: none; padding: 0; font-size: inherit; }
+  kbd { font-family: var(--mono); font-size: .82em; background: var(--kbd-bg); border: 1px solid var(--rule-strong); border-bottom-width: 2px; border-radius: 4px; padding: .05em .45em; white-space: nowrap; }
+  hr { border: none; border-top: 1px solid var(--rule); margin: 50px 0; }
+  .lead { font-size: 17px; color: var(--ink-soft); }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+
+  /* ---- callouts ---- */
+  .callout { border-left: 4px solid var(--accent); background: var(--accent-wash); padding: 12px 18px; margin: 22px 0; border-radius: 0 6px 6px 0; }
+  .callout > :first-child { margin-top: 0; }
+  .callout > :last-child { margin-bottom: 0; }
+  .callout .label { display: block; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
+  .callout.tip { border-color: var(--tip); background: var(--tip-wash); } .callout.tip .label { color: var(--tip); }
+  .callout.warn { border-color: var(--warn); background: var(--warn-wash); } .callout.warn .label { color: var(--warn); }
+  .callout.danger { border-color: var(--danger); background: var(--danger-wash); } .callout.danger .label { color: var(--danger); }
+
+  /* ---- figures ---- */
+  figure.shot { margin: 26px 0 30px; }
+  figure.shot img { display: block; max-width: 100%; height: auto; border: 1px solid var(--rule-strong); border-radius: 6px; box-shadow: 0 6px 24px rgba(0,0,0,.14); background: #222; }
+  figure.shot.half img { max-width: min(560px, 100%); }
+  figure.shot.third img { max-width: min(420px, 100%); }
+  figure.shot figcaption { font-size: 13px; color: var(--muted); margin-top: 9px; line-height: 1.7; }
+  figure.shot figcaption b { color: var(--ink-soft); }
+  .shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; margin: 22px 0; }
+  .shots figure.shot { margin: 0; }
+
+  /* ---- tables ---- */
+  .tablewrap { overflow-x: auto; margin: 18px 0 26px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; background: var(--surface); font-variant-numeric: tabular-nums; }
+  caption { text-align: left; font-family: var(--mono); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 0 0 8px; }
+  th, td { border: 1px solid var(--rule); padding: 8px 11px; text-align: left; vertical-align: top; line-height: 1.65; }
+  thead th { background: var(--surface-2); font-weight: 700; font-size: 12.5px; white-space: nowrap; }
+  tbody th { font-weight: 600; background: var(--surface-2); white-space: nowrap; }
+  td.num, th.num { text-align: right; font-family: var(--mono); white-space: nowrap; }
+  table.params td:nth-child(1) { font-family: var(--mono); font-size: 12.5px; white-space: nowrap; }
+  table.params td:nth-child(2) { white-space: nowrap; font-family: var(--mono); font-size: 12.5px; }
+  table.params .up::before { content: "↑ "; color: var(--warn); font-weight: 700; }
+  table.params .down::before { content: "↓ "; color: var(--accent); font-weight: 700; }
+  .jp { display: block; font-family: var(--sans); font-size: 12px; color: var(--muted); white-space: normal; }
+
+  /* ---- strategy cards ---- */
+  .card { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 18px 22px; margin: 22px 0; }
+  .card h3 { margin-top: 0; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 12px; }
+  .tag { display: inline-block; font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em; padding: 1px 8px; border: 1px solid currentColor; border-radius: 999px; color: var(--muted); }
+  .tag.ok { color: var(--tip); } .tag.hs { color: var(--accent); } .tag.no { color: var(--danger); } .tag.exp { color: var(--warn); }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .grid2 > *, .shots > *, .chooser > * { min-width: 0; }
+  .card { min-width: 0; overflow: hidden; }
+  .grid2 table.params td { white-space: normal; }
+  .grid2 table.params td:nth-child(1) { white-space: normal; word-break: break-all; }
+  .chooser { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin: 18px 0; }
+  .chooser .item { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 16px; }
+  .chooser .item b { display: block; margin-bottom: 4px; }
+  .chooser .item span { font-size: 13px; color: var(--ink-soft); }
+  .steps { counter-reset: s; list-style: none; padding-left: 0; }
+  .steps li { counter-increment: s; position: relative; padding-left: 40px; margin: 10px 0; }
+  .steps li::before { content: counter(s); position: absolute; left: 0; top: 2px; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; font-family: var(--mono); font-size: 13px; display: flex; align-items: center; justify-content: center; }
+  .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: -1px; margin-right: 5px; border: 1px solid rgba(0,0,0,.25); }
+  .toplink { font-size: 12px; color: var(--muted); margin-top: 30px; display: block; }
+  @media print { nav.toc { display: none; } main { padding: 0; } figure.shot img { box-shadow: none; } h2 { page-break-before: always; } }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc" aria-label="目次">
+  <p class="brand">KaTrain 改修版<br>完全マニュアル<small>v1.17.1.1 · 2026-08-29</small></p>
+  <ul>
+<li><a href="#intro">はじめに</a><ul>
+<li><a href="#intro-what">KaTrain とは</a></li>
+<li><a href="#intro-howto">このマニュアルの読み方</a></li>
+</ul></li>
+<li><a href="#install">インストールと初回起動</a><ul>
+<li><a href="#install-req">必要なもの</a></li>
+<li><a href="#install-steps">インストール手順</a></li>
+<li><a href="#install-engine">エンジン設定（KataGo・モデル・humanSL モデル）</a></li>
+<li><a href="#install-lang">言語の切り替え</a></li>
+</ul></li>
+<li><a href="#screen">画面の見方</a><ul>
+<li><a href="#screen-main">メイン画面</a></li>
+<li><a href="#screen-modes">対局モードと分析モード</a></li>
+<li><a href="#screen-dots">ドットの色の意味</a></li>
+<li><a href="#screen-zen">最小表示（集中モード）</a></li>
+</ul></li>
+<li><a href="#play">対局する</a><ul>
+<li><a href="#play-new">新規対局を始める</a></li>
+<li><a href="#play-players">対局者設定（人間 / AI・戦略の切り替え）</a></li>
+<li><a href="#play-teach">指導対局（悪手を自動で待った）</a></li>
+<li><a href="#play-timer">時間設定</a></li>
+<li><a href="#play-buttons">対局中の操作</a></li>
+</ul></li>
+<li><a href="#analyze">分析する</a><ul>
+<li><a href="#analyze-load">棋譜を読み込む・保存する</a></li>
+<li><a href="#analyze-toggles">盤上に表示するもの（上部のチェックボックス）</a></li>
+<li><a href="#analyze-menu">分析オプション（深い分析のメニュー）</a></li>
+<li><a href="#analyze-tree">手順ツリーとグラフ</a></li>
+</ul></li>
+<li><a href="#ai">AI 戦略ガイド</a><ul>
+<li><a href="#ai-chooser">戦略の選び方（早見表）</a></li>
+<li><a href="#ai-settings-ui">AI 設定画面の使い方</a></li>
+<li><a href="#ai-common">共通の考え方: 「損失」「humanPolicy」「安全弁」</a></li>
+<li><a href="#ai-standard">標準の戦略（元の KaTrain から引き継いだもの）</a></li>
+<li><a href="#ai-humanlike">人間らしい AI（humanSL モデルを使う戦略）</a></li>
+<li><a href="#ai-attack">攻撃型の戦略（力戦派・攻城・狩猟）</a></li>
+<li><a href="#ai-lowmatch">AI らしさ（最善手との一致率）を下げる戦略</a></li>
+<li><a href="#ai-jigo-family">目差をコントロールする戦略（持碁）</a></li>
+<li><a href="#ai-enigma">難解（9路 / 13路 / 19路）</a></li>
+<li><a href="#ai-tsumego">詰碁用の戦略（自動で設定されるもの）</a></li>
+</ul></li>
+<li><a href="#tsumego">詰碁機能</a><ul>
+<li><a href="#tsumego-frame">詰碁用の外枠（F10）— 手動で詰碁を検討するとき</a></li>
+<li><a href="#tsumego-capture">詰碁キャプチャ（ホットキーで読み取る）</a></li>
+<li><a href="#tsumego-book">回答帳（正解手順の記録と 0 秒再生）</a></li>
+<li><a href="#tsumego-autoloop">自動ループ（Ctrl+Alt+A）</a></li>
+<li><a href="#tsumego-web">Web の詰碁（PlayGo.gg など）</a></li>
+<li><a href="#tsumego-log">ログと不具合報告</a></li>
+<li><a href="#tsumego-settings">主な設定（config.json の tsumego_capture）</a></li>
+</ul></li>
+<li><a href="#watch">盤面監視モード（対局アプリと連動）</a><ul>
+<li><a href="#watch-setup">準備と使い方</a></li>
+<li><a href="#watch-highlight">AI 着手の強調表示</a></li>
+<li><a href="#watch-limits">できること・できないこと</a></li>
+<li><a href="#watch-speed">応答速度のしくみ</a></li>
+<li><a href="#watch-settings">主な設定（config.json の board_watch）</a></li>
+</ul></li>
+<li><a href="#theme">盤面テーマ（盤と碁石のデザイン）</a><ul>
+<li><a href="#theme-custom">自分でテーマを作る</a></li>
+</ul></li>
+<li><a href="#settings">設定リファレンス</a><ul>
+<li><a href="#settings-files">設定ファイルとフォルダ</a></li>
+<li><a href="#settings-sections">config.json のセクション</a></li>
+<li><a href="#settings-debug">デバッグ出力</a></li>
+</ul></li>
+<li><a href="#shortcuts">キーボード・マウス操作一覧</a><ul>
+</ul></li>
+<li><a href="#trouble">トラブルシューティング</a><ul>
+</ul></li>
+<li><a href="#glossary">用語集</a><ul>
+</ul></li>
+</ul>
+</nav>
+<main>
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">KaTrain v1.17.1.1 修正版 — User Manual</p>
+  <h1>KaTrain 改修版<br>完全マニュアル</h1>
+  <p class="standfirst">
+    囲碁 AI「KataGo」で対局・分析・勉強ができるアプリ KaTrain の、改修版（Human-like AI 戦略・詰碁・盤面監視つき）の使い方を、
+    初めての方でも上から順に読めば分かるようにまとめました。AI の設定項目は「値を上げると／下げるとどうなるか」まで書いてあります。
+  </p>
+</header>
+
+<h2 id="intro"><span class="num">01</span>はじめに</h2>
+
+<h3 id="intro-what">KaTrain とは</h3>
+<p>
+KaTrain は、囲碁 AI <b>KataGo</b> を使って「AI と対局する」「棋譜を分析して悪手を教えてもらう」ことができるデスクトップアプリです。
+元のソフトは <a href="https://github.com/sanderland/katrain">sanderland/katrain</a>（オープンソース）で、
+このマニュアルが扱うのはそれに次の 3 系統の改修を加えた <b>v1.17.1.1 修正版</b>です。
+</p>
+
+<div class="chooser">
+  <div class="item"><b>① 人間らしい AI 戦略の追加</b><span>「9段の人間ならこう打つ」という humanSL モデルを土台に、力戦派・攻城・狩猟・持碁・一致率追随・難解など、<b>目的別の棋風</b>を選べる AI を多数追加。設定はスライダーで細かく調整できます（→ <a href="#ai">06 AI 戦略ガイド</a>）。</span></div>
+  <div class="item"><b>② 詰碁の自動解答</b><span>BlueStacks 上の詰碁アプリや Web の詰碁を<b>ホットキー一発で読み取り</b>、KaTrain 上に再現して AI が正解手を打ちます。死活ソルバ・回答帳・自動ループつき（→ <a href="#tsumego">07 詰碁機能</a>）。</span></div>
+  <div class="item"><b>③ 対局アプリの盤面監視</b><span>BlueStacks 上の対局アプリの相手の着手を自動で KaTrain に取り込み、AI の応手をアプリの盤の上に光る輪で示します（→ <a href="#watch">08 盤面監視モード</a>）。</span></div>
+</div>
+
+<h3 id="intro-howto">このマニュアルの読み方</h3>
+<ul>
+  <li><b>初めての方</b>は <a href="#install">02 インストール</a> → <a href="#screen">03 画面の見方</a> → <a href="#play">04 対局する</a> の順に読んでください。30 分で一局打てるようになります。</li>
+  <li><b>AI の棋風を変えたい方</b>は <a href="#ai">06 AI 戦略ガイド</a> へ。冒頭の「戦略の選び方」早見表から目的の戦略に飛べます。各設定項目には <span class="up">上げると</span> / <span class="down">下げると</span> どうなるかを書いてあります。</li>
+  <li>本文中の <kbd>F7</kbd> のような表記はキーボードのキー、「一般・エンジン設定」のような「」つきの語は画面に表示されるボタンやメニューの名前です。</li>
+  <li>専門用語（humanPolicy・ownership・visits・目 など）は <a href="#glossary">付録の用語集</a> にまとめました。</li>
+</ul>
+
+<div class="callout tip">
+  <span class="label">スクリーンショットについて</span>
+  本書の画面写真は、この改修版 KaTrain を実際に起動して自動撮影したものです（言語設定は日本語、ウィンドウサイズ 1500×1000）。
+  お使いの環境ではウィンドウサイズやテーマによって配置が多少変わりますが、ボタンやメニューの名前は同じです。
+</div>
+
+<h2 id="install"><span class="num">02</span>インストールと初回起動</h2>
+
+<h3 id="install-req">必要なもの</h3>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>もの</th><th>説明</th></tr></thead>
+  <tbody>
+    <tr><th>Windows PC ＋ NVIDIA GPU</th><td>この改修版は Windows 11 ＋ GeForce RTX（TensorRT 版 KataGo）で開発・検証されています。GPU が無くても CPU 版 KataGo で動きますが、AI の応答は数倍〜数十倍遅くなります。</td></tr>
+    <tr><th>Python 3.12</th><td>3.9〜3.13 で動作します。<code>uv</code>（Python のパッケージ管理ツール）があると依存ライブラリのインストールが 1 コマンドで済みます。</td></tr>
+    <tr><th>KataGo 本体</th><td>囲碁 AI エンジンの実行ファイル（<code>katago.exe</code>）。v1.16 系。</td></tr>
+    <tr><th>KataGo の通常モデル</th><td>局面を評価するニューラルネット（例 <code>kata1-b18c384nbt-…bin.gz</code>）。パッケージ同梱の既定パスがそのまま使えます。</td></tr>
+    <tr><th>humanSL モデル（人間らしさモデル）</th><td><code>b18c384nbt-humanv0.bin.gz</code>。<b>これが無いと「Human-like」「力戦派(Human拡張)」「持碁」「難解」など人間らしい戦略はすべて動きません</b>（→ <a href="#install-engine">エンジン設定</a>）。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="install-steps">インストール手順</h3>
+<ol class="steps">
+  <li>リポジトリのフォルダ（例 <code>C:\Users\&lt;あなた&gt;\Documents\katrain-1.17.1.1\katrain-1.17.1.1</code>）でコマンドプロンプトを開きます。</li>
+  <li><code>uv sync</code> を実行して依存パッケージ（Kivy・KivyMD・Pillow など）をインストールします。<code>uv</code> が無い場合は <code>pip install -e .</code> でも構いません。</li>
+  <li><code>python -m katrain</code> で起動します。初回は KataGo が GPU 向けにチューニングするため、起動に 1〜2 分かかることがあります（右下のランプが緑になれば準備完了）。</li>
+  <li>起動後に <kbd>F8</kbd>（一般・エンジン設定）を開き、KataGo・モデル・humanSL モデルのパスを確認します（下記）。</li>
+</ol>
+
+<pre><code>cd C:\Users\&lt;あなた&gt;\Documents\katrain-1.17.1.1\katrain-1.17.1.1
+uv sync
+python -m katrain</code></pre>
+
+<h3 id="install-engine">エンジン設定（KataGo・モデル・humanSL モデル）</h3>
+<p>
+メニュー（画面左上の ≡ または <kbd>Alt</kbd>）→「一般・エンジン設定」（<kbd>F8</kbd>）で開きます。
+上段が KataGo 設定、下段左が一般設定、下段右がエンジン設定です。
+</p>
+<figure class="shot">
+  <img src="img/popup_settings.png" alt="一般・エンジン設定ダイアログ">
+  <figcaption><b>一般・エンジン設定。</b>上段で KataGo 実行ファイルとモデルのパスを、右下で探索手数（強さと速さ）を決めます。変更後は「設定を更新」を押すとエンジンが再起動します。</figcaption>
+</figure>
+
+<div class="tablewrap">
+<table>
+  <caption>KataGo 設定（上段）</caption>
+  <thead><tr><th>項目</th><th>何を入れるか</th></tr></thead>
+  <tbody>
+    <tr><th>KataGoモデルファイルの場所</th><td>通常モデル。既定はパッケージ同梱の <code>katrain/models/kata1-b18c384nbt-…bin.gz</code>。「追加モデルをダウンロード」で別のモデルも取れます。</td></tr>
+    <tr><th>Path to human-like model</th><td><b>humanSL モデル</b>のフルパス（例 <code>C:\Users\&lt;あなた&gt;\.katrain\b18c384nbt-humanv0.bin.gz</code>）。空のままだと humanSL 系の戦略は「AI設定」に出ていても KataGo 最善手を打つだけになります。</td></tr>
+    <tr><th>KataGo実行ファイル（フルパス）</th><td><code>katago.exe</code> のフルパス。空なら内蔵の OpenCL 版を使います。TensorRT 版を使うならここに指定します。</td></tr>
+    <tr><th>KataGo設定ファイルの場所</th><td>既定 <code>katrain/KataGo/analysis_config.cfg</code>（パッケージ同梱）。<b>ここで指定したファイルだけがエンジンに渡されます</b>。<code>~/.katrain/analysis_config.cfg</code> を編集しても効きません。</td></tr>
+    <tr><th>エンジンコマンドの上書き</th><td>リモートの KataGo に接続するなど特殊な起動コマンドを丸ごと指定したいとき用。通常は空。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="tablewrap">
+<table>
+  <caption>エンジン設定（右下）</caption>
+  <thead><tr><th>項目</th><th>意味</th><th>目安</th></tr></thead>
+  <tbody>
+    <tr><th>分析時の最大探索手数</th><td>1 局面あたり KataGo が読む手数（visits）。多いほど正確で遅い。<b>Human-like 系の AI 戦略の内部解析もこの値で動きます</b>。</td><td>RTX 3080 で 1000〜2000。CPU なら 100〜300</td></tr>
+    <tr><th>簡易分析時の最大探索手数</th><td>棋譜読込時の「簡易解析」や盤上全手の分析で使う軽い探索の手数。</td><td>25〜100</td></tr>
+    <tr><th>分析の最大時間</th><td>1 クエリに使ってよい秒数の上限。</td><td>8</td></tr>
+    <tr><th>Wide root noise</th><td>候補手を広く探索させる度合い。0.02〜0.1 で候補手が増えます（強さは少し落ちる）。</td><td>0.04</td></tr>
+    <tr><th>地合推定を計算する</th><td>各交点がどちらの地になるかの推定（ownership）を毎回計算するか。OFF でも必要な戦略は自分で要求します。</td><td>どちらでも可</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout warn">
+  <span class="label">設定ファイルの場所</span>
+  すべての設定は <code>C:\Users\&lt;あなた&gt;\.katrain\config.json</code> に保存されます（ダイアログのタイトルにもパスが出ます）。
+  <b>KaTrain を起動したままこのファイルを手で編集しないでください</b>。終了時にアプリが設定を丸ごと書き戻すので、編集が消えます。
+  手で直すときは KaTrain を終了してからにします。
+</div>
+
+<h3 id="install-lang">言語の切り替え</h3>
+<p>メニュー下部の国旗アイコンで切り替えます。本書は日本語表示を前提にしています（英語表示のときは戦略名が「Human-like」→「Human-like」、「力戦派」→「Fighting」のように変わります）。</p>
+
+<h2 id="screen"><span class="num">03</span>画面の見方</h2>
+
+<h3 id="screen-main">メイン画面</h3>
+<figure class="shot">
+  <img src="img/main_play.png" alt="対局モードのメイン画面">
+  <figcaption><b>対局モード。</b>左が碁盤、右が操作パネル。上部にある 5 つのチェックボックスは分析表示の切り替え、右下に「パス」「待った」「投了」があります。</figcaption>
+</figure>
+
+<div class="tablewrap">
+<table>
+  <thead><tr><th>場所</th><th>役割</th></tr></thead>
+  <tbody>
+    <tr><th>左上 ≡（ハンバーガー）</th><td>メインメニューを開きます（<kbd>Alt</kbd> でも開きます）。新規対局・棋譜の保存／読込・各種設定・言語がここに集まっています。</td></tr>
+    <tr><th>上部のチェックボックス</th><td>「次の着手」「ドット表示」「上位候補」「第一感」「地合推定」。盤上に何を重ねて表示するかを切り替えます（<kbd>q</kbd> <kbd>w</kbd> <kbd>e</kbd> <kbd>r</kbd> <kbd>t</kbd>）。→ <a href="#analyze-toggles">05</a></td></tr>
+    <tr><th>「分析オプション」ボタン</th><td>さらに深く分析／評価レポート／詰碁用の外枠など、深い分析のメニューを開きます。→ <a href="#analyze-menu">05</a></td></tr>
+    <tr><th>碁盤</th><td>クリックで着手。候補手にカーソルを載せると予想手順が盤上に流れます。マウスホイールで手を進めたり戻したりできます。</td></tr>
+    <tr><th>右パネル上: 対局者</th><td>黒・白それぞれの「人間 / AI」と「AI の戦略」（AI のとき）または「通常対局 / 指導対局」（人間のとき）を切り替えます。丸いアイコンをクリックすると黒白を入れ替えます。</td></tr>
+    <tr><th>右パネル中: 対局／分析 の切替</th><td>「対局」「分析」ボタン（<kbd>Tab</kbd>）。<b>分析モードでは AI の自動着手・指導の待った・時計が止まります</b>。</td></tr>
+    <tr><th>右パネル: 目差／勝率／損失目数 タブ</th><td>現在の局面の評価と、直前の手で何目損したか。</td></tr>
+    <tr><th>右パネル: 情報／詳細／コメント</th><td>最善手・予想手順・AI の思考過程（戦略がどう手を選んだか）・SGF に保存するコメント欄。</td></tr>
+    <tr><th>右パネル下: 目差グラフ／手順ツリー</th><td>対局モードでは時計、分析モードでは手順ツリー（分岐）と目差の推移グラフ。</td></tr>
+    <tr><th>右下のランプ</th><td>エンジンの状態。<span class="dot" style="background:#1e9600"></span>緑＝空き、<span class="dot" style="background:#e66619"></span>オレンジ＝解析中、<span class="dot" style="background:#cc0000"></span>赤＝エンジン停止／起動失敗。</td></tr>
+    <tr><th>盤の下の ← → ボタン</th><td>手を戻す／進める。赤い矢印は「次（前）の悪手の直前」へジャンプ。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="screen-modes">対局モードと分析モード</h3>
+<p>
+右パネルの「対局」「分析」ボタン（または <kbd>Tab</kbd>）で切り替えます。それぞれのモードで「どのチェックボックスを ON にしていたか」「右パネルのどのタブを開いていたか」が<b>別々に記憶</b>されるので、
+「対局中はヒントを出さない／分析中はすべて表示」のように使い分けられます。
+</p>
+<figure class="shot">
+  <img src="img/main_analyze.png" alt="分析モードのメイン画面">
+  <figcaption><b>分析モード。</b>ドット・上位候補・地合推定を ON にした状態。右下は手順ツリーと目差グラフ。候補手の数字は「その手を打つと最善手より何目損か」（設定で勝率などにも変えられます）。</figcaption>
+</figure>
+
+<h3 id="screen-dots">ドットの色の意味</h3>
+<p>着手の上に付く色つきの点は「その手で何目損したか」を表します。既定のしきい値（指導・分析設定で変更可）は次のとおりです。</p>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>色</th><th>損失（目）</th><th>読み方</th></tr></thead>
+  <tbody>
+    <tr><td><span class="dot" style="background:#1e9600"></span>緑</td><td class="num">0.5 未満</td><td>ほぼ最善。</td></tr>
+    <tr><td><span class="dot" style="background:#abe62e"></span>黄緑</td><td class="num">0.5〜1.5</td><td>小さな緩手。</td></tr>
+    <tr><td><span class="dot" style="background:#f2f200"></span>黄</td><td class="num">1.5〜3</td><td>やや損。</td></tr>
+    <tr><td><span class="dot" style="background:#e66619"></span>オレンジ</td><td class="num">3〜6</td><td>はっきりした悪手。指導対局ではここから「待った」がかかります。</td></tr>
+    <tr><td><span class="dot" style="background:#cc0000"></span>赤</td><td class="num">6〜12</td><td>大きな悪手。</td></tr>
+    <tr><td><span class="dot" style="background:#72216b"></span>紫</td><td class="num">12 以上</td><td>致命的。</td></tr>
+  </tbody>
+</table>
+</div>
+<p>点の<b>大きさ</b>は「その損が実際に相手に咎められたか」を表します（最大＝丸ごと咎められた、最小＝結果的に目差は動かなかった）。級位者は赤・紫の大きい点だけ見れば十分で、有段者は小さな点も参考になります。</p>
+
+<h3 id="screen-zen">最小表示（集中モード）</h3>
+<p><kbd>F12</kbd>（または <kbd>`</kbd>）を押すたびに、右パネル → 上部トグルの順に非表示になり、碁盤だけの表示になります。もう一度押すと戻ります。</p>
+<figure class="shot half">
+  <img src="img/zen.png" alt="最小表示">
+  <figcaption><b>最小表示。</b>碁盤と下部のナビゲーションだけが残ります。</figcaption>
+</figure>
+
+<h2 id="play"><span class="num">04</span>対局する</h2>
+
+<h3 id="play-new">新規対局を始める</h3>
+<p>メニュー →「新規対局・ルール変更」（<kbd>Ctrl</kbd>+<kbd>N</kbd>）で次のダイアログが開きます。</p>
+<figure class="shot">
+  <img src="img/popup_newgame.png" alt="新規対局の設定ダイアログ">
+  <figcaption><b>新規対局の設定。</b>上段のタブで「新規対局を開始」「局面を生成」「対局情報を編集」を切り替えます。中央で黒・白それぞれの「人間 / AI」と AI の戦略を選び、下でルール・コミ・碁盤サイズ・置き石を決めます。</figcaption>
+</figure>
+
+<div class="tablewrap">
+<table>
+  <thead><tr><th>項目</th><th>説明</th></tr></thead>
+  <tbody>
+    <tr><th>対局者名</th><td>棋譜（SGF）に記録される名前。空欄でも構いません。</td></tr>
+    <tr><th>プレイヤー（黒／白）</th><td>「人間」か「AI」。人間のときは「通常対局」「指導対局」を、AI のときは<b>AI の戦略</b>を選びます。丸いアイコンで黒白を入れ替えられます。</td></tr>
+    <tr><th>ルール</th><td>日本／中国／韓国／AGA／ニュージーランド／Tromp-Taylor／古代中国。<b>中国ルール（地＋石を数える）ではダメを詰めても目数が動かない</b>ため、AI 戦略の終局判定は「人間ならパスするか」も見て決めます。対局アプリと合わせて使う場合はアプリのルールに揃えてください。</td></tr>
+    <tr><th>コミ</th><td>白がもらう目数。19路は 6.5（日本）〜7.5（中国）、9路は 7.0 が一般的です。</td></tr>
+    <tr><th>碁盤サイズ</th><td>9／13／19 のほか、<code>19:9</code> のように書くと長方形の盤も作れます。<b>9路・13路・19路それぞれ専用の戦略があります</b>（持碁(9路)・一致率追随(9路)・難解(9/13/19路)）。</td></tr>
+    <tr><th>置き石</th><td>0〜9。置碁のときは「Kata置碁」戦略が置き石に合わせて手加減の度合いを自動調整します。</td></tr>
+    <tr><th>思考記録をクリア</th><td>ON にすると KataGo の探索キャッシュを捨てて始めます。<b>同じ手順を毎回再現してしまうのを防ぎたいとき</b>に使います。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h4>局面を生成（自己対局で途中局面を作る）</h4>
+<figure class="shot half">
+  <img src="img/popup_setup_position.png" alt="局面を生成タブ">
+  <figcaption><b>局面を生成。</b>「黒の何目リードを目標に」「何手目まで生成」を指定すると、AI 同士の自己対局でその条件に近い途中局面を作り、そこから打ち継げます。中盤・終盤の練習や、形勢が良い局面から強い AI に勝ち切る練習に。</figcaption>
+</figure>
+
+<h4>対局情報を編集</h4>
+<figure class="shot half">
+  <img src="img/popup_editgame.png" alt="対局情報を編集タブ">
+  <figcaption><b>対局情報を編集。</b>進行中の対局の対局者名・ルール・コミだけを変更します（盤面はそのまま）。</figcaption>
+</figure>
+
+<h3 id="play-players">対局者設定（人間 / AI・戦略の切り替え）</h3>
+<p>
+対局の途中でも、メイン画面の右パネル上部（またはメニュー →「対局者設定」）で黒白それぞれの「人間 / AI」と AI の戦略を切り替えられます。
+戦略の細かい設定は <kbd>F7</kbd>「AI設定」で行います（→ <a href="#ai">06</a>）。
+</p>
+<figure class="shot half">
+  <img src="img/menu.png" alt="メインメニュー">
+  <figcaption><b>メインメニュー（<kbd>Alt</kbd>）。</b>上部が対局者設定、その下に新規対局・棋譜保存／読込・時間設定・指導・分析設定・AI設定・一般・エンジン設定・分散訓練。最下部で言語を切り替えます。</figcaption>
+</figure>
+
+<h3 id="play-teach">指導対局（悪手を自動で待った）</h3>
+<p>
+人間側を「指導対局」にすると、KaTrain があなたの手を毎回分析し、<b>しきい値より損な手には自動で「待った」をかけて打ち直させます</b>。
+待ったの回数・しきい値は「指導・分析設定」（<kbd>F6</kbd>）で決めます。
+</p>
+<figure class="shot">
+  <img src="img/popup_teacher.png" alt="指導・分析設定">
+  <figcaption><b>指導・分析設定。</b>上段の表は「何目より損なら」その色のドットにするか、「再考を促す回数（指導対局時）」＝その色の手に何回まで待ったをかけるか（0.5 なら 50% の確率で 1 回）、ドットを表示するか、SGF に保存するかを色ごとに決めます。</figcaption>
+</figure>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>項目</th><th>意味</th></tr></thead>
+  <tbody>
+    <tr><th>何目より損なら</th><td>ドットの色分けのしきい値（既定 12 / 6 / 3 / 1.5 / 0.5 / 0 目）。</td></tr>
+    <tr><th>再考を促す回数</th><td>指導対局でその色の手に何回まで「待った」をかけるか。既定は紫・赤・オレンジが 1 回、黄が 0.5（確率 50%）、それ以下は 0。</td></tr>
+    <tr><th>カラーテーマ</th><td>ドットの配色。「赤緑色弱」向けのテーマがあります。</td></tr>
+    <tr><th>候補手上の表示</th><td>上位候補に表示する数字の種類（損失目数／目差／勝率／探索手数など）。2 つ目は副表示。</td></tr>
+    <tr><th>表示候補の最低探索数</th><td>これより探索手数が少ない候補は数字を出しません（小さく薄い点になる）。</td></tr>
+    <tr><th>直近何手のドットを表示</th><td>「ドット表示」が「直近だけ」のとき、何手ぶんまで点を付けるか。</td></tr>
+    <tr><th>AIの手にもドット／コメントをつける</th><td>OFF にすると人間の手だけに点やコメントが付きます。</td></tr>
+    <tr><th>分析結果をSGFに保存</th><td>ON にすると保存する棋譜に解析結果を埋め込み、次に開いたとき解析なしで表示できます（ファイルは大きくなります）。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="play-timer">時間設定</h3>
+<figure class="shot third">
+  <img src="img/popup_timer.png" alt="時間設定">
+  <figcaption><b>時間設定（<kbd>F5</kbd>）。</b>持ち時間（分）・秒読み時間・秒読み回数・「早打ち禁止秒数」（この秒数より速く打つと注意される）・音声のオンオフ。<kbd>Pause</kbd> キーで時計を一時停止できます。</figcaption>
+</figure>
+
+<h3 id="play-buttons">対局中の操作</h3>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>操作</th><th>ボタン / キー</th><th>説明</th></tr></thead>
+  <tbody>
+    <tr><th>着手</th><td>盤をクリック</td><td>自分の手番のときだけ有効。AI の手番は自動で進みます。</td></tr>
+    <tr><th>パス</th><td>「パス」／<kbd>p</kbd></td><td>連続パスで終局。終局時は地合推定に基づく結果が表示されます。</td></tr>
+    <tr><th>待った</th><td>「待った」／<kbd>←</kbd> <kbd>z</kbd></td><td><b>AI 相手のときは AI の手と自分の手の 2 手が戻ります</b>。<kbd>Shift</kbd> で 10 手、<kbd>Ctrl</kbd> で最初まで。</td></tr>
+    <tr><th>投了</th><td>「投了」</td><td>結果を記録して終局します。</td></tr>
+    <tr><th>AI に打たせる</th><td><kbd>Enter</kbd></td><td>今の手番が人間でも、選択中の戦略で AI に 1 手打たせます。</td></tr>
+    <tr><th>手を進める</th><td><kbd>→</kbd> <kbd>x</kbd></td><td>待ったで戻した手を進め直す。</td></tr>
+    <tr><th>座標表示</th><td><kbd>k</kbd></td><td>盤の座標（A〜T・1〜19）の表示切替。</td></tr>
+    <tr><th>手数表示</th><td><kbd>m</kbd></td><td>石に手数を表示。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout tip">
+  <span class="label">おすすめの最初の一局</span>
+  白を「AI」→「Human-like」にして、19路・コミ 6.5・日本ルールで始めてみてください。人間の 9 段相当の自然な手を打ちます。
+  強すぎるときは戦略を「段級位相応」にして級位を選ぶか、置き石を入れて「Kata置碁」にします。
+</div>
+
+<h2 id="analyze"><span class="num">05</span>分析する</h2>
+
+<h3 id="analyze-load">棋譜を読み込む・保存する</h3>
+<ul>
+  <li><b>読込</b>: メニュー →「棋譜読込」（<kbd>Ctrl</kbd>+<kbd>L</kbd>）。SGF のほか NGF・GIB も読めます。ファイルをウィンドウにドラッグ＆ドロップしても開けます。</li>
+  <li><b>クリップボードから</b>: SGF のテキストをコピーして <kbd>Ctrl</kbd>+<kbd>V</kbd>。全手を簡易解析し、最終手だけ通常解析します。</li>
+  <li><b>保存</b>: 「棋譜保存」（<kbd>Ctrl</kbd>+<kbd>S</kbd>）／「名前をつけて棋譜保存」（<kbd>Ctrl</kbd>+<kbd>D</kbd>）／<kbd>Ctrl</kbd>+<kbd>C</kbd> でクリップボードへ。既定の保存先は一般設定の <code>sgf_save</code>（このリポジトリでは <code>sgfout/</code>）。</li>
+</ul>
+<figure class="shot half">
+  <img src="img/popup_load.png" alt="棋譜読込ダイアログ">
+  <figcaption><b>棋譜読込。</b>「簡易解析」を ON にすると全手を軽い探索で一気に解析します（あとから <kbd>F2</kbd> で深く解析できます）。「初手に巻戻す」を OFF にすると最終局面から開きます。</figcaption>
+</figure>
+
+<h3 id="analyze-toggles">盤上に表示するもの（上部のチェックボックス）</h3>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>キー</th><th>チェックボックス</th><th>表示されるもの</th></tr></thead>
+  <tbody>
+    <tr><td><kbd>q</kbd></td><th>次の着手</th><td>棋譜で次に打たれた手（分岐がある場合はすべて）。次の一手を当てる練習のときは OFF に。</td></tr>
+    <tr><td><kbd>w</kbd></td><th>ドット表示</th><td>着手の損失を色で示す点。3 状態（全部／直近だけ／なし）。</td></tr>
+    <tr><td><kbd>e</kbd></td><th>上位候補</th><td>KataGo が読んだ候補手を損失の色つきで表示。<b>候補にカーソルを載せると予想手順が盤上に流れます</b>。小さく薄い点は探索が浅く信頼度が低い手。</td></tr>
+    <tr><td><kbd>r</kbd></td><th>第一感</th><td>ニューラルネットの「読まずに感じる」第一候補（policy）。数字はその確率。ON にすると「上位候補」は自動で OFF になります。</td></tr>
+    <tr><td><kbd>t</kbd></td><th>地合推定</th><td>各交点がどちらの地になりそうか（ownership）を色の濃さで表示。</td></tr>
+  </tbody>
+</table>
+</div>
+<figure class="shot half">
+  <img src="img/main_policy.png" alt="第一感表示">
+  <figcaption><b>第一感（policy）表示。</b>読みを一切入れない「形の感覚」だけの評価。数字が大きいほど「その手が自然」と感じている。</figcaption>
+</figure>
+
+<h3 id="analyze-menu">分析オプション（深い分析のメニュー）</h3>
+<p>「分析オプション」ボタンを押すと次のメニューが開きます。各項目はキー 1 つでも呼び出せます。</p>
+<figure class="shot half">
+  <img src="img/analysis_menu.png" alt="分析オプションのメニュー">
+  <figcaption><b>分析オプションのメニュー。</b></figcaption>
+</figure>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>キー</th><th>項目</th><th>何をするか</th></tr></thead>
+  <tbody>
+    <tr><td><kbd>a</kbd></td><th>さらに深く分析</th><td>今の局面をより多くの探索手数で読み直し、評価の精度を上げます。</td></tr>
+    <tr><td><kbd>s</kbd></td><th>候補手を均等に分析</th><td>表示中の候補手をすべて最善手と同じ探索手数まで読ませ、薄い点の候補の信頼度を上げます。</td></tr>
+    <tr><td><kbd>d</kbd></td><th>盤上すべての手を簡易分析</th><td>打てる手を全部軽く評価します。「まともな手が何通りあるか」を見るのに便利。</td></tr>
+    <tr><td><kbd>f</kbd></td><th>他の候補手を分析</th><td>今の候補手を除外して新たな候補を探させます。</td></tr>
+    <tr><td><kbd>g</kbd></td><th>領域を絞って分析</th><td>盤上をドラッグして囲んだ範囲の中だけを読ませます。<b>詰碁や部分的な死活を調べるときに</b>。解除は範囲を指定するメッセージが出ている間に盤上の 1 点だけをクリック。</td></tr>
+    <tr><td><kbd>h</kbd></td><th>分析をリセット</th><td>追加分析の結果を捨て、通常の分析結果に戻します。</td></tr>
+    <tr><td><kbd>i</kbd></td><th>棋譜の途中に手を追加</th><td>「挿入モード」。途中に手を差し込んだあと、もう一度 <kbd>i</kbd> を押すと残りの手順がコピーされます。両者が見落とした手の交換を補って解析するときに。</td></tr>
+    <tr><td><kbd>l</kbd></td><th>終局まで簡易自動対局</th><td>今の局面から AI 同士で終局まで打ち、折り畳んだ分岐として追加します。ミスの影響を最後まで見たいときに。</td></tr>
+    <tr><td><kbd>F2</kbd></td><th>一局全体を深く分析</th><td>全手を指定の探索手数で読み直します（下記）。</td></tr>
+    <tr><td><kbd>F3</kbd></td><th>評価レポート</th><td>両者の正確度・平均損失・AI との一致率を序盤／中盤／終盤別に表示します（下記）。</td></tr>
+    <tr><td><kbd>F10</kbd></td><th>詰碁用の外枠</th><td>隅や辺に置いた死活問題の周りを石で埋め、AI が詰碁として正しく読めるようにします（→ <a href="#tsumego-frame">07</a>）。</td></tr>
+    <tr><td><kbd>Space</kbd></td><th>分析の継続・停止</th><td>他の解析が無い間、今の局面を読み続けます（Lizzie の「ponder」相当）。<kbd>Shift</kbd>+<kbd>Space</kbd> なら「上位候補」を ON にせずに開始。</td></tr>
+    <tr><td><kbd>Enter</kbd></td><th>AIの推奨手を打つ</th><td>今の手番の対局者設定に関係なく AI に 1 手打たせます。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h4 id="analyze-report">評価レポート（<kbd>F3</kbd>）</h4>
+<figure class="shot half">
+  <img src="img/popup_report.png" alt="評価レポート">
+  <figcaption><b>評価レポート。</b>全局／序盤／中盤／終盤ごとに、正確度の評点・平均損失目数・AI の最善手との一致率・上位 5 候補との一致率を黒白で比較します。
+  改修版の「一致率追随」「難解」戦略はこの <b>「AIの最善手との一致率」</b> を下げることを目的に設計されています。</figcaption>
+</figure>
+
+<h4 id="analyze-deep">一局全体を深く分析（<kbd>F2</kbd>）</h4>
+<figure class="shot half">
+  <img src="img/popup_reanalyze.png" alt="一局全体を深く分析">
+  <figcaption><b>一局全体を深く分析。</b>「着手毎の探索手数」を指定し、必要なら手数範囲や「悪手だけ」に限定して再分析します。</figcaption>
+</figure>
+
+<h3 id="analyze-tree">手順ツリーとグラフ</h3>
+<ul>
+  <li>分析モードの右下に<b>手順ツリー</b>が出ます。クリックで任意の手へ、<kbd>↑</kbd><kbd>↓</kbd> で分岐の切り替え、<kbd>b</kbd> で前の分岐点へ、<kbd>c</kbd> で分岐の折り畳み。</li>
+  <li>右クリックのメニューで「こちらを主分岐に」「この手以降を削除」「この枝だけ残して他を削除」ができます。</li>
+  <li>候補手の上でマウスホイールを回すと予想手順を 1 手ずつ進められ、<b>ホイールをクリックすると手順ツリーに追加</b>できます。</li>
+  <li><b>目差グラフ</b>は勝率／目差の推移。クリックでその手に飛べます。</li>
+  <li>「情報」タブの「AIの思考過程」には、AI 戦略がどの候補をどう比較して選んだかが 1 行で出ます（例: <code>[Enigma13] …</code>）。戦略の挙動を確かめるときに便利です。</li>
+</ul>
+
+<h2 id="ai"><span class="num">06</span>AI 戦略ガイド</h2>
+
+<p class="lead">
+KaTrain の AI は「戦略」を選ぶことで棋風や強さが変わります。この章では、まず<b>どの戦略を選べばよいか</b>を目的別にまとめ、
+次に AI 設定画面の使い方、そして<b>戦略ごとの設定項目を「値を変えるとどうなるか」まで</b>解説します。
+</p>
+
+<h3 id="ai-chooser">戦略の選び方（早見表）</h3>
+<div class="chooser">
+  <div class="item"><b>本気で強い相手と打ちたい</b><span>→ <a href="#ai-default">手加減なし</a>（KataGo そのもの）</span></div>
+  <div class="item"><b>自分の棋力に合わせた相手が欲しい</b><span>→ <a href="#ai-rank">段級位相応</a>（15級〜3段）／置碁なら <a href="#ai-handicap">Kata置碁</a></span></div>
+  <div class="item"><b>人間らしい自然な手を打つ相手が欲しい</b><span>→ <a href="#ai-human">Human-like</a>（20級〜9段の人間モデル）／昔のプロ風なら <a href="#ai-pro">Historical Pro</a></span></div>
+  <div class="item"><b>戦い好きの相手と打ちたい</b><span>→ <a href="#ai-fighting">力戦派</a>（接触戦・複雑化）／<a href="#ai-hunt">狩猟戦略</a>（侵入と攻め）／<a href="#ai-siege">攻城戦略</a>（序盤に譲って中盤で大石を攻める）</span></div>
+  <div class="item"><b>AI っぽさ（最善手との一致率）を下げたい</b><span>→ <a href="#ai-diverge">AI一致率低減</a>／9路なら <a href="#ai-parity9">一致率追随（9路）</a>／狩猟の棋風で下げるなら <a href="#ai-hunt-diverge">狩猟戦略（一致率低減）</a></span></div>
+  <div class="item"><b>僅差で勝つ・持碁を狙う相手</b><span>→ <a href="#ai-jigo">Kata持碁</a>（13/19路）／<a href="#ai-jigo9">Kata持碁（9路）</a></span></div>
+  <div class="item"><b>定跡・手筋の勉強を無効化する「難しい」相手</b><span>→ <a href="#ai-enigma">難解（9路／13路／19路）</a></span></div>
+  <div class="item"><b>弱い・変わった相手（練習用）</b><span>→ <a href="#ai-scoreloss">損も混ぜて</a>／<a href="#ai-policy">第一感</a>系／<a href="#ai-local">おつきあい派</a>・<a href="#ai-tenuki">手抜き派</a>・<a href="#ai-influence">勢力派</a>・<a href="#ai-territory">実利派</a>／<a href="#ai-simple">簡明派</a></span></div>
+</div>
+
+<div class="tablewrap">
+<table>
+  <caption>全戦略一覧（AI設定画面のドロップダウン順）</caption>
+  <thead><tr><th>戦略名（画面表示）</th><th>内部名</th><th>盤サイズ</th><th>humanSL</th><th>ひとこと</th></tr></thead>
+  <tbody>
+    <tr><th><a href="#ai-default">手加減なし</a></th><td><code>ai:default</code></td><td>全部</td><td>—</td><td>KataGo の最善手。設定項目なし</td></tr>
+    <tr><th><a href="#ai-human">Human-like</a></th><td><code>ai:human</code></td><td>全部</td><td>必須</td><td>指定した段級位の人間らしい手。改修の土台</td></tr>
+    <tr><th><a href="#ai-pro">Historical Pro</a></th><td><code>ai:pro</code></td><td>全部</td><td>必須</td><td>指定した年代のプロ棋士風</td></tr>
+    <tr><th><a href="#ai-diverge">AI一致率低減</a></th><td><code>ai:diverge_move</code></td><td>全部</td><td>必須</td><td>人間らしさを保ちつつ最善手との一致率を下げる</td></tr>
+    <tr><th><a href="#ai-rank">段級位相応</a></th><td><code>ai:p:rank</code></td><td>全部</td><td>—</td><td>級位を指定して弱くする（校正済み）</td></tr>
+    <tr><th><a href="#ai-handicap">Kata置碁</a></th><td><code>ai:handicap</code></td><td>全部</td><td>—</td><td>置碁で置き石を最大限活かす打ち方</td></tr>
+    <tr><th><a href="#ai-simple">簡明派</a></th><td><code>ai:simple</code></td><td>全部</td><td>—</td><td>盤面を単純化する手を好む</td></tr>
+    <tr><th><a href="#ai-scoreloss">損も混ぜて</a></th><td><code>ai:scoreloss</code></td><td>全部</td><td>—</td><td>損の少ない手をランダムに混ぜる</td></tr>
+    <tr><th><a href="#ai-policy">第一感</a></th><td><code>ai:policy</code></td><td>全部</td><td>—</td><td>読みなしの直感手（約5段）</td></tr>
+    <tr><th><a href="#ai-weighted">第一感（比重）</a></th><td><code>ai:p:weighted</code></td><td>全部</td><td>—</td><td>直感の確率どおりに抽選（弱い）</td></tr>
+    <tr><th><a href="#ai-jigo">Kata持碁</a></th><td><code>ai:jigo</code></td><td>13・19</td><td>必須</td><td>指定の目差で僅差勝ちを狙う</td></tr>
+    <tr><th><a href="#ai-jigo9">Kata持碁（9路）</a></th><td><code>ai:jigo9</code></td><td>9</td><td>必須</td><td>同・9路専用</td></tr>
+    <tr><th><a href="#ai-parity9">一致率追随（9路）</a></th><td><code>ai:parity9</code></td><td>9</td><td>必須</td><td>一致率を目標値まで下げつつ勝ち切る</td></tr>
+    <tr><th><a href="#ai-enigma">難解（9路）</a></th><td><code>ai:enigma9</code></td><td>9</td><td>必須</td><td>相手が正しく応じにくい手を選ぶ</td></tr>
+    <tr><th><a href="#ai-enigma">難解（13路）</a></th><td><code>ai:enigma13</code></td><td>13</td><td>必須</td><td>同・13路専用</td></tr>
+    <tr><th><a href="#ai-enigma">難解（19路）</a></th><td><code>ai:enigma19</code></td><td>19</td><td>必須</td><td>同・19路専用</td></tr>
+    <tr><th><a href="#ai-antimirror">Kataマネ碁破り</a></th><td><code>ai:antimirror</code></td><td>全部</td><td>—</td><td>マネ碁をされたときの対策</td></tr>
+    <tr><th><a href="#ai-pick">第一感（盲点）</a></th><td><code>ai:p:pick</code></td><td>全部</td><td>—</td><td>盤の一部しか見えない弱い AI</td></tr>
+    <tr><th><a href="#ai-local">おつきあい派</a></th><td><code>ai:p:local</code></td><td>全部</td><td>—</td><td>直前の手の近くに打ちたがる</td></tr>
+    <tr><th><a href="#ai-tenuki">手抜き派</a></th><td><code>ai:p:tenuki</code></td><td>全部</td><td>—</td><td>直前の手から離れて打ちたがる</td></tr>
+    <tr><th><a href="#ai-territory">実利派</a></th><td><code>ai:p:territory</code></td><td>全部</td><td>—</td><td>低い手（1〜3線）を好む</td></tr>
+    <tr><th><a href="#ai-influence">勢力派</a></th><td><code>ai:p:influence</code></td><td>全部</td><td>—</td><td>高い手（4線以上）を好む</td></tr>
+    <tr><th><a href="#ai-fighting">力戦派</a></th><td><code>ai:p:fighting</code></td><td>全部</td><td>Human拡張/複雑化で必須</td><td>未確定地と相手石の近くで戦う</td></tr>
+    <tr><th><a href="#ai-siege">攻城戦略</a></th><td><code>ai:siege</code></td><td>13・19</td><td>必須</td><td>序盤は譲り、中盤に大石を攻める</td></tr>
+    <tr><th><a href="#ai-hunt">狩猟戦略</a></th><td><code>ai:hunt</code></td><td>13・19</td><td>必須</td><td>序盤から侵入し弱い石を攻め続ける</td></tr>
+    <tr><th><a href="#ai-hunt-diverge">狩猟戦略（一致率低減）</a></th><td><code>ai:hunt_diverge</code></td><td>13・19</td><td>必須</td><td>狩猟＋最善手の回避</td></tr>
+    <tr><th><a href="#ai-tsumego">詰碁</a></th><td><code>ai:tsumego</code></td><td>—</td><td>—</td><td>詰碁キャプチャが自動で使う（手動選択は非推奨）</td></tr>
+    <tr><th><a href="#ai-tsumego">詰碁ソルバ</a></th><td><code>ai:tsumego_solver</code></td><td>—</td><td>—</td><td>同上（死活を厳密に解く）</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout warn">
+  <span class="label">「humanSL 必須」の戦略について</span>
+  「必須」と書いた戦略は、人間の棋譜から学習した <b>humanSL モデル</b>（<code>b18c384nbt-humanv0.bin.gz</code>）の「人間ならここに打つ確率（humanPolicy）」を土台にしています。
+  一般・エンジン設定の「Path to human-like model」が空だと、これらの戦略は選べても<b>ただの KataGo 最善手</b>になります（→ <a href="#install-engine">02</a>）。
+  また humanSL 系は毎手 2 回以上の解析をするため、「手加減なし」より着手に時間がかかります（RTX 3080・19路で 1〜3 秒程度）。
+</div>
+
+<h3 id="ai-settings-ui">AI 設定画面の使い方</h3>
+<p>メニュー →「AI設定」（<kbd>F7</kbd>）で開きます。</p>
+<figure class="shot half">
+  <img src="img/ai_human.png" alt="AI設定画面（Human-like）">
+  <figcaption><b>AI設定画面。</b>上のドロップダウンで戦略を選ぶと、その戦略の説明文と設定項目が下に並びます。設定を変えたら「AI設定を更新」で保存。「デフォルトに戻す」でその戦略だけ初期値に戻せます。</figcaption>
+</figure>
+<ul>
+  <li><b>推定段級位</b>: 校正済みの戦略（段級位相応・損も混ぜて・第一感系）では、設定値から強さの目安が表示されます。humanSL 系は「?」のままです。</li>
+  <li><b>スライダー＋数値ボックス</b>: スライダーは決められた候補値に吸い付きます。<b>候補にない値は右の数値ボックスに直接入力すれば保存できます</b>が、その後スライダーを一度でも動かすと最寄りの候補値に戻ります。</li>
+  <li><b>色の薄いスライダー</b>（上のほうの項目）は「校正済み・強さに直結する」項目、濃いものは補助的な項目です。</li>
+  <li><b>チェックボックス</b>は ON/OFF の機能スイッチ。</li>
+  <li>設定は戦略ごとに別々に保存されます（例: 「難解（9路）」と「難解（13路）」は別の値）。</li>
+  <li>設定画面の項目名は英語のキー名のまま表示されるものがあります（例 <code>hunt_max_loss</code>）。本章の表は<b>そのキー名</b>で引けるようにしてあります。</li>
+  <li>本章のスクリーンショットに写っている数値は<b>撮影した環境の現在値</b>で、必ずしも既定値ではありません。既定値は各表の「既定」列を見てください。</li>
+</ul>
+
+<h3 id="ai-common">共通の考え方: 「損失」「humanPolicy」「安全弁」</h3>
+<p>改修版の戦略の設定項目を読むには、次の 3 つの言葉を押さえておくと楽です。</p>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>言葉</th><th>意味</th><th>設定でよく出る形</th></tr></thead>
+  <tbody>
+    <tr><th>損失（目）</th><td>KataGo の最善手と比べて「その手を打つと何目損するか」。0 が最善手。人間らしい戦略は、候補の中から<b>損失がしきい値以下の手だけ</b>を残してから選びます。</td><td><code>*_max_loss</code>「損失上限」。<span class="up">上げる</span>＝より損な手も打つ＝弱く・個性的に、<span class="down">下げる</span>＝最善手に近づく＝強く・AI っぽく</td></tr>
+    <tr><th>humanPolicy</th><td>humanSL モデルが出す「その段位の人間がその手を打つ確率」。高いほど自然な手。多くの戦略は候補をこの確率で重み付けして抽選します。</td><td><code>min_human_policy</code>「humanPolicy 下限」。<span class="down">下げる</span>と「人間があまり打たない手」まで候補に入る</td></tr>
+    <tr><th>安全弁</th><td>どの戦略にも入っている保険。重み付けで選ばれそうな手が 4 目以上損なら KataGo の最善手に差し替えます（<a href="#ai-attack">攻撃型</a>）／勝率が下限を割る手は打たない（<a href="#ai-parity9">一致率追随</a>・<a href="#ai-enigma">難解</a>）。<b>設定をどう変えても大崩れしない</b>のはこのためです。</td><td><code>*_min_winrate</code>「勝率フロア」など</td></tr>
+  </tbody>
+</table>
+</div>
+<div class="callout">
+  <span class="label">序盤・中盤・ヨセ</span>
+  多くの戦略は「序盤は厳しく、中盤は緩く、ヨセ（終盤）は最善手に戻す」という 3 段構えです。序盤の境界は盤の交点数の 14%（19路 51 手・13路 24 手・9路 12 手）、
+  ヨセの境界は戦略ごとの <code>*_endgame_move</code>（ヨセ切替手数）で決まります。ヨセで手を緩めると相手から見て露骨に不自然なので、ヨセは最善手か「9段の人間」に任せる設計になっています。
+</div>
+
+<h3 id="ai-standard">標準の戦略（元の KaTrain から引き継いだもの）</h3>
+<p>ここに挙げる戦略は元の KaTrain にもあるもので、humanSL モデルは使いません。設定画面の説明文もそのまま読めますが、設定項目の意味と「上げる／下げる」をまとめておきます。</p>
+
+<div class="card" id="ai-default">
+  <h3>手加減なし <code>ai:default</code></h3>
+  <div class="tags"><span class="tag ok">全盤サイズ</span><span class="tag">設定項目なし</span><span class="tag">プロ以上の強さ</span></div>
+  <p>KataGo の最善手をそのまま打ちます。強さは一般・エンジン設定の「分析時の最大探索手数」とモデルで決まります。分析やドットの評価は、どの戦略を選んでいてもこの「手加減なし」の KataGo が行います。</p>
+  <figure class="shot third"><img src="img/ai_default.png" alt="AI設定: 手加減なし"><figcaption>設定項目はありません。</figcaption></figure>
+</div>
+
+<div class="card" id="ai-rank">
+  <h3>段級位相応 <code>ai:p:rank</code></h3>
+  <div class="tags"><span class="tag ok">全盤サイズ</span><span class="tag ok">校正済み</span><span class="tag">15級〜3段</span></div>
+  <p>合法手の中からランダムにいくつか候補を選び、その中で最も第一感（policy）の高い手を打ちます。強い設定ほど多くの候補から選ぶので強くなります。GnuGo や Pachi などのボットで校正されており、序盤から終盤まで<b>大ポカをしないバランスの良い弱さ</b>が特徴です。相手の強さを合わせたいときの第一候補。</p>
+  <figure class="shot third"><img src="img/ai_p_rank.png" alt="AI設定: 段級位相応"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>kyu_rank</td><td>4</td><td>15級〜3段</td><td>目標の段級位。</td><td><span class="up">級数を上げる（弱く）</span>候補が減り見落としが増える。<span class="down">段側へ</span>強くなる。3段は内部値 −2 に対応</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card" id="ai-handicap">
+  <h3>Kata置碁 <code>ai:handicap</code></h3>
+  <div class="tags"><span class="tag ok">全盤サイズ</span><span class="tag">置碁向け</span></div>
+  <p>置き石が多い碁で、KataGo が「不利を承知で最も勝ちやすい手」を打つモードです。通常の KataGo は置碁の白番だと投げやりな手を打ちがちなので、置碁で強い相手が欲しいときはこちらを選びます。</p>
+  <figure class="shot third"><img src="img/ai_handicap.png" alt="AI設定: Kata置碁"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>automatic</td><td>ON</td><td>ON/OFF</td><td>置き石数から pda を自動で決める。</td><td>OFF にすると下の pda を手で指定</td></tr>
+      <tr><td>pda</td><td>0</td><td>W+3.0〜B+3.0</td><td>KataGo の <code>playoutDoublingAdvantage</code>（黒から見た有利度の仮定）。</td><td><span class="up">B 側へ</span>「黒が有利」と仮定して白が無理気味の勝負手を増やす。<span class="down">W 側へ</span>その逆</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card" id="ai-simple">
+  <h3>簡明派 <code>ai:simple</code></h3>
+  <div class="tags"><span class="tag ok">全盤サイズ</span><span class="tag">約2段</span></div>
+  <p>「盤面を単純にする手」を好みます。損の少なさに加えて、自分と相手の確定地が増える手・相手の手の近くに応じる手・相手の石にくっつかない手を高く評価します。重視度を負にすると逆に複雑化を目指します。一般設定の Wide root noise を上げると、強さを犠牲にこの基準により忠実になります。</p>
+  <figure class="shot third"><img src="img/ai_simple.png" alt="AI設定: 簡明派"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>max_points_lost</td><td>1.75</td><td>0〜5.0</td><td>これ以上損な候補は除外（目）。</td><td><span class="up">上げる</span>単純化のためにより損な手も打つ＝弱く。<span class="down">下げる</span>最善手寄り</td></tr>
+      <tr><td>settled_weight</td><td>1.0</td><td>0〜4.0</td><td>「確定地を増やす」重視度。</td><td><span class="up">上げる</span>地を固める手を強く好む。負なら複雑化</td></tr>
+      <tr><td>opponent_fac</td><td>0.5</td><td>−2.0〜1.0</td><td>相手の確定地が増えることの重視度（settled_weight との積）。</td><td><span class="up">上げる</span>相手にも地を与えて穏やかに。負なら相手の地を荒らしたがる</td></tr>
+      <tr><td>min_visits</td><td>3</td><td>1〜30</td><td>この探索手数未満の候補は無視。</td><td><span class="up">上げる</span>読みの浅い手を候補から外して安定</td></tr>
+      <tr><td>attach_penalty</td><td>1</td><td>−1.0〜5.0</td><td>相手の石に接触する手のペナルティ。</td><td><span class="up">上げる</span>ツケ・ハネを避ける。負ならくっつきたがる</td></tr>
+      <tr><td>tenuki_penalty</td><td>0.5</td><td>−1.0〜5.0</td><td>相手の手から縦横 3 間より離れた手のペナルティ。</td><td><span class="up">上げる</span>おつきあいして応じる。負なら手抜きしたがる</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card" id="ai-scoreloss">
+  <h3>損も混ぜて <code>ai:scoreloss</code></h3>
+  <div class="tags"><span class="tag ok">全盤サイズ</span><span class="tag ok">校正済み</span><span class="tag">約4級〜</span></div>
+  <p>損する目数に応じた確率でランダムに手を選びます（損が大きいほど低確率）。「小さなミスを時々する」多彩な相手になります。探索手数が多いほど候補が増えて弱くなる点に注意。</p>
+  <figure class="shot third"><img src="img/ai_scoreloss.png" alt="AI設定: 損も混ぜて"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>strength</td><td>0.2</td><td>0〜1</td><td>損に対する厳しさ。1 でほぼ最善手。</td><td><span class="up">上げる</span>強く（損を嫌う）。<span class="down">下げる</span>大きな損も混ざり弱く（0 で約 4 級相当）</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card" id="ai-policy">
+  <h3>第一感 <code>ai:policy</code></h3>
+  <div class="tags"><span class="tag ok">全盤サイズ</span><span class="tag">約5段</span></div>
+  <p>一手も読まずに、ニューラルネットの「形の感覚」だけで最有力手を打ちます。読みが無いので石の取り合いやコウで見落としをします。</p>
+  <figure class="shot third"><img src="img/ai_policy.png" alt="AI設定: 第一感"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>opening_moves</td><td>22</td><td>0〜50</td><td>序盤の何手目までをよりランダムにするか。</td><td><span class="up">上げる</span>布石が毎回変わる。0 で常に同じ布石</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card" id="ai-weighted">
+  <h3>第一感（比重） <code>ai:p:weighted</code></h3>
+  <div class="tags"><span class="tag ok">全盤サイズ</span><span class="tag ok">校正済み</span></div>
+  <p>第一感の確率そのままに手を抽選します。小さなミスが多く、読み不足でたまに大ポカもする「らしい」弱さです。</p>
+  <figure class="shot third"><img src="img/ai_p_weighted.png" alt="AI設定: 第一感（比重）"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>weaken_fac</td><td>1.25</td><td>0.5〜3.0</td><td>弱そうな手を選ぶ度合い。</td><td><span class="up">上げる</span>低確率の手も選び弱く。<span class="down">下げる</span>（0.5 付近）ほぼ「第一感」と同じ</td></tr>
+      <tr><td>pick_override</td><td>1.0</td><td>0〜1</td><td>最有力手の確率がこれ以上ならその手を無条件で打つ。</td><td><span class="down">下げる</span>「明らかな一手」を見逃さなくなる＝強く</td></tr>
+      <tr><td>lower_bound</td><td>0.1%</td><td>0〜5%</td><td>この確率未満の手は決して打たない。</td><td><span class="up">上げる</span>変な手が減る</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card" id="ai-pick">
+  <h3>第一感（盲点） <code>ai:p:pick</code></h3>
+  <div class="tags"><span class="tag ok">全盤サイズ</span><span class="tag ok">校正済み</span></div>
+  <p><code>pick_n + pick_frac × 合法手の数</code> 個の手をランダムに選び、その中で最善の手を打ちます。毎手「盤の一部が見えていない」状態になるので、盲点のある弱さを再現します。同じ仕組みで校正した「段級位相応」のほうが使いやすいです。</p>
+  <figure class="shot third"><img src="img/ai_p_pick.png" alt="AI設定: 第一感（盲点）"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>pick_override</td><td>0.95</td><td>0〜1</td><td>最有力手の確率がこれ以上なら無条件で打つ（明らかなミス防止）。</td><td><span class="down">下げる</span>強く</td></tr>
+      <tr><td>pick_n</td><td>5</td><td>0〜25</td><td>候補の固定数。</td><td><span class="up">上げる</span>見える範囲が広がり強く</td></tr>
+      <tr><td>pick_frac</td><td>0.35</td><td>0〜1</td><td>候補の割合（合法手数に対する）。</td><td><span class="up">上げる</span>強く。1 で「第一感」と同じ</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<div class="grid2">
+<div class="card" id="ai-local">
+  <h3>おつきあい派 <code>ai:p:local</code></h3>
+  <div class="tags"><span class="tag ok">全盤サイズ</span><span class="tag ok">校正済み</span></div>
+  <p>「盲点」と同じ仕組みですが、<b>直前の着手に近い手ほど候補に入りやすい</b>ようにします。相手の手に必ず応じる、手抜きをしない相手になります。</p>
+  <figure class="shot third"><img src="img/ai_p_local.png" alt="AI設定: おつきあい派"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>意味 / 上げると</th></tr></thead>
+    <tbody>
+      <tr><td>pick_override</td><td>0.95</td><td>明らかな一手はそのまま打つしきい値</td></tr>
+      <tr><td>stddev</td><td>1.5</td><td>「近さ」の広がり（路）。<span class="up">上げる</span>と少し離れた手も候補に</td></tr>
+      <tr><td>pick_n / pick_frac</td><td>15 / 0</td><td>候補数。<span class="up">上げる</span>と強く</td></tr>
+      <tr><td>endgame</td><td>0.5</td><td>盤のこの割合が埋まったら重み付けをやめ普通に打つ</td></tr>
+    </tbody>
+  </table></div>
+</div>
+<div class="card" id="ai-tenuki">
+  <h3>手抜き派 <code>ai:p:tenuki</code></h3>
+  <div class="tags"><span class="tag ok">全盤サイズ</span><span class="tag ok">校正済み</span></div>
+  <p>逆に<b>直前の着手から遠い手ほど候補に入りやすい</b>。相手の手に応じず大場へ回る「手抜き」だらけの相手です。</p>
+  <figure class="shot third"><img src="img/ai_p_tenuki.png" alt="AI設定: 手抜き派"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>意味 / 上げると</th></tr></thead>
+    <tbody>
+      <tr><td>pick_override</td><td>0.85</td><td>明らかな一手はそのまま打つしきい値</td></tr>
+      <tr><td>stddev</td><td>7.5</td><td>「遠さ」の広がり。<span class="up">上げる</span>とより遠くへ</td></tr>
+      <tr><td>pick_n / pick_frac</td><td>5 / 0.4</td><td>候補数。<span class="up">上げる</span>と強く</td></tr>
+      <tr><td>endgame</td><td>0.45</td><td>盤のこの割合が埋まったら普通に打つ</td></tr>
+    </tbody>
+  </table></div>
+</div>
+<div class="card" id="ai-influence">
+  <h3>勢力派 <code>ai:p:influence</code></h3>
+  <div class="tags"><span class="tag ok">全盤サイズ</span><span class="tag ok">校正済み</span></div>
+  <p><code>threshold</code> 線より高い（中央寄りの）手に重みを付け、中央志向の碁を打ちます。</p>
+  <figure class="shot third"><img src="img/ai_p_influence.png" alt="AI設定: 勢力派"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>意味 / 上げると</th></tr></thead>
+    <tbody>
+      <tr><td>threshold</td><td>3.5</td><td>この線より上を好む（3.5 なら 4 線以上）</td></tr>
+      <tr><td>line_weight</td><td>10</td><td><span class="up">上げる</span>ほど低い手を強く避ける</td></tr>
+      <tr><td>pick_n / pick_frac / pick_override</td><td>5 / 0.3 / 0.95</td><td>候補数と明らかな一手のしきい値</td></tr>
+      <tr><td>endgame</td><td>0.4</td><td>盤のこの割合が埋まったら普通に打つ</td></tr>
+    </tbody>
+  </table></div>
+</div>
+<div class="card" id="ai-territory">
+  <h3>実利派 <code>ai:p:territory</code></h3>
+  <div class="tags"><span class="tag ok">全盤サイズ</span><span class="tag ok">校正済み</span></div>
+  <p>逆に低い（1〜3 線の）手を好み、地を稼ぐ碁を打ちます。</p>
+  <figure class="shot third"><img src="img/ai_p_territory.png" alt="AI設定: 実利派"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>意味 / 上げると</th></tr></thead>
+    <tbody>
+      <tr><td>threshold</td><td>3.5</td><td>この線より下を好む</td></tr>
+      <tr><td>line_weight</td><td>2</td><td><span class="up">上げる</span>ほど高い手を強く避ける</td></tr>
+      <tr><td>pick_n / pick_frac / pick_override</td><td>5 / 0.3 / 0.95</td><td>候補数と明らかな一手のしきい値</td></tr>
+      <tr><td>endgame</td><td>0.4</td><td>盤のこの割合が埋まったら普通に打つ</td></tr>
+    </tbody>
+  </table></div>
+</div>
+</div>
+
+<div class="card" id="ai-antimirror">
+  <h3>Kataマネ碁破り <code>ai:antimirror</code></h3>
+  <div class="tags"><span class="tag ok">全盤サイズ</span><span class="tag">設定項目なし</span></div>
+  <p>相手がマネ碁（自分の手を点対称に真似る）をしている前提で、マネ碁を利用して得をする KataGo のモードです。相手がマネ碁をやめれば普通の KataGo になります。</p>
+  <figure class="shot third"><img src="img/ai_antimirror.png" alt="AI設定: Kataマネ碁破り"></figure>
+</div>
+
+<h3 id="ai-humanlike">人間らしい AI（humanSL モデルを使う戦略）</h3>
+
+<div class="card" id="ai-human">
+  <h3>Human-like <code>ai:human</code></h3>
+  <div class="tags"><span class="tag ok">全盤サイズ</span><span class="tag hs">humanSL 必須</span><span class="tag">20級〜9段</span></div>
+  <p>
+    人間の棋譜から学習した humanSL モデルに「この段級位の人はどこに打つか」を聞き、その確率（humanPolicy）で手を抽選します。
+    改修版ではこれに<b>悪手フィルタ</b>が加わっています: 候補をいったん「きれいな」KataGo で読み直し、
+    <b>致命的に損な手（序盤 2.8 目・中盤以降 5.6 目より損。9路は 0.5 / 3.3 目）は人間らしくても打たない</b>ようにしました。
+    人間の「たまにやる大ポカ」だけを取り除いた、最も自然な対局相手です。
+  </p>
+  <figure class="shot half"><img src="img/ai_human.png" alt="AI設定: Human-like"><figcaption>Human-like の設定画面。</figcaption></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>human_kyu_rank</td><td>8（8級）</td><td>20級〜9段</td><td>真似する人間の段級位。<b>最も効く設定</b>。</td><td><span class="up">級数を上げる</span>弱く・荒く。<span class="down">段側へ</span>強く。9段（内部値 −8）が最強</td></tr>
+      <tr><td>modern_style</td><td>OFF</td><td>ON/OFF</td><td>ON で 2016 年以降の AI 風布石（三々入り等）を好むプロファイル。</td><td>ON にすると高段者ほど現代風。星打ちを強制したいときは OFF 推奨（現代風プロファイルは星に低い確率を付ける）</td></tr>
+      <tr><td>force_star_opening</td><td>OFF</td><td>ON/OFF</td><td>序盤に<b>二連星</b>（隅の星 2 つ）を強制する。自分の星が 0 なら空いている隅星（相手が星にいればその対角）、1 つなら同じ辺の星を打つ。</td><td>ON で布石が安定して「星の碁」になる。完成後や盤サイズ非対応なら通常選択に戻る</td></tr>
+      <tr><td>first_impression_deviation</td><td>OFF</td><td>ON/OFF</td><td><b>第一感ブレ</b>。中盤以降、悪手フィルタを通った候補の上位 3 手のうち「0.5 目以上・上限未満（9路 1.5 目・13/19路 2.0 目）損する手」があれば、その中で最も損の少ない手を<b>確定で</b>選ぶ。</td><td>ON で「最善ではないが大悪手でもない、いかにも人間らしい緩手」が毎手混ざる。一致率が下がる</td></tr>
+      <tr><td>first_impression_deviation_opening</td><td>OFF</td><td>ON/OFF</td><td>上のブレを序盤（19路 50 手目まで）にも適用する。</td><td>ON で布石も揺れる。序盤のミスは響くので既定 OFF</td></tr>
+      <tr><td>first_impression_green_blend</td><td>OFF</td><td>ON/OFF</td><td>ブレ ON のとき、第一感 1 位が「緑の手（0.5 目未満の損）」だった場合に、その緑の手とブレた手のどちらを打つかを確率で決める。</td><td>ON で毎局違う手順になり単調さが消える</td></tr>
+      <tr><td>green_blend_green_ratio</td><td>0.5</td><td>0.4 / 0.5 / 0.6</td><td>green_blend で緑の手を選ぶ確率。</td><td><span class="up">0.6（緑寄り）</span>手堅く。<span class="down">0.4（dev 寄り）</span>ブレが多い</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout tip">
+    <span class="label">内部の仕組み（知っておくと設定が読みやすい）</span>
+    Human-like 系はどれも <b>2 段階の解析</b>をします。①humanSL 付きの解析で「人間ならどこに打つか」を取り、②humanSL なしのクリーンな解析で「その手は何目損か」を測ります（①の目数は人間モデルに引きずられて甘く出るため）。
+    悪手フィルタ・第一感ブレ・後述の攻撃型戦略の損失判定はすべて②の値を使います。どちらの解析も探索手数はエンジン設定の「分析時の最大探索手数」です。
+  </div>
+</div>
+
+<div class="card" id="ai-pro">
+  <h3>Historical Pro <code>ai:pro</code></h3>
+  <div class="tags"><span class="tag ok">全盤サイズ</span><span class="tag hs">humanSL 必須</span></div>
+  <p>humanSL モデルの「プロ棋士・強い院生」プロファイルで、<b>指定した年代とその前後の棋譜</b>に基づく手を真似します。江戸時代風・昭和風など時代ごとの布石感覚を体験できます。悪手フィルタなどの改修は入っていません（元の KaTrain そのまま）。</p>
+  <figure class="shot third"><img src="img/ai_pro.png" alt="AI設定: Historical Pro"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>pro_year</td><td>1914</td><td>1800〜2023</td><td>真似する年代。</td><td><span class="up">近年へ</span>AI 以降の現代布石に。<span class="down">昔へ</span>古典的な打ち方（小目・シマリ中心）に</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<h3 id="ai-attack">攻撃型の戦略（力戦派・攻城・狩猟）</h3>
+<p>
+3 つとも「9段の人間の第一感（humanPolicy）に、戦略ごとの<b>重み</b>を掛けて抽選する」という同じ骨格です。違うのは<b>何を重くするか</b>と<b>どこまで損な手を候補に残すか</b>。
+どれも最後に安全弁（最高重みの手が 4 目以上損なら最善手に差し替え）と、ヨセに入ったら 9 段の第一感に戻る処理が入っています。設計の詳しい解説は <a href="../ai-strategy-guide.html">力戦派・攻城・狩猟 — 戦略ガイド</a>（開発者向け）にあります。
+</p>
+
+<div class="card" id="ai-fighting">
+  <h3>力戦派 <code>ai:p:fighting</code></h3>
+  <div class="tags"><span class="tag ok">全盤サイズ</span><span class="tag hs">Human拡張／複雑化は humanSL 必須</span><span class="tag">4 モード</span></div>
+  <p>
+    「まだどちらの地とも決まっていない場所」と「相手の石のそば」に重みを寄せて、接触戦を作りにいく戦略です。攻める対象を決めず、盤の状態だけから「戦いになりそうな場所」を選びます。
+    <code>fighting_mode</code> で 4 つの流儀を切り替えます。
+  </p>
+  <figure class="shot half"><img src="img/ai_p_fighting.png" alt="AI設定: 力戦派"><figcaption>力戦派の設定画面。項目が多いので、まず <code>fighting_mode</code> を決めてから、そのモードに効く項目だけ触ります。</figcaption></figure>
+  <div class="tablewrap"><table>
+    <caption>fighting_mode の 4 系統</caption>
+    <thead><tr><th>モード（画面表示）</th><th>土台</th><th>損失フィルタ</th><th>性格</th></tr></thead>
+    <tbody>
+      <tr><th>従来 <code>classic</code></th><td>第一感の上位から候補を抽出（盲点系と同じ）</td><td>なし</td><td>棋力を落として戦う。目数の歯止めが無い。humanSL 不要</td></tr>
+      <tr><th>ScoreLoss系 <code>scoreloss</code></th><td>損失が小さいほど高い重み × 力戦重み</td><td><code>fighting_max_loss</code></td><td>損失そのものを嫌う。humanSL 不要</td></tr>
+      <tr><th>Human拡張 <code>human</code></th><td>9段の humanPolicy × 力戦重み</td><td>序盤 2.8 目・中盤 5.6 目（<code>fighting_human_*</code> で調整）</td><td>Human-like と同じ骨格で戦いに寄せる。<b>最強・おすすめ</b>。着手は遅め</td></tr>
+      <tr><th>複雑化 <code>complex</code></th><td>Human拡張 × 切り点ボーナス</td><td>リードに応じて最大 10 目まで開く</td><td>盤面を紛れさせる。勝っているときほど勝負手を打つ</td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>全モード共通・力戦重みの設定</h4>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>fighting_mode</td><td>classic</td><td>4 択</td><td>上表のモード。</td><td>迷ったら <b>Human拡張</b></td></tr>
+      <tr><td>unsettled_power</td><td>2.0</td><td>1.0〜5.0</td><td>「未確定の場所」をどれだけ好むか（指数）。</td><td><span class="up">上げる</span>確定地・死んだ石の周りをほぼ無視し、争いの場所に集中。<span class="down">下げる</span>普通の手も混ざる</td></tr>
+      <tr><td>proximity_stddev</td><td>3.0</td><td>2.0〜10.0</td><td>相手の石からどれくらいの距離までを「近い」とみなすか（路）。</td><td><span class="down">下げる</span>くっつく手ばかりになる。<b>2.0 未満にしないこと</b>（下の 2 つのボーナスが効かなくなる）。<span class="up">上げる</span>離れた手も候補に</td></tr>
+      <tr><td>fighting_contact_boost</td><td>1.0</td><td>1.0〜5.0</td><td>相手の石に<b>接触する</b>手（ツケ・ハネ・ノゾキ等）の重み倍率。</td><td><span class="up">上げる</span>接触戦が増える。複雑化モードでは 2〜3 推奨</td></tr>
+      <tr><td>fighting_invasion_bonus</td><td>1.0</td><td>1.0〜5.0</td><td>相手の地（勢力圏）に<b>入り込む</b>手の重み倍率。</td><td><span class="up">上げる</span>打ち込み・荒らしが増える。contact_boost と両方 3.0 なら「相手の地で接触する手」は 9 倍</td></tr>
+      <tr><td>force_tengen_opening</td><td>OFF</td><td>ON/OFF</td><td>黒番の初手を天元にする。</td><td>ON で「天元から戦う碁」に</td></tr>
+      <tr><td>endgame</td><td>0.45</td><td>0.10〜0.75</td><td>盤のこの割合が埋まったら力戦重みをやめる（従来／ScoreLoss 系）。</td><td><span class="down">下げる</span>早めに普通の碁に戻る。Human拡張／複雑化では無視され、盤の 50% が固定</td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>従来（classic）モードだけに効く項目</h4>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>pick_n / pick_frac</td><td>10 / 0.2</td><td>候補に入れる手の数（固定数＋合法手の割合）。</td><td><span class="up">上げる</span>候補が増えて強く</td></tr>
+      <tr><td>pick_override</td><td>0.95</td><td>第一感の最有力手の確率がこれ以上なら無条件で打つ。</td><td><span class="down">下げる</span>強く</td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>ScoreLoss系モードだけに効く項目</h4>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>fighting_max_loss</td><td>3.0</td><td>0.5〜10.0</td><td>戦いを作るために許す損失（目）。<b>Human拡張・複雑化には効きません</b>。</td><td><span class="up">上げる</span>無理をしてでも殴り込む＝弱く。<span class="down">下げる</span>おとなしく</td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>Human拡張・複雑化に効く「悪手フィルタ」の上限</h4>
+  <p>9路と 13/19路、序盤と中盤以降で別々に持っています。既定は Human-like の悪手フィルタと同じ値です。</p>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>fighting_human_opening_max_loss</td><td>2.8</td><td>0.5〜6.0</td><td>13/19路・序盤（19路 50 手目まで）の損失上限（目）。</td><td><span class="up">上げる</span>序盤から乱暴に。<span class="down">下げる</span>布石はまとも</td></tr>
+      <tr><td>fighting_human_max_loss</td><td>5.6</td><td>1.0〜10.0</td><td>13/19路・中盤以降の損失上限。</td><td><span class="up">上げる</span>4.0 を超える手は安全弁で最善手に戻されがち＝実質の上限は 4 目付近。<span class="down">下げる</span>強く</td></tr>
+      <tr><td>fighting_human_opening_max_loss_9</td><td>0.5</td><td>0.1〜2.0</td><td>9路・序盤（12 手目まで）。9路は 1 手の損が致命傷なので厳しめ。</td><td>同上</td></tr>
+      <tr><td>fighting_human_max_loss_9</td><td>3.3</td><td>0.5〜6.0</td><td>9路・中盤以降。</td><td>同上</td></tr>
+      <tr><td>fighting_chaos_relax</td><td>0.0</td><td>0〜3.0</td><td>Human拡張のみ。相手の地への接触手に限って、上限をこの目数だけ緩める。</td><td><span class="up">上げる</span>荒らしの手だけ多少損でも通す</td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>複雑化（complex）モードだけに効く項目</h4>
+  <p>
+    複雑化は「切り点（相手の連が 2 つ以上隣接する空点）」を優遇し、損失の上限を<b>リードに応じて開く</b>のが特徴です。
+    上限の考え方は 3 段構え: ①<code>complexity_base_max_loss</code> までは無条件で通す → ②そこから実効上限までは「局面が鋭い（scoreStdev が大きい）」かつ「本当に紛れる点」の手だけ通す → ③それ以上は捨てる。
+    実効上限は、リードが <code>complexity_lead_threshold</code> を超えると 10 目ぶんのリード幅をかけて <code>complexity_max_loss</code> まで直線的に上がります。
+  </p>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>complexity_cut_boost</td><td>2.0</td><td>1.0〜5.0</td><td>切り点の重み倍率。</td><td><span class="up">上げる</span>切り・分断が増える</td></tr>
+      <tr><td>complexity_lead_threshold</td><td>15.0</td><td>5〜30</td><td>この目数以上リードしたら損失上限を緩め始める。</td><td><span class="down">下げる</span>少しの優勢でも勝負手を打ち始める（<b>勝ちを落としやすくなる</b>）</td></tr>
+      <tr><td>complexity_base_max_loss</td><td>5.6</td><td>1.0〜10.0</td><td>13/19路。リードに関係なく常時開ける「ゲート付き」帯の上限。</td><td><span class="up">上げる</span>互角でもゲートを通った勝負手を打つ。<code>fighting_human_max_loss</code> と同じ値なら互角時は上乗せなし</td></tr>
+      <tr><td>complexity_max_loss</td><td>10.0</td><td>1.0〜12.0</td><td>13/19路。大差リード時の損失上限（緩和の到達点）。</td><td><span class="up">上げる</span>大差のときの勝負手が大胆に</td></tr>
+      <tr><td>complexity_base_max_loss_9</td><td>3.3</td><td>0.5〜6.0</td><td>9路版の常時上限。</td><td>同上</td></tr>
+      <tr><td>complexity_max_loss_9</td><td>6.0</td><td>1.0〜10.0</td><td>9路版の緩和上限。</td><td>同上</td></tr>
+      <tr><td>complexity_sharpness_min</td><td>3.0</td><td>1〜10</td><td>ゲート通過に必要な「局面の鋭さ」（KataGo の scoreStdev）。</td><td><span class="down">下げる</span>穏やかな局面でも勝負手が通る。<span class="up">上げる</span>本当に読み筋が割れた局面だけ</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout tip">
+    <span class="label">おすすめ設定</span>
+    「戦い好きだが崩れない相手」なら <b>Human拡張・contact_boost 3.0・invasion_bonus 3.0・その他既定</b>。「勝っているときに紛れを求めてくる相手」なら <b>複雑化・contact_boost 2〜3・lead_threshold 5〜10</b>。
+  </div>
+</div>
+
+<div class="card" id="ai-siege">
+  <h3>攻城戦略 <code>ai:siege</code></h3>
+  <div class="tags"><span class="tag ok">19路・13路</span><span class="tag exp">9路は未校正</span><span class="tag hs">humanSL 必須</span></div>
+  <p>
+    「背水の陣」。序盤はわざと損をして相手に地を譲り（Concede フェーズ）、相手の厚みがまだ不安定なうちに中盤で大石群ごと包囲して逆転を狙います（Attack フェーズ）。
+    フェーズは<b>手数</b>と<b>攻める対象があるか</b>で切り替わり、対象が無くなれば譲るフェーズに戻ります。
+  </p>
+  <figure class="shot half"><img src="img/ai_siege.png" alt="AI設定: 攻城戦略"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定（19路 / 13路）</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>siege_transition_move</td><td>40 / 25</td><td>15〜60</td><td>攻撃フェーズに移れる最小手数。</td><td><span class="down">下げる</span>早く攻め始める。<span class="up">上げる</span>じっくり構える（譲る期間が長い）</td></tr>
+      <tr><td>siege_min_group_size</td><td>5 / 4</td><td>3〜10</td><td>攻撃対象にする相手の石群の最小の大きさ（石数）。</td><td><span class="down">下げる</span>小さい石も狙う。<span class="up">上げる</span>大石だけ狙う</td></tr>
+      <tr><td>concede_max_loss</td><td>4.0 / 3.0</td><td>1.0〜6.0</td><td>序盤（譲るフェーズ）で許す損失（目）。<b>損の大きい手ほど重みが高い</b>ので上限近くの手が選ばれやすい。</td><td><span class="up">上げる</span>より大きく譲る（劣勢が深くなる）。<span class="down">下げる</span>控えめ</td></tr>
+      <tr><td>siege_max_loss</td><td>5.0 / 4.0</td><td>1.0〜7.0</td><td>攻撃フェーズで許す損失。</td><td><span class="up">上げる</span>無理攻めが増える。<span class="down">下げる</span>安全な攻め</td></tr>
+      <tr><td>siege_proximity_stddev</td><td>3.0 / 2.5</td><td>2.0〜6.0</td><td>攻撃の集中度（ターゲットからの距離の広がり、路）。</td><td><span class="down">下げる</span>ターゲットに密着。<span class="up">上げる</span>広く攻める</td></tr>
+      <tr><td>siege_instability_min</td><td>0.3</td><td>0.1〜0.5</td><td>ターゲットとみなす最小の「不安定さ」（1 − 地合推定の確からしさ）。</td><td><span class="down">下げる</span>安定した石も狙う。<span class="up">上げる</span>本当に危ない石だけ</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout warn">
+    <span class="label">注意</span>
+    攻城は候補ゼロのとき緩和せず即座に最善手へ戻り、安全弁も最も素直に効きます。そのぶん「譲りすぎて負ける」ことはあまりありませんが、相手が厚みを固めてしまうと攻めどころが無いまま終わることもあります。
+  </div>
+</div>
+
+<div class="card" id="ai-hunt">
+  <h3>狩猟戦略 <code>ai:hunt</code></h3>
+  <div class="tags"><span class="tag ok">19路・13路</span><span class="tag no">9路はパスする（使用不可）</span><span class="tag hs">humanSL 必須</span></div>
+  <p>
+    最初から攻めます。攻める対象を 2 種類持つのが特徴で、①相手の弱い<b>石群</b>（攻城と同じ検出）に加えて、②<b>相手の勢力圏だがまだ確定していない場所</b>（地合推定が 0.2〜0.7 の交点）を「侵入対象」として毎手探します。
+    石群が無い局面でも侵入対象はほぼ必ずあるので、事実上「常に攻めている」相手になります。追撃・注意フォーカス・死石回避など付属機構が最も多い戦略です。
+  </p>
+  <figure class="shot half"><img src="img/ai_hunt.png" alt="AI設定: 狩猟戦略"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定（19路 / 13路）</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>hunt_max_loss</td><td>6.0 / 4.0</td><td>1.0〜10.0</td><td>石群を攻めるときに許す損失（目）。劣勢（−6 目以下）では自動的に 4.0 で頭打ち。</td><td><span class="up">上げる</span>無理攻め。<span class="down">下げる</span>手堅く</td></tr>
+      <tr><td>hunt_min_group_size</td><td>5 / 4</td><td>2〜10</td><td>ターゲットにする石群の最小石数。</td><td><span class="down">下げる</span>小さい石も追う</td></tr>
+      <tr><td>hunt_proximity_stddev</td><td>3.0 / 2.5</td><td>1.5〜6.0</td><td>石群攻撃の集中度（路）。</td><td><span class="down">下げる</span>密着。<span class="up">上げる</span>包囲網を広く</td></tr>
+      <tr><td>hunt_instability_min</td><td>0.3</td><td>0.1〜0.8</td><td>ターゲット判定の最小不安定度。</td><td><span class="down">下げる</span>安定した石も狙う</td></tr>
+      <tr><td>hunt_invasion_max_loss</td><td>8.0 / 6.0</td><td>2.0〜12.0</td><td>侵入するときに許す損失。<b>3 戦略で最も大きい上限</b>。</td><td><span class="up">上げる</span>無謀な打ち込みが増える。<span class="down">下げる</span>慎重</td></tr>
+      <tr><td>hunt_invasion_min</td><td>0.2</td><td>0.1〜0.5</td><td>侵入対象とする相手の地合推定の下限。</td><td><span class="down">下げる</span>薄い勢力圏にも入る</td></tr>
+      <tr><td>hunt_invasion_max</td><td>0.7</td><td>0.4〜0.9</td><td>同・上限。</td><td><span class="up">上げる</span>ほぼ確定地にも打ち込む（大損しやすい）</td></tr>
+      <tr><td>hunt_invasion_proximity_stddev</td><td>3.0</td><td>2.0〜8.0</td><td>侵入点まわりの候補の広がり。</td><td><span class="up">上げる</span>侵入先が散る</td></tr>
+      <tr><td>hunt_invasion_temperature</td><td>1.5</td><td>1.0〜3.0</td><td>侵入フェーズの抽選の「温度」。<b>大きい損失手が実際に打たれる確率を直接上げる唯一の項目</b>。</td><td><span class="up">上げる</span>下位候補も当たる＝多彩だが弱く。1.0 で重みどおり</td></tr>
+      <tr><td>hunt_focus_stddev</td><td>7.0 / 5.0</td><td>3.0〜10.0</td><td>注意フォーカスの広がり。直前の着手と最も不安定なターゲットの 2 点から遠い手にペナルティ。</td><td><span class="down">下げる</span>今の戦場に集中（手抜きしない）。<span class="up">上げる</span>広く見る</td></tr>
+      <tr><td>hunt_endgame_move</td><td>200</td><td>150〜250</td><td>19路でヨセモード（9段の第一感で打つ）に切り替える手数。13路以下は盤の 50% 固定。</td><td><span class="down">下げる</span>早めに攻めをやめる</td></tr>
+      <tr><td>hunt_pursue_enabled</td><td>ON</td><td>ON/OFF</td><td>攻め合い追撃。相手が勝負手を打っても手抜きせず詰め切る。</td><td>OFF で攻め合いの途中でも大場に回ることがある</td></tr>
+      <tr><td>hunt_winning_suppress_enabled</td><td>OFF</td><td>ON/OFF</td><td>15 目以上リードしているとき KataGo 最善手の重みを 0.3 倍にして一致率を下げる。</td><td>ON で勝勢時の「AI っぽさ」が減る</td></tr>
+      <tr><td>hunt_dead_stone_avoid_enabled</td><td>ON</td><td>ON/OFF</td><td>死んだ自分の石の周りをつつく無駄手を抑える。</td><td>OFF で「死石を助けようとする」人間っぽい無駄手も混ざる</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card" id="ai-hunt-diverge">
+  <h3>狩猟戦略（一致率低減） <code>ai:hunt_diverge</code></h3>
+  <div class="tags"><span class="tag ok">19路・13路</span><span class="tag no">9路は不可</span><span class="tag hs">humanSL 必須</span></div>
+  <p>
+    狩猟戦略と同じ棋風を保ちながら、評価レポートの「AI の最善手との一致率」を下げます。仕組みは <b>Best-move dodge</b>: 抽選で KataGo の最善手が選ばれたときだけ、
+    「損失が <code>hunt_dodge_max_loss</code> 以下」かつ「重み上位 <code>hunt_dodge_top_n</code> 位以内」の別の手のうち損失最小のものに差し替えます。該当が無ければ最善手のまま。
+    温度抽選は使わないので <code>hunt_invasion_temperature</code>・<code>hunt_focus_stddev</code>・<code>hunt_dead_stone_avoid_enabled</code> はありません。
+  </p>
+  <figure class="shot half"><img src="img/ai_hunt_diverge.png" alt="AI設定: 狩猟戦略（一致率低減）"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>hunt_dodge_max_loss</td><td>1.0</td><td>0.5〜3.0</td><td>差し替え先として許す損失（目）。</td><td><span class="up">上げる</span>差し替えの機会が増えて一致率は下がるが、弱い手も混ざる</td></tr>
+      <tr><td>hunt_dodge_top_n</td><td>3</td><td>2〜5</td><td>差し替え先を探す重み上位 N 手。</td><td><span class="down">下げる</span>自然な手だけが対象</td></tr>
+      <tr><td>（その他）</td><td colspan="4">狩猟戦略と同じ（<code>hunt_max_loss</code> 〜 <code>hunt_winning_suppress_enabled</code>）</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<h3 id="ai-lowmatch">AI らしさ（最善手との一致率）を下げる戦略</h3>
+<p>
+評価レポート（<kbd>F3</kbd>）の「AIの最善手との一致率」は、対局相手が AI かどうかを見分ける代表的な指標です。ここに挙げる戦略は<b>人間らしさを保ったまま、この一致率を意図的に下げる</b>ためのものです。
+</p>
+
+<div class="card" id="ai-diverge">
+  <h3>AI一致率低減 <code>ai:diverge_move</code></h3>
+  <div class="tags"><span class="tag ok">全盤サイズ</span><span class="tag hs">humanSL 必須</span></div>
+  <p>
+    候補手のスコアを <code>humanPolicy × (KataGo の順位 + 1)<sup>divergence_power</sup></code> で計算し、<b>KataGo の順位が下の手ほど持ち上げて</b>抽選します。損失が <code>diverge_score_filter</code> を超える手は除外。
+    目標は「最善手一致率 30% 以下・上位 5 手一致率 40% 以下・平均損失 1.0 目未満」です。
+  </p>
+  <figure class="shot half"><img src="img/ai_diverge_move.png" alt="AI設定: AI一致率低減"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>human_kyu_rank</td><td>−8（9段）</td><td>20級〜9段</td><td>土台にする人間モデルの段級位。</td><td>級側にすると弱く荒く</td></tr>
+      <tr><td>divergence_power</td><td>0.5</td><td>0.3〜1.5</td><td>下位の手をどれだけ持ち上げるか。</td><td><span class="up">上げる</span>一致率が下がる（0.3 刻みで調整）。<span class="down">下げる</span>Human-like に近づく</td></tr>
+      <tr><td>diverge_score_filter</td><td>2.5</td><td>1.0〜5.0</td><td>許す最大損失（目）。</td><td><span class="up">上げる</span>より損な手も混ざり一致率は下がるが弱くなる</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<div class="card" id="ai-parity9">
+  <h3>一致率追随（9路） <code>ai:parity9</code></h3>
+  <div class="tags"><span class="tag ok">9路専用</span><span class="tag no">13/19路では最善手のみ</span><span class="tag hs">humanSL 必須</span></div>
+  <p>
+    9路盤で、<b>終局レポートの最善手一致率を目標値（既定 40%）まで下げつつ、勝ち切る</b>ことを狙います。仕組みは次の 4 段階です。
+  </p>
+  <ol>
+    <li><b>いま最善手を打つと目標を超えるか</b>を先読みで判定（レートゲート）。超えないなら最善手。</li>
+    <li>超えるなら、候補のうち<b>着手後の勝率が <code>parity9_min_winrate</code> を割らない手</b>だけを残す（安全条件はこれ 1 つ。相手の最善応手込みの値なので「次の一手で逆転されない」保証）。</li>
+    <li>残った手のうち、<b>最も損の少ない手から <code>parity9_cost_slack</code> 目以内</b>の帯を作り、その中で humanPolicy が最大の手を選ぶ（安さを最優先＝コストと不自然さが同時に下がる）。</li>
+    <li>ヨセ（<code>parity9_endgame_move</code> 手以降かつ未確定点が <code>parity9_unsettled_max</code> 以下）に入ったら、損失上限を <code>parity9_yose_max_loss</code>（既定 0.1 目）に絞り、ダメ詰めや 1 目ヨセの手順入れ替えだけ許す。</li>
+  </ol>
+  <figure class="shot half"><img src="img/ai_parity9.png" alt="AI設定: 一致率追随（9路）"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>parity9_target_rate</td><td>40%</td><td>20〜60%</td><td>目標の最善手一致率。相手の一致率には連動しない絶対値。</td><td><span class="down">下げる</span>外す手番が増えるが、9路は「9段も同じ手を打つ」局面が多く 20% 台は不自然</td></tr>
+      <tr><td>parity9_min_winrate</td><td>70%</td><td>50〜90%</td><td>着手後の勝率フロア。<b>唯一の安全条件</b>。</td><td><span class="up">上げる</span>接戦ではほとんど外せず一致率が上がる（勝ちを優先）。<span class="down">下げる</span>負けるリスクと引き換えに一致率が下がる。黒番の序盤は勝率 50% ちょうどなので 50% 未満にしないと外せない</td></tr>
+      <tr><td>parity9_max_loss_per_move</td><td>5.0</td><td>0.5〜5.0</td><td>1 手あたりの損失上限（目）。</td><td><span class="down">下げる</span>（例 4.0）高価な外しが消える</td></tr>
+      <tr><td>parity9_cost_slack</td><td>0.5</td><td>0〜2.0</td><td>最安の外し手から何目まで「同じくらい安い」とみなして人間らしさで選ぶか。</td><td>0 で常に最安。<span class="up">上げる</span>人間らしい手を優先するぶん損が増える</td></tr>
+      <tr><td>parity9_min_human_policy</td><td>0.5%</td><td>0〜2%</td><td>採用候補の humanPolicy 下限。</td><td><span class="up">上げる</span>（1%）9段が打たない手が消えて一致率は上がる</td></tr>
+      <tr><td>parity9_endgame_move</td><td>30</td><td>22〜38</td><td>ヨセ判定の手数側の条件。</td><td><span class="down">下げる</span>早くヨセ扱いになり外しが減る</td></tr>
+      <tr><td>parity9_unsettled_max</td><td>8</td><td>4〜12</td><td>ヨセ判定の「未確定点（地合推定が ±0.5 未満の交点）」上限。手数条件との AND。</td><td><span class="up">上げる</span>早くヨセ扱いに</td></tr>
+      <tr><td>parity9_yose_max_loss</td><td>0.1</td><td>0〜0.5</td><td>ヨセに入ってからの 1 手損失上限。</td><td>0 でヨセは完全に最善手固定（一致率の最大の押し上げ要因）。<span class="up">上げる</span>ヨセを間違え始める</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout">
+    <span class="label">一致率は局面の余裕に比例します</span>
+    圧勝している対局では 40% 台まで下がり、接戦では 70% 台に上がります。これは「必ず勝つ」を最優先している設計どおりの挙動です。一致率を対局によらず一定にすることは「必ず勝つ」と両立しません。
+  </div>
+</div>
+
+<h3 id="ai-jigo-family">目差をコントロールする戦略（持碁）</h3>
+
+<div class="card" id="ai-jigo">
+  <h3>Kata持碁 <code>ai:jigo</code></h3>
+  <div class="tags"><span class="tag ok">19路・13路</span><span class="tag no">9路は「Kata持碁（9路）」へ</span><span class="tag hs">humanSL 必須</span></div>
+  <p>
+    <b><code>target_score</code>〜<code>target_score_max</code> 目の僅差で勝つ</b>ことを目指します。元の KaTrain の KataJigo は「相手のミスに自分もミスで応じる」露骨な手抜きをしましたが、
+    改修版は Human-like と同じ 2 段階解析で「1 手あたり <code>max_loss_per_move</code> 目以下・humanPolicy が <code>min_human_policy</code> 以上」の手だけから選ぶので、
+    <b>人間らしくない悪手でわざと負けに行くことはありません</b>。
+  </p>
+  <p>選び方の基本: リードが目標未満なら「目標に最も近づく手」（実質最善手）、目標の範囲内なら <code>jigo_mode</code> に従い、範囲を超えていれば目標に最も近づく（＝少し緩める）手。</p>
+  <figure class="shot half"><img src="img/ai_jigo.png" alt="AI設定: Kata持碁"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>target_score</td><td>0.5</td><td>数値入力</td><td>狙う目差（自分から見て何目勝つか）。</td><td><span class="up">上げる</span>大きめに勝ちにいく</td></tr>
+      <tr><td>target_score_max</td><td>10.0</td><td>5 / 10 / 15</td><td>この目差までは「範囲内」とみなす。</td><td><span class="down">下げる</span>早くから手を緩め始める</td></tr>
+      <tr><td>max_loss_per_move</td><td>5.6</td><td>3.0〜7.0</td><td>1 手あたり許す損失（目）。</td><td><span class="down">下げる</span>手加減が効かず目差が広がりやすい。<span class="up">上げる</span>目標への収束は良いが不自然な手が増える</td></tr>
+      <tr><td>min_human_policy</td><td>2%</td><td>0.5〜5%</td><td>候補の humanPolicy 下限。内部で 0.5% 未満には落ちない。</td><td><span class="down">下げる</span>人間が打たない手まで候補に</td></tr>
+      <tr><td>jigo_mode</td><td>natural</td><td>natural / maintain</td><td>範囲内での打ち方。natural＝普通に人間らしく打つ、maintain＝常に目標へ寄せる。</td><td>maintain は目差が安定するが手抜きが目立つ</td></tr>
+      <tr><td>human_profile</td><td>rank_9d</td><td>5段 / 7段 / 9段</td><td>humanSL の段位。</td><td>相手が弱いなら 7段・5段に</td></tr>
+      <tr><td>jigo_dynamic_rank</td><td>OFF</td><td>ON/OFF</td><td>リード差が 5 目超で 1 段、15 目超で 5段まで自動降格。</td><td>ON で弱い相手にも目差が収束しやすい</td></tr>
+      <tr><td>jigo_large_lead_delta</td><td>5.0</td><td>3〜10</td><td>「圧勝」とみなす目差（target_max ＋この値）。</td><td><span class="down">下げる</span>早めに圧勝モードへ</td></tr>
+      <tr><td>jigo_large_lead_max_loss</td><td>8.0</td><td>6〜10</td><td>圧勝時に一時的に緩める損失上限。</td><td><span class="up">上げる</span>大差を早く縮める</td></tr>
+      <tr><td>jigo_equivalent_epsilon</td><td>0.5</td><td>0〜1.0</td><td>「目標に最も近い手」から何目以内を同点扱いにして humanPolicy で選ぶか。</td><td>0 で常に最接近手（一本道）。<span class="up">上げる</span>自然だが目差がぶれる</td></tr>
+      <tr><td>jigo_deception</td><td>OFF</td><td>ON/OFF</td><td><b>油断誘発</b>。序中盤にわざと少し劣勢を保ち、終盤で逆転する。19路は手数固定（Phase1 30手〜／Phase2 80手〜／Phase3 150手〜）、13路は下の 5 項目で調整。±5 目を超えたら安全弁で Phase3 へ。</td><td>ON で「終盤に追い上げてくる人間」らしい展開に</td></tr>
+      <tr><td>jigo_deception_13_phase1_start</td><td>17</td><td>10〜35</td><td>[13路] 控えめに打ち始める手数。</td><td rowspan="5">Phase1 &lt; Phase2 &lt; Phase3 の順に。<span class="down">Phase3 を早める</span>と挽回が間に合いやすい</td></tr>
+      <tr><td>jigo_deception_13_phase2_start</td><td>44</td><td>30〜70</td><td>[13路] 目標へ戻し始める手数。</td></tr>
+      <tr><td>jigo_deception_13_phase3_start</td><td>83</td><td>70〜110</td><td>[13路] 通常の持碁に復帰し勝ちにいく手数。</td></tr>
+      <tr><td>jigo_deception_13_phase1_target</td><td>−2.0</td><td>−1〜−4</td><td>[13路] Phase1 で保つ目差（負＝劣勢）。</td></tr>
+      <tr><td>jigo_deception_13_phase2_target</td><td>−1.0</td><td>−0.5〜−2</td><td>[13路] Phase2 の中間目標。</td></tr>
+      <tr><td>jigo_force_sanrensei</td><td>OFF</td><td>ON/OFF</td><td>19路の序盤に星打ちを強制（黒＝三連星、白＝二連星。相手が星なら対角の隅）。妨害されたら通常に戻る。</td><td>ON で布石が「星の碁」に固定</td></tr>
+      <tr><td>jigo_endgame_humanstyle</td><td>OFF</td><td>ON/OFF</td><td><b>ヨセは 9 段で打つ</b>。ヨセ切替手数以降、目差が target_score 以上の手番から目標追従をやめ Human-like 9段に丸ごと委譲（戻らない）。ヨセの手抜きは相手から見て露骨なので、それを止める。</td><td>ON で最終目差は目標より広がりうるが自然</td></tr>
+      <tr><td>jigo_endgame_move</td><td>150</td><td>120〜200</td><td>[19路] 上の切替手数。</td><td rowspan="2"><span class="down">下げる</span>早く 9 段に委譲</td></tr>
+      <tr><td>jigo_endgame_move_13</td><td>85</td><td>55〜90</td><td>[13路] 同上。</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout warn">
+    <span class="label">設計上の限界</span>
+    相手が毎手 6 目以上の大損を続ける極端な棋力差では、1 手の損失上限を超えて緩められないため目差は収束しません（人間らしさは保たれます）。相手の棋力が 9 段前後のときに目差が最もよく収束します。
+  </div>
+</div>
+
+<div class="card" id="ai-jigo9">
+  <h3>Kata持碁（9路） <code>ai:jigo9</code></h3>
+  <div class="tags"><span class="tag ok">9路専用</span><span class="tag hs">humanSL 必須</span></div>
+  <p>
+    9路盤専用の持碁です。9路に無関係な上級設定（human_profile＝9段固定・dynamic_rank・large_lead・epsilon）を取り除き、油断誘発の Phase を 9路の短い対局長に合わせて調整できます。
+    9路は終局が早いので <b>Phase3（挽回開始）を早めに</b>設定するのがコツです。
+  </p>
+  <figure class="shot half"><img src="img/ai_jigo9.png" alt="AI設定: Kata持碁（9路）"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>target_score</td><td>0.5</td><td>数値入力</td><td>狙う目差。</td><td></td></tr>
+      <tr><td>target_score_max</td><td>5.0</td><td>5 / 10 / 15</td><td>範囲の上限。9路は 10 目で実質勝勢なので 5.0。</td><td></td></tr>
+      <tr><td>max_loss_per_move</td><td>3.3</td><td>3.0〜7.0</td><td>1 手の損失上限（9路の悪手フィルタと同値）。</td><td><span class="up">上げる</span>9路では 1 手で勝負が決まるので慎重に</td></tr>
+      <tr><td>min_human_policy</td><td>2%</td><td>0.5〜5%</td><td>humanPolicy 下限。</td><td></td></tr>
+      <tr><td>jigo_mode</td><td>natural</td><td>natural / maintain</td><td>範囲内での打ち方。</td><td></td></tr>
+      <tr><td>jigo_deception</td><td>OFF</td><td>ON/OFF</td><td>油断誘発を有効化。</td><td></td></tr>
+      <tr><td>jigo9_phase1_start</td><td>6</td><td>4〜10</td><td>控えめに打ち始める手数。</td><td rowspan="5">既定（6 / 16 / 30・−1.5 / −0.5）は 9路の対局長 40〜60 手に合わせた値</td></tr>
+      <tr><td>jigo9_phase2_start</td><td>16</td><td>12〜24</td><td>目標へ戻し始める手数。</td></tr>
+      <tr><td>jigo9_phase3_start</td><td>30</td><td>26〜38</td><td>通常の持碁に復帰する手数。</td></tr>
+      <tr><td>jigo9_phase1_target</td><td>−1.5</td><td>−1〜−2.5</td><td>Phase1 で保つ目差。</td></tr>
+      <tr><td>jigo9_phase2_target</td><td>−0.5</td><td>−0.5〜−1.5</td><td>Phase2 の中間目標。</td></tr>
+      <tr><td>jigo_endgame_humanstyle</td><td>OFF</td><td>ON/OFF</td><td>ヨセは 9 段で打つ（19/13路と同じ）。</td><td></td></tr>
+      <tr><td>jigo9_endgame_move</td><td>30</td><td>22〜38</td><td>ヨセ切替手数。</td><td></td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<h3 id="ai-enigma">難解（9路 / 13路 / 19路）</h3>
+
+<div class="card">
+  <h3>難解 <code>ai:enigma9</code> / <code>ai:enigma13</code> / <code>ai:enigma19</code></h3>
+  <div class="tags"><span class="tag ok">盤サイズごとに専用</span><span class="tag hs">humanSL 必須</span><span class="tag">着手後の先読みで高速化済み</span></div>
+  <p>
+    序盤〜中盤は、厳しい損失上限の内側で<b>「相手が正しく応じることが最も難しい手」</b>へ積極的に外し、相手が研究してきた定跡・手筋を使わせません。
+    3 つは同じ仕組みで、盤サイズに合わせた既定値だけが違います（設定画面では <code>enigma9_*</code> / <code>enigma13_*</code> / <code>enigma19_*</code> と別々に保存）。
+    対応しない盤サイズで選ぶと常に最善手を打つだけになります。
+  </p>
+  <h4>難解さの測り方</h4>
+  <p>候補手ごとに「その手を打った後の局面」を解析し、次の合計（net）が最も大きい手を選びます。KataGo 最善手も同じ尺度で採点し、<code>*_net_margin</code> 以上上回る挑戦者だけが採用されます。</p>
+  <ul>
+    <li><b>E（期待お仕置き）</b>: 9段の人間がその局面で打ちそうな応手の分布で重み付けした、相手の期待損失。「並みの応手だと大損する」局面ほど高い。</li>
+    <li><b>応手の見つけにくさ</b>: 十分な応手（損 0.3 目以下）がどれも humanPolicy の低い手になっている（正解が見えない）ボーナス。</li>
+    <li><b>自手の意外さ</b>: 自分の手そのものが定跡外（humanPolicy が低い）ボーナス。ヨセでは使わない（一本道のヨセでは「人間が打たない手」にしかならないため）。</li>
+    <li><b>− 自分の損失</b>: 検証済みの損失（目）を引く。</li>
+  </ul>
+  <p>攻め合いが 1 手差になる形は「相手の自然な応手が攻め合いに負ける」局面そのものなので E が自動的に高くなり、安全条件（損失上限と着手後勝率フロア＝どちらも相手の最善応手込み）が「間違えなければ勝てる場合のみ」を担保します。</p>
+
+  <h4>3 つの局面フェーズ</h4>
+  <div class="tablewrap"><table>
+    <thead><tr><th>局面</th><th>損失上限（cap）</th><th>ふるまい</th></tr></thead>
+    <tbody>
+      <tr><th>互角〜少し優勢</th><td><code>*_max_loss</code></td><td>上限内で最も難解な手へ外す。候補が無ければ最善手</td></tr>
+      <tr><th>勝勢（リード − 目標差 &gt; max_loss）</th><td><code>*_large_lead_max_loss</code> まで緩和</td><td>余剰リードを予算にして勝負手を打ち、損失の重みも予算に反比例して割引。リードが縮むと連続的に通常へ戻る＝勝ちは維持したまま一致率の異常な高さを解消</td></tr>
+      <tr><th>ヨセ（<code>*_endgame_move</code> 手以降かつ未確定点 ≤ <code>*_unsettled_max</code>・以後固定）</th><td>min(max_loss, リード − <code>*_target_score</code>)</td><td>目標差を超える余剰だけを外しに使い、余剰が無ければ最善手で目標差の勝ち〜持碁を確保</td></tr>
+      <tr><th>劣勢</th><td>—</td><td>最善手で粘るだけ（勝てない碁は僅差で負けてよい）</td></tr>
+      <tr><th>終局帯（盤上に 0.5 目以上の手が無い）</th><td>—</td><td>難解さの採点はせず、9 段の人間の終局処理（パス・ダメ詰め・死石の取り込み）に倣う</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="shots">
+    <figure class="shot"><img src="img/ai_enigma9.png" alt="AI設定: 難解（9路）"><figcaption>難解（9路）</figcaption></figure>
+    <figure class="shot"><img src="img/ai_enigma13.png" alt="AI設定: 難解（13路）"><figcaption>難解（13路）</figcaption></figure>
+    <figure class="shot"><img src="img/ai_enigma19.png" alt="AI設定: 難解（19路）"><figcaption>難解（19路）</figcaption></figure>
+  </div>
+
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目（* は 9 / 13 / 19）</th><th>既定 9路</th><th>既定 13路</th><th>既定 19路</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>enigma*_max_loss</td><td>1.0<span class="jp">上限 1.8</span></td><td>1.5<span class="jp">上限 3.0</span></td><td>2.0<span class="jp">上限 4.0</span></td><td>1 手あたりの損失上限（目）。9路は「2 目以上損する手は決して打たない」を候補値レベルで保証。</td><td><span class="up">上げる</span>より大胆な罠を仕掛けるが弱く。<span class="down">下げる</span>最善手に近づく</td></tr>
+      <tr><td>enigma*_large_lead_max_loss</td><td>5.0</td><td>8.0</td><td>8.0</td><td>勝勢時の勝負手の損失上限（目）。ヨセでは無効。</td><td><span class="up">上げる</span>大差のとき露骨な勝負手が増える</td></tr>
+      <tr><td>enigma*_min_winrate</td><td>30%</td><td>30%</td><td>30%</td><td>着手後の勝率フロア。形勢が悪くなると外しが自動的に止まる。</td><td><span class="up">上げる</span>安全側＝一致率が上がる。<span class="down">下げる</span>負ける碁が増える</td></tr>
+      <tr><td>enigma*_net_margin</td><td>0.0</td><td>0.0</td><td>0.0</td><td>外すために最善手を上回るべき難解さの差。</td><td><span class="up">上げる</span>「明確に上」の罠だけ採用＝外しが減る</td></tr>
+      <tr><td>enigma*_target_score</td><td>2.0</td><td>2.0</td><td>2.0</td><td>ヨセの目標差（目）。勝勢予算とヨセ予算の両方の基準。</td><td><span class="up">上げる</span>大きめに勝つ。0 で持碁狙いに近づく</td></tr>
+      <tr><td>enigma*_aim_jigo</td><td>OFF</td><td>OFF</td><td>OFF</td><td>ON で狙いを「持碁〜2 目以内の負け」に差し替え（優先度: 持碁 &gt; 2 目以内の負け &gt; それ超の負け）。target_score は無視、内部目標 −1 目固定、勝率フロアの代わりに「着手後もリードが目標を割らない」だけを安全条件にする。大差でも 1 手の損失は large_lead_max_loss 以内で最も難解な手から削るので、わざと負けたと悟られない。</td><td>削り切れない大差は僅差勝ちで終わることがある</td></tr>
+      <tr><td>enigma*_endgame_move</td><td>30</td><td>75</td><td>150</td><td>ヨセ切替手数（未確定点条件との AND・一度入ったら固定）。</td><td><span class="down">下げる</span>早くヨセ扱い＝外しが減る</td></tr>
+      <tr><td>enigma*_unsettled_max</td><td>8</td><td>16</td><td>36</td><td>ヨセ判定の未確定点上限（≒盤の 10%）。</td><td><span class="up">上げる</span>早くヨセ扱い</td></tr>
+      <tr><td>enigma*_locality_stddev</td><td>OFF</td><td>OFF<span class="jp">推奨 3.0</span></td><td>OFF<span class="jp">未校正</span></td><td><b>局所性</b>。「自手の意外さ」ボーナスを相手の直前手と KataGo 最善手の近くでだけ満額にし、遠いほど減らす（σ＝この値）。難解さが同点帯で並ぶ候補の中では最も近い手を採る。</td><td>ON で「別の隅へ飛び飛びに打って手抜きに見える癖」が減る。明確に優る遠くの罠はそのまま打つ</td></tr>
+      <tr><td>enigma*_locality_slack</td><td>0.3</td><td>0.3</td><td>0.3</td><td>局所性の同点帯の幅。stddev が ON のときだけ効く。</td><td><span class="up">上げる</span>近い手がより優先される</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout tip">
+    <span class="label">着手時間</span>
+    候補ごとに子局面を解析するため、1 手 1〜3 秒かかります。改修版では「着手を返した直後に相手の有力応手を先読みして NN キャッシュを温める」高速化が入っており、先読みが当たった手番は 0.3〜0.5 秒で応答します。盤面監視モードと組み合わせたときはヨセの追加解析も省略されます。
+  </div>
+  <div class="callout warn">
+    <span class="label">校正状況</span>
+    9路は実戦で校正済み。13路・19路は既定値をスケールしたもので、19路の局所性は未校正（OFF のままを推奨）です。
+  </div>
+</div>
+
+<h3 id="ai-tsumego">詰碁用の戦略（自動で設定されるもの）</h3>
+<div class="card">
+  <h3>詰碁 <code>ai:tsumego</code> ／ 詰碁ソルバ <code>ai:tsumego_solver</code></h3>
+  <div class="tags"><span class="tag exp">詰碁キャプチャが自動で選ぶ</span><span class="tag">通常の対局には向かない</span></div>
+  <p>
+    この 2 つはドロップダウンに出ますが、<b>詰碁キャプチャ（→ <a href="#tsumego">07</a>）がプログラムから自動で設定する戦略</b>で、普通の対局で選ぶものではありません。
+    「詰碁」は盤全体の目数ではなく<b>対象の石群の死活（地合推定の変化量）</b>で手を選び、コウになる手は「コウダテがある前提」で評価します。
+    「詰碁ソルバ」は KataGo を使わず死活を厳密に解くプログラム（Rust 製 df-pn）で、解ける規模の問題だけに使われ、解けなければ「詰碁」に自動で切り替わります。
+  </p>
+  <div class="shots">
+    <figure class="shot"><img src="img/ai_tsumego.png" alt="AI設定: 詰碁"><figcaption>「詰碁」の設定。既定値は数百問の実測で校正済みなので、通常は触りません。</figcaption></figure>
+    <figure class="shot"><img src="img/ai_tsumego_solver.png" alt="AI設定: 詰碁ソルバ"><figcaption>「詰碁ソルバ」。設定はここではなく <code>config.json</code> の <code>tsumego_capture</code> セクション（<code>solver_*</code>）にあります。</figcaption></figure>
+  </div>
+  <p class="small muted">「詰碁」の各項目（max_points_behind・gain_epsilon・points_epsilon・tie_ko_screen・min_visits・gain_* ・ko_* ・promotion_dominant_requires_success）の意味と校正の経緯は開発者向け資料 <code>.claude/rules/tsumego-parameters.md</code> にあります。</p>
+</div>
+
+<h2 id="tsumego"><span class="num">07</span>詰碁機能</h2>
+
+<p class="lead">
+BlueStacks（Android エミュレータ）上の詰碁アプリや、Web サイトの詰碁を<b>ホットキー一発で読み取り</b>、KaTrain 上に同じ局面を再現して AI が正解手を打つ機能です。
+白の応手はアプリの盤を監視して自動で取り込まれ、正解手順は「回答帳」に記録して次回から 0 秒で再生できます。さらに ADB でアプリを操作する「自動ループ」で、出題→回答→採点→次の問題を人力ゼロで回せます。
+</p>
+
+<h3 id="tsumego-frame">詰碁用の外枠（<kbd>F10</kbd>）— 手動で詰碁を検討するとき</h3>
+<p>
+隅や辺に石を並べて死活問題を作ったら、「分析オプション」→「詰碁用の外枠」（<kbd>F10</kbd>）で盤の残りを石で埋めます。
+KataGo は全局の勝率で考えるため、盤が空いていると「他の場所へ手抜きしたほうが得」と判断して詰碁を解いてくれません。外枠は「この問題を解いた側が 5 目勝つ」ように周囲の地を調整するので、AI が問題そのものに集中します。
+</p>
+<div class="shots">
+  <figure class="shot"><img src="img/popup_tsumego_frame.png" alt="詰碁用の外枠ダイアログ"><figcaption><b>詰碁用の外枠。</b>「壁までの距離」（既定 4）と「劫でもOK」（コウダテを攻め方に与えるか）を指定。</figcaption></figure>
+  <figure class="shot"><img src="img/tsumego_raw.png" alt="枠を張る前の詰碁"><figcaption>枠を張る前（13路・左下隅の問題）。</figcaption></figure>
+</div>
+<figure class="shot">
+  <img src="img/tsumego_frame_board.png" alt="枠を張った盤">
+  <figcaption><b>枠を張った後。</b>問題の周囲に壁（攻め方の色）と充填の石が置かれ、解析範囲（青い枠）が問題の周りに限定されます。候補手も枠の中だけに出ます。</figcaption>
+</figure>
+
+<h3 id="tsumego-capture">詰碁キャプチャ（ホットキーで読み取る）</h3>
+<h4>準備</h4>
+<ol class="steps">
+  <li>BlueStacks で詰碁アプリ（実測済みは「囲碁詰めチャレ」など。盤が黄色系で石のコントラストが高いアプリ）を開き、問題を表示します。Web の詰碁（PlayGo.gg 等）ならブラウザで問題を表示します。</li>
+  <li><code>config.json</code> の <code>tsumego_capture.window_title</code>（既定 <code>"BlueStacks,Puzzle Run,PlayGo"</code>）に、対象ウィンドウのタイトルの一部が含まれていることを確認します（カンマ区切りで複数・先勝ち）。</li>
+  <li>KaTrain と対象ウィンドウを両方見える状態にします（ウィンドウが隠れていると「盤面を検出できません」になります）。</li>
+</ol>
+<h4>ホットキー（4 種類）</h4>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>設定キー</th><th>既定</th><th>いつ使うか</th></tr></thead>
+  <tbody>
+    <tr><th><code>hotkey</code></th><td><kbd>F4</kbd></td><td><b>通常のキャプチャ</b>。黒が攻め方か守り方かは石の配置から自動推定。</td></tr>
+    <tr><th><code>hotkey_attack</code></th><td><kbd>Shift</kbd>+<kbd>F4</kbd></td><td>「黒先白死」＝黒が<b>殺す</b>問題と分かっているとき。自動推定を上書き。</td></tr>
+    <tr><th><code>hotkey_defend</code></th><td><kbd>Ctrl</kbd>+<kbd>F4</kbd></td><td>「黒先活」＝黒が<b>生きる</b>問題と分かっているとき。</td></tr>
+    <tr><th><code>hotkey_noframe</code></th><td><kbd>Shift</kbd>+<kbd>Ctrl</kbd>+<kbd>F4</kbd></td><td><b>枠なし</b>でキャプチャ。正解手順が枠の外へ走り出る大型の問題用（枠の壁が正解の点をふさいでしまうとき）。</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="small muted">このリポジトリのローカル設定では <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Z</kbd> / <kbd>X</kbd> / <kbd>C</kbd> / <kbd>V</kbd> に割り当て直してあります（<code>~/.katrain/config.json</code> の <code>tsumego_capture</code> を参照）。グローバルホットキーなので他のアプリが前面でも効きますが、KaTrain の <kbd>F2</kbd>〜<kbd>F12</kbd> の機能キーと重ねないでください（重ねるとその機能キーが効かなくなります）。</p>
+
+<h4>押した後に起きること</h4>
+<ol class="steps">
+  <li>対象ウィンドウを画面キャプチャし、盤の矩形・盤サイズ（9/13/19）・各交点の石を認識します（1 秒以内）。認識に失敗するとステータス欄にエラーが出ます。</li>
+  <li>役割（黒が攻め方か守り方か）を決め、問題が小さければ<b>死活ソルバ</b>で厳密に解き、そうでなければ<b>枠を張って</b> KataGo で解析します。枠は「攻め方にコウダテを与える／与えない」の両方を試し、問題を壊していないほうを自動採用します（1〜3 秒）。</li>
+  <li>KaTrain のウィンドウが前面に来て、盤が拡大表示（詰碁ビュー）になり、黒番の AI が正解手を打ちます（<code>auto_ai_black</code>）。</li>
+  <li>あなたはアプリ側で同じ手をタップします。アプリが白の応手を返すと、KaTrain がアプリの盤を監視して<b>白の手を自動で取り込み</b>、次の黒を打ちます（<code>watch_white</code>）。以降繰り返し。</li>
+</ol>
+<figure class="shot">
+  <img src="img/tsumego_view.png" alt="詰碁ビュー">
+  <figcaption><b>詰碁ビュー。</b>右パネルと上部トグルが消えて盤が大きくなります。盤の上の帯は回答帳の状態（この例は黄＝回答帳の問題を解答中）、右下の「正解手順を記録」は回答帳の記録ボタン。<kbd>F12</kbd> または <kbd>`</kbd> で通常表示に戻ります。</figcaption>
+</figure>
+
+<div class="callout warn">
+  <span class="label">正答率について</span>
+  初見の問題の一次正答率は KataGo の読みに依存し、実測で約 6〜7 割です。不正解の多くは「アプリの想定とは別の正解手（別解）」や「コウ／セキの扱いの差」で、盤面に情報が無いため解析の改良では上がりません。
+  そこで<b>一度間違えた問題を回答帳に記録して二度と間違えない</b>設計になっています（下記）。同じ問題集を回すほど正答率は 100% に近づきます。
+</div>
+
+<h3 id="tsumego-book">回答帳（正解手順の記録と 0 秒再生）</h3>
+<p>
+詰碁アプリは同じ問題を盤の向きを変えて再出題します。回答帳は<b>盤の 8 通りの対称（回転・鏡映）を同一視したキー</b>で問題を照合し、記録済みなら解析なしで即座に正解手順を再生します。
+</p>
+<ol class="steps">
+  <li>不正解だった問題をアプリの解答で確認し、KaTrain でその問題を（キャプチャし直して）開きます。</li>
+  <li>右下の<b>「正解手順を記録」</b>を押すと記録モードになります（帯が青「記録モード開始」）。盤をクリックして正解手順を黒白交互に打ちます。</li>
+  <li>ボタンが<b>「この手順を保存」</b>に変わっているので押します。帯が緑「正解手順を回答帳に保存しました」になれば完了。保存先は <code>~/.katrain/tsumego_answers.json</code>。</li>
+</ol>
+<div class="tablewrap">
+<table>
+  <caption>盤の上の帯（バナー）の色</caption>
+  <thead><tr><th>色</th><th>文言</th><th>意味</th></tr></thead>
+  <tbody>
+    <tr><td><span class="dot" style="background:#f2f200"></span>黄</td><td>回答帳の問題を解答中</td><td>記録済みの問題。AI は記録どおりに打っている</td></tr>
+    <tr><td><span class="dot" style="background:#1e9600"></span>緑</td><td>回答帳の問題（記録手順は再生完了）</td><td>記録した手順を最後まで打ち終えた</td></tr>
+    <tr><td><span class="dot" style="background:#e66619"></span>橙</td><td>回答帳の問題（記録外の手順→通常の解析で着手）</td><td>白の応手が記録から外れたので、この手番から通常の解析で打つ</td></tr>
+    <tr><td><span class="dot" style="background:#3070d0"></span>青 / 緑 / 橙（数秒）</td><td>記録モード開始 / 保存しました / 記録できません</td><td>記録ボタンの操作結果</td></tr>
+    <tr><td>（なし）</td><td></td><td>回答帳に無い問題。帯は高さ 0 で消える</td></tr>
+  </tbody>
+</table>
+</div>
+<figure class="shot half"><img src="img/tsumego_banner_off.png" alt="回答帳バナー（記録外の手順）"><figcaption>橙の帯: 白が記録と違う手を打ったので、以降は通常の解析に切り替わった状態。</figcaption></figure>
+
+<h3 id="tsumego-autoloop">自動ループ（<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd>）</h3>
+<p>
+ADB（BlueStacks の <code>HD-Adb.exe</code>）でアプリを直接操作し、<b>新しい問題の検知 → キャプチャ → AI の黒をアプリにタップ → 白の応手を取り込み → 正解／不正解のポップアップを画面判定 → 次の問題</b>を自動で回します。
+正解なら打った手順をそのまま回答帳へ自動記録し、不正解なら「問題を見る」→「戻す」→「ヒント」の赤丸を順にたどって正解手順を収穫し、回答帳に保存してから次へ進みます。
+</p>
+<ul>
+  <li>開始／停止はどちらも <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd>。開始時に ADB へ接続し、詰碁アプリが前面の BlueStacks インスタンスを自動で選びます（<code>tsumego_autoloop.adb_serial</code> で固定も可）。</li>
+  <li>BlueStacks 側で「ADB アクセス」を有効にしておく必要があります（設定 → 詳細 → Android デバッグブリッジ）。</li>
+  <li>1 問 1 行の台帳が <code>~/.katrain/tsumego_ledger.jsonl</code> に、失敗時のスクリーンショットが <code>~/.katrain/logs/autoloop/</code> に残ります。</li>
+  <li><code>max_problems</code>（0＝無制限）で問題数を、<code>max_consecutive_errors</code>（既定 3）で連続エラー時の自動停止を決めます。</li>
+  <li>アプリの UI（ボタン位置・ポップアップの見た目）が変わると判定が外れます。その場合は <code>python -m katrain.core.tsumego_autoloop probe</code> で画面判定のしきい値を確認し直します。</li>
+</ul>
+
+<h3 id="tsumego-web">Web の詰碁（PlayGo.gg など）</h3>
+<p>
+BlueStacks 方式で認識できない画像は、自動的に<b>格子線検出＋座標ラベルの文字認識</b>にフォールバックします。Web の盤は問題に合わせて盤の一部だけを表示するため、ラベル（A〜T・1〜19）を読んで絶対座標と盤サイズを確定し、実盤サイズの盤に石を配置して同じ詰碁パイプラインに流します。
+19路の全体表示（4 辺すべてにラベル）は「盤面把握問題」とみなし、枠を張らずに通常の解析モードで開きます。
+</p>
+
+<h3 id="tsumego-log">ログと不具合報告</h3>
+<p>
+詰碁は <b>1 問 1 ファイル</b>のログ（<code>~/.katrain/logs/tsumego_&lt;日付&gt;_&lt;時刻&gt;.log</code>）に、認識した盤面・枠の採否・各手の判定が揃って残ります。誤答を報告するときはこのファイルを添えれば再現できます。
+回答帳に記録した問題のログは自動削除から保護され（<code>.keep</code>）、30 日より古いものは <code>logs/archive/tsumego_YYYYMM.zip</code> に自動でまとめられます（検索は <code>python tools/grep_tsumego_logs.py "正規表現"</code>）。
+</p>
+
+<h3 id="tsumego-settings">主な設定（<code>config.json</code> の <code>tsumego_capture</code>）</h3>
+<p>詰碁の設定は GUI の設定画面には無く、<code>~/.katrain/config.json</code> を KaTrain 終了後に直接編集します。よく触るものだけ挙げます。</p>
+<div class="tablewrap">
+<table class="params">
+  <thead><tr><th>キー</th><th>既定</th><th>意味</th></tr></thead>
+  <tbody>
+    <tr><td>enabled</td><td>true</td><td>詰碁キャプチャ機能全体の有効化（false でホットキーも登録しない）</td></tr>
+    <tr><td>hotkey / hotkey_attack / hotkey_defend / hotkey_noframe</td><td>f4 / shift+f4 / ctrl+f4 / shift+ctrl+f4</td><td>上述の 4 ホットキー</td></tr>
+    <tr><td>window_title</td><td>"BlueStacks,Puzzle Run,PlayGo"</td><td>対象ウィンドウのタイトル（部分一致・カンマ区切り）</td></tr>
+    <tr><td>board_sizes</td><td>[9, 13, 19]</td><td>認識を試す盤サイズ</td></tr>
+    <tr><td>frame_margin</td><td>4</td><td>枠の壁までの距離（大型の問題では自動で縮む）</td></tr>
+    <tr><td>frame_ko_auto</td><td>true</td><td>コウダテを攻め方に与える枠／与えない枠の両方を試して自動採用</td></tr>
+    <tr><td>maximize_on_capture</td><td>true</td><td>キャプチャ後に KaTrain を前面化して詰碁ビューにする</td></tr>
+    <tr><td>auto_ai_black</td><td>true</td><td>黒番の AI が自動で正解手を打つ（false なら自分で打つ）</td></tr>
+    <tr><td>analysis_visits</td><td>1800</td><td>枠内の解析に使う探索手数</td></tr>
+    <tr><td>watch_white</td><td>true</td><td>白の応手をアプリの盤から自動で取り込む（<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd> で一時停止）</td></tr>
+    <tr><td>watch_active_on_ahead</td><td>true</td><td>白待ちの間も 50ms 周期で監視（反映が速いぶん CPU を使う）</td></tr>
+    <tr><td>ponder_replies</td><td>3</td><td>白の有力応手を先読みして解析を温める本数（0 で無効）</td></tr>
+    <tr><td>solver_enabled</td><td>true</td><td>死活ソルバを使う。<code>solver_capture_max_region</code>（23 点）・<code>solver_capture_max_empties</code>（12 点）以下の小さい問題だけ</td></tr>
+    <tr><td>solver_time_limit_ms</td><td>5000</td><td>1 手の求解時間の上限。超えたら「詰碁」戦略へ</td></tr>
+    <tr><td>solver_cross_check</td><td>true</td><td>ソルバの答えを KataGo と突き合わせ、抽出が別問題だったときに見抜く安全網</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="watch"><span class="num">08</span>盤面監視モード（対局アプリと連動）</h2>
+
+<p class="lead">
+BlueStacks 上の囲碁<b>対局</b>アプリと KaTrain を並べて使い、<b>アプリ側（相手）の着手を自動で KaTrain に取り込む</b>モードです。KaTrain では「AI vs 人間」の対局として扱われ、アプリの相手の手が人間側の着手として入り、KaTrain の AI が応手を決めます。
+AI の応手は<b>アプリの盤の該当する交点の真上に光る輪</b>で示されるので、あなたはそこをタップするだけです。
+</p>
+
+<h3 id="watch-setup">準備と使い方</h3>
+<ol class="steps">
+  <li>BlueStacks で対局アプリを開き、対局を始めます（空の盤でも、相手の初手が乗った盤でも可）。KaTrain と BlueStacks を<b>両方見える</b>ように並べます。</li>
+  <li>KaTrain で新規対局を作り、対局者設定で<b>自分の色を AI</b>（戦略は「難解」など何でも）、<b>相手の色を人間</b>にします。ルールとコミはアプリに合わせます。</li>
+  <li><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd> を押します。現在のアプリの盤面を取り込んでから監視が始まり、盤の上に緑の帯「盤面監視中」が出ます。</li>
+  <li>相手（アプリ）が打つと数百ミリ秒以内に KaTrain の盤に反映され、AI が応手を決めます。応手はアプリの盤の上に色つきの輪で表示されるので、その交点をアプリでタップします。</li>
+  <li>もう一度 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd> で監視を止めます。</li>
+</ol>
+<div class="shots">
+  <figure class="shot"><img src="img/board_watch_banner.png" alt="盤面監視中のバナー"><figcaption><b>監視中（緑）。</b>相手の手を自動反映しています。</figcaption></figure>
+  <figure class="shot"><img src="img/board_watch_warn.png" alt="盤面監視の警告バナー"><figcaption><b>警告（橙）。</b>アプリの盤が「KaTrain の局面＋相手の 1 手」で説明できないときは盤に触らず警告だけ出して監視を続けます（整地・投了・パスの後など）。</figcaption></figure>
+</div>
+
+<h3 id="watch-highlight">AI 着手の強調表示</h3>
+<p>
+一般・エンジン設定の「AI 着手の強調表示（監視モード）」で輪の色を選べます（表示しない／シアン／マゼンタ／緑／赤／オレンジ／白）。
+輪は最前面のクリック透過ウィンドウなので、アプリの操作を邪魔しません。監視の自前キャプチャからは除外されているため、輪が盤の認識を狂わせることもありません。
+</p>
+
+<h3 id="watch-limits">できること・できないこと</h3>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>項目</th><th>状態</th></tr></thead>
+  <tbody>
+    <tr><th>相手の着手の取り込み</th><td>○ 自動（アプリ→KaTrain の片方向）</td></tr>
+    <tr><th>AI の着手をアプリへ打つ</th><td>× 自動タップはしません。輪の位置をあなたがタップします（詰碁の自動ループは別で、ADB でタップします）</td></tr>
+    <tr><th>相手のパス</th><td>× 盤面が変わらないので検出できません。KaTrain 側で手動でパスしてください</td></tr>
+    <tr><th>終局・整地</th><td>× 盤面が大きく変わるので警告になります。監視を止めてください</td></tr>
+    <tr><th>コウの取り返し</th><td>△ 盤 1 枚では「1 手前に戻った」のと区別できないため、注入しない側に倒れます（安全側）</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="watch-speed">応答速度のしくみ</h3>
+<p>
+監視中は「相手が考えている間」に相手の有力応手（humanSL 9 段の順で上位 5 手）の局面を先読みして KataGo のキャッシュを温めるため、相手が打った直後の AI 応手が 0.5 秒前後で返ります（先読みが外れたときは通常どおり 1.5〜3 秒）。
+「難解」戦略と組み合わせるとヨセの追加解析も省かれ、秒読みのある対局でも間に合う速さになっています。
+</p>
+
+<h3 id="watch-settings">主な設定（<code>config.json</code> の <code>board_watch</code>）</h3>
+<div class="tablewrap">
+<table class="params">
+  <thead><tr><th>キー</th><th>既定</th><th>意味</th></tr></thead>
+  <tbody>
+    <tr><td>enabled</td><td>true</td><td>機能の有効化</td></tr>
+    <tr><td>hotkey</td><td>ctrl+alt+d</td><td>監視のトグル。KaTrain の機能キー（F2〜F12）と重ねない</td></tr>
+    <tr><td>window_title</td><td>""</td><td>空なら <code>tsumego_capture.window_title</code> を引き継ぐ</td></tr>
+    <tr><td>poll_interval_ms / poll_interval_active_ms</td><td>400 / 50</td><td>ポーリング周期（相手の手を待っていない間／待っている間）</td></tr>
+    <tr><td>prefetch_replies</td><td>5</td><td>先読みする相手の応手の数（0 で無効）</td></tr>
+    <tr><td>stable_frames</td><td>2</td><td>同じ変化が何回連続で見えたら確定するか（誤検出防止）</td></tr>
+    <tr><td>stall_warn_sec</td><td>20</td><td>何も変化しないまま経過したら警告する秒数</td></tr>
+    <tr><td>highlight_color</td><td>cyan</td><td>輪の色（設定画面のドロップダウンと同じ）</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="theme"><span class="num">09</span>盤面テーマ（盤と碁石のデザイン）</h2>
+<p>
+一般・エンジン設定の「盤面テーマ」ドロップダウンで、盤の木目・碁石・線の見た目を切り替えられます。同梱テーマは <code>default</code> / <code>koast</code> / <code>lizzie</code> / <code>milos</code> の 4 つ（元の KaTrain の themes に由来）。
+<b>盤の描画はその場で切り替わります</b>。右パネルの背景色やフォントなど盤以外の部分は再起動後に反映されます。
+</p>
+<div class="shots">
+  <figure class="shot"><img src="img/theme_default.png" alt="テーマ default"><figcaption>default</figcaption></figure>
+  <figure class="shot"><img src="img/theme_koast.png" alt="テーマ koast"><figcaption>koast</figcaption></figure>
+  <figure class="shot"><img src="img/theme_lizzie.png" alt="テーマ lizzie"><figcaption>lizzie</figcaption></figure>
+  <figure class="shot"><img src="img/theme_milos.png" alt="テーマ milos"><figcaption>milos</figcaption></figure>
+</div>
+<h3 id="theme-custom">自分でテーマを作る</h3>
+<ul>
+  <li><code>~/.katrain/themes/&lt;名前&gt;/</code> にフォルダを作り、<code>theme.json</code>（<code>katrain/gui/theme.py</code> の <code>Theme</code> クラスの属性を上書き）と、差し替えたい画像（<code>board.png</code> / <code>B_stone.png</code> / <code>W_stone.png</code> 等・同梱と同じファイル名）を置くと一覧に出ます。</li>
+  <li>従来どおり <code>~/.katrain/theme*.json</code> をベタ置きした設定は常時適用され、その上に選択テーマが重なります。</li>
+  <li>地合推定の表示スタイル（<code>TERRITORY_DISPLAY</code>: blended / shaded / marks / blocks）や石のマーク（<code>STONE_MARKS</code>: all / weak / none）、色（<code>OWNERSHIP_COLORS</code>）もテーマで変えられます。詳細は <code>THEMES.md</code>。</li>
+</ul>
+
+<h2 id="settings"><span class="num">10</span>設定リファレンス</h2>
+
+<h3 id="settings-files">設定ファイルとフォルダ</h3>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>場所</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><th><code>~/.katrain/config.json</code></th><td>すべての設定（エンジン・一般・対局・AI 戦略ごとの値・詰碁・盤面監視・自動ループ・UI 状態）。GUI の各設定画面はこのファイルを書き換えます。<b>KaTrain 終了後に手で編集可</b>。</td></tr>
+    <tr><th><code>katrain/config.json</code>（パッケージ）</th><td>初期値。「デフォルトに戻す」はここから読みます。</td></tr>
+    <tr><th><code>katrain/KataGo/analysis_config.cfg</code></th><td>エンジンに実際に渡される KataGo の設定（スレッド数など）。<code>~/.katrain/analysis_config.cfg</code> は参照されません。</td></tr>
+    <tr><th><code>~/.katrain/logs/</code></th><td>ログ。対局 <code>game_*.log</code>（20 手未満は削除・10 本保持）、詰碁 <code>tsumego_*.log</code>（1 問 1 ファイル・30 本保持・回答帳に記録した問題は保護）、<code>archive/</code>（30 日より古い詰碁ログの zip）、<code>autoloop/</code>（自動ループの失敗スクショ）。</td></tr>
+    <tr><th><code>~/.katrain/tsumego_answers.json</code></th><td>回答帳。</td></tr>
+    <tr><th><code>~/.katrain/tsumego_cache/</code></th><td>死活ソルバの永続キャッシュ。</td></tr>
+    <tr><th><code>~/.katrain/tsumego_ledger.jsonl</code></th><td>自動ループの台帳（1 問 1 行）。</td></tr>
+    <tr><th><code>~/.katrain/trtcache/</code></th><td>TensorRT のチューニング結果。消すと次回起動が数分遅くなります。</td></tr>
+    <tr><th><code>~/.katrain/themes/</code></th><td>ユーザー追加の盤面テーマ。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="settings-sections">config.json のセクション</h3>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>セクション</th><th>主なキー</th><th>設定画面</th></tr></thead>
+  <tbody>
+    <tr><th><code>engine</code></th><td>katago / model / humanlike_model / config / max_visits / fast_visits / max_time / wide_root_noise / _enable_ownership</td><td>一般・エンジン設定（<kbd>F8</kbd>）</td></tr>
+    <tr><th><code>general</code></th><td>lang / board_theme / debug_level / anim_pv_time / sgf_load / sgf_save / load_fast_analysis / load_sgf_rewind</td><td>同上（保存先フォルダは直接編集）</td></tr>
+    <tr><th><code>game</code></th><td>size / komi / handicap / rules / clear_cache / setup_move / setup_advantage</td><td>新規対局（<kbd>Ctrl</kbd>+<kbd>N</kbd>）</td></tr>
+    <tr><th><code>timer</code></th><td>main_time / byo_length / byo_periods / minimal_use / sound</td><td>時間設定（<kbd>F5</kbd>）</td></tr>
+    <tr><th><code>trainer</code></th><td>eval_thresholds / num_undo_prompts / show_dots / save_feedback / theme / top_moves_show / low_visits / eval_on_show_last / eval_show_ai / save_analysis 等</td><td>指導・分析設定（<kbd>F6</kbd>）</td></tr>
+    <tr><th><code>ai</code></th><td><code>ai:&lt;戦略&gt;</code> ごとの設定値（→ <a href="#ai">06</a>）</td><td>AI設定（<kbd>F7</kbd>）</td></tr>
+    <tr><th><code>tsumego_capture</code></th><td>ホットキー・ウィンドウ名・枠・ソルバ・白番監視（→ <a href="#tsumego-settings">07</a>）</td><td>なし（直接編集）</td></tr>
+    <tr><th><code>board_watch</code></th><td>ホットキー・ポーリング・先読み・強調表示の色（→ <a href="#watch-settings">08</a>）</td><td>色のみ一般設定に</td></tr>
+    <tr><th><code>tsumego_autoloop</code></th><td>enabled / hotkey / adb_path / adb_serial / poll_ms / settle_ms / answer_timeout_s / capture_timeout_s / max_problems / max_consecutive_errors</td><td>なし（直接編集）</td></tr>
+    <tr><th><code>contribute</code></th><td>KataGo 分散訓練（katagotraining.org）への参加設定</td><td>分散訓練（<kbd>F9</kbd>）</td></tr>
+    <tr><th><code>ui_state</code></th><td>ウィンドウ位置・サイズ、モードごとのパネル状態</td><td>自動保存</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="settings-debug">デバッグ出力</h3>
+<p>
+一般設定の「コンソールのデバッグレベル」を 1 にすると、AI 戦略が手を選んだ理由（フィルタを通った候補数・安全弁の発動・フェーズなど）がログに詳しく出ます。不具合を報告するときは 1 にして再現し、<code>~/.katrain/logs/</code> のログを添えてください。確認後は 0 に戻します（ログが大きくなるため）。
+</p>
+<p>対局なしで特定の局面の戦略の判断を再現するコマンドラインツールもあります（開発者向け）:</p>
+<pre><code>python -m katrain_debug --sgf 棋譜.sgf --move 30 --strategy hunt --output text
+python -m katrain_debug --sgf 棋譜.sgf --strategy enigma13 --batch --player W   # 1局通しの一致率・損失</code></pre>
+
+<h2 id="shortcuts"><span class="num">11</span>キーボード・マウス操作一覧</h2>
+
+<div class="grid2">
+<div class="tablewrap">
+<table>
+  <caption>メニュー・設定</caption>
+  <thead><tr><th>キー</th><th>動作</th></tr></thead>
+  <tbody>
+    <tr><td><kbd>Alt</kbd></td><td>メインメニューを開閉</td></tr>
+    <tr><td><kbd>Tab</kbd></td><td>対局／分析モードの切替</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>N</kbd></td><td>新規対局</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>L</kbd></td><td>棋譜読込</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd> / <kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>棋譜保存／名前をつけて保存</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd> / <kbd>Ctrl</kbd>+<kbd>V</kbd></td><td>SGF をクリップボードへ／から</td></tr>
+    <tr><td><kbd>F5</kbd> <kbd>F6</kbd> <kbd>F7</kbd> <kbd>F8</kbd> <kbd>F9</kbd></td><td>時間設定／指導・分析設定／AI設定／一般・エンジン設定／分散訓練</td></tr>
+    <tr><td><kbd>F2</kbd> / <kbd>F3</kbd> / <kbd>F10</kbd></td><td>一局全体を深く分析／評価レポート／詰碁用の外枠</td></tr>
+    <tr><td><kbd>F12</kbd> <kbd>`</kbd> <kbd>~</kbd></td><td>最小表示の切替</td></tr>
+    <tr><td><kbd>Esc</kbd></td><td>すべての解析を停止</td></tr>
+  </tbody>
+</table>
+</div>
+<div class="tablewrap">
+<table>
+  <caption>対局・移動</caption>
+  <thead><tr><th>キー</th><th>動作</th></tr></thead>
+  <tbody>
+    <tr><td><kbd>p</kbd></td><td>パス</td></tr>
+    <tr><td><kbd>Enter</kbd></td><td>AI に 1 手打たせる</td></tr>
+    <tr><td><kbd>←</kbd> <kbd>z</kbd> / <kbd>→</kbd> <kbd>x</kbd></td><td>1 手戻す／進める（<kbd>Shift</kbd> で 10 手、<kbd>Ctrl</kbd> で最初／最後まで）</td></tr>
+    <tr><td><kbd>Home</kbd> / <kbd>End</kbd></td><td>最初／最後の手へ</td></tr>
+    <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td>分岐の切替</td></tr>
+    <tr><td><kbd>n</kbd> / <kbd>Shift</kbd>+<kbd>n</kbd></td><td>次／前の悪手（オレンジ以上）の直前へ</td></tr>
+    <tr><td><kbd>b</kbd> / <kbd>Shift</kbd>+<kbd>b</kbd></td><td>前の分岐点へ／主分岐へ戻る</td></tr>
+    <tr><td><kbd>c</kbd></td><td>分岐の折り畳み／展開</td></tr>
+    <tr><td><kbd>PageUp</kbd></td><td>選択中の手を主分岐にする</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Delete</kbd></td><td>選択中の手以降を削除</td></tr>
+    <tr><td><kbd>Pause</kbd></td><td>時計の一時停止／再開</td></tr>
+    <tr><td><kbd>k</kbd> / <kbd>m</kbd></td><td>座標表示／手数表示の切替</td></tr>
+  </tbody>
+</table>
+</div>
+<div class="tablewrap">
+<table>
+  <caption>分析</caption>
+  <thead><tr><th>キー</th><th>動作</th></tr></thead>
+  <tbody>
+    <tr><td><kbd>q</kbd> <kbd>w</kbd> <kbd>e</kbd> <kbd>r</kbd> <kbd>t</kbd></td><td>次の着手／ドット／上位候補／第一感／地合推定</td></tr>
+    <tr><td><kbd>a</kbd> <kbd>s</kbd> <kbd>d</kbd> <kbd>f</kbd></td><td>深く分析／均等分析／盤上全手／他の候補</td></tr>
+    <tr><td><kbd>g</kbd> / <kbd>h</kbd></td><td>領域を絞る／分析リセット</td></tr>
+    <tr><td><kbd>i</kbd> / <kbd>l</kbd></td><td>挿入モード／終局まで自動対局</td></tr>
+    <tr><td><kbd>Space</kbd> / <kbd>Shift</kbd>+<kbd>Space</kbd></td><td>継続分析の切替（候補表示を ON にしない版）</td></tr>
+  </tbody>
+</table>
+</div>
+<div class="tablewrap">
+<table>
+  <caption>マウス・グローバルホットキー</caption>
+  <thead><tr><th>操作</th><th>動作</th></tr></thead>
+  <tbody>
+    <tr><td>右パネル上でホイール</td><td>手を進める／戻す</td></tr>
+    <tr><td>候補手の上でホイール</td><td>予想手順を 1 手ずつ進める</td></tr>
+    <tr><td>候補手の上でホイールクリック</td><td>予想手順を手順ツリーに追加</td></tr>
+    <tr><td>着手をクリック／ダブルクリック</td><td>その手の詳細を表示／その手の直前へ移動</td></tr>
+    <tr><td>丸い対局者アイコンをクリック</td><td>黒白を入れ替え</td></tr>
+    <tr><td><kbd>F4</kbd> 系（設定可）</td><td>詰碁キャプチャ（自動推定／攻め方／守り方／枠なし）</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd></td><td>盤面監視のトグル（詰碁の白番監視の停止にも）</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd></td><td>詰碁の自動ループのトグル</td></tr>
+  </tbody>
+</table>
+</div>
+</div>
+
+<h2 id="trouble"><span class="num">12</span>トラブルシューティング</h2>
+
+<div class="tablewrap">
+<table>
+  <thead><tr><th>症状</th><th>原因と対処</th></tr></thead>
+  <tbody>
+    <tr><th>起動後、右下のランプが赤いまま／「KataGo の起動に失敗」のダイアログ</th><td>一般・エンジン設定の KataGo 実行ファイル・モデル・設定ファイルのパスを確認。ダイアログの「別バージョンの KataGo をダウンロード」で OpenCL 版に切り替えると動くことがあります。GPU ドライバの更新後は <code>~/.katrain/trtcache</code> の再構築で初回起動が数分かかります。</td></tr>
+    <tr><th>Human-like 系の戦略を選んでいるのに、明らかに KataGo 最善手ばかり打つ</th><td>humanSL モデルが設定されていません。一般・エンジン設定「Path to human-like model」に <code>b18c384nbt-humanv0.bin.gz</code> のフルパスを入れて「設定を更新」。</td></tr>
+    <tr><th>AI の着手が遅い（数秒〜十数秒）</th><td>humanSL 系は毎手 2 回以上解析します。「分析時の最大探索手数」を下げる（1000 前後）、「難解」では先読みが効くよう相手（人間）側の考慮時間を確保する、CPU 版 KataGo なら GPU 版へ。</td></tr>
+    <tr><th>9 路で「狩猟戦略」がいきなりパスする</th><td>狩猟は 9 路非対応で、9 路ではパスを返す仕様です。9 路では「力戦派」「持碁（9路）」「一致率追随（9路）」「難解（9路）」を使ってください。</td></tr>
+    <tr><th>「難解（13路）」を 9 路で選んだら普通の最善手しか打たない</th><td>盤サイズ専用戦略は対応しない盤では常に最善手です。盤サイズに合った版を選んでください。</td></tr>
+    <tr><th>AI 設定画面に、追加したはずの項目が出ない</th><td>設定画面は <code>~/.katrain/config.json</code> に保存されているキーだけを表示します。「デフォルトに戻す」を押すとパッケージ既定のキーが全部書き込まれます。</td></tr>
+    <tr><th>設定ファイルを手で直したのに反映されない</th><td>KaTrain 起動中に編集すると、終了時にアプリが設定を丸ごと書き戻して上書きします。<b>終了してから</b>編集してください。</td></tr>
+    <tr><th><kbd>F4</kbd>（詰碁キャプチャ）や <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd> が効かない</th><td>①<code>tsumego_capture.enabled</code> / <code>board_watch.enabled</code> が true か、②他のアプリが同じグローバルホットキーを登録していないか（登録に失敗するとログに出ます）、③対象ウィンドウのタイトルが <code>window_title</code> に含まれているか、を確認。</td></tr>
+    <tr><th>キャプチャで「盤面を検出できません」</th><td>対象ウィンドウが他のウィンドウに隠れている、最小化されている、盤が画面外に出ている、盤の色が想定と違う（黄色系以外）。ウィンドウを前面に出して撮り直してください。Web の詰碁は格子線とラベル（A〜T・1〜19）が見えている必要があります。</td></tr>
+    <tr><th>詰碁で AI が不正解を打つ</th><td>役割の自動推定が外れている場合は <kbd>Shift</kbd>+<kbd>F4</kbd>（殺す）／<kbd>Ctrl</kbd>+<kbd>F4</kbd>（生きる）で撮り直し。正解手順が枠の外に出る大型問題は <kbd>Shift</kbd>+<kbd>Ctrl</kbd>+<kbd>F4</kbd>（枠なし）。それでも違えば正解を「回答帳」に記録すると次回から確実です。ログ <code>~/.katrain/logs/tsumego_*.log</code> に判定の根拠が残ります。</td></tr>
+    <tr><th>盤面監視で「同期できません」の警告が続く</th><td>アプリ側でパス・投了・整地が起きたか、KaTrain 側の局面とずれました。監視を止め（<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd>）、必要なら手動で局面を合わせてから再度 ON にすると現在の盤を取り込み直します。</td></tr>
+    <tr><th>盤面監視中に相手の手が反映されない</th><td>アプリの盤が KaTrain の盤と同じ手番・同じ局面から始まっているか確認。相手のパスは検出できないので KaTrain 側で手動パス。BlueStacks が別ウィンドウに隠れていると認識できません。</td></tr>
+    <tr><th>自動ループが「ADB に接続できません」</th><td>BlueStacks の設定 → 詳細 →「Android デバッグブリッジ」を ON にして BlueStacks を再起動。<code>tsumego_autoloop.adb_path</code> が <code>HD-Adb.exe</code> を指しているか確認。複数インスタンスがある場合は <code>adb_serial</code>（例 <code>127.0.0.1:5585</code>）で固定。</td></tr>
+    <tr><th>評価レポートの一致率が高すぎる（AI っぽい）</th><td>「一致率追随（9路）」「AI一致率低減」「狩猟（一致率低減）」「難解」を使う。難解は勝勢のときほど一致率が下がり、接戦では勝ちを優先して上がります。Human-like でも「第一感ブレ」を ON にすると下がります。</td></tr>
+    <tr><th>対局アプリと目差が合わない</th><td>ルール（日本／中国）とコミをアプリに合わせてください。中国ルールでは終局時のダメ詰めや死石の取り込みで目差が動きます。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="glossary"><span class="num">付録</span>用語集</h2>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>用語</th><th>意味</th></tr></thead>
+  <tbody>
+    <tr><th>KataGo</th><td>KaTrain が使う囲碁 AI エンジン。局面の勝率・目差・候補手を計算します。</td></tr>
+    <tr><th>モデル（ニューラルネット）</th><td>KataGo が局面を評価するために使う学習済みの重みファイル（<code>.bin.gz</code>）。通常モデルと humanSL モデルの 2 種類を使います。</td></tr>
+    <tr><th>humanSL モデル</th><td>人間の棋譜から「この段級位の人はどこに打つか」を学習したモデル（<code>b18c384nbt-humanv0.bin.gz</code>）。Human-like 系の戦略の土台。</td></tr>
+    <tr><th>humanPolicy</th><td>humanSL モデルが出す「指定した段級位の人間がその手を打つ確率」。高いほど自然な手。本書では「人間らしさ」とも書きます。</td></tr>
+    <tr><th>policy（第一感）</th><td>ニューラルネットが読みを入れずに出す「次の一手の確率分布」。KaTrain の「第一感」表示。</td></tr>
+    <tr><th>visits（探索手数）</th><td>KataGo が 1 局面で読んだ手数（探索回数）。多いほど正確で遅い。候補手の下の数字（例 2.0k）はその手に費やした visits。</td></tr>
+    <tr><th>目（目差・scoreLead）</th><td>地の差。KataGo の「推定目差」は終局時の予想。損失は「最善手と比べて何目損か」。</td></tr>
+    <tr><th>勝率（winrate）</th><td>KataGo が推定する勝つ確率。内部では常に黒視点で計算され、表示は手番側に変換されます。</td></tr>
+    <tr><th>地合推定（ownership）</th><td>各交点が最終的にどちらの地になるかの推定（−1＝白 〜 +1＝黒）。「未確定点」は絶対値が 0.5 未満の交点。</td></tr>
+    <tr><th>損失（pointsLost）</th><td>ある手を打つことで最善手と比べて失う目数。ドットの色の元。</td></tr>
+    <tr><th>悪手フィルタ</th><td>Human-like 系の戦略が「損失がしきい値を超える手は人間らしくても打たない」ようにする仕組み。序盤 2.8 目・中盤以降 5.6 目（9路 0.5 / 3.3 目）。</td></tr>
+    <tr><th>安全弁</th><td>重み付け抽選で選ばれそうな手が 4 目以上損なら KataGo 最善手に差し替える保険（攻撃型戦略）。</td></tr>
+    <tr><th>一致率</th><td>評価レポートの「AI の最善手との一致率」＝打った手が KataGo の最善手と同じだった割合。AI らしさの指標。</td></tr>
+    <tr><th>ヨセ（終盤）</th><td>境界を確定させる終盤。戦略ごとの「ヨセ切替手数」以降は棋風の重み付けをやめて最善手か 9 段の第一感に戻ります。</td></tr>
+    <tr><th>持碁（ジゴ）</th><td>目差 0 の引き分け。「Kata持碁」は僅差勝ち、「難解」の aim_jigo は持碁〜2 目以内の負けを狙います。</td></tr>
+    <tr><th>コウダテ</th><td>コウを取り返すために打つ「相手が応じざるを得ない手」。詰碁ではコウダテがある前提で正解が決まるため、KaTrain の詰碁機能もそう評価します。</td></tr>
+    <tr><th>セキ</th><td>お互いに手を出せず両方生きている形。詰碁の正解の順序は 攻め方: 無条件死 &gt; コウ &gt; セキ、守り方: 無条件生き &gt; セキ &gt; コウ。</td></tr>
+    <tr><th>枠（詰碁用の外枠）</th><td>死活問題の周りを石で埋めて、AI が問題に集中できるようにする仕組み（<kbd>F10</kbd>）。</td></tr>
+    <tr><th>df-pn（死活ソルバ）</th><td>証明数探索という手法で死活を厳密に解くプログラム。KataGo と違い「読み切れれば必ず正しい」が、大きい問題は解けない。</td></tr>
+    <tr><th>回答帳</th><td>詰碁の正解手順を記録し、同じ問題（盤の向き違いも含む）が出たら 0 秒で再生する機能。</td></tr>
+    <tr><th>BlueStacks / ADB</th><td>Windows 上で Android アプリを動かすエミュレータと、そのアプリをコマンドで操作する仕組み（Android Debug Bridge）。</td></tr>
+    <tr><th>SGF</th><td>棋譜ファイルの標準形式。KaTrain は解析結果やコメントも埋め込めます。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<hr>
+<p class="small muted">
+  KaTrain v1.17.1.1 修正版 完全マニュアル — 2026-08-29 版。元ソフト: <a href="https://github.com/sanderland/katrain">sanderland/katrain</a>（MIT License）。
+  開発者向けの設計・実測記録は <code>docs/superpowers/specs/INDEX.md</code>、戦略の設計解説は <a href="../ai-strategy-guide.html">ai-strategy-guide.html</a>、
+  スクリーンショットは <code>tools/manual_screenshots.py</code> で再生成できます。
+</p>
+<a class="toplink" href="#intro">▲ 先頭へ戻る</a>
+
+</div>
+</main>
+</div>
+</body>
+</html>

@@ -1,0 +1,71 @@
+
+<h3 id="ai-jigo-family">目差をコントロールする戦略（持碁）</h3>
+
+<div class="card" id="ai-jigo">
+  <h3>Kata持碁 <code>ai:jigo</code></h3>
+  <div class="tags"><span class="tag ok">19路・13路</span><span class="tag no">9路は「Kata持碁（9路）」へ</span><span class="tag hs">humanSL 必須</span></div>
+  <p>
+    <b><code>target_score</code>〜<code>target_score_max</code> 目の僅差で勝つ</b>ことを目指します。元の KaTrain の KataJigo は「相手のミスに自分もミスで応じる」露骨な手抜きをしましたが、
+    改修版は Human-like と同じ 2 段階解析で「1 手あたり <code>max_loss_per_move</code> 目以下・humanPolicy が <code>min_human_policy</code> 以上」の手だけから選ぶので、
+    <b>人間らしくない悪手でわざと負けに行くことはありません</b>。
+  </p>
+  <p>選び方の基本: リードが目標未満なら「目標に最も近づく手」（実質最善手）、目標の範囲内なら <code>jigo_mode</code> に従い、範囲を超えていれば目標に最も近づく（＝少し緩める）手。</p>
+  <figure class="shot half"><img src="img/ai_jigo.png" alt="AI設定: Kata持碁"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>target_score</td><td>0.5</td><td>数値入力</td><td>狙う目差（自分から見て何目勝つか）。</td><td><span class="up">上げる</span>大きめに勝ちにいく</td></tr>
+      <tr><td>target_score_max</td><td>10.0</td><td>5 / 10 / 15</td><td>この目差までは「範囲内」とみなす。</td><td><span class="down">下げる</span>早くから手を緩め始める</td></tr>
+      <tr><td>max_loss_per_move</td><td>5.6</td><td>3.0〜7.0</td><td>1 手あたり許す損失（目）。</td><td><span class="down">下げる</span>手加減が効かず目差が広がりやすい。<span class="up">上げる</span>目標への収束は良いが不自然な手が増える</td></tr>
+      <tr><td>min_human_policy</td><td>2%</td><td>0.5〜5%</td><td>候補の humanPolicy 下限。内部で 0.5% 未満には落ちない。</td><td><span class="down">下げる</span>人間が打たない手まで候補に</td></tr>
+      <tr><td>jigo_mode</td><td>natural</td><td>natural / maintain</td><td>範囲内での打ち方。natural＝普通に人間らしく打つ、maintain＝常に目標へ寄せる。</td><td>maintain は目差が安定するが手抜きが目立つ</td></tr>
+      <tr><td>human_profile</td><td>rank_9d</td><td>5段 / 7段 / 9段</td><td>humanSL の段位。</td><td>相手が弱いなら 7段・5段に</td></tr>
+      <tr><td>jigo_dynamic_rank</td><td>OFF</td><td>ON/OFF</td><td>リード差が 5 目超で 1 段、15 目超で 5段まで自動降格。</td><td>ON で弱い相手にも目差が収束しやすい</td></tr>
+      <tr><td>jigo_large_lead_delta</td><td>5.0</td><td>3〜10</td><td>「圧勝」とみなす目差（target_max ＋この値）。</td><td><span class="down">下げる</span>早めに圧勝モードへ</td></tr>
+      <tr><td>jigo_large_lead_max_loss</td><td>8.0</td><td>6〜10</td><td>圧勝時に一時的に緩める損失上限。</td><td><span class="up">上げる</span>大差を早く縮める</td></tr>
+      <tr><td>jigo_equivalent_epsilon</td><td>0.5</td><td>0〜1.0</td><td>「目標に最も近い手」から何目以内を同点扱いにして humanPolicy で選ぶか。</td><td>0 で常に最接近手（一本道）。<span class="up">上げる</span>自然だが目差がぶれる</td></tr>
+      <tr><td>jigo_deception</td><td>OFF</td><td>ON/OFF</td><td><b>油断誘発</b>。序中盤にわざと少し劣勢を保ち、終盤で逆転する。19路は手数固定（Phase1 30手〜／Phase2 80手〜／Phase3 150手〜）、13路は下の 5 項目で調整。±5 目を超えたら安全弁で Phase3 へ。</td><td>ON で「終盤に追い上げてくる人間」らしい展開に</td></tr>
+      <tr><td>jigo_deception_13_phase1_start</td><td>17</td><td>10〜35</td><td>[13路] 控えめに打ち始める手数。</td><td rowspan="5">Phase1 &lt; Phase2 &lt; Phase3 の順に。<span class="down">Phase3 を早める</span>と挽回が間に合いやすい</td></tr>
+      <tr><td>jigo_deception_13_phase2_start</td><td>44</td><td>30〜70</td><td>[13路] 目標へ戻し始める手数。</td></tr>
+      <tr><td>jigo_deception_13_phase3_start</td><td>83</td><td>70〜110</td><td>[13路] 通常の持碁に復帰し勝ちにいく手数。</td></tr>
+      <tr><td>jigo_deception_13_phase1_target</td><td>−2.0</td><td>−1〜−4</td><td>[13路] Phase1 で保つ目差（負＝劣勢）。</td></tr>
+      <tr><td>jigo_deception_13_phase2_target</td><td>−1.0</td><td>−0.5〜−2</td><td>[13路] Phase2 の中間目標。</td></tr>
+      <tr><td>jigo_force_sanrensei</td><td>OFF</td><td>ON/OFF</td><td>19路の序盤に星打ちを強制（黒＝三連星、白＝二連星。相手が星なら対角の隅）。妨害されたら通常に戻る。</td><td>ON で布石が「星の碁」に固定</td></tr>
+      <tr><td>jigo_endgame_humanstyle</td><td>OFF</td><td>ON/OFF</td><td><b>ヨセは 9 段で打つ</b>。ヨセ切替手数以降、目差が target_score 以上の手番から目標追従をやめ Human-like 9段に丸ごと委譲（戻らない）。ヨセの手抜きは相手から見て露骨なので、それを止める。</td><td>ON で最終目差は目標より広がりうるが自然</td></tr>
+      <tr><td>jigo_endgame_move</td><td>150</td><td>120〜200</td><td>[19路] 上の切替手数。</td><td rowspan="2"><span class="down">下げる</span>早く 9 段に委譲</td></tr>
+      <tr><td>jigo_endgame_move_13</td><td>85</td><td>55〜90</td><td>[13路] 同上。</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout warn">
+    <span class="label">設計上の限界</span>
+    相手が毎手 6 目以上の大損を続ける極端な棋力差では、1 手の損失上限を超えて緩められないため目差は収束しません（人間らしさは保たれます）。相手の棋力が 9 段前後のときに目差が最もよく収束します。
+  </div>
+</div>
+
+<div class="card" id="ai-jigo9">
+  <h3>Kata持碁（9路） <code>ai:jigo9</code></h3>
+  <div class="tags"><span class="tag ok">9路専用</span><span class="tag hs">humanSL 必須</span></div>
+  <p>
+    9路盤専用の持碁です。9路に無関係な上級設定（human_profile＝9段固定・dynamic_rank・large_lead・epsilon）を取り除き、油断誘発の Phase を 9路の短い対局長に合わせて調整できます。
+    9路は終局が早いので <b>Phase3（挽回開始）を早めに</b>設定するのがコツです。
+  </p>
+  <figure class="shot half"><img src="img/ai_jigo9.png" alt="AI設定: Kata持碁（9路）"></figure>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>target_score</td><td>0.5</td><td>数値入力</td><td>狙う目差。</td><td></td></tr>
+      <tr><td>target_score_max</td><td>5.0</td><td>5 / 10 / 15</td><td>範囲の上限。9路は 10 目で実質勝勢なので 5.0。</td><td></td></tr>
+      <tr><td>max_loss_per_move</td><td>3.3</td><td>3.0〜7.0</td><td>1 手の損失上限（9路の悪手フィルタと同値）。</td><td><span class="up">上げる</span>9路では 1 手で勝負が決まるので慎重に</td></tr>
+      <tr><td>min_human_policy</td><td>2%</td><td>0.5〜5%</td><td>humanPolicy 下限。</td><td></td></tr>
+      <tr><td>jigo_mode</td><td>natural</td><td>natural / maintain</td><td>範囲内での打ち方。</td><td></td></tr>
+      <tr><td>jigo_deception</td><td>OFF</td><td>ON/OFF</td><td>油断誘発を有効化。</td><td></td></tr>
+      <tr><td>jigo9_phase1_start</td><td>6</td><td>4〜10</td><td>控えめに打ち始める手数。</td><td rowspan="5">既定（6 / 16 / 30・−1.5 / −0.5）は 9路の対局長 40〜60 手に合わせた値</td></tr>
+      <tr><td>jigo9_phase2_start</td><td>16</td><td>12〜24</td><td>目標へ戻し始める手数。</td></tr>
+      <tr><td>jigo9_phase3_start</td><td>30</td><td>26〜38</td><td>通常の持碁に復帰する手数。</td></tr>
+      <tr><td>jigo9_phase1_target</td><td>−1.5</td><td>−1〜−2.5</td><td>Phase1 で保つ目差。</td></tr>
+      <tr><td>jigo9_phase2_target</td><td>−0.5</td><td>−0.5〜−1.5</td><td>Phase2 の中間目標。</td></tr>
+      <tr><td>jigo_endgame_humanstyle</td><td>OFF</td><td>ON/OFF</td><td>ヨセは 9 段で打つ（19/13路と同じ）。</td><td></td></tr>
+      <tr><td>jigo9_endgame_move</td><td>30</td><td>22〜38</td><td>ヨセ切替手数。</td><td></td></tr>
+    </tbody>
+  </table></div>
+</div>

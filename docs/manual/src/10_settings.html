@@ -1,0 +1,48 @@
+
+<h2 id="settings"><span class="num">10</span>設定リファレンス</h2>
+
+<h3 id="settings-files">設定ファイルとフォルダ</h3>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>場所</th><th>内容</th></tr></thead>
+  <tbody>
+    <tr><th><code>~/.katrain/config.json</code></th><td>すべての設定（エンジン・一般・対局・AI 戦略ごとの値・詰碁・盤面監視・自動ループ・UI 状態）。GUI の各設定画面はこのファイルを書き換えます。<b>KaTrain 終了後に手で編集可</b>。</td></tr>
+    <tr><th><code>katrain/config.json</code>（パッケージ）</th><td>初期値。「デフォルトに戻す」はここから読みます。</td></tr>
+    <tr><th><code>katrain/KataGo/analysis_config.cfg</code></th><td>エンジンに実際に渡される KataGo の設定（スレッド数など）。<code>~/.katrain/analysis_config.cfg</code> は参照されません。</td></tr>
+    <tr><th><code>~/.katrain/logs/</code></th><td>ログ。対局 <code>game_*.log</code>（20 手未満は削除・10 本保持）、詰碁 <code>tsumego_*.log</code>（1 問 1 ファイル・30 本保持・回答帳に記録した問題は保護）、<code>archive/</code>（30 日より古い詰碁ログの zip）、<code>autoloop/</code>（自動ループの失敗スクショ）。</td></tr>
+    <tr><th><code>~/.katrain/tsumego_answers.json</code></th><td>回答帳。</td></tr>
+    <tr><th><code>~/.katrain/tsumego_cache/</code></th><td>死活ソルバの永続キャッシュ。</td></tr>
+    <tr><th><code>~/.katrain/tsumego_ledger.jsonl</code></th><td>自動ループの台帳（1 問 1 行）。</td></tr>
+    <tr><th><code>~/.katrain/trtcache/</code></th><td>TensorRT のチューニング結果。消すと次回起動が数分遅くなります。</td></tr>
+    <tr><th><code>~/.katrain/themes/</code></th><td>ユーザー追加の盤面テーマ。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="settings-sections">config.json のセクション</h3>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>セクション</th><th>主なキー</th><th>設定画面</th></tr></thead>
+  <tbody>
+    <tr><th><code>engine</code></th><td>katago / model / humanlike_model / config / max_visits / fast_visits / max_time / wide_root_noise / _enable_ownership</td><td>一般・エンジン設定（<kbd>F8</kbd>）</td></tr>
+    <tr><th><code>general</code></th><td>lang / board_theme / debug_level / anim_pv_time / sgf_load / sgf_save / load_fast_analysis / load_sgf_rewind</td><td>同上（保存先フォルダは直接編集）</td></tr>
+    <tr><th><code>game</code></th><td>size / komi / handicap / rules / clear_cache / setup_move / setup_advantage</td><td>新規対局（<kbd>Ctrl</kbd>+<kbd>N</kbd>）</td></tr>
+    <tr><th><code>timer</code></th><td>main_time / byo_length / byo_periods / minimal_use / sound</td><td>時間設定（<kbd>F5</kbd>）</td></tr>
+    <tr><th><code>trainer</code></th><td>eval_thresholds / num_undo_prompts / show_dots / save_feedback / theme / top_moves_show / low_visits / eval_on_show_last / eval_show_ai / save_analysis 等</td><td>指導・分析設定（<kbd>F6</kbd>）</td></tr>
+    <tr><th><code>ai</code></th><td><code>ai:&lt;戦略&gt;</code> ごとの設定値（→ <a href="#ai">06</a>）</td><td>AI設定（<kbd>F7</kbd>）</td></tr>
+    <tr><th><code>tsumego_capture</code></th><td>ホットキー・ウィンドウ名・枠・ソルバ・白番監視（→ <a href="#tsumego-settings">07</a>）</td><td>なし（直接編集）</td></tr>
+    <tr><th><code>board_watch</code></th><td>ホットキー・ポーリング・先読み・強調表示の色（→ <a href="#watch-settings">08</a>）</td><td>色のみ一般設定に</td></tr>
+    <tr><th><code>tsumego_autoloop</code></th><td>enabled / hotkey / adb_path / adb_serial / poll_ms / settle_ms / answer_timeout_s / capture_timeout_s / max_problems / max_consecutive_errors</td><td>なし（直接編集）</td></tr>
+    <tr><th><code>contribute</code></th><td>KataGo 分散訓練（katagotraining.org）への参加設定</td><td>分散訓練（<kbd>F9</kbd>）</td></tr>
+    <tr><th><code>ui_state</code></th><td>ウィンドウ位置・サイズ、モードごとのパネル状態</td><td>自動保存</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="settings-debug">デバッグ出力</h3>
+<p>
+一般設定の「コンソールのデバッグレベル」を 1 にすると、AI 戦略が手を選んだ理由（フィルタを通った候補数・安全弁の発動・フェーズなど）がログに詳しく出ます。不具合を報告するときは 1 にして再現し、<code>~/.katrain/logs/</code> のログを添えてください。確認後は 0 に戻します（ログが大きくなるため）。
+</p>
+<p>対局なしで特定の局面の戦略の判断を再現するコマンドラインツールもあります（開発者向け）:</p>
+<pre><code>python -m katrain_debug --sgf 棋譜.sgf --move 30 --strategy hunt --output text
+python -m katrain_debug --sgf 棋譜.sgf --strategy enigma13 --batch --player W   # 1局通しの一致率・損失</code></pre>

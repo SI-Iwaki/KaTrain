@@ -1,0 +1,63 @@
+
+<h3 id="ai-enigma">難解（9路 / 13路 / 19路）</h3>
+
+<div class="card">
+  <h3>難解 <code>ai:enigma9</code> / <code>ai:enigma13</code> / <code>ai:enigma19</code></h3>
+  <div class="tags"><span class="tag ok">盤サイズごとに専用</span><span class="tag hs">humanSL 必須</span><span class="tag">着手後の先読みで高速化済み</span></div>
+  <p>
+    序盤〜中盤は、厳しい損失上限の内側で<b>「相手が正しく応じることが最も難しい手」</b>へ積極的に外し、相手が研究してきた定跡・手筋を使わせません。
+    3 つは同じ仕組みで、盤サイズに合わせた既定値だけが違います（設定画面では <code>enigma9_*</code> / <code>enigma13_*</code> / <code>enigma19_*</code> と別々に保存）。
+    対応しない盤サイズで選ぶと常に最善手を打つだけになります。
+  </p>
+  <h4>難解さの測り方</h4>
+  <p>候補手ごとに「その手を打った後の局面」を解析し、次の合計（net）が最も大きい手を選びます。KataGo 最善手も同じ尺度で採点し、<code>*_net_margin</code> 以上上回る挑戦者だけが採用されます。</p>
+  <ul>
+    <li><b>E（期待お仕置き）</b>: 9段の人間がその局面で打ちそうな応手の分布で重み付けした、相手の期待損失。「並みの応手だと大損する」局面ほど高い。</li>
+    <li><b>応手の見つけにくさ</b>: 十分な応手（損 0.3 目以下）がどれも humanPolicy の低い手になっている（正解が見えない）ボーナス。</li>
+    <li><b>自手の意外さ</b>: 自分の手そのものが定跡外（humanPolicy が低い）ボーナス。ヨセでは使わない（一本道のヨセでは「人間が打たない手」にしかならないため）。</li>
+    <li><b>− 自分の損失</b>: 検証済みの損失（目）を引く。</li>
+  </ul>
+  <p>攻め合いが 1 手差になる形は「相手の自然な応手が攻め合いに負ける」局面そのものなので E が自動的に高くなり、安全条件（損失上限と着手後勝率フロア＝どちらも相手の最善応手込み）が「間違えなければ勝てる場合のみ」を担保します。</p>
+
+  <h4>3 つの局面フェーズ</h4>
+  <div class="tablewrap"><table>
+    <thead><tr><th>局面</th><th>損失上限（cap）</th><th>ふるまい</th></tr></thead>
+    <tbody>
+      <tr><th>互角〜少し優勢</th><td><code>*_max_loss</code></td><td>上限内で最も難解な手へ外す。候補が無ければ最善手</td></tr>
+      <tr><th>勝勢（リード − 目標差 &gt; max_loss）</th><td><code>*_large_lead_max_loss</code> まで緩和</td><td>余剰リードを予算にして勝負手を打ち、損失の重みも予算に反比例して割引。リードが縮むと連続的に通常へ戻る＝勝ちは維持したまま一致率の異常な高さを解消</td></tr>
+      <tr><th>ヨセ（<code>*_endgame_move</code> 手以降かつ未確定点 ≤ <code>*_unsettled_max</code>・以後固定）</th><td>min(max_loss, リード − <code>*_target_score</code>)</td><td>目標差を超える余剰だけを外しに使い、余剰が無ければ最善手で目標差の勝ち〜持碁を確保</td></tr>
+      <tr><th>劣勢</th><td>—</td><td>最善手で粘るだけ（勝てない碁は僅差で負けてよい）</td></tr>
+      <tr><th>終局帯（盤上に 0.5 目以上の手が無い）</th><td>—</td><td>難解さの採点はせず、9 段の人間の終局処理（パス・ダメ詰め・死石の取り込み）に倣う</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="shots">
+    <figure class="shot"><img src="img/ai_enigma9.png" alt="AI設定: 難解（9路）"><figcaption>難解（9路）</figcaption></figure>
+    <figure class="shot"><img src="img/ai_enigma13.png" alt="AI設定: 難解（13路）"><figcaption>難解（13路）</figcaption></figure>
+    <figure class="shot"><img src="img/ai_enigma19.png" alt="AI設定: 難解（19路）"><figcaption>難解（19路）</figcaption></figure>
+  </div>
+
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目（* は 9 / 13 / 19）</th><th>既定 9路</th><th>既定 13路</th><th>既定 19路</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>enigma*_max_loss</td><td>1.0<span class="jp">上限 1.8</span></td><td>1.5<span class="jp">上限 3.0</span></td><td>2.0<span class="jp">上限 4.0</span></td><td>1 手あたりの損失上限（目）。9路は「2 目以上損する手は決して打たない」を候補値レベルで保証。</td><td><span class="up">上げる</span>より大胆な罠を仕掛けるが弱く。<span class="down">下げる</span>最善手に近づく</td></tr>
+      <tr><td>enigma*_large_lead_max_loss</td><td>5.0</td><td>8.0</td><td>8.0</td><td>勝勢時の勝負手の損失上限（目）。ヨセでは無効。</td><td><span class="up">上げる</span>大差のとき露骨な勝負手が増える</td></tr>
+      <tr><td>enigma*_min_winrate</td><td>30%</td><td>30%</td><td>30%</td><td>着手後の勝率フロア。形勢が悪くなると外しが自動的に止まる。</td><td><span class="up">上げる</span>安全側＝一致率が上がる。<span class="down">下げる</span>負ける碁が増える</td></tr>
+      <tr><td>enigma*_net_margin</td><td>0.0</td><td>0.0</td><td>0.0</td><td>外すために最善手を上回るべき難解さの差。</td><td><span class="up">上げる</span>「明確に上」の罠だけ採用＝外しが減る</td></tr>
+      <tr><td>enigma*_target_score</td><td>2.0</td><td>2.0</td><td>2.0</td><td>ヨセの目標差（目）。勝勢予算とヨセ予算の両方の基準。</td><td><span class="up">上げる</span>大きめに勝つ。0 で持碁狙いに近づく</td></tr>
+      <tr><td>enigma*_aim_jigo</td><td>OFF</td><td>OFF</td><td>OFF</td><td>ON で狙いを「持碁〜2 目以内の負け」に差し替え（優先度: 持碁 &gt; 2 目以内の負け &gt; それ超の負け）。target_score は無視、内部目標 −1 目固定、勝率フロアの代わりに「着手後もリードが目標を割らない」だけを安全条件にする。大差でも 1 手の損失は large_lead_max_loss 以内で最も難解な手から削るので、わざと負けたと悟られない。</td><td>削り切れない大差は僅差勝ちで終わることがある</td></tr>
+      <tr><td>enigma*_endgame_move</td><td>30</td><td>75</td><td>150</td><td>ヨセ切替手数（未確定点条件との AND・一度入ったら固定）。</td><td><span class="down">下げる</span>早くヨセ扱い＝外しが減る</td></tr>
+      <tr><td>enigma*_unsettled_max</td><td>8</td><td>16</td><td>36</td><td>ヨセ判定の未確定点上限（≒盤の 10%）。</td><td><span class="up">上げる</span>早くヨセ扱い</td></tr>
+      <tr><td>enigma*_locality_stddev</td><td>OFF</td><td>OFF<span class="jp">推奨 3.0</span></td><td>OFF<span class="jp">未校正</span></td><td><b>局所性</b>。「自手の意外さ」ボーナスを相手の直前手と KataGo 最善手の近くでだけ満額にし、遠いほど減らす（σ＝この値）。難解さが同点帯で並ぶ候補の中では最も近い手を採る。</td><td>ON で「別の隅へ飛び飛びに打って手抜きに見える癖」が減る。明確に優る遠くの罠はそのまま打つ</td></tr>
+      <tr><td>enigma*_locality_slack</td><td>0.3</td><td>0.3</td><td>0.3</td><td>局所性の同点帯の幅。stddev が ON のときだけ効く。</td><td><span class="up">上げる</span>近い手がより優先される</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout tip">
+    <span class="label">着手時間</span>
+    候補ごとに子局面を解析するため、1 手 1〜3 秒かかります。改修版では「着手を返した直後に相手の有力応手を先読みして NN キャッシュを温める」高速化が入っており、先読みが当たった手番は 0.3〜0.5 秒で応答します。盤面監視モードと組み合わせたときはヨセの追加解析も省略されます。
+  </div>
+  <div class="callout warn">
+    <span class="label">校正状況</span>
+    9路は実戦で校正済み。13路・19路は既定値をスケールしたもので、19路の局所性は未校正（OFF のままを推奨）です。
+  </div>
+</div>

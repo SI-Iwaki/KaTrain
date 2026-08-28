@@ -1,0 +1,76 @@
+
+<h2 id="install"><span class="num">02</span>インストールと初回起動</h2>
+
+<h3 id="install-req">必要なもの</h3>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>もの</th><th>説明</th></tr></thead>
+  <tbody>
+    <tr><th>Windows PC ＋ NVIDIA GPU</th><td>この改修版は Windows 11 ＋ GeForce RTX（TensorRT 版 KataGo）で開発・検証されています。GPU が無くても CPU 版 KataGo で動きますが、AI の応答は数倍〜数十倍遅くなります。</td></tr>
+    <tr><th>Python 3.12</th><td>3.9〜3.13 で動作します。<code>uv</code>（Python のパッケージ管理ツール）があると依存ライブラリのインストールが 1 コマンドで済みます。</td></tr>
+    <tr><th>KataGo 本体</th><td>囲碁 AI エンジンの実行ファイル（<code>katago.exe</code>）。v1.16 系。</td></tr>
+    <tr><th>KataGo の通常モデル</th><td>局面を評価するニューラルネット（例 <code>kata1-b18c384nbt-…bin.gz</code>）。パッケージ同梱の既定パスがそのまま使えます。</td></tr>
+    <tr><th>humanSL モデル（人間らしさモデル）</th><td><code>b18c384nbt-humanv0.bin.gz</code>。<b>これが無いと「Human-like」「力戦派(Human拡張)」「持碁」「難解」など人間らしい戦略はすべて動きません</b>（→ <a href="#install-engine">エンジン設定</a>）。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="install-steps">インストール手順</h3>
+<ol class="steps">
+  <li>リポジトリのフォルダ（例 <code>C:\Users\&lt;あなた&gt;\Documents\katrain-1.17.1.1\katrain-1.17.1.1</code>）でコマンドプロンプトを開きます。</li>
+  <li><code>uv sync</code> を実行して依存パッケージ（Kivy・KivyMD・Pillow など）をインストールします。<code>uv</code> が無い場合は <code>pip install -e .</code> でも構いません。</li>
+  <li><code>python -m katrain</code> で起動します。初回は KataGo が GPU 向けにチューニングするため、起動に 1〜2 分かかることがあります（右下のランプが緑になれば準備完了）。</li>
+  <li>起動後に <kbd>F8</kbd>（一般・エンジン設定）を開き、KataGo・モデル・humanSL モデルのパスを確認します（下記）。</li>
+</ol>
+
+<pre><code>cd C:\Users\&lt;あなた&gt;\Documents\katrain-1.17.1.1\katrain-1.17.1.1
+uv sync
+python -m katrain</code></pre>
+
+<h3 id="install-engine">エンジン設定（KataGo・モデル・humanSL モデル）</h3>
+<p>
+メニュー（画面左上の ≡ または <kbd>Alt</kbd>）→「一般・エンジン設定」（<kbd>F8</kbd>）で開きます。
+上段が KataGo 設定、下段左が一般設定、下段右がエンジン設定です。
+</p>
+<figure class="shot">
+  <img src="img/popup_settings.png" alt="一般・エンジン設定ダイアログ">
+  <figcaption><b>一般・エンジン設定。</b>上段で KataGo 実行ファイルとモデルのパスを、右下で探索手数（強さと速さ）を決めます。変更後は「設定を更新」を押すとエンジンが再起動します。</figcaption>
+</figure>
+
+<div class="tablewrap">
+<table>
+  <caption>KataGo 設定（上段）</caption>
+  <thead><tr><th>項目</th><th>何を入れるか</th></tr></thead>
+  <tbody>
+    <tr><th>KataGoモデルファイルの場所</th><td>通常モデル。既定はパッケージ同梱の <code>katrain/models/kata1-b18c384nbt-…bin.gz</code>。「追加モデルをダウンロード」で別のモデルも取れます。</td></tr>
+    <tr><th>Path to human-like model</th><td><b>humanSL モデル</b>のフルパス（例 <code>C:\Users\&lt;あなた&gt;\.katrain\b18c384nbt-humanv0.bin.gz</code>）。空のままだと humanSL 系の戦略は「AI設定」に出ていても KataGo 最善手を打つだけになります。</td></tr>
+    <tr><th>KataGo実行ファイル（フルパス）</th><td><code>katago.exe</code> のフルパス。空なら内蔵の OpenCL 版を使います。TensorRT 版を使うならここに指定します。</td></tr>
+    <tr><th>KataGo設定ファイルの場所</th><td>既定 <code>katrain/KataGo/analysis_config.cfg</code>（パッケージ同梱）。<b>ここで指定したファイルだけがエンジンに渡されます</b>。<code>~/.katrain/analysis_config.cfg</code> を編集しても効きません。</td></tr>
+    <tr><th>エンジンコマンドの上書き</th><td>リモートの KataGo に接続するなど特殊な起動コマンドを丸ごと指定したいとき用。通常は空。</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="tablewrap">
+<table>
+  <caption>エンジン設定（右下）</caption>
+  <thead><tr><th>項目</th><th>意味</th><th>目安</th></tr></thead>
+  <tbody>
+    <tr><th>分析時の最大探索手数</th><td>1 局面あたり KataGo が読む手数（visits）。多いほど正確で遅い。<b>Human-like 系の AI 戦略の内部解析もこの値で動きます</b>。</td><td>RTX 3080 で 1000〜2000。CPU なら 100〜300</td></tr>
+    <tr><th>簡易分析時の最大探索手数</th><td>棋譜読込時の「簡易解析」や盤上全手の分析で使う軽い探索の手数。</td><td>25〜100</td></tr>
+    <tr><th>分析の最大時間</th><td>1 クエリに使ってよい秒数の上限。</td><td>8</td></tr>
+    <tr><th>Wide root noise</th><td>候補手を広く探索させる度合い。0.02〜0.1 で候補手が増えます（強さは少し落ちる）。</td><td>0.04</td></tr>
+    <tr><th>地合推定を計算する</th><td>各交点がどちらの地になるかの推定（ownership）を毎回計算するか。OFF でも必要な戦略は自分で要求します。</td><td>どちらでも可</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout warn">
+  <span class="label">設定ファイルの場所</span>
+  すべての設定は <code>C:\Users\&lt;あなた&gt;\.katrain\config.json</code> に保存されます（ダイアログのタイトルにもパスが出ます）。
+  <b>KaTrain を起動したままこのファイルを手で編集しないでください</b>。終了時にアプリが設定を丸ごと書き戻すので、編集が消えます。
+  手で直すときは KaTrain を終了してからにします。
+</div>
+
+<h3 id="install-lang">言語の切り替え</h3>
+<p>メニュー下部の国旗アイコンで切り替えます。本書は日本語表示を前提にしています（英語表示のときは戦略名が「Human-like」→「Human-like」、「力戦派」→「Fighting」のように変わります）。</p>
