@@ -36,7 +36,12 @@ DEFAULT_UI_POINTS = {
     "popup_next": (0.256, 0.781),
     "popup_view": (0.489, 0.781),
 }
-POPUP_STRIP = (0.02, 0.181, 0.98, 0.19)  # 大盤の上端の帯。実測: 問題画面 黄 0.957 / ポップアップ 0.074
+# 大盤の上端の帯（実測 3.0.70: 問題画面 黄 0.957 / ポップアップ 0.074）。**判定には使わない**
+# ＝アプリ 3.0.72 で解答中の画面からヘッダと下のバーが消えて盤が 288 → 304〜308 に下がり、この
+# 固定帯が盤の外（青い背景）に落ちて黄色率 0.000 ＝「盤は覆われている」＝ポップアップ、と
+# **問題画面を毎回誤判定**した（実測 2026-08-29・自動ループが1問もキャプチャできず停止）。
+# 盤が覆われているかは盤の位置そのものを検出する big_board_visible で見る（比率に依らない）
+POPUP_STRIP = (0.02, 0.181, 0.98, 0.19)
 POPUP_STRIP_YELLOW_MAX = 0.5
 POPUP_INNER_BOARD_BOX = (0.25, 0.42, 0.75, 0.62)  # 結果ポップアップが常に出す内側の小盤
 # 内側の小盤の「盤あり/なし」を分けるしきい値は **1本**（spec 追記6）。旧実装は popup>=0.5 /
@@ -52,6 +57,12 @@ VERDICT_MAX_MAD = 30.0  # テンプレートとの平均絶対差の上限
 VERDICT_MIN_GAP = 10.0  # 1位と2位の差がこれ未満なら unknown
 HINT_ICON = (0.833, 0.775, 18)  # (cx比, cy比, 半径px)。実測 平均輝度: 有効 151 / グレーの戻す 48
 HINT_ICON_ENABLED_MIN = 126.0  # 実測 2026-08-23: 有効 160.4 / 無効 92.7（中点）
+# 下のボタンバー（次の問題/結果/シェアする/ヒント/戻す）。電球は半径 18px の点サンプルなので、
+# 版差の 20px でバーを外して「無効」と誤読する（実測 3.0.72 の復習画面 123.4 ＜ 閾値 126）。
+# バーの上端を盤の下端から探して、そこに合わせて測る（見つからなければ従来の比率へフォールバック）
+BAR_SEARCH_DY = 90  # 盤の下端からバー上端を探す範囲[px]（900x1600 基準・フレーム高でスケール）
+BAR_DARK_MAX = 58.0  # バーの行平均輝度の上限（実測 バー 22〜53 / 盤の下の背景 67〜71）
+BAR_ICON_DY = 29  # バー上端から電球の中心まで（実測 3.0.70 1204→1234 / 3.0.72 1225→1255）
 HEADER_BAND = (0.10, 0.15, 0.90, 0.18)
 RED_RING_MIN_PIXELS = 80
 # 認定証（spec 追記2・追記5）。実機は**問題画面の上に載るダイアログ**で、アプリのヘッダ
@@ -153,10 +164,26 @@ def result_title_band_dark(frame):
     return _band_mean(frame, OVERLAY_TITLE_BAND) < RESULT_TITLE_DARK_MAX
 
 
+def big_board_visible(frame):
+    """アプリの大盤が丸ごと見えているか（＝ダイアログに覆われていないか）。
+
+    旧実装は固定比率の帯 POPUP_STRIP が黄色かで見ていたが、アプリ 3.0.72 で盤が 20px 下がって
+    帯が盤の外に落ち、問題画面を全部ポップアップと誤判定した（2026-08-29）。盤の位置そのものを
+    検出すれば版差に依存しない。既存フレーム 11 枚では両者の判定は完全に一致する（問題/ヒント/
+    遷移＝見える・帯 0.79〜1.00 / ポップアップ・認定証＝見えない・帯 0.01〜0.07 かつ検出も失敗）。
+    ダイアログは盤の上下を隠すので detect_board は「盤面の形が不正です」で落ちる（実測 888x552）。
+    """
+    try:
+        board_rect_of(frame)
+    except CaptureError:
+        return False
+    return True
+
+
 def popup_present(frame):
     """結果ポップアップが盤を覆っているか。
 
-    「盤の上端の帯が黄色でない」だけだと、アプリのホーム・遷移中・認定証まで一律に
+    「大盤が見えない」だけだと、アプリのホーム・遷移中・認定証まで一律に
     ポップアップ扱いになり、そこへ「次の問題」を撃ってしまう（spec 追記4 の誤タップ事故）。
     結果ポップアップの署名（濃紺のタイトル帯）を AND して、知らない画面と区別する。
     さらに結果ポップアップは中央に必ず内側の小盤（黄色）を出すので、それも AND する
@@ -164,7 +191,7 @@ def popup_present(frame):
     と確定できる（他の2条件が偶然揃っても、盤が無ければポップアップにしない）。
     """
     return (
-        yellow_ratio(frame, POPUP_STRIP) < POPUP_STRIP_YELLOW_MAX
+        not big_board_visible(frame)
         and result_title_band_dark(frame)
         and yellow_ratio(frame, POPUP_INNER_BOARD_BOX) >= INNER_BOARD_YELLOW_SPLIT
     )
@@ -246,11 +273,11 @@ def overlay_present(frame):
     実機のジオメトリは**全画面ではなくダイアログ**で、アプリのヘッダ（← 戻る・「囲碁詰めチャレ」・
     難易度/出典）はその上に残る＝OVERLAY_TITLE_BAND は認定証でも濃紺（実測 44.5）のままなので、
     旧実装の「タイトル帯が紙色」という条件は実機で常に偽だった。署名は 4 つ:
-    盤の上端の黄色帯が消えている（POPUP_STRIP）・中央に結果ポップアップの小盤が無い・
+    大盤が見えない（big_board_visible）・中央に結果ポップアップの小盤が無い・
     ダイアログの紙の帯が明るい（OVERLAY_PAPER_BAND）・ダイアログ左上に × がある。
     """
     return (
-        yellow_ratio(frame, POPUP_STRIP) < POPUP_STRIP_YELLOW_MAX
+        not big_board_visible(frame)
         and yellow_ratio(frame, POPUP_INNER_BOARD_BOX) < INNER_BOARD_YELLOW_SPLIT
         and _band_mean(frame, OVERLAY_PAPER_BAND) >= OVERLAY_PAPER_MIN
         and find_close_glyph(frame) is not None
@@ -378,9 +405,37 @@ def find_hint_circle(frame, rect, size):
     return candidates[0]
 
 
+def bar_top_of(frame, rect=None):
+    """盤の下のボタンバーの上端 y。バーが無い／盤を検出できないなら None。
+
+    アプリ 3.0.72 は**解答中はバーを出さない**（ヘッダも消える）ので None が正しい＝ヒントは
+    押せない。復習画面（結果ポップアップの「問題を見る」）ではバーが戻る。実測の上端は
+    3.0.70 が 1204・3.0.72 が 1225 で、電球の中心はどちらもその 29〜30px 下（バー高は 95 で同一）。
+    """
+    try:
+        rect = rect or board_rect_of(frame)
+    except CaptureError:
+        return None
+    w, h = frame.size
+    top = rect[3] + 1
+    bottom = min(h, top + int(round(BAR_SEARCH_DY * h / DEVICE_H)))
+    if bottom - top < 4:
+        return None
+    rows = frame.crop((0, top, w, bottom)).convert("L").resize((1, bottom - top), Image.BOX).load()
+    for dy in range(bottom - top):
+        if rows[0, dy] < BAR_DARK_MAX:
+            return top + dy
+    return None
+
+
 def hint_enabled(frame):
     w, h = frame.size
-    cx, cy, rad = int(HINT_ICON[0] * w), int(HINT_ICON[1] * h), HINT_ICON[2]
+    bar_top = bar_top_of(frame)
+    # バーが見つからないフレーム（ポップアップ・認定証・遷移）は従来どおり比率で測る＝判定を
+    # 変えない。ここで False（＝ヒントが灰色）に倒すと、収穫中に割り込んだポップアップで
+    # ヒント歩きが途中終了し、切れた手順が回答帳に入る
+    cy = bar_top + int(round(BAR_ICON_DY * h / DEVICE_H)) if bar_top is not None else int(HINT_ICON[1] * h)
+    cx, rad = int(HINT_ICON[0] * w), HINT_ICON[2]
     mean = ImageStat.Stat(frame.crop((cx - rad, cy - rad, cx + rad, cy + rad)).convert("L")).mean[0]
     return mean >= HINT_ICON_ENABLED_MIN
 

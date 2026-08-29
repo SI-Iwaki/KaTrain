@@ -1704,3 +1704,61 @@ def test_controller_next_taps_reset_when_board_appears(tmp_path):
     adb.frames = [{"grid": BASE}]
     clock.advance(1.0); c.step()
     assert c._next_taps == 0
+# --- アプリ 3.0.72 のレイアウト変更（2026-08-29・新規 BlueStacks インスタンスで発覚） ---
+# 3.0.70 → 3.0.72 で (1) 解答中の画面からヘッダ（難易度・出典）と下のボタンバーが消え、
+# (2) 盤の上端が 288 → 304〜308 に下がった。復習画面（「問題を見る」）にはバーが戻るが、
+# そこも 20px 下がっている。フレームは実機 127.0.0.1:5605（版 3.0.72）から採取。
+
+
+def test_popup_present_on_app_3_0_72_frames():
+    """固定比率の帯では 3.0.72 の問題画面を「ポップアップ」と誤判定した（自動ループが停止）"""
+    assert al.popup_present(_frame("problem_v3072.png")) is False
+    assert al.popup_present(_frame("review_v3072.png")) is False
+    assert al.popup_present(_frame("popup_wrong_v3072.png")) is True
+    assert al.overlay_present(_frame("problem_v3072.png")) is False
+    assert al.overlay_present(_frame("popup_wrong_v3072.png")) is False
+
+
+def test_popup_state_wrong_on_app_3_0_72():
+    """ポップアップ自体のレイアウトは版が変わっても同じ（判定文テンプレートはそのまま効く）"""
+    assert al.popup_state(_frame("popup_wrong_v3072.png"), al.load_templates()) == "wrong"
+
+
+def test_board_moved_down_on_app_3_0_72():
+    """回帰の記録: 盤の実位置と、固定帯 POPUP_STRIP が盤の外に落ちること"""
+    assert al.board_rect_of(_frame("problem.png"))[1] == 288
+    assert al.board_rect_of(_frame("problem_v3072.png"))[1] >= 300
+    assert al.yellow_ratio(_frame("problem_v3072.png"), al.POPUP_STRIP) == 0.0
+    assert al.yellow_ratio(_frame("problem.png"), al.POPUP_STRIP) > 0.9
+
+
+def test_big_board_visible_separates_popup_from_problem():
+    for name in ("problem.png", "hint.png", "transition.png", "problem_v3072.png", "review_v3072.png"):
+        assert al.big_board_visible(_frame(name)) is True, name
+    for name in ("popup_wrong.png", "popup_correct.png", "popup_correct_animating.png", "popup_rankup_dense.png",
+                 "certificate_device.png", "certificate_wins.png", "popup_wrong_v3072.png"):
+        assert al.big_board_visible(_frame(name)) is False, name
+
+
+def test_bar_top_and_hint_enabled_follow_the_bar():
+    """電球は半径 18px の点サンプルなので、20px のずれで有効/無効を誤読する。
+
+    実測: 3.0.72 の復習画面はヒントが有効なのに固定比率では 123.4（＜閾値 126）で無効と読めた。
+    バー上端に合わせると 169.7。3.0.70 の 1204 と 3.0.72 の 1225 で、どちらも +29px が電球の中心。
+    """
+    assert 1200 <= al.bar_top_of(_frame("problem.png")) <= 1210
+    assert 1220 <= al.bar_top_of(_frame("review_v3072.png")) <= 1230
+    assert al.bar_top_of(_frame("problem_v3072.png")) is None  # 解答中はバーが無い
+    assert al.hint_enabled(_frame("review_v3072.png")) is True
+    assert al.hint_enabled(_frame("problem_v3072.png")) is False
+
+
+def test_hint_enabled_unchanged_on_3_0_70_frames():
+    """バーが見つかるフレームもバーが無いフレームも、旧実装と同じ判定のままであること"""
+    assert al.hint_enabled(_frame("hint.png")) is True
+    assert al.hint_enabled(_frame("hint_with_marker.png")) is True
+    assert al.hint_enabled(_frame("hint_disabled.png")) is False
+    assert al.hint_enabled(_frame("transition.png")) is False
+    # ポップアップ・認定証は比率フォールバック（紙が明るい）＝旧実装のまま True
+    assert al.hint_enabled(_frame("popup_wrong.png")) is True
+    assert al.hint_enabled(_frame("certificate_device.png")) is True
