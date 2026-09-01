@@ -925,5 +925,5 @@ find_hp の run 間揺れが net に伝わるようになる（従来この帯�
 **検証**: `tests/test_ai_enigma9.py::TestOwnRareFindGate`（6件・B10 の実測値の回帰と
 C11/ヨセ校正帯のビット同一を含む）＋全 enigma テスト 142 件 PASS。実対局リプレイ
 （復元 SGF `calibration-data/enigma13/enigma13-vs-human-20260901-white.sgf`・
-katrain_debug・同一設定）: move 35 で B10 → **B5**、move 37 で **C11 維持**（本文参照）。
+katrain_debug・同一設定）: move 35 は B10 が net −0.28 に落ちて不採用になり、外し先は次点の **C11**（find 0.712 < 0.85・net 0.37）＝最善 B5 には戻らない（元ログでも C11 0.25 > B5 0.18 が次点）。move 37 の **C11 は維持**（E=0.93・本物の罠）。ゲートが消すのは「応手ほぼ確実」の帯だけで、外し自体は次点の候補が引き継ぐ。
 
