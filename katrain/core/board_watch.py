@@ -623,6 +623,17 @@ def _capture_api():
     return find_window_rect, capture_screen_rect, detect_board, detect_size_and_classify
 
 
+def _wood_api():
+    """明るい木目盤（別アプリ）経路の関数群を遅延 import して返す（_capture_api と同じ流儀）。
+
+    既存テストが monkeypatch する `_capture_api` の4タプルは変えられないので別口にする。
+    この経路が走るのは detect_board（黄盤）が失敗したときだけ＝既存アプリの監視は不変
+    """
+    from katrain.core.tsumego_capture import classify_wood_intersections, detect_wood_board, detect_wood_grid
+
+    return detect_wood_board, detect_wood_grid, classify_wood_intersections
+
+
 def intersection_screen_point(window_rect, board_rect, size, i, j):
     """交点 (i, j) の画面座標 (x, y) とセル幅を返す（純関数）。
 
@@ -635,6 +646,19 @@ def intersection_screen_point(window_rect, board_rect, size, i, j):
     cell_w = (x1 - x0 + 1) / size
     cell_h = (y1 - y0 + 1) / size
     return wx + x0 + cell_w * (j + 0.5), wy + y0 + cell_h * (i + 0.5), min(cell_w, cell_h)
+
+
+def grid_screen_point(window_rect, xs, ys, i, j):
+    """交点 (i, j) の画面座標 (x, y) とセル幅を返す（純関数・木目盤経路用）。
+
+    intersection_screen_point の「規則配置の割り算」の代わりに、検出済みの格子線位置
+    （xs=縦線の x・ys=横線の y、窓画像座標）をそのまま使う。19 路の座標ラベル帯のように
+    第1線が盤領域の縁から半セルでないレイアウトでも輪が交点の真上に出る
+    """
+    wx, wy = window_rect[0], window_rect[1]
+    cell_w = (xs[-1] - xs[0]) / (len(xs) - 1)
+    cell_h = (ys[-1] - ys[0]) / (len(ys) - 1)
+    return wx + xs[j], wy + ys[i], min(cell_w, cell_h)
 
 
 def _board_fingerprint(img, board_rect):
@@ -651,6 +675,11 @@ def _board_fingerprint(img, board_rect):
 
 class AppBoardReader:
     """アプリ窓を撮って観測グリッドを返す。盤矩形・盤サイズ・直前フレームをキャッシュする。
+
+    対応する盤は2種類で、フル検出時に自動判別する（_full_detect）: 黄盤（囲碁クエスト系・
+    従来の規則配置）が先勝ち、detect_board が失敗したら明るい木目盤（別アプリ・格子線検出）。
+    木目盤は検出した格子線位置 `_lines` を分類と screen_point の両方が使う＝19 路の座標
+    ラベル帯（第1線が縁から約 1.4 セル内側）でも輪が交点の真上に出る。
 
     1周の実測は「撮影 21〜27ms ＋ 格子検算 5〜25ms ＋ 分類 7〜29ms」＝40〜85ms。
     毎周 detect_size_and_classify をキャッシュしたサイズ1候補で回すのは、これが
@@ -673,11 +702,15 @@ class AppBoardReader:
         self._rect_checked = None  # 盤矩形を最後に測り直した時刻（BOARD_RECT_RECHECK_SEC）
         self._fingerprint = None
         self._grid = None
+        # 認識プロファイル。"quest"=従来の黄盤（規則配置）/ "wood"=明るい木目盤（格子線検出）。
+        # フル検出（_full_detect）が detect_board の成否で決める＝設定キーは無い
+        self._profile = None
+        self._lines = None  # wood の格子幾何 (縦線 x のタプル, 横線 y のタプル)。quest では None
         # screen_point は監視スレッド以外（GUI の `_do_ai_move`・設定変更）からも呼ばれる。
         # 窓矩形・盤矩形・盤サイズを別々に読むと「新しい窓矩形＋古い盤矩形」という
-        # ありえない組み合わせを引けてしまい、輪が窓の移動量ぶんずれる。3つまとめて
+        # ありえない組み合わせを引けてしまい、輪が窓の移動量ぶんずれる。まとめて
         # 1つの参照で差し替えることで、読む側は必ず整合した組を見る
-        self._calibration = None  # (window_rect, board_rect, size) or None
+        self._calibration = None  # (window_rect, board_rect, size, lines) or None
 
     def read(self):
         find_window_rect, capture_screen_rect, detect_board, detect_size_and_classify = _capture_api()
@@ -692,9 +725,7 @@ class AppBoardReader:
         img = capture_screen_rect(rect)
         if self._board_rect is None:
             self._forget_frame()
-            board_rect = detect_board(img)
-            size, grid = detect_size_and_classify(img, board_rect, self.board_sizes)
-            self.size = size
+            board_rect, grid = self._full_detect(img, detect_board, detect_size_and_classify)
             self._set_board_rect(board_rect)
             self._remember_frame(_board_fingerprint(img, board_rect), grid)
             return grid
@@ -706,12 +737,49 @@ class AppBoardReader:
         if self._recheck_board_rect(img, detect_board):
             fingerprint = _board_fingerprint(img, self._board_rect)  # 矩形が変わった＝指紋も取り直す
         try:
-            _size, grid = detect_size_and_classify(img, self._board_rect, [self.size])
+            grid = self._classify_frame(img, detect_size_and_classify)
         except Exception:
             self._forget_board_rect()  # 次回はフル検出からやり直す
             self._forget_frame()  # 失敗した回の画素を覚えない（覚えると次周が古いグリッドを返す）
             raise
         self._remember_frame(fingerprint, grid)
+        return grid
+
+    def _full_detect(self, img, detect_board, detect_size_and_classify):
+        """盤矩形・サイズ・グリッドを一から検出し (board_rect, grid) を返す。プロファイルもここで決める。
+
+        黄盤（従来経路）が先勝ちで、成功したら以降は従来とビット同一。detect_board が失敗した
+        ときだけ木目盤経路（detect_wood_board → 格子線検出 → 線位置ベース分類）を試す。
+        木目盤ですらなければ従来の diagnostics（黄盤側のエラー）をそのまま投げる＝既存アプリの
+        過渡失敗（盤以外の画面）の文言・型は変わらない
+        """
+        try:
+            board_rect = detect_board(img)
+        except Exception as yellow_err:
+            detect_wood_board, detect_wood_grid, classify_wood_intersections = _wood_api()
+            try:
+                board_rect = detect_wood_board(img)
+            except Exception:
+                raise yellow_err from None
+            size, xs, ys = detect_wood_grid(img, board_rect, self.board_sizes)
+            grid = classify_wood_intersections(img, xs, ys)
+            self.size = size
+            self._profile = "wood"
+            self._lines = (xs, ys)
+            return board_rect, grid
+        size, grid = detect_size_and_classify(img, board_rect, self.board_sizes)
+        self.size = size
+        self._profile = "quest"
+        self._lines = None
+        return board_rect, grid
+
+    def _classify_frame(self, img, detect_size_and_classify):
+        """画素が動いたフレームの分類。quest はキャッシュしたサイズ1候補の検算兼用（従来どおり）、
+        wood はキャッシュした格子線位置で分類だけする（格子線検出は毎フレーム走らせない）"""
+        if self._profile == "wood" and self._lines is not None:
+            classify_wood_intersections = _wood_api()[2]
+            return classify_wood_intersections(img, *self._lines)
+        _size, grid = detect_size_and_classify(img, self._board_rect, [self.size])
         return grid
 
     def _recheck_board_rect(self, img, detect_board):
@@ -724,6 +792,24 @@ class AppBoardReader:
         now = self.clock()
         if self._rect_checked is not None and now - self._rect_checked < BOARD_RECT_RECHECK_SEC:
             return False
+        if self._profile == "wood":
+            detect_wood_board, detect_wood_grid, _classify = _wood_api()
+            board_rect = detect_wood_board(img)
+            if board_rect == self._board_rect:
+                self._rect_checked = now
+                return False
+            try:
+                # 盤が動いた＝格子線位置も古い。張り替えられなければフル検出からやり直す
+                # （quest と違い矩形だけでは分類できないので、ここで幾何が取れない盤は持ち越さない）
+                _size, xs, ys = detect_wood_grid(img, board_rect, [self.size])
+            except Exception:
+                self._forget_board_rect()
+                self._forget_frame()
+                raise
+            self._lines = (xs, ys)
+            self._set_board_rect(board_rect)
+            self._forget_frame()
+            return True
         board_rect = detect_board(img)
         if board_rect == self._board_rect:
             self._rect_checked = now
@@ -735,19 +821,23 @@ class AppBoardReader:
     def _set_board_rect(self, board_rect):
         self._board_rect = board_rect
         self._rect_checked = self.clock()
-        self._calibration = (self._window_rect, board_rect, self.size) if self.size else None
+        self._calibration = (self._window_rect, board_rect, self.size, self._lines) if self.size else None
 
     def _forget_board_rect(self):
         self._board_rect = None
         self._rect_checked = None
         self._calibration = None
+        self._profile = None
+        self._lines = None
 
     def screen_point(self, i, j):
         """交点 (i, j) の画面座標 (x, y, セル幅)。盤矩形がまだ確定していなければ None"""
         calibration = self._calibration  # 別スレッドから呼ばれる＝1回で読み切る（上の comment 参照）
         if calibration is None:
             return None
-        window_rect, board_rect, size = calibration
+        window_rect, board_rect, size, lines = calibration
+        if lines is not None:  # 木目盤＝検出済みの格子線位置から引く（規則配置の割り算では帯ぶんずれる）
+            return grid_screen_point(window_rect, lines[0], lines[1], i, j)
         return intersection_screen_point(window_rect, board_rect, size, i, j)
 
     def _remember_frame(self, fingerprint, grid):

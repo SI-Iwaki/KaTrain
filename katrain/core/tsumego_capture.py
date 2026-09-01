@@ -741,6 +741,236 @@ def capture_settings_for_frame_mode(settings, frameless):
     return {**settings, "use_frame": False, "region_pad": pad}
 
 
+# ============================================================
+# 明るい木目盤認識（対局監視 board_watch の自動フォールバック経路）
+#
+# 別の BlueStacks 囲碁アプリ（明るい木目盤。実測の木地 median RGB≈(227,208,159)）は
+# `_is_yellow` の b<150 を満たさず detect_board が全く動かない。さらに 19 路は盤領域の
+# 四辺内側に座標ラベル帯があり第1線が縁から約 1.4 セル内側＝「縁から半セル」の規則配置
+# 前提（classify_intersections）が破れる（13/9 路はラベル無しで約半セル＝サイズごとに
+# レイアウトが違う）。そこで木地の色域で盤領域を取り、格子線そのものを検出して幾何を決める。
+# 黄盤（b=62）は _is_bright_wood の b>100 を満たさない＝色域が相互排他なので、
+# 「detect_board 失敗 → 木目盤」の自動ディスパッチで既存経路（詰碁・autoloop 含む）は不変。
+# 実測データは docs/superpowers/specs/2026-08-18-board-watch-design.md の追記を参照
+# ============================================================
+
+from PIL import ImageChops
+
+WOOD_BAND_FRACTION = 0.4  # 行/列ヒストグラムの帯採用閾値（detect_board の 0.5 相当。実測3枚は 0.3〜0.5 で安定）
+WOOD_EDGE_PAD = 6  # 盤領域の縁の暗帯（枠線・影）の除外幅。無いと縁に幻線が1本出る（実測）
+WOOD_LINE_DARK = 150  # 格子線の暗判定（等重み輝度。実測: 線 <120・木地 192-207）
+WOOD_THIN_GAP = 6  # 細線判定: 両側 gap px が非暗なら線候補（石の胴体を除外。WEB_THIN_GAP と同思想）
+WOOD_LINE_MIN_FRACTION = 0.5  # プロファイル最大値のこの割合超を線候補にする
+WOOD_LINE_GROUP_GAP = 2  # 隣接この px 以内の候補列を1本の線にまとめる
+WOOD_FIT_MIN_COVERAGE = 0.6  # 等差フィットで実検出ピークが線本数のこの割合未満なら不採用
+WOOD_FIT_MAX_RESIDUAL = 3.0  # 等差フィットからの許容ずれ[px]（実測の線位置は ±0.5px で等間隔）
+WOOD_GAP_TOLERANCE = 0.1  # 縦横のセル幅の許容差（比）
+WOOD_STONE_PATCH_RATIO = 0.25  # 分類パッチ半径 = セル×この値（classify_intersections と同比率）
+WOOD_MARKER_PATCH_RATIO = 0.08  # "?" 再判定の小半径。直前着手マーカー（石上の輪）の内側の石地色を拾う
+
+
+def _is_bright_wood(r, g, b):
+    # 実測の木地 median RGB≈(227,208,159)（明るい暖色・彩度は黄盤より低い）。黄盤 (247,193,62) は
+    # b>100 を満たさず、r-b≈185 も上限 130 を超える＝ _is_yellow と両立しない（自動ディスパッチの要）
+    return r > 180 and g > 150 and b > 100 and 30 < (r - b) < 130
+
+
+def detect_wood_board(img):
+    """画像内の明るい木目盤領域の bbox (x0, y0, x1, y1) を返す（両端含む。detect_board の木目盤版）"""
+    w, h = img.size
+    thumb = img.convert("RGB").resize((max(1, w // DETECT_SCALE), max(1, h // DETECT_SCALE)), Image.NEAREST)
+    tw, th = thumb.size
+    px = thumb.load()
+    row_counts = [0] * th
+    col_counts = [0] * tw
+    for y in range(th):
+        for x in range(tw):
+            if _is_bright_wood(*px[x, y][:3]):
+                row_counts[y] += 1
+                col_counts[x] += 1
+    max_row = max(row_counts, default=0)
+    max_col = max(col_counts, default=0)
+    if max_row < tw * 0.25 or max_col < th * 0.25:
+        raise CaptureError("木目盤を検出できません（盤が画面に表示されているか確認してください）")
+    rows = [y for y, c in enumerate(row_counts) if c >= max_row * WOOD_BAND_FRACTION]
+    cols = [x for x, c in enumerate(col_counts) if c >= max_col * WOOD_BAND_FRACTION]
+    x0, x1 = cols[0] * DETECT_SCALE, (cols[-1] + 1) * DETECT_SCALE - 1
+    y0, y1 = rows[0] * DETECT_SCALE, (rows[-1] + 1) * DETECT_SCALE - 1
+    bw, bh = x1 - x0 + 1, y1 - y0 + 1
+    if min(bw, bh) < 300 or not (0.9 < bw / bh < 1.1):
+        raise CaptureError(f"木目盤の形が不正です（検出領域 {bw}x{bh}。盤が隠れていないか確認してください）")
+    return (x0, y0, x1, y1)
+
+
+def _wood_line_profiles(rgb, board_rect):
+    """盤領域内の細い暗線の列プロファイル・行プロファイルを返す（各要素 0-255＝細線画素の割合×255）。
+
+    「両側 WOOD_THIN_GAP px が非暗」の細線マスクを PIL の C 演算（point/offset/invert/multiply）で
+    作り、BOX リサイズで軸ごとに畳む＝純 Python の全画素走査を避ける（実測 15-16ms/軸ペア）。
+    ImageChops.offset は端で画素が回り込むが、縁 WOOD_EDGE_PAD を除外済みで第1線は
+    さらに内側（実測 20px 以上）にあるため影響しない
+    """
+    x0, y0, x1, y1 = board_rect
+    crop = rgb.crop((x0 + WOOD_EDGE_PAD, y0 + WOOD_EDGE_PAD, x1 + 1 - WOOD_EDGE_PAD, y1 + 1 - WOOD_EDGE_PAD))
+    gray = _web_mean_gray(crop)
+    dark = gray.point(lambda v: 255 if v < WOOD_LINE_DARK else 0)
+    left = ImageChops.invert(ImageChops.offset(dark, WOOD_THIN_GAP, 0))
+    right = ImageChops.invert(ImageChops.offset(dark, -WOOD_THIN_GAP, 0))
+    thin_v = ImageChops.multiply(dark, ImageChops.multiply(left, right))
+    up = ImageChops.invert(ImageChops.offset(dark, 0, WOOD_THIN_GAP))
+    down = ImageChops.invert(ImageChops.offset(dark, 0, -WOOD_THIN_GAP))
+    thin_h = ImageChops.multiply(dark, ImageChops.multiply(up, down))
+    w, h = dark.size
+    col_profile = list(thin_v.resize((w, 1), Image.BOX).tobytes())
+    row_profile = list(thin_h.resize((1, h), Image.BOX).tobytes())
+    return col_profile, row_profile
+
+
+def _wood_line_peaks(profile):
+    """プロファイルの線候補（最大値の WOOD_LINE_MIN_FRACTION 超）を隣接グループにまとめ、重心位置の列を返す"""
+    peak = max(profile, default=0)
+    if peak <= 0:
+        return []
+    floor = peak * WOOD_LINE_MIN_FRACTION
+    groups = []
+    for x, v in enumerate(profile):
+        if v <= floor:
+            continue
+        if groups and x - groups[-1][-1][0] <= WOOD_LINE_GROUP_GAP:
+            groups[-1].append((x, v))
+        else:
+            groups.append([(x, v)])
+    return [sum(x * v for x, v in g) / sum(v for _x, v in g) for g in groups]
+
+
+def _wood_fit_line_progression(peaks, sizes):
+    """検出ピーク列を等差数列（等間隔の格子線）にフィットし (本数, 位置タプル) を返す。不成立は None。
+
+    隣接間隔の最小クラスタの中央値を初期間隔にして各ピークを k 番目の線にスナップし、最小二乗で
+    基点と間隔を refine する。石で隠れて欠けた中間の線は補完される（k が飛ぶだけ）。本数が sizes に
+    無い・ピークが疎（カバレッジ不足）・等間隔から外れる、はすべて不採用＝過渡失敗扱いにする
+    """
+    if len(peaks) < 2:
+        return None
+    gaps = [b - a for a, b in zip(peaks, peaks[1:])]
+    min_gap = min(gaps)
+    if min_gap <= 0:
+        return None
+    cluster = sorted(g for g in gaps if g <= min_gap * 1.4)
+    gap = cluster[len(cluster) // 2]
+    ks = [round((p - peaks[0]) / gap) for p in peaks]
+    if len(set(ks)) != len(ks):
+        return None  # 2ピークが同じ線にスナップ＝間隔の仮説が壊れている
+    n = len(peaks)
+    mean_k = sum(ks) / n
+    mean_p = sum(peaks) / n
+    denom = sum((k - mean_k) ** 2 for k in ks)
+    if denom <= 0:
+        return None
+    gap = sum((k - mean_k) * (p - mean_p) for k, p in zip(ks, peaks)) / denom
+    base = mean_p - gap * mean_k
+    if gap <= 0:
+        return None
+    if any(abs(p - (base + k * gap)) > WOOD_FIT_MAX_RESIDUAL for k, p in zip(ks, peaks)):
+        return None
+    count = max(ks) + 1
+    if count not in sizes or len(peaks) / count < WOOD_FIT_MIN_COVERAGE:
+        return None
+    return count, tuple(base + k * gap for k in range(count))
+
+
+def detect_wood_grid(img, board_rect, sizes=DEFAULT_BOARD_SIZES):
+    """木目盤の格子線を検出し (盤サイズ, 縦線の x 座標タプル, 横線の y 座標タプル) を返す。
+
+    座標は img（＝窓画像）座標。規則配置の割り算を使わないので、座標ラベル帯の有無や余白幅が
+    盤サイズごとに違ってもそのまま吸収される（19 路: 帯あり・第1線は縁から 1.4 セル ／
+    13・9 路: 帯なし・約半セル、を同じコードで読む）。失敗は CaptureError
+    """
+    rgb = img.convert("RGB")
+    col_profile, row_profile = _wood_line_profiles(rgb, board_rect)
+    v_peaks = _wood_line_peaks(col_profile)
+    h_peaks = _wood_line_peaks(row_profile)
+    v_fit = _wood_fit_line_progression(v_peaks, sizes)
+    h_fit = _wood_fit_line_progression(h_peaks, sizes)
+    if v_fit is None or h_fit is None or v_fit[0] != h_fit[0]:
+        raise CaptureError(f"木目盤の格子線を検出できません（線候補 縦 {len(v_peaks)} 本 / 横 {len(h_peaks)} 本）")
+    size, xs = v_fit
+    _size, ys = h_fit
+    gap_x = (xs[-1] - xs[0]) / (size - 1)
+    gap_y = (ys[-1] - ys[0]) / (size - 1)
+    if abs(gap_x - gap_y) > max(gap_x, gap_y) * WOOD_GAP_TOLERANCE:
+        raise CaptureError(f"木目盤の格子が正方形ではありません（セル幅 縦 {gap_x:.1f} / 横 {gap_y:.1f}）")
+    x0 = board_rect[0] + WOOD_EDGE_PAD
+    y0 = board_rect[1] + WOOD_EDGE_PAD
+    return size, tuple(x0 + x for x in xs), tuple(y0 + y for y in ys)
+
+
+def _wood_median_channels(patch):
+    """パッチの per-channel median (r, g, b)。histogram() は C 実装なので純 Python の画素走査より速い"""
+    hist = patch.histogram()
+    total = patch.size[0] * patch.size[1]
+    half = (total + 1) // 2
+    medians = []
+    for channel in range(3):
+        acc = 0
+        for v in range(256):
+            acc += hist[channel * 256 + v]
+            if acc >= half:
+                medians.append(v)
+                break
+    return medians
+
+
+def _classify_wood_patch(rgb, cx, cy, rad):
+    """木目盤の交点1点を per-channel median で分類し ("B"/"W"/"."/"?", median 色) を返す。
+
+    mean（_classify_patch と同方式）だと星点の暗ドットが spread を潰し、空点の星点が
+    「低彩度・高輝度」＝白石に化ける（実測5点）。median は格子線・星点・直前着手マーカーの
+    少数派画素を自然に無視するので、木目盤では median を使う
+    """
+    patch = rgb.crop((int(cx) - rad, int(cy) - rad, int(cx) + rad + 1, int(cy) + rad + 1))
+    mr, mg, mb = _wood_median_channels(patch)
+    brightness = (mr + mg + mb) / 3
+    spread = max(mr, mg, mb) - min(mr, mg, mb)
+    if brightness < 90:
+        return "B", (mr, mg, mb)
+    if spread < 60 and brightness > 160:
+        return "W", (mr, mg, mb)
+    if spread >= 55 and (mr - mb) >= 40 and brightness >= 150:
+        return ".", (mr, mg, mb)  # 明るい暖色＝木地（実測 brightness 192-207・spread 67-69・r-b 67-69）
+    return "?", (mr, mg, mb)
+
+
+def classify_wood_intersections(img, xs, ys):
+    """検出済み格子線位置 (xs, ys) の全交点を分類したグリッドを返す（classify_intersections の木目盤版）。
+
+    "?" は小半径（WOOD_MARKER_PATCH_RATIO）で1回だけ再判定する＝直前着手マーカー（石の上の輪）が
+    パッチの median を壊すことがある（実測: 白輪付き黒石が brightness 111 で "?"）が、輪の内側は
+    石の地色なので中心の小パッチなら確定する。それでも "?" が残れば CaptureError（過渡失敗扱い）
+    """
+    rgb = img.convert("RGB")
+    cell_w = (xs[-1] - xs[0]) / (len(xs) - 1)
+    cell_h = (ys[-1] - ys[0]) / (len(ys) - 1)
+    cell = min(cell_w, cell_h)
+    rad = max(2, int(cell * WOOD_STONE_PATCH_RATIO))
+    marker_rad = max(2, int(cell * WOOD_MARKER_PATCH_RATIO))
+    grid = []
+    ambiguous = []
+    for i, cy in enumerate(ys):
+        row = []
+        for j, cx in enumerate(xs):
+            label, means = _classify_wood_patch(rgb, cx, cy, rad)
+            if label == "?":
+                label, means = _classify_wood_patch(rgb, cx, cy, marker_rad)
+            if label == "?":
+                ambiguous.append((i, j, tuple(round(m) for m in means)))
+            row.append(label)
+        grid.append(row)
+    if ambiguous:
+        raise CaptureError(f"判定できない交点があります（先頭5件: {ambiguous[:5]}）")
+    return grid
+
+
 def main():
     import os
 
