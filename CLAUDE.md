@@ -13,7 +13,7 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 |---|---|---|
 | Human-like AI 戦略 | 悪手フィルタに加え、力戦派 / 攻城 / 狩猟 / 一致率低減 / 持碁 / 一致率追随（9路）/ 難解（9・13・19路） | `.claude/rules/ai-strategies.md`（設計と実測）<br>`.claude/rules/ai-parameters.md`（全パラメータ値）<br>`.claude/rules/ai-humanstyle.md`（フィルタ実装） |
 | 詰碁 | 画面キャプチャ→盤面認識→枠→着手選択 `ai:tsumego`→死活ソルバ（Rust df-pn）→回答帳 | `.claude/rules/tsumego.md`（設計と落とし穴）<br>`.claude/rules/tsumego-parameters.md`（パラメータ値） |
-| 盤面監視 | `board_watch.py`: BlueStacks 上の対局アプリの着手を検出して人間側の手として片方向注入（トグル `ctrl+alt+d`）。AI の着手はアプリ盤の該当交点の真上に輪を出して示す（`screen_marker.py`・設定画面 general 節のドロップダウン〈表示しない／6色〉＝`board_watch.highlight_color`・監視の自前キャプチャからは `WDA_EXCLUDEFROMCAPTURE` で除外＝spec 追記6）／ `tsumego_autoloop.py`: 詰碁の自動ループ（ADB でアプリを操作。トグル `ctrl+alt+d` ではなく `ctrl+alt+a`。spec `2026-08-23-tsumego-autoloop-design.md`） | `docs/superpowers/specs/2026-08-18-board-watch-design.md` |
+| 盤面監視 | `board_watch.py`: BlueStacks 上の対局アプリの着手を検出して人間側の手として片方向注入（トグル `ctrl+alt+d`）。AI の着手はアプリ盤の該当交点の真上に輪を出して示す（`screen_marker.py`・設定画面 general 節のドロップダウン〈表示しない／6色〉＝`board_watch.highlight_color`・監視の自前キャプチャからは `WDA_EXCLUDEFROMCAPTURE` で除外＝spec 追記6。対応盤は黄盤〈囲碁クエスト系〉＋明るい木目盤アプリ〈detect_board 失敗時に格子線検出へ自動フォールバック・9/13/19路〉＝spec 追記7）／ `tsumego_autoloop.py`: 詰碁の自動ループ（ADB でアプリを操作。トグル `ctrl+alt+d` ではなく `ctrl+alt+a`。spec `2026-08-23-tsumego-autoloop-design.md`） | `docs/superpowers/specs/2026-08-18-board-watch-design.md` |
 
 ## 盤面テーマ（盤・碁石のデザイン）
 
