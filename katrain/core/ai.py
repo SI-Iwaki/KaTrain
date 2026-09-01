@@ -1999,6 +1999,7 @@ ENIGMA9_ADEQUATE_LOSS = 0.3        # この損失以下の応手は「十分な�
 ENIGMA9_HP_BOOK = 0.25             # これ以上の humanPolicy は「本に載っている手」＝意外さ 0
 ENIGMA9_W_REPLY_RARE = 1.0         # 十分な応手の見つけにくさの重み（目相当）
 ENIGMA9_W_OWN_RARE = 1.0           # 自手の意外さの重み（目相当）
+ENIGMA9_OWN_RARE_FIND_FADE = 0.85  # own_rare の「応手自明」減衰が始まる find_hp（`enigma9_own_rare_find_gate`）
 ENIGMA9_MIN_BUDGET = 0.05          # ヨセの余剰予算がこれ以下なら外さない（目）
 # 盤面監視モードのヨセで判定クエリ（Probe）を省ける余裕（目）。cap の式
 # min(max_loss, lead - target) が max_loss 側で飽和していることを、通常解析 root の
@@ -2260,6 +2261,31 @@ def enigma9_rarity(hp, book=ENIGMA9_HP_BOOK):
     return max(0.0, 1.0 - max(0.0, hp) / book)
 
 
+def enigma9_own_rare_find_gate(reply_findability, fade_start=ENIGMA9_OWN_RARE_FIND_FADE):
+    """own_rare の「応手が自明な手」減衰係数 0〜1（find_hp <= fade_start は 1.0＝ビット同一）。
+
+    own_rare は「相手の研究した定跡・手筋を外す」ための加点だが、正解応手が
+    ほぼ確実に見つかる手（find_hp が 1 に近い）では手の珍しさが難解さを一切
+    生まない。実測 2026-09-01（game_20260901_180139 move 36・13路・aim_jigo
+    消費モード）: B10 は E=0.03・find_hp=0.983（9段の正解 A10 が 98.3%）なのに
+    own_rare 0.99 だけで net が最善 B5（net 0.18）を上回り、0.94 目払って
+    「誰でも正答できる手」に外した＝ヨセ（追記6・w_own=0）と同じ own_rare
+    支配の中盤版。reply_rare は find_hp >= ENIGMA9_HP_BOOK(0.25) で 0 に
+    張り付き「それ以上自明」を罰しないので、この係数が唯一の狙い撃ちになる。
+    ハード閾値でなく線形ランプなのは find_hp が humanSL の run 間分散
+    （±0.05〜0.09・TensorRT バッチ非決定性）で揺れるため（崖だと境界の候補の
+    採否が run ごとに反転する）。fade_start 以下の候補と既存の校正例（9路
+    序盤 F7 find 0.17 / 勝勢 F3 find 0.059 / ヨセ校正 find 0.828〜0.891）は
+    すべてビット同一。E・reply_rare は触らない＝find が高くても期待お仕置きで
+    net が勝つ本物の罠（実測 move 38 C11: E=0.84・find=0.715）はそのまま採る。
+    """
+    if reply_findability is None or reply_findability <= fade_start:
+        return 1.0
+    if fade_start >= 1.0:
+        return 1.0
+    return max(0.0, (1.0 - reply_findability) / (1.0 - fade_start))
+
+
 def enigma9_locality(coords, anchors, stddev):
     """候補手のアンカー近傍度 0〜1 ＝ max_a exp(-|m-a|^2 / (2σ^2))。
 
@@ -2459,11 +2485,13 @@ def enigma9_net_score(loss, e_punish, reply_findability, own_hp,
 
     cost_weight は勝勢時の損失割引（`enigma9_spending_plan`）。通常は 1.0。
     locality は own_rare の局所化係数（`enigma9_locality`）。OFF なら 1.0＝従来式。
+    own_rare は応手が自明な手（find_hp > 0.85）でさらに減衰する
+    （`enigma9_own_rare_find_gate`・2026-09-01）。
     """
     return (
         e_punish
         + w_reply * enigma9_rarity(reply_findability)
-        + w_own * locality * enigma9_rarity(own_hp)
+        + w_own * locality * enigma9_own_rare_find_gate(reply_findability) * enigma9_rarity(own_hp)
         - cost_weight * max(0.0, loss)
     )
 

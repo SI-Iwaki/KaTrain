@@ -465,6 +465,8 @@ humanSL 9段 humanPolicy 8visits・全並列）し、
 | `enigma9_locality_stddev` | own_rare を「相手の直前手／KataGo 最善手」の2アンカー max Gaussian（σ=この値）で減衰させ、net の同点帯では最もアンカーに近い手を採る。0=OFF＝採用判断・解析条件とも従来とビット同一。9路は既定 OFF・GUI/config の不変条件維持のために露出（9路は問題なしとの報告） | 0/1.5/2/2.5/3 | 0（OFF） |
 | `enigma9_locality_slack` | 同点帯の幅（目相当）。stddev>0 のときだけ効く | 0/0.2/0.3/0.5/1.0 | 0.3 |
 
+**own_rare の「応手自明」減衰（2026-09-01・9/13/19路共通・spec 追記11）**: `enigma9_net_score` の own_rare 項は `enigma9_own_rare_find_gate(find_hp)` で減衰する＝find_hp <= `ENIGMA9_OWN_RARE_FIND_FADE`(0.85) は 1.0（**ビット同一**）、0.85→1.0 で線形に 0。実測 `game_20260901_180139` move 36（13路白番・aim_jigo 消費モード）: B10 は E=0.03・find_hp=0.983（9段の正解応手 A10 が 98.3%）なのに own_rare 0.99 だけでnet 0.39 > 最善 B5 の 0.18 となり、0.94 目払って「誰でも正答できる手」に外した＝ヨセ（追記6・w_own=0）と同じ own_rare 支配の中盤版。reply_rare は find >= 0.25 で 0 に張り付き「それ以上自明」を罰しないのでここが唯一の穴だった。E・reply_rare は不変＝find が高くても E で勝つ本物の罠（同 move 38 C11: E=0.84・find=0.715・own_rare 抜きでもnet 0.50 > 0.02）はそのまま採る。線形ランプなのは find_hp の run 間分散 ±0.05〜0.09 で崖だと境界の採否が反転するため。回帰: `tests/test_ai_enigma9.py::TestOwnRareFindGate`。
+
 **勝勢時の消費モード（追記1・2026-08-10）**: 初戦の実戦ログ `game_20260810_193156`（白番）で、
 リード +6〜+38 の中盤後半が **cap 1.2 で admissible=0 の連続＝強制最善手**になり「一致率が
 異常に高い・2目以上の損失手ゼロ」というユーザー報告が出た。対処は lead 予算の cap 緩和＋
@@ -482,7 +484,7 @@ move 15 では 3目の候補が「高くても難解でない」（E 0.06・find
 `ENIGMA9_POOL_MIN_VISITS=1` / `ENIGMA9_TRUSTED_VISITS=10` /
 `ENIGMA9_REPLY_REF_MIN_VISITS=10` / `ENIGMA9_REPLY_MIN_VISITS=2` /
 `ENIGMA9_PUNISH_CAP=8.0` / `ENIGMA9_ADEQUATE_LOSS=0.3` / `ENIGMA9_HP_BOOK=0.25` /
-`ENIGMA9_W_REPLY_RARE=1.0` / `ENIGMA9_W_OWN_RARE=1.0` / `ENIGMA9_MIN_BUDGET=0.05` /
+`ENIGMA9_W_REPLY_RARE=1.0` / `ENIGMA9_W_OWN_RARE=1.0` / `ENIGMA9_OWN_RARE_FIND_FADE=0.85`（own_rare の「応手自明」減衰の開始 find_hp・下記） / `ENIGMA9_MIN_BUDGET=0.05` /
 `ENIGMA9_FAST_YOSE_MARGIN=0.5`（監視モードのヨセで Probe を省ける余剰の余裕・目） /
 `ENIGMA9_PONDER_REPLIES=5`（着手後の先読み応手数＝humanSL 順 top-K・0で無効） /
 `ENIGMA9_PONDER_WAVE2=2`（子プローブ wave2 まで温める応手数） /

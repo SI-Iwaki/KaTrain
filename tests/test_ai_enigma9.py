@@ -13,6 +13,7 @@ from katrain.core.ai import (
     ENIGMA9_JIGO_TARGET,
     ENIGMA9_LOCALITY_SLACK,
     ENIGMA9_LOCALITY_STDDEV,
+    ENIGMA9_OWN_RARE_FIND_FADE,
     ENIGMA9_PUNISH_CAP,
     ENIGMA9_W_OWN_RARE,
     Enigma13Strategy,
@@ -27,6 +28,7 @@ from katrain.core.ai import (
     enigma9_hp_lookup,
     enigma9_locality,
     enigma9_net_score,
+    enigma9_own_rare_find_gate,
     enigma9_own_rarity_weight,
     enigma9_rarity,
     enigma9_reply_findability,
@@ -277,6 +279,49 @@ class TestNetScore:
     def test_w_own_zero_ignores_own_hp(self):
         # ヨセ（w_own=0）では自手の hp が 0 でも加点されない
         assert enigma9_net_score(0.0, 0.3, 1.0, 0.0, w_own=0.0) == pytest.approx(0.3)
+
+
+class TestOwnRareFindGate:
+    """応手が自明（find_hp 高）な手の own_rare 減衰（2026-09-01・spec 追記11）。
+
+    実測 game_20260901_180139 move 36: B10 は find_hp 0.983（9段が正解 A10 を
+    98.3% で打つ）・E 0.03 なのに own_rare 0.99 だけで net が最善 B5 を上回り、
+    0.94 目払って「誰でも正答できる手」に外した。own_rare を find_hp の
+    fade_start(0.85)→1.0 線形ランプで減衰させ、この帯だけを塞ぐ
+    （find_hp <= 0.85 はビット同一）。
+    """
+
+    def test_gate_is_one_at_or_below_fade_start(self):
+        assert enigma9_own_rare_find_gate(ENIGMA9_OWN_RARE_FIND_FADE) == 1.0
+        assert enigma9_own_rare_find_gate(0.5) == 1.0
+        assert enigma9_own_rare_find_gate(0.0) == 1.0
+
+    def test_gate_fades_linearly_to_zero(self):
+        assert enigma9_own_rare_find_gate(1.0) == pytest.approx(0.0)
+        mid = (ENIGMA9_OWN_RARE_FIND_FADE + 1.0) / 2
+        assert enigma9_own_rare_find_gate(mid) == pytest.approx(0.5)
+
+    def test_gate_none_is_one(self):
+        assert enigma9_own_rare_find_gate(None) == 1.0
+
+    def test_b10_regression_obvious_reply_loses_to_best(self):
+        # 実測 move 36 の数値そのもの: B10 (vloss 0.94, E 0.03, find 0.983,
+        # own_hp 0.003) が最善 B5 (vloss 0, E 0.18, find 0.825, own_hp 0.924) に
+        # net で勝てなくなる（cost_weight 0.66 = 消費モード）
+        b10 = enigma9_net_score(0.94, 0.03, 0.983, 0.003, cost_weight=0.66)
+        b5 = enigma9_net_score(0.0, 0.18, 0.825, 0.924, cost_weight=0.66)
+        assert b10 < b5
+
+    def test_c11_below_fade_start_is_bit_identical(self):
+        # 実測 move 38 の C11 (find 0.715 <= 0.85) は従来式と同値＝本物の罠は変えない
+        c11 = enigma9_net_score(0.42, 0.84, 0.715, 0.010, cost_weight=0.82)
+        assert c11 == pytest.approx(0.84 + 0.0 + enigma9_rarity(0.010) - 0.82 * 0.42)
+
+    def test_yose_weird_move_still_loses_with_gate_present(self):
+        # 既存校正（find 0.828 の帯）はゲート開始点 0.85 より下＝従来とビット同一
+        assert enigma9_net_score(0.27, 0.32, 0.828, 0.001) == pytest.approx(
+            0.32 + 0.0 + enigma9_rarity(0.001) - 0.27
+        )
 
 
 class TestOwnRarityWeight:
