@@ -230,6 +230,21 @@
             "enigma9_locality_stddev": 0.0,
             "enigma9_locality_slack": 0.3
         },
+        "ai:enigma9plus": {
+            "enigma9plus_max_loss": 1.0,
+            "enigma9plus_large_lead_max_loss": 5.0,
+            "enigma9plus_min_winrate": 0.3,
+            "enigma9plus_net_margin": 0.0,
+            "enigma9plus_target_score": 2.0,
+            "enigma9plus_aim_jigo": false,
+            "enigma9plus_endgame_move": 30,
+            "enigma9plus_unsettled_max": 8,
+            "enigma9plus_locality_stddev": 0.0,
+            "enigma9plus_locality_slack": 0.3,
+            "enigma9plus_min_delta_e": 0.2,
+            "enigma9plus_cheap_loss": 0.3,
+            "enigma9plus_probe_extra": 4
+        },
         "ai:enigma13": {
             "enigma13_max_loss": 1.5,
             "enigma13_large_lead_max_loss": 8.0,
@@ -242,6 +257,21 @@
             "enigma13_locality_stddev": 0.0,
             "enigma13_locality_slack": 0.3
         },
+        "ai:enigma13plus": {
+            "enigma13plus_max_loss": 1.5,
+            "enigma13plus_large_lead_max_loss": 8.0,
+            "enigma13plus_min_winrate": 0.3,
+            "enigma13plus_net_margin": 0.0,
+            "enigma13plus_target_score": 2.0,
+            "enigma13plus_aim_jigo": false,
+            "enigma13plus_endgame_move": 75,
+            "enigma13plus_unsettled_max": 16,
+            "enigma13plus_locality_stddev": 0.0,
+            "enigma13plus_locality_slack": 0.3,
+            "enigma13plus_min_delta_e": 0.2,
+            "enigma13plus_cheap_loss": 0.3,
+            "enigma13plus_probe_extra": 4
+        },
         "ai:enigma19": {
             "enigma19_max_loss": 2.0,
             "enigma19_large_lead_max_loss": 8.0,
@@ -253,6 +283,21 @@
             "enigma19_unsettled_max": 36,
             "enigma19_locality_stddev": 0.0,
             "enigma19_locality_slack": 0.3
+        },
+        "ai:enigma19plus": {
+            "enigma19plus_max_loss": 2.0,
+            "enigma19plus_large_lead_max_loss": 8.0,
+            "enigma19plus_min_winrate": 0.3,
+            "enigma19plus_net_margin": 0.0,
+            "enigma19plus_target_score": 2.0,
+            "enigma19plus_aim_jigo": false,
+            "enigma19plus_endgame_move": 150,
+            "enigma19plus_unsettled_max": 36,
+            "enigma19plus_locality_stddev": 0.0,
+            "enigma19plus_locality_slack": 0.3,
+            "enigma19plus_min_delta_e": 0.2,
+            "enigma19plus_cheap_loss": 0.3,
+            "enigma19plus_probe_extra": 4
         },
         "ai:scoreloss": {
             "strength": 0.2

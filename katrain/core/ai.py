@@ -16,7 +16,7 @@ from katrain.core.constants import (
     AI_FIGHTING, AI_FIGHTING_SCORELOSS_ELO,
     AI_WEIGHTED, AI_WEIGHTED_ELO, CALIBRATED_RANK_ELO, OUTPUT_DEBUG,
     OUTPUT_ERROR, OUTPUT_INFO, PLAYER_AI, PLAYER_HUMAN, PRIORITY_ENIGMA_PONDER,
-    PRIORITY_EXTRA_AI_QUERY, PRIORITY_TSUMEGO_SPECULATION, ADDITIONAL_MOVE_ORDER, AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE, AI_PARITY_9, AI_ENIGMA_9, AI_ENIGMA_13, AI_ENIGMA_19
+    PRIORITY_EXTRA_AI_QUERY, PRIORITY_TSUMEGO_SPECULATION, ADDITIONAL_MOVE_ORDER, AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE, AI_PARITY_9, AI_ENIGMA_9, AI_ENIGMA_13, AI_ENIGMA_19, AI_ENIGMA_13_PLUS, AI_ENIGMA_9_PLUS, AI_ENIGMA_19_PLUS
 )
 from katrain.core.engine import KataGoEngine
 from katrain.core.game import (
@@ -1997,6 +1997,18 @@ ENIGMA9_REPLY_MIN_VISITS = 2       # E に算入する応手の最小 visits
 ENIGMA9_PUNISH_CAP = 8.0           # 1応手の損失を E に算入する上限（目）
 ENIGMA9_ADEQUATE_LOSS = 0.3        # この損失以下の応手は「十分な応手」（見つけやすさの対象）
 ENIGMA9_HP_BOOK = 0.25             # これ以上の humanPolicy は「本に載っている手」＝意外さ 0
+# 難解＋（Enigma13PlusStrategy）の ΔE 床（spec 追記12・2026-09-02）。外し候補は「最善手より E を
+# これ以上多く買う」か「vloss がこれ以下」のどちらか。実測 13路7局・外し200手: ΔE<0.2 の外し 20 手が
+# 合計 29.6 目を払って realized gain −0.52＝rarity だけで払った外し。0.3 は序盤の安い外し
+# （vloss 0.04〜0.18）を残す境目
+ENIGMA9_MIN_DELTA_E = 0.2
+ENIGMA9_CHEAP_LOSS = 0.3
+# 難解＋の罠探索の拡張（spec 追記12-2・2026-09-02）: 子局面プローブの挑戦者を「安い順の7手」に加えて
+# 残りの admissible 候補から loss の範囲で等間隔にこの本数だけ足す。実測 13路7局: 候補が8手を超える
+# 118手番でプローブした挑戦者の最大 loss は cap の 0.38 倍（中央値）＝高い帯を見ていなかったが、
+# probe 済み1502候補で E>=2 の割合は loss<0.3 で 6%・4目超で 21%（corr(E, vloss)=+0.24）＝大きい罠は
+# 高い帯に多い。0 で従来の8手（ビット同一）
+ENIGMA9_PROBE_EXTRA = 4
 ENIGMA9_W_REPLY_RARE = 1.0         # 十分な応手の見つけにくさの重み（目相当）
 ENIGMA9_W_OWN_RARE = 1.0           # 自手の意外さの重み（目相当）
 ENIGMA9_OWN_RARE_FIND_FADE = 0.85  # own_rare の「応手自明」減衰が始まる find_hp（`enigma9_own_rare_find_gate`）
@@ -2171,6 +2183,86 @@ def enigma9_shortlist(pool, k, trusted_visits=ENIGMA9_TRUSTED_VISITS):
         key=lambda c: (-c.get("visits", 0), c["loss"]),
     )
     return (tier1 + tier2)[:k]
+
+
+def _enigma9_spread_picks(items, k):
+    """loss 昇順の items から k 手を等間隔（両端を含む）に選ぶ。n<=k なら全部、k==1 なら最も高い手。"""
+    n = len(items)
+    if k <= 0 or n == 0:
+        return []
+    if n <= k:
+        return list(items)
+    if k == 1:
+        return [items[-1]]
+    idx = sorted({round(i * (n - 1) / (k - 1)) for i in range(k)})
+    return [items[i] for i in idx]
+
+
+def enigma9_shortlist_spread(pool, base_k, extra, trusted_visits=ENIGMA9_TRUSTED_VISITS):
+    """罠探索の拡張: 従来の shortlist（安い順 base_k 手）＋残りの候補から loss の範囲で等間隔に extra 手。
+
+    返り値は base + extras（base は `enigma9_shortlist` と同一・extras は重複なし）。extra <= 0 なら
+    `enigma9_shortlist(pool, base_k)` と同一＝ビット同一。extras は残りの trusted（visits >=
+    trusted_visits）を loss 昇順に並べて `_enigma9_spread_picks` で等間隔に取り（最安と最高を含む＝
+    cap の帯を端まで見る）、足りなければ浅い候補を visits 多い順で埋める。
+
+    根拠（実測 2026-09-02・13路7局）: 従来は安い順の7手しかプローブしないので、候補が8手を超える
+    118手番でプローブした挑戦者の最大 loss は cap の 0.38 倍（中央値）＝cap 5目の手番で 2目より
+    高い手を一度も調べていなかった。一方 probe 済み1502候補では E と vloss が正の相関（0.24）で
+    E>=2 の罠は loss<0.3 の候補の 6%、4目超の候補の 21%＝大きい罠は高い帯に多い。代金の上限（cap・
+    勝率フロア・cost_weight）は変えず、探す範囲だけ広げる。最終採否は従来どおり子局面プローブの
+    検証値と net 比較が決める。
+    """
+    base = enigma9_shortlist(pool, base_k, trusted_visits)
+    if extra is None or extra <= 0:
+        return base
+    taken = {c["gtp"] for c in base}
+    rest = [c for c in pool if c["gtp"] not in taken]
+    trusted = sorted(
+        [c for c in rest if c.get("visits", 0) >= trusted_visits],
+        key=lambda c: (c["loss"], -c.get("visits", 0)),
+    )
+    shallow = sorted(
+        [c for c in rest if c.get("visits", 0) < trusted_visits],
+        key=lambda c: (-c.get("visits", 0), c["loss"]),
+    )
+    picks = _enigma9_spread_picks(trusted, int(extra))
+    if len(picks) < extra:
+        picks += shallow[: int(extra) - len(picks)]
+    return base + picks
+
+
+def enigma9_wave2_targets(move_infos, player, base_k, extra, cap, trusted_visits=ENIGMA9_TRUSTED_VISITS):
+    """先読み wave2 の温め対象（gtp のリスト）: 従来の visits 上位 base_k（pass 除く）＋ spread の追加分。
+
+    move_infos は予測した応手局面の KataGo 生 moveInfos（scoreLead は黒視点）。extra <= 0 または cap が
+    None なら従来どおり上位 base_k だけ＝ビット同一。追加分は「その局面で generate_move が組む
+    shortlist」を近似する: 最善手（order 0）基準の打つ側視点の損失を cap 以下に絞った挑戦者プールへ
+    `enigma9_shortlist_spread(pool, base_k-1, extra)` を当て、上位 base_k に無い手を順に足す
+    （勝率フロアは見ない＝温めは上位集合でよい。外れても GPU の遊び時間を使うだけ）。
+    """
+    infos = sorted(move_infos or [], key=lambda d: d.get("order", 10**6))
+    top = [d["move"] for d in infos[:base_k] if d.get("move") and d["move"] != "pass"]
+    if extra is None or extra <= 0 or cap is None or not infos:
+        return top
+    ref = infos[0].get("scoreLead")
+    if ref is None:
+        return top
+    sign = 1 if player == "B" else -1
+    ref_p = sign * ref
+    pool = []
+    for d in infos[1:]:
+        g, sl = d.get("move"), d.get("scoreLead")
+        if not g or g == "pass" or sl is None:
+            continue
+        loss = max(0.0, ref_p - sign * sl)
+        if loss <= cap + 1e-9:
+            pool.append({"gtp": g, "loss": loss, "visits": d.get("visits", 0)})
+    out = list(top)
+    for c in enigma9_shortlist_spread(pool, base_k - 1, extra, trusted_visits):
+        if c["gtp"] not in out:
+            out.append(c["gtp"])
+    return out
 
 
 def enigma9_verified_metrics(child_analysis, player):
@@ -2542,6 +2634,39 @@ def enigma9_choose_local(scored, best_gtp, margin, slack, stddev):
     return None, band
 
 
+def enigma9_delta_e_filter(scored, best_gtp, min_delta_e, cheap_loss):
+    """ΔE 床: 挑戦者を「E を最善手より min_delta_e 以上多く買う」か「vloss <= cheap_loss」に絞る。
+
+    返り値 (kept, dropped)。順序は保存し、最善手のエントリは常に kept。min_delta_e <= 0 は
+    OFF（scored をそのまま返す＝難解（13路）とビット同一）、最善手のエントリが無い場合も
+    フェイルセーフで何も落とさない（後段の enigma9_choose が None＝最善手に倒れる）。
+
+    根拠（実測 2026-09-02・13路7局・外し200手）: net = E + rarity − cost_weight·vloss の
+    rarity 項（own_rare 最大 1.0）と消費モードの cost_weight（0.1〜0.6）の組合せで、
+    最善手より E の低い手でも「珍しい」だけで 3〜7 目払って選ばれていた（例: game_20260902_003240
+    AI（黒）35手目 J5 vloss 3.48・E 2.65 < 最善 F6 の E 3.10）。ΔE<0.2 の外し 20 手の realized gain は
+    −0.52 目、ΔE>=0.2 の 90 手は +0.79 目。安い外し（序盤の vloss 0.04〜0.18）は「定跡を外す」
+    要件そのものなので cheap_loss で免除する。境界は浮動小数の丸めを吸収して inclusive。
+    """
+    if min_delta_e is None or min_delta_e <= 0:
+        return list(scored), []
+    best = next((c for c in scored if c["gtp"] == best_gtp), None)
+    if best is None:
+        return list(scored), []
+    eps = 1e-9
+    kept, dropped = [], []
+    for c in scored:
+        if (
+            c["gtp"] == best_gtp
+            or c["e"] - best["e"] >= min_delta_e - eps
+            or c["loss"] <= cheap_loss + eps
+        ):
+            kept.append(c)
+        else:
+            dropped.append(c)
+    return kept, dropped
+
+
 @register_strategy(AI_ENIGMA_9)
 class Enigma9Strategy(AIStrategy):
     """9路専用「難解」戦略。
@@ -2593,6 +2718,21 @@ class Enigma9Strategy(AIStrategy):
 
     def _setting(self, suffix):
         return self.settings.get(f"{self.KEY_PREFIX}_{suffix}", self.SETTING_DEFAULTS[suffix])
+
+    def _filter_challengers(self, scored, best_gtp):
+        """選択関数に渡す前の挑戦者フィルタ（返り値 (kept, dropped)）。基底は no-op＝ビット同一。
+
+        難解＋（Enigma13PlusStrategy）だけが ΔE 床（enigma9_delta_e_filter）で上書きする。
+        """
+        return scored, []
+
+    def _shortlist(self, pool):
+        """子局面プローブに回す挑戦者。基底は従来の `enigma9_shortlist`（安い順 7 手）＝ビット同一。"""
+        return enigma9_shortlist(pool, ENIGMA9_SHORTLIST - 1)
+
+    def _ponder_wave2_targets(self, analysis, player):
+        """先読み wave2 で温める子局面プローブの対象。基底は従来の visits 上位 8 手（pass 除く）。"""
+        return enigma9_wave2_targets((analysis or {}).get("moveInfos") or [], player, ENIGMA9_SHORTLIST, 0, None)
 
     def _log(self, msg):
         self.game.katrain.log(f"[{type(self).__name__}] {msg}", OUTPUT_DEBUG)
@@ -2892,8 +3032,7 @@ class Enigma9Strategy(AIStrategy):
 
             def issue_wave2(reply, done):
                 analysis = root_results.get(reply)
-                infos = sorted((analysis or {}).get("moveInfos") or [], key=lambda d: d.get("order", 10 ** 6))
-                targets = [d["move"] for d in infos[:ENIGMA9_SHORTLIST] if d.get("move") and d["move"] != "pass"]
+                targets = self._ponder_wave2_targets(analysis, player)
                 if not targets or cancelled():
                     done()
                     return
@@ -3256,7 +3395,7 @@ class Enigma9Strategy(AIStrategy):
             return self._best_move(
                 f"{self.LABEL}: no admissible deviation (cap {cap:.2f}), playing best move."
             )
-        shortlist = enigma9_shortlist(pool, ENIGMA9_SHORTLIST - 1)
+        shortlist = self._shortlist(pool)
 
         # ---- 子局面プローブ + 親局面 humanSL（自手の意外さ用）を1バッチで並列発行 ----
         # 親 humanSL を逐次で待ってからプローブを発行する旧形は、humanPolicy が
@@ -3330,6 +3469,7 @@ class Enigma9Strategy(AIStrategy):
                 f"own_hp={own_hp:.3f} (w_own={w_own:.1f}) prox={prox:.2f} reply={best_reply} net={net:.2f}"
             )
 
+        scored, _dropped = self._filter_challengers(scored, best_gtp)
         chosen, band = enigma9_choose_local(scored, best_gtp, margin, loc_slack, loc_stddev)
         if band:
             self._log(
@@ -3394,6 +3534,97 @@ class Enigma13Strategy(Enigma9Strategy):
     }
 
 
+class EnigmaPlusMixin:
+    """「難解＋」（9/13/19路共通）の差分。基底の難解（Enigma9/13/19Strategy）に先置きして使う。
+
+    差分は3フックだけで、選択パイプライン・消費モード・ヨセ予算・先読み・フェイルセーフは基底と共通
+    （`generate_move` は非オーバーライド）。既存の難解 9/13/19 路は基底フックが従来動作＝ビット同一。
+
+    1. **罠探索の拡張** `_shortlist` / `_ponder_wave2_targets`（spec 追記12-2）: 子局面プローブの挑戦者を
+       「安い順 7 手」＋「残りの admissible 候補から loss の範囲で等間隔に `probe_extra` 手」にする
+       （`enigma9_shortlist_spread`）。従来は cap 5 目の手番でも 2 目より高い手を調べておらず、E>=2 の罠は
+       高い帯に多い（実測は `ENIGMA9_PROBE_EXTRA` のコメント）。代金の上限（cap・勝率フロア・cost_weight）は
+       変えない。先読み wave2 も同じ規則で温めるので、的中時の即着手は保たれる。
+    2. **ΔE 床** `_filter_challengers`（spec 追記12）: スコアリング済みの挑戦者を選択関数に渡す前に
+       「E − 最善手の E >= `min_delta_e`」または「vloss <= `cheap_loss`」に絞る（`enigma9_delta_e_filter`）。
+       rarity だけで払う外し（最善手より E が低いのに 3〜7 目払う）を止め、予算を本物の罠に回す。
+
+    実測（2026-09-02・13路）: 難解 5 局 vs 難解＋ 3 局で 打った手の E 平均/手 1.37 → 1.97、相手の実損失
+    平均/手 1.90 → 2.90（2 目以上の失着 28% → 56%）、払った vloss 平均/手 0.72 → 0.59（spec 追記12-3。
+    局数が少なく相手も違うので方向の確認）。9路・19路は同じ機構を既定値そのままで展開（未校正）。
+
+    設定キーは接頭辞 `<KEY_PREFIX>_` で基底の10項目をそのまま引き継ぎ（既定値・GUI 候補値も同じ）、
+    `PLUS_DEFAULTS` の3項目を足す。`min_delta_e` 0 と `probe_extra` 0 で基底と同一挙動。
+    """
+
+    PLUS_DEFAULTS = {
+        "min_delta_e": ENIGMA9_MIN_DELTA_E,   # 外しに要求する E の上積み（目）。0=OFF
+        "cheap_loss": ENIGMA9_CHEAP_LOSS,     # この vloss 以下の外しは床を免除（目）
+        "probe_extra": ENIGMA9_PROBE_EXTRA,   # 罠探索の拡張: 高い帯から等間隔に足すプローブ数。0=従来の8手
+    }
+
+    def _shortlist(self, pool):
+        """罠探索の拡張（spec 追記12-2）: 安い順 7 手＋残りの候補から loss の範囲で等間隔に probe_extra 手。"""
+        extra = int(self._setting("probe_extra") or 0)
+        out = enigma9_shortlist_spread(pool, ENIGMA9_SHORTLIST - 1, extra)
+        added = out[ENIGMA9_SHORTLIST - 1 :]
+        if added:
+            self._log(
+                f"Probe spread: +{len(added)} from the wider loss range "
+                f"{[(c['gtp'], round(c['loss'], 2)) for c in added]}"
+            )
+        return out
+
+    def _ponder_wave2_targets(self, analysis, player):
+        """先読み wave2 も同じ spread 規則で温める（cap は予測局面の root lead から消費モードと同じ式で近似）。"""
+        extra = int(self._setting("probe_extra") or 0)
+        infos = (analysis or {}).get("moveInfos") or []
+        root_lead = ((analysis or {}).get("rootInfo") or {}).get("scoreLead")
+        cap = None
+        if root_lead is not None:
+            sign = 1 if player == "B" else -1
+            target = ENIGMA9_JIGO_TARGET if bool(self._setting("aim_jigo")) else float(self._setting("target_score"))
+            cap, _cw, _budget = enigma9_spending_plan(
+                root_lead * sign, target, float(self._setting("max_loss")), float(self._setting("large_lead_max_loss"))
+            )
+        return enigma9_wave2_targets(infos, player, ENIGMA9_SHORTLIST, extra, cap)
+
+    def _filter_challengers(self, scored, best_gtp):
+        floor = float(self._setting("min_delta_e") or 0.0)
+        cheap = float(self._setting("cheap_loss") or 0.0)
+        kept, dropped = enigma9_delta_e_filter(scored, best_gtp, floor, cheap)
+        best = next((c for c in scored if c["gtp"] == best_gtp), None)
+        for c in dropped:
+            self._log(
+                f"DeltaE filter: dropped {c['gtp']} (dE={c['e'] - best['e']:+.2f} < {floor:.2f}, "
+                f"vloss={c['loss']:.2f} > {cheap:.2f})"
+            )
+        if dropped:
+            self._log(
+                f"DeltaE filter: {len(scored)} -> {len(kept)} candidates (floor {floor:.2f}, cheap {cheap:.2f})"
+            )
+        return kept, dropped
+
+
+@register_strategy(AI_ENIGMA_9_PLUS)
+class Enigma9PlusStrategy(EnigmaPlusMixin, Enigma9Strategy):
+    """9路専用「難解＋」＝難解（9路）＋ `EnigmaPlusMixin`（罠探索の拡張・ΔE 床）。既定値は 13路の実測から
+    置いたものを流用（9路は未校正。spec 追記12-3）。sticky ヨセフラグは `game._enigma9plus_endgame`。"""
+
+    KEY_PREFIX = "enigma9plus"
+    LABEL = "Enigma9Plus"
+    SETTING_DEFAULTS = {**Enigma9Strategy.SETTING_DEFAULTS, **EnigmaPlusMixin.PLUS_DEFAULTS}
+
+
+@register_strategy(AI_ENIGMA_13_PLUS)
+class Enigma13PlusStrategy(EnigmaPlusMixin, Enigma13Strategy):
+    """13路専用「難解＋」＝難解（13路）＋ `EnigmaPlusMixin`（罠探索の拡張・ΔE 床）。設計と実測は spec 追記12〜12-3。
+    sticky ヨセフラグは `game._enigma13plus_endgame`。"""
+
+    KEY_PREFIX = "enigma13plus"
+    LABEL = "Enigma13Plus"
+    SETTING_DEFAULTS = {**Enigma13Strategy.SETTING_DEFAULTS, **EnigmaPlusMixin.PLUS_DEFAULTS}
+
 @register_strategy(AI_ENIGMA_19)
 class Enigma19Strategy(Enigma9Strategy):
     """19路専用「難解」戦略(Enigma9Strategy の盤サイズ・設定キー・既定値差し替え版)。
@@ -3429,6 +3660,17 @@ class Enigma19Strategy(Enigma9Strategy):
         "locality_stddev": ENIGMA9_LOCALITY_STDDEV,   # 局所性 σ（0=OFF）。spec 2026-08-25-enigma-locality-design.md
         "locality_slack": ENIGMA9_LOCALITY_SLACK,    # 同点帯の幅（目相当）
     }
+
+
+@register_strategy(AI_ENIGMA_19_PLUS)
+class Enigma19PlusStrategy(EnigmaPlusMixin, Enigma19Strategy):
+    """19路専用「難解＋」＝難解（19路）＋ `EnigmaPlusMixin`（罠探索の拡張・ΔE 床）。既定値は 13路の実測から
+    置いたものを流用（19路は監視対局のログが無く未計測。候補プールが最も大きい盤なので安い順 7 手の偏りは
+    最も強いはず＝spec 追記12-3）。sticky ヨセフラグは `game._enigma19plus_endgame`。"""
+
+    KEY_PREFIX = "enigma19plus"
+    LABEL = "Enigma19Plus"
+    SETTING_DEFAULTS = {**Enigma19Strategy.SETTING_DEFAULTS, **EnigmaPlusMixin.PLUS_DEFAULTS}
 
 
 @register_strategy(AI_SCORELOSS)

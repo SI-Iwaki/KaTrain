@@ -944,6 +944,51 @@ msgstr "[9x9] Locality stddev (OFF = classic)"
 msgid "enigma9_locality_slack"
 msgstr "[9x9] Locality tie band (pts)"
 
+msgid "ai:enigma9plus"
+msgstr "Enigma+ (9x9)"
+
+msgid "aihelp:enigma9plus"
+msgstr "9x9 only. Enigma (9x9) plus the two Enigma+ changes, a wider trap search and a 'delta-E floor'; the mechanism is identical to Enigma+ (13x13) (see its help for details). (1) Wider trap search: Enigma scores each candidate by analyzing the position after it, but it used to probe only the 7 cheapest candidates; enigma9plus_probe_extra more candidates, spaced evenly across the loss range of the remaining pool, are probed as well so bigger traps (higher expected punishment E) enter the comparison at the same price limits (loss cap, winrate floor and far-ahead discount are unchanged). (2) Delta-E floor: only challengers that either raise E over the best move by at least enigma9plus_min_delta_e points or cost at most enigma9plus_cheap_loss verified points are kept; if none remain it plays the best move - this stops expensive deviations that are merely unusual without buying any E. Measured on 13x13 (5 Enigma games vs 3 Enigma+ games): E of the played move 1.37 -> 1.97 per move, realized opponent loss 1.90 -> 2.90 points (mistakes of 2+ points 28% -> 56%), loss paid 0.72 -> 0.59. The 9x9 edition reuses the same defaults (floor 0.2 / waiver 0.3 / 4 extra probes) and is not calibrated. Setting enigma9plus_min_delta_e to OFF (0) and enigma9plus_probe_extra to 0 makes it identical to Enigma (9x9). The other options mean the same as in Enigma (9x9). On other board sizes it simply plays the best move."
+
+msgid "enigma9plus_max_loss"
+msgstr "[9x9+] Per-move loss cap (pts)"
+
+msgid "enigma9plus_large_lead_max_loss"
+msgstr "[9x9+] Bold-move loss cap when far ahead (pts)"
+
+msgid "enigma9plus_min_winrate"
+msgstr "[9x9+] Winrate floor after the move"
+
+msgid "enigma9plus_net_margin"
+msgstr "[9x9+] Required difficulty margin to deviate"
+
+msgid "enigma9plus_target_score"
+msgstr "[9x9+] Endgame target margin (pts)"
+
+msgid "enigma9plus_aim_jigo"
+msgstr "[9x9+] Aim for jigo / lose by at most 2"
+
+msgid "enigma9plus_endgame_move"
+msgstr "[9x9+] Endgame switch move number"
+
+msgid "enigma9plus_unsettled_max"
+msgstr "[9x9+] Max unsettled points for endgame"
+
+msgid "enigma9plus_locality_stddev"
+msgstr "[9x9+] Locality (surprise radius, OFF = classic)"
+
+msgid "enigma9plus_locality_slack"
+msgstr "[9x9+] Locality tie band (pts)"
+
+msgid "enigma9plus_min_delta_e"
+msgstr "[9x9+] Extra E required to deviate (pts, OFF = Enigma)"
+
+msgid "enigma9plus_cheap_loss"
+msgstr "[9x9+] Loss below which the floor is waived (pts)"
+
+msgid "enigma9plus_probe_extra"
+msgstr "[9x9+] Extra trap-search probes (0 = classic 8)"
+
 msgid "ai:enigma13"
 msgstr "Enigma (13x13)"
 
@@ -979,6 +1024,96 @@ msgstr "[13x13] Locality stddev (OFF = classic)"
 
 msgid "enigma13_locality_slack"
 msgstr "[13x13] Locality tie band (pts)"
+
+msgid "ai:enigma13plus"
+msgstr "Enigma+ (13x13)"
+
+msgid "aihelp:enigma13plus"
+msgstr "13x13 only. Enigma (13x13) plus two changes, a 'delta-E floor' and a wider trap search; everything else (loss cap, winrate floor, far-ahead spending mode, endgame budget, aim-jigo, locality, pondering) is shared with Enigma (13x13). Enigma's net = E (expected points a 9-dan reply distribution gives away) + reply rarity + own-move rarity - loss lets a move that is merely unusual win even with LESS E than the best move once the far-ahead mode discounts the loss term, paying 3-7 points for nothing (measured on seven 13x13 games, 200 deviations: the 20 deviations that bought less than 0.2 extra E over the best move cost 29.6 points in total for a realized net of -0.52 points, while the 90 that bought at least 0.2 extra E realized +0.79). Enigma+ keeps only challengers that either raise E over the best move by at least enigma13plus_min_delta_e points or cost at most enigma13plus_cheap_loss verified points; if none remain it plays the best move. Cheap deviations (opening off-book moves, moves that are actually better than the best move) are exempt, so what changes is mostly the expensive far-ahead deviations (replaying those seven games: 15 of 200 deviations revert to the best move and 22 switch to another candidate, total loss paid 210 -> 180 points, predicted E 265 -> 268). enigma13plus_min_delta_e: extra E a deviation must buy over the best move (points); OFF (0) makes it identical to Enigma (13x13). enigma13plus_cheap_loss: deviations costing at most this many points bypass the floor (larger = closer to Enigma (13x13)). enigma13plus_probe_extra: widens the trap search. Enigma scores each candidate by analyzing the position after it, but it used to probe only the 7 cheapest candidates; when far ahead with many admissible moves it never looked at the expensive ones the surplus could pay for (e.g. the 2-5 point moves under a 5-point cap), although traps with expected punishment E >= 2 are concentrated there (6% of candidates costing under 0.3 points vs 21% of those costing over 4). This many extra candidates, spaced evenly across the loss range of the remaining pool, are probed as well so bigger traps enter the net comparison at the same price limits (loss cap, winrate floor and far-ahead discount are unchanged). Costs about 0.8 s per move at 4 (cold), but post-move pondering warms the same set, so instant replies on predicted moves are preserved. 0 = the classic 8 probes. The other options mean the same as in Enigma (13x13). On other board sizes it simply plays the best move."
+
+msgid "enigma13plus_max_loss"
+msgstr "[13x13+] Per-move loss cap (pts)"
+
+msgid "enigma13plus_large_lead_max_loss"
+msgstr "[13x13+] Bold-move loss cap when far ahead (pts)"
+
+msgid "enigma13plus_min_winrate"
+msgstr "[13x13+] Winrate floor after the move"
+
+msgid "enigma13plus_net_margin"
+msgstr "[13x13+] Required difficulty margin to deviate"
+
+msgid "enigma13plus_target_score"
+msgstr "[13x13+] Endgame target margin (pts)"
+
+msgid "enigma13plus_aim_jigo"
+msgstr "[13x13+] Aim for jigo / lose by at most 2"
+
+msgid "enigma13plus_endgame_move"
+msgstr "[13x13+] Endgame switch move number"
+
+msgid "enigma13plus_unsettled_max"
+msgstr "[13x13+] Max unsettled points for endgame"
+
+msgid "enigma13plus_locality_stddev"
+msgstr "[13x13+] Locality (surprise radius, OFF = classic)"
+
+msgid "enigma13plus_locality_slack"
+msgstr "[13x13+] Locality tie band (pts)"
+
+msgid "enigma13plus_min_delta_e"
+msgstr "[13x13+] Extra E required to deviate (pts, OFF = Enigma)"
+
+msgid "enigma13plus_cheap_loss"
+msgstr "[13x13+] Loss below which the floor is waived (pts)"
+
+msgid "enigma13plus_probe_extra"
+msgstr "[13x13+] Extra trap-search probes (0 = classic 8)"
+
+msgid "ai:enigma19plus"
+msgstr "Enigma+ (19x19)"
+
+msgid "aihelp:enigma19plus"
+msgstr "19x19 only. Enigma (19x19) plus the two Enigma+ changes, a wider trap search and a 'delta-E floor'; the mechanism is identical to Enigma+ (13x13) (see its help for details). (1) Wider trap search: Enigma scores each candidate by analyzing the position after it, but it used to probe only the 7 cheapest candidates; enigma19plus_probe_extra more candidates, spaced evenly across the loss range of the remaining pool, are probed as well so bigger traps (higher expected punishment E) enter the comparison at the same price limits (loss cap, winrate floor and far-ahead discount are unchanged). (2) Delta-E floor: only challengers that either raise E over the best move by at least enigma19plus_min_delta_e points or cost at most enigma19plus_cheap_loss verified points are kept; if none remain it plays the best move - this stops expensive deviations that are merely unusual without buying any E. Measured on 13x13 (5 Enigma games vs 3 Enigma+ games): E of the played move 1.37 -> 1.97 per move, realized opponent loss 1.90 -> 2.90 points (mistakes of 2+ points 28% -> 56%), loss paid 0.72 -> 0.59. The 19x19 edition reuses the same defaults (floor 0.2 / waiver 0.3 / 4 extra probes) and is not calibrated. Setting enigma19plus_min_delta_e to OFF (0) and enigma19plus_probe_extra to 0 makes it identical to Enigma (19x19). The other options mean the same as in Enigma (19x19). On other board sizes it simply plays the best move."
+
+msgid "enigma19plus_max_loss"
+msgstr "[19x19+] Per-move loss cap (pts)"
+
+msgid "enigma19plus_large_lead_max_loss"
+msgstr "[19x19+] Bold-move loss cap when far ahead (pts)"
+
+msgid "enigma19plus_min_winrate"
+msgstr "[19x19+] Winrate floor after the move"
+
+msgid "enigma19plus_net_margin"
+msgstr "[19x19+] Required difficulty margin to deviate"
+
+msgid "enigma19plus_target_score"
+msgstr "[19x19+] Endgame target margin (pts)"
+
+msgid "enigma19plus_aim_jigo"
+msgstr "[19x19+] Aim for jigo / lose by at most 2"
+
+msgid "enigma19plus_endgame_move"
+msgstr "[19x19+] Endgame switch move number"
+
+msgid "enigma19plus_unsettled_max"
+msgstr "[19x19+] Max unsettled points for endgame"
+
+msgid "enigma19plus_locality_stddev"
+msgstr "[19x19+] Locality (surprise radius, OFF = classic)"
+
+msgid "enigma19plus_locality_slack"
+msgstr "[19x19+] Locality tie band (pts)"
+
+msgid "enigma19plus_min_delta_e"
+msgstr "[19x19+] Extra E required to deviate (pts, OFF = Enigma)"
+
+msgid "enigma19plus_cheap_loss"
+msgstr "[19x19+] Loss below which the floor is waived (pts)"
+
+msgid "enigma19plus_probe_extra"
+msgstr "[19x19+] Extra trap-search probes (0 = classic 8)"
 
 msgid "ai:enigma19"
 msgstr "Enigma (19x19)"

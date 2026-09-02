@@ -642,6 +642,33 @@ move 40（+4.4 リード）はヨセ予算内に候補なしで最善 / move 39�
 CLI: `python -m katrain_debug --sgf <13路SGF> --move N --strategy enigma13`（batch 可）。
 **13路の実戦校正は未実施**（GUI 実戦ログ `[Enigma13Strategy]` と batch 3-run 平均で行う）。
 
+## EnigmaPlusMixin＝難解＋（`ai:enigma9plus` / `ai:enigma13plus` / `ai:enigma19plus`）
+
+9/13/19路それぞれ専用。**基底の難解に `EnigmaPlusMixin` を先置きしたサブクラス**（`Enigma9PlusStrategy` /
+`Enigma13PlusStrategy` / `Enigma19PlusStrategy`。設定キー接頭辞 `enigma9plus_` / `enigma13plus_` / `enigma19plus_`、
+sticky ヨセフラグ `game._enigma{9,13,19}plus_endgame`）で `generate_move` は非オーバーライド。差分は2つ。
+(1) **罠探索の拡張** `_shortlist`＝プローブする挑戦者を安い順 7 手＋高い帯から等間隔に `probe_extra` 手
+（追記12-2・先読み wave2 も同期）。(2) **ΔE 床** `_filter_challengers`＝スコアリング済みの挑戦者を選択関数に渡す前に
+「E − 最善手の E >= `min_delta_e`」または「vloss <= `cheap_loss`」に絞る（純関数
+`enigma9_delta_e_filter`・落とした候補は `DeltaE filter: dropped …` ログ）。既存の難解 9/13/19 路は
+基底フックが no-op でビット同一。設計と実測: `2026-08-10-enigma9-strategy-design.md` **追記12**
+（2026-09-02。13路7局154手番で E は較正済み〈実損失 ≈ 1.06×E〉、ΔE<0.2 の外し 20 手が 29.6 目を
+払って realized gain −0.52＝rarity だけで払った外し。ログ再適用で 200 外し中 37 手が変わり、払う
+vloss 210→180 目・予測 E 265→268）。sticky ヨセフラグは `game._enigma13plus_endgame`。
+
+| キー | 意味 | 候補値 | 既定 |
+|---|---|---|---|
+| `enigma13plus_min_delta_e` | 外しに要求する E の上積み（目）＝選択手の E − 最善手の E の下限。**0（OFF）で難解（13路）と同一挙動** | OFF/0.1/0.2/0.3/0.5 | **0.2** |
+| `enigma13plus_cheap_loss` | この検証済み損失以下の外しは床を免除（序盤の定跡外し・最善手より良い手を残す）。大きくすると難解（13路）に近づく | 0/0.2/0.3/0.5/1.0 | **0.3** |
+| `enigma13plus_probe_extra` | **罠探索の拡張**（spec 追記12-2）。子局面プローブの挑戦者を「安い順 7 手」＋「残りの admissible 候補から loss の範囲で等間隔にこの本数」にする（`_shortlist` → `enigma9_shortlist_spread`）。従来は cap 5 目の手番でも 2 目より高い手を調べておらず（118手番で最大 loss/cap 中央値 0.38）、E>=2 の罠は高い帯に多い（vloss<0.3 で 6%・4目超で 21%）。代金の上限は不変＝同じ予算でより大きい罠を net 比較に乗せる。**先読み wave2 も同じ規則で温める**（`_ponder_wave2_targets`・cap は予測局面の root lead から消費モードの式で近似）ので的中時の即着手は保たれる。コールド実測 **+0.8 秒/手**（katrain_debug 13路 1.2→2.0 秒。先読み的中時は乗らない）。重ければ 2。0 で従来の 8 手 | 0/2/4/6/8 | **4** |
+| 他10項目（`enigma*plus_max_loss` 等） | 基底の難解（同じ盤）の同名項目と同じ意味・同じ候補値・同じ既定（テスト `test_base_options_are_shared_with_the_base_strategy` で固定）。ユーザーローカル config は基底の現在値を写してある（9路: max_loss 1.6・large 6.0・min_wr 0.25・target 0.2・aim_jigo true / 13路: max_loss 1.6・target 1.5 / 19路: max_loss 2.6・endgame 180・locality 3.0） | — | — |
+
+**盤サイズ別の校正状況（追記12-3／12-4・2026-09-02）**: 13路は実対局 難解13局 vs 難解＋14局（後半 15 局は交互）で E 平均/手 1.66→1.84（z 0.7・有意でない）・**相手の実損失/手 2.25→3.23（+1.0・局平均 z 1.9・pooled z 2.4、交互 15 局だけなら z 2.6〜2.7）**・>=2目の失着 41%→54%・vloss/手 0.93→0.85（同じ代金で回収 2.4→3.8 倍）・着手中央 0.35→0.40 秒（spec 追記12-5・2026-09-03＝13路は校正済み扱い）。**9路は交互対局 難解6局 vs 難解＋5局で利点を確認できず**（E 1.74→1.84〈z 0.3〉・外し率 35%→33% 不変・vloss 0.60→0.36。実損失は測れる手番が 1局 3〜13 で崩壊局 1 局が平均を支配＝比較不能。spread 発火 3〜7 手番/局、ΔE 床は選ばれない候補しか落とさない）＝**9路の既定は難解のまま・校正は打ち止め**（spec 追記12-4）。**19路は 13路の値を流用で未校正**（ログなし・候補プールが最大なので spread の余地は構造上最大の見込み。probe 1本が重いぶん `probe_extra` 4 のコールド増分は 13路の +0.8 秒より大）。
+
+モジュール定数: `ENIGMA9_MIN_DELTA_E=0.2` / `ENIGMA9_CHEAP_LOSS=0.3` / `ENIGMA9_PROBE_EXTRA=4`。
+CLI: `python -m katrain_debug --sgf <SGF> --move N --strategy enigma9plus|enigma13plus|enigma19plus`。
+**実対局での realized 再計測は未実施**（測り方は追記12 実測1＝ログの lead 差分・KataGo 不要）。
+
 ## Enigma19Strategy（`ai:enigma19` / 難解（19路））
 
 19路専用。**実装は Enigma9Strategy と共有**（`ai.py` の `Enigma19Strategy` は

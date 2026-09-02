@@ -89,10 +89,18 @@ AI_ENIGMA_9 = "ai:enigma9"
 AI_ENIGMA_13 = "ai:enigma13"
 # 上記の19路版。同じく Enigma9Strategy のサブクラス（ai.py の Enigma19Strategy）
 AI_ENIGMA_19 = "ai:enigma19"
+# 難解（13路）の改良版。Enigma13Strategy のサブクラスで、外し候補に「最善手より E を
+# min_delta_e 以上多く買うか、vloss が cheap_loss 以下」の ΔE 床を1段足す（ai.py の
+# Enigma13PlusStrategy・spec 2026-08-10-enigma9-strategy-design.md 追記12）
+AI_ENIGMA_13_PLUS = "ai:enigma13plus"
+# 同じ改良版の 9路/19路（ai.py の Enigma9PlusStrategy / Enigma19PlusStrategy＝EnigmaPlusMixin を先置き。
+# 既定値は 13路の実測を流用・未校正。spec 追記12-3）
+AI_ENIGMA_9_PLUS = "ai:enigma9plus"
+AI_ENIGMA_19_PLUS = "ai:enigma19plus"
 
 AI_CONFIG_DEFAULT = AI_RANK
 
-AI_STRATEGIES_ENGINE = [AI_DEFAULT, AI_HANDICAP, AI_SCORELOSS, AI_SIMPLE_OWNERSHIP, AI_JIGO, AI_JIGO_9, AI_PARITY_9, AI_ENIGMA_9, AI_ENIGMA_13, AI_ENIGMA_19, AI_ANTIMIRROR]
+AI_STRATEGIES_ENGINE = [AI_DEFAULT, AI_HANDICAP, AI_SCORELOSS, AI_SIMPLE_OWNERSHIP, AI_JIGO, AI_JIGO_9, AI_PARITY_9, AI_ENIGMA_9, AI_ENIGMA_9_PLUS, AI_ENIGMA_13, AI_ENIGMA_13_PLUS, AI_ENIGMA_19, AI_ENIGMA_19_PLUS, AI_ANTIMIRROR]
 AI_STRATEGIES_PICK = [AI_PICK, AI_LOCAL, AI_TENUKI, AI_INFLUENCE, AI_TERRITORY, AI_FIGHTING, AI_RANK]
 AI_STRATEGIES_POLICY = [AI_WEIGHTED, AI_POLICY] + AI_STRATEGIES_PICK
 AI_STRATEGIES = AI_STRATEGIES_ENGINE + AI_STRATEGIES_POLICY + [AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE, AI_TSUMEGO, AI_TSUMEGO_SOLVER]
@@ -111,8 +119,11 @@ AI_STRATEGIES_RECOMMENDED_ORDER = [
     AI_JIGO_9,
     AI_PARITY_9,
     AI_ENIGMA_9,
+    AI_ENIGMA_9_PLUS,
     AI_ENIGMA_13,
+    AI_ENIGMA_13_PLUS,
     AI_ENIGMA_19,
+    AI_ENIGMA_19_PLUS,
     AI_ANTIMIRROR,
     AI_PICK,
     AI_LOCAL,
@@ -136,6 +147,9 @@ AI_STRENGTH = {  # dan ranks, backup if model is missing. TODO: remove some?
     AI_PARITY_9: float("nan"),
     AI_ENIGMA_9: float("nan"),
     AI_ENIGMA_13: float("nan"),
+    AI_ENIGMA_13_PLUS: float("nan"),
+    AI_ENIGMA_9_PLUS: float("nan"),
+    AI_ENIGMA_19_PLUS: float("nan"),
     AI_ENIGMA_19: float("nan"),
     AI_SCORELOSS: -4,
     AI_WEIGHTED: -4,
@@ -308,6 +322,20 @@ AI_OPTION_VALUES = {
     # キー集合を3クラスで揃える不変条件（TestGuiConfigConsistency）のために露出する
     "enigma9_locality_stddev": [(0.0, "OFF"), (1.5, "1.5"), (2.0, "2.0"), (2.5, "2.5"), (3.0, "3.0")],
     "enigma9_locality_slack": [0.0, 0.2, 0.3, 0.5, 1.0],
+    # ===== Enigma9PlusStrategy（9路専用・難解＋）: enigma9 の候補値をそのまま＋ΔE 床・罠探索の3項目 =====
+    "enigma9plus_max_loss": [0.3, 0.5, 0.8, 1.0, 1.2, 1.5, 1.8],
+    "enigma9plus_large_lead_max_loss": [2.0, 3.0, 4.0, 5.0, 6.0, 8.0],
+    "enigma9plus_min_winrate": [(0.2, "20%"), (0.25, "25%"), (0.3, "30%"), (0.35, "35%"), (0.4, "40%"), (0.5, "50%")],
+    "enigma9plus_net_margin": [0.0, 0.2, 0.3, 0.5, 1.0],
+    "enigma9plus_target_score": [0.0, 1.0, 2.0, 3.0],
+    "enigma9plus_aim_jigo": "bool",
+    "enigma9plus_endgame_move": [22, 26, 30, 34, 38],
+    "enigma9plus_unsettled_max": [4, 6, 8, 10, 12],
+    "enigma9plus_locality_stddev": [(0.0, "OFF"), (1.5, "1.5"), (2.0, "2.0"), (2.5, "2.5"), (3.0, "3.0")],
+    "enigma9plus_locality_slack": [0.0, 0.2, 0.3, 0.5, 1.0],
+    "enigma9plus_min_delta_e": [(0.0, "OFF"), (0.1, "0.1"), (0.2, "0.2"), (0.3, "0.3"), (0.5, "0.5")],
+    "enigma9plus_cheap_loss": [0.0, 0.2, 0.3, 0.5, 1.0],
+    "enigma9plus_probe_extra": [0, 2, 4, 6, 8],
     # ===== Enigma13Strategy（13路専用・難解） =====
     # 9路の「2目以上の損失手は打たない」は挽回が難しい9路向けの締め方。13路は
     # 悪手フィルタの盤サイズ比（NORMAL 3.3→5.6 ≒ ×1.7）に合わせて天井 3.0 まで開ける
@@ -324,6 +352,24 @@ AI_OPTION_VALUES = {
     # 最善手の近傍で減衰させ、net の同点帯では最も近い手を採る。0 = OFF（従来とビット同一）
     "enigma13_locality_stddev": [(0.0, "OFF"), (2.0, "2.0"), (2.5, "2.5"), (3.0, "3.0"), (4.0, "4.0"), (5.0, "5.0")],
     "enigma13_locality_slack": [0.0, 0.2, 0.3, 0.5, 1.0],
+    # ===== Enigma13PlusStrategy（13路専用・難解＋） =====
+    # 難解（13路）の10項目をそのまま引き継ぎ（既定値も同じ）、ΔE 床の2項目を足す。
+    # min_delta_e 0 = OFF（難解（13路）とビット同一）。既定 0.2/0.3 は 13路7局の実測から
+    # （spec 2026-08-10-enigma9-strategy-design.md 追記12）
+    "enigma13plus_max_loss": [0.5, 0.8, 1.0, 1.5, 2.0, 2.5, 3.0],
+    "enigma13plus_large_lead_max_loss": [3.0, 4.0, 5.0, 6.0, 8.0, 10.0],
+    "enigma13plus_min_winrate": [(0.2, "20%"), (0.25, "25%"), (0.3, "30%"), (0.35, "35%"), (0.4, "40%"), (0.5, "50%")],
+    "enigma13plus_net_margin": [0.0, 0.2, 0.3, 0.5, 1.0],
+    "enigma13plus_target_score": [0.0, 1.0, 2.0, 3.0, 5.0],
+    "enigma13plus_aim_jigo": "bool",
+    "enigma13plus_endgame_move": [55, 65, 75, 85, 95],
+    "enigma13plus_unsettled_max": [8, 12, 16, 20, 24],
+    "enigma13plus_locality_stddev": [(0.0, "OFF"), (2.0, "2.0"), (2.5, "2.5"), (3.0, "3.0"), (4.0, "4.0"), (5.0, "5.0")],
+    "enigma13plus_locality_slack": [0.0, 0.2, 0.3, 0.5, 1.0],
+    "enigma13plus_min_delta_e": [(0.0, "OFF"), (0.1, "0.1"), (0.2, "0.2"), (0.3, "0.3"), (0.5, "0.5")],
+    "enigma13plus_cheap_loss": [0.0, 0.2, 0.3, 0.5, 1.0],
+    # 罠探索の拡張: 安い順 7 手に加えて高い帯から等間隔に足すプローブ数（0=従来の 8 手）
+    "enigma13plus_probe_extra": [0, 2, 4, 6, 8],
     # ===== Enigma19Strategy（19路専用・難解） =====
     # 悪手フィルタは13路と同じ NORMAL=5.6 だが、19路は挽回機会が多いぶん天井 4.0 まで開ける
     # （5.6=悪手フィルタまでは開けない＝「難解だが悪手ではない」帯に留める）
@@ -338,6 +384,20 @@ AI_OPTION_VALUES = {
     "enigma19_unsettled_max": [24, 30, 36, 42, 48],
     "enigma19_locality_stddev": [(0.0, "OFF"), (3.0, "3.0"), (4.0, "4.0"), (5.0, "5.0"), (6.0, "6.0"), (7.0, "7.0")],
     "enigma19_locality_slack": [0.0, 0.2, 0.3, 0.5, 1.0],
+    # ===== Enigma19PlusStrategy（19路専用・難解＋）: enigma19 の候補値をそのまま＋ΔE 床・罠探索の3項目 =====
+    "enigma19plus_max_loss": [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0],
+    "enigma19plus_large_lead_max_loss": [3.0, 4.0, 5.0, 6.0, 8.0, 10.0],
+    "enigma19plus_min_winrate": [(0.2, "20%"), (0.25, "25%"), (0.3, "30%"), (0.35, "35%"), (0.4, "40%"), (0.5, "50%")],
+    "enigma19plus_net_margin": [0.0, 0.2, 0.3, 0.5, 1.0],
+    "enigma19plus_target_score": [0.0, 1.0, 2.0, 3.0, 5.0],
+    "enigma19plus_aim_jigo": "bool",
+    "enigma19plus_endgame_move": [120, 135, 150, 165, 180],
+    "enigma19plus_unsettled_max": [24, 30, 36, 42, 48],
+    "enigma19plus_locality_stddev": [(0.0, "OFF"), (3.0, "3.0"), (4.0, "4.0"), (5.0, "5.0"), (6.0, "6.0"), (7.0, "7.0")],
+    "enigma19plus_locality_slack": [0.0, 0.2, 0.3, 0.5, 1.0],
+    "enigma19plus_min_delta_e": [(0.0, "OFF"), (0.1, "0.1"), (0.2, "0.2"), (0.3, "0.3"), (0.5, "0.5")],
+    "enigma19plus_cheap_loss": [0.0, 0.2, 0.3, 0.5, 1.0],
+    "enigma19plus_probe_extra": [0, 2, 4, 6, 8],
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）
@@ -440,6 +500,19 @@ AI_OPTION_ORDER = {
     "enigma9_unsettled_max": 7,
     "enigma9_locality_stddev": 8,
     "enigma9_locality_slack": 9,
+    "enigma9plus_max_loss": 0,
+    "enigma9plus_large_lead_max_loss": 1,
+    "enigma9plus_min_winrate": 2,
+    "enigma9plus_net_margin": 3,
+    "enigma9plus_target_score": 4,
+    "enigma9plus_aim_jigo": 5,
+    "enigma9plus_endgame_move": 6,
+    "enigma9plus_unsettled_max": 7,
+    "enigma9plus_locality_stddev": 8,
+    "enigma9plus_locality_slack": 9,
+    "enigma9plus_min_delta_e": 10,
+    "enigma9plus_cheap_loss": 11,
+    "enigma9plus_probe_extra": 12,
     "enigma13_max_loss": 0,
     "enigma13_large_lead_max_loss": 1,
     "enigma13_min_winrate": 2,
@@ -450,6 +523,19 @@ AI_OPTION_ORDER = {
     "enigma13_unsettled_max": 7,
     "enigma13_locality_stddev": 8,
     "enigma13_locality_slack": 9,
+    "enigma13plus_max_loss": 0,
+    "enigma13plus_large_lead_max_loss": 1,
+    "enigma13plus_min_winrate": 2,
+    "enigma13plus_net_margin": 3,
+    "enigma13plus_target_score": 4,
+    "enigma13plus_aim_jigo": 5,
+    "enigma13plus_endgame_move": 6,
+    "enigma13plus_unsettled_max": 7,
+    "enigma13plus_locality_stddev": 8,
+    "enigma13plus_locality_slack": 9,
+    "enigma13plus_min_delta_e": 10,
+    "enigma13plus_cheap_loss": 11,
+    "enigma13plus_probe_extra": 12,
     "enigma19_max_loss": 0,
     "enigma19_large_lead_max_loss": 1,
     "enigma19_min_winrate": 2,
@@ -460,6 +546,19 @@ AI_OPTION_ORDER = {
     "enigma19_unsettled_max": 7,
     "enigma19_locality_stddev": 8,
     "enigma19_locality_slack": 9,
+    "enigma19plus_max_loss": 0,
+    "enigma19plus_large_lead_max_loss": 1,
+    "enigma19plus_min_winrate": 2,
+    "enigma19plus_net_margin": 3,
+    "enigma19plus_target_score": 4,
+    "enigma19plus_aim_jigo": 5,
+    "enigma19plus_endgame_move": 6,
+    "enigma19plus_unsettled_max": 7,
+    "enigma19plus_locality_stddev": 8,
+    "enigma19plus_locality_slack": 9,
+    "enigma19plus_min_delta_e": 10,
+    "enigma19plus_cheap_loss": 11,
+    "enigma19plus_probe_extra": 12,
 }
 
 AI_KEY_PROPERTIES = {

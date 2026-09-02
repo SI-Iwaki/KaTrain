@@ -635,6 +635,51 @@ msgstr "[9路] 局所性（意外さの有効半径・OFF=従来）"
 msgid "enigma9_locality_slack"
 msgstr "[9路] 局所性の同点帯（目）"
 
+msgid "ai:enigma9plus"
+msgstr "難解＋（9路）"
+
+msgid "aihelp:enigma9plus"
+msgstr "9路盤専用。難解（9路）と同じ選択ロジックに「罠を探す範囲の拡張」と「ΔE 床」を足した改良版で、難解＋（13路）と同じ機構です（詳しい説明は難解＋（13路）のヘルプ）。(1) 罠を探す範囲の拡張: 難解は候補手ごとに着手後の局面を解析して難解さを測りますが、従来はその候補を「損失の安い順に 7 手」しか調べていませんでした。enigma9plus_probe_extra の数だけ、残りの候補から損失の範囲で等間隔に選んだ手を追加で調べ、同じ予算の中でより大きい罠（相手の期待損失 E が高い手）を比較に乗せます。代金の上限（損失上限・勝率フロア・勝勢時の割引）は変わりません。(2) ΔE 床: 外し候補を「選択手の E が最善手の E を enigma9plus_min_delta_e 目以上上回る」か「検証済み損失が enigma9plus_cheap_loss 目以下」のどちらかを満たす手だけに絞り、残らなければ最善手を打ちます＝珍しいだけで E を買わない高額な外しを止めます。13路の実測（難解 5 局 vs 難解＋ 3 局）では打った手の E が 1 手平均 1.37 → 1.97、相手の実損失が 1.90 → 2.90 目（2 目以上の失着 28% → 56%）、払った損失は 0.72 → 0.59 目でした。9路は同じ機構を既定値そのまま（ΔE 床 0.2 / 免除 0.3 / 追加プローブ 4）で展開したもので未校正です。enigma9plus_min_delta_e を OFF（0）、enigma9plus_probe_extra を 0 にすると難解（9路）と完全に同じ挙動になります。他の項目は難解（9路）の同名項目と同じ意味です。9路以外の盤では常に最善手を打つだけになるので、他の戦略を使ってください。"
+
+msgid "enigma9plus_max_loss"
+msgstr "[9路＋] 1手あたり損失上限（目）"
+
+msgid "enigma9plus_large_lead_max_loss"
+msgstr "[9路＋] 勝勢時の勝負手損失上限（目）"
+
+msgid "enigma9plus_min_winrate"
+msgstr "[9路＋] 着手後の勝率フロア"
+
+msgid "enigma9plus_net_margin"
+msgstr "[9路＋] 外しに要求する難解さの差"
+
+msgid "enigma9plus_target_score"
+msgstr "[9路＋] ヨセの目標差（目）"
+
+msgid "enigma9plus_aim_jigo"
+msgstr "[9路＋] 持碁〜2目以内の負け狙い"
+
+msgid "enigma9plus_endgame_move"
+msgstr "[9路＋] ヨセ切替手数"
+
+msgid "enigma9plus_unsettled_max"
+msgstr "[9路＋] ヨセ判定の未確定点上限"
+
+msgid "enigma9plus_locality_stddev"
+msgstr "[9路＋] 局所性（意外さの有効半径・OFF=従来）"
+
+msgid "enigma9plus_locality_slack"
+msgstr "[9路＋] 局所性の同点帯（目）"
+
+msgid "enigma9plus_min_delta_e"
+msgstr "[9路＋] 外しに要求する E の上積み（目・OFF=難解と同じ）"
+
+msgid "enigma9plus_cheap_loss"
+msgstr "[9路＋] 床を免除する損失上限（目）"
+
+msgid "enigma9plus_probe_extra"
+msgstr "[9路＋] 罠探索の追加プローブ数（0=従来の8手）"
+
 msgid "ai:enigma13"
 msgstr "難解（13路）"
 
@@ -670,6 +715,96 @@ msgstr "[13路] 局所性（意外さの有効半径・OFF=従来）"
 
 msgid "enigma13_locality_slack"
 msgstr "[13路] 局所性の同点帯（目）"
+
+msgid "ai:enigma13plus"
+msgstr "難解＋（13路）"
+
+msgid "aihelp:enigma13plus"
+msgstr "13路盤専用。難解（13路）と同じ選択ロジックに「ΔE 床」と「罠を探す範囲の拡張」を足した改良版で、それ以外の挙動（損失上限・勝率フロア・勝勢時の消費モード・ヨセ予算・持碁狙い・局所性・先読み）は難解（13路）と共通です。難解の net = E（9段の応手分布で重みづけた相手の期待損失）＋十分な応手の見つけにくさ＋自手の意外さ − 損失 は、勝勢時に損失の重みが下がると「珍しい」だけの手が最善手より E の低いまま 3〜7 目払って選ばれることがありました（実測 13路7局・外し200手のうち、最善手より E を 0.2 目も多く買わない外し 20 手が合計 29.6 目を払い、相手の実損失から払った目数を引いた正味は −0.52 目。E を 0.2 目以上多く買った 90 手は +0.79 目）。難解＋は外し候補を「選択手の E が最善手の E を enigma13plus_min_delta_e 目以上上回る」か「検証済み損失が enigma13plus_cheap_loss 目以下」のどちらかを満たす手だけに絞り、残らなければ最善手を打ちます。安い外し（序盤の定跡外し・最善手より良い手）は免除で残るので、変わるのは主に勝勢時の高額な外しです（同7局の再適用: 外し200手のうち 15 手が最善手に戻り 22 手が別の候補に変わり、払う損失は合計 210→180 目・予測 E は 265→268 目）。enigma13plus_min_delta_e: 外しに要求する E の上積み（目）。OFF（0）にすると難解（13路）と完全に同じ挙動になります。enigma13plus_cheap_loss: この損失以下の外しは床を免除します（大きくすると免除が広がり難解（13路）に近づく）。enigma13plus_probe_extra: 罠を探す範囲の拡張。難解は候補手ごとに着手後の局面を解析して難解さを測りますが、従来はその候補を「損失の安い順に 7 手」しか調べていませんでした。勝勢で候補が多い手番ではリードの余剰で打てる高い手（例: 上限 5 目の手番の 2〜5 目の手）を一度も調べておらず、実測では相手の期待損失 E が 2 目を超える罠は高い帯に多く見つかります（損失 0.3 目未満の候補で 6%、4 目超の候補で 21%）。この項目の数だけ、残りの候補から損失の範囲で等間隔に選んだ手を追加で調べ、同じ予算の中でより大きい罠を net 比較に乗せます。代金の上限（損失上限・勝率フロア・勝勢時の割引）は変わりません。着手時間は 4 で +0.8 秒程度ですが、着手後の先読みも同じ規則で温めるので、先読みが当たった手番の即着手は保たれます。0 で従来の 8 手。他の項目は難解（13路）の同名項目と同じ意味です。13路以外の盤では常に最善手を打つだけになるので、他の戦略を使ってください。"
+
+msgid "enigma13plus_max_loss"
+msgstr "[13路＋] 1手あたり損失上限（目）"
+
+msgid "enigma13plus_large_lead_max_loss"
+msgstr "[13路＋] 勝勢時の勝負手損失上限（目）"
+
+msgid "enigma13plus_min_winrate"
+msgstr "[13路＋] 着手後の勝率フロア"
+
+msgid "enigma13plus_net_margin"
+msgstr "[13路＋] 外しに要求する難解さの差"
+
+msgid "enigma13plus_target_score"
+msgstr "[13路＋] ヨセの目標差（目）"
+
+msgid "enigma13plus_aim_jigo"
+msgstr "[13路＋] 持碁〜2目以内の負け狙い"
+
+msgid "enigma13plus_endgame_move"
+msgstr "[13路＋] ヨセ切替手数"
+
+msgid "enigma13plus_unsettled_max"
+msgstr "[13路＋] ヨセ判定の未確定点上限"
+
+msgid "enigma13plus_locality_stddev"
+msgstr "[13路＋] 局所性（意外さの有効半径・OFF=従来）"
+
+msgid "enigma13plus_locality_slack"
+msgstr "[13路＋] 局所性の同点帯（目）"
+
+msgid "enigma13plus_min_delta_e"
+msgstr "[13路＋] 外しに要求する E の上積み（目・OFF=難解と同じ）"
+
+msgid "enigma13plus_cheap_loss"
+msgstr "[13路＋] 床を免除する損失上限（目）"
+
+msgid "enigma13plus_probe_extra"
+msgstr "[13路＋] 罠探索の追加プローブ数（0=従来の8手）"
+
+msgid "ai:enigma19plus"
+msgstr "難解＋（19路）"
+
+msgid "aihelp:enigma19plus"
+msgstr "19路盤専用。難解（19路）と同じ選択ロジックに「罠を探す範囲の拡張」と「ΔE 床」を足した改良版で、難解＋（13路）と同じ機構です（詳しい説明は難解＋（13路）のヘルプ）。(1) 罠を探す範囲の拡張: 難解は候補手ごとに着手後の局面を解析して難解さを測りますが、従来はその候補を「損失の安い順に 7 手」しか調べていませんでした。enigma19plus_probe_extra の数だけ、残りの候補から損失の範囲で等間隔に選んだ手を追加で調べ、同じ予算の中でより大きい罠（相手の期待損失 E が高い手）を比較に乗せます。代金の上限（損失上限・勝率フロア・勝勢時の割引）は変わりません。(2) ΔE 床: 外し候補を「選択手の E が最善手の E を enigma19plus_min_delta_e 目以上上回る」か「検証済み損失が enigma19plus_cheap_loss 目以下」のどちらかを満たす手だけに絞り、残らなければ最善手を打ちます＝珍しいだけで E を買わない高額な外しを止めます。13路の実測（難解 5 局 vs 難解＋ 3 局）では打った手の E が 1 手平均 1.37 → 1.97、相手の実損失が 1.90 → 2.90 目（2 目以上の失着 28% → 56%）、払った損失は 0.72 → 0.59 目でした。19路は同じ機構を既定値そのまま（ΔE 床 0.2 / 免除 0.3 / 追加プローブ 4）で展開したもので未校正です。enigma19plus_min_delta_e を OFF（0）、enigma19plus_probe_extra を 0 にすると難解（19路）と完全に同じ挙動になります。他の項目は難解（19路）の同名項目と同じ意味です。19路以外の盤では常に最善手を打つだけになるので、他の戦略を使ってください。"
+
+msgid "enigma19plus_max_loss"
+msgstr "[19路＋] 1手あたり損失上限（目）"
+
+msgid "enigma19plus_large_lead_max_loss"
+msgstr "[19路＋] 勝勢時の勝負手損失上限（目）"
+
+msgid "enigma19plus_min_winrate"
+msgstr "[19路＋] 着手後の勝率フロア"
+
+msgid "enigma19plus_net_margin"
+msgstr "[19路＋] 外しに要求する難解さの差"
+
+msgid "enigma19plus_target_score"
+msgstr "[19路＋] ヨセの目標差（目）"
+
+msgid "enigma19plus_aim_jigo"
+msgstr "[19路＋] 持碁〜2目以内の負け狙い"
+
+msgid "enigma19plus_endgame_move"
+msgstr "[19路＋] ヨセ切替手数"
+
+msgid "enigma19plus_unsettled_max"
+msgstr "[19路＋] ヨセ判定の未確定点上限"
+
+msgid "enigma19plus_locality_stddev"
+msgstr "[19路＋] 局所性（意外さの有効半径・OFF=従来）"
+
+msgid "enigma19plus_locality_slack"
+msgstr "[19路＋] 局所性の同点帯（目）"
+
+msgid "enigma19plus_min_delta_e"
+msgstr "[19路＋] 外しに要求する E の上積み（目・OFF=難解と同じ）"
+
+msgid "enigma19plus_cheap_loss"
+msgstr "[19路＋] 床を免除する損失上限（目）"
+
+msgid "enigma19plus_probe_extra"
+msgstr "[19路＋] 罠探索の追加プローブ数（0=従来の8手）"
 
 msgid "ai:enigma19"
 msgstr "難解（19路）"

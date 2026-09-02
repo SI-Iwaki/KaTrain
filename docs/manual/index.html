@@ -194,6 +194,7 @@
 <li><a href="#ai-lowmatch">AI らしさ（最善手との一致率）を下げる戦略</a></li>
 <li><a href="#ai-jigo-family">目差をコントロールする戦略（持碁）</a></li>
 <li><a href="#ai-enigma">難解（9路 / 13路 / 19路）</a></li>
+<li><a href="#ai-enigma-plus">難解＋（9路 / 13路 / 19路）</a></li>
 <li><a href="#ai-tsumego">詰碁用の戦略（自動で設定されるもの）</a></li>
 </ul></li>
 <li><a href="#tsumego">詰碁機能</a><ul>
@@ -625,6 +626,9 @@ KaTrain の AI は「戦略」を選ぶことで棋風や強さが変わりま�
     <tr><th><a href="#ai-parity9">一致率追随（9路）</a></th><td><code>ai:parity9</code></td><td>9</td><td>必須</td><td>一致率を目標値まで下げつつ勝ち切る</td></tr>
     <tr><th><a href="#ai-enigma">難解（9路）</a></th><td><code>ai:enigma9</code></td><td>9</td><td>必須</td><td>相手が正しく応じにくい手を選ぶ</td></tr>
     <tr><th><a href="#ai-enigma">難解（13路）</a></th><td><code>ai:enigma13</code></td><td>13</td><td>必須</td><td>同・13路専用</td></tr>
+    <tr><th><a href="#ai-enigma-plus">難解＋（9路）</a></th><td><code>ai:enigma9plus</code></td><td>9</td><td>必須</td><td>難解の改良版。高い帯まで罠を探し、E を買わない外しは打たない（未校正）</td></tr>
+    <tr><th><a href="#ai-enigma-plus">難解＋（13路）</a></th><td><code>ai:enigma13plus</code></td><td>13</td><td>必須</td><td>同・13路専用（実対局で確認済み）</td></tr>
+    <tr><th><a href="#ai-enigma-plus">難解＋（19路）</a></th><td><code>ai:enigma19plus</code></td><td>19</td><td>必須</td><td>同・19路専用（未校正）</td></tr>
     <tr><th><a href="#ai-enigma">難解（19路）</a></th><td><code>ai:enigma19</code></td><td>19</td><td>必須</td><td>同・19路専用</td></tr>
     <tr><th><a href="#ai-antimirror">Kataマネ碁破り</a></th><td><code>ai:antimirror</code></td><td>全部</td><td>—</td><td>マネ碁をされたときの対策</td></tr>
     <tr><th><a href="#ai-pick">第一感（盲点）</a></th><td><code>ai:p:pick</code></td><td>全部</td><td>—</td><td>盤の一部しか見えない弱い AI</td></tr>
@@ -1260,6 +1264,43 @@ KaTrain の AI は「戦略」を選ぶことで棋風や強さが変わりま�
   <div class="callout warn">
     <span class="label">校正状況</span>
     9路は実戦で校正済み。13路・19路は既定値をスケールしたもので、19路の局所性は未校正（OFF のままを推奨）です。
+  </div>
+</div>
+
+<h3 id="ai-enigma-plus">難解＋（9路 / 13路 / 19路）</h3>
+
+<div class="card">
+  <h3>難解＋ <code>ai:enigma9plus</code> / <code>ai:enigma13plus</code> / <code>ai:enigma19plus</code></h3>
+  <div class="tags"><span class="tag ok">盤サイズごとに専用</span><span class="tag hs">humanSL 必須</span><span class="tag">難解の改良版</span></div>
+  <p>
+    難解と同じ仕組みに<b>「罠を探す範囲の拡張」</b>と<b>「ΔE 床」</b>を足した改良版です。
+    難解は候補手ごとに着手後の局面を解析して難解さを測りますが、従来はその候補を「損失の安い順に 7 手」しか調べていませんでした。勝勢で候補が多い手番ではリードの余剰で打てる高い手（上限 5 目の手番の 2〜5 目の手）を一度も調べておらず、実測では相手の期待損失 E が 2 目を超える罠は高い帯に多く見つかります（損失 0.3 目未満の候補で 6%、4 目超の候補で 21%）。難解＋は残りの候補から損失の範囲で等間隔に選んだ手を <code>enigma13plus_probe_extra</code> 手だけ追加で調べ、<b>同じ予算の中でより大きい罠</b>を比較に乗せます。代金の上限（損失上限・勝率フロア・勝勢時の割引）は変わりません。
+  </p>
+  <p>
+    もう 1 つの <b>ΔE 床</b>は、罠にならない外しを止める側の変更です。難解の採点 net = E ＋ 応手の見つけにくさ ＋ 自手の意外さ − 損失 は、勝勢時に損失の重みが下がると
+    「珍しい」だけの手が、最善手より E（相手の期待損失）が低いまま 3〜7 目払って選ばれることがありました。
+    実戦 13 路 7 局・外し 200 手の実測では、最善手より E を 0.2 目も多く買わない外しが 20 手あり、合計 29.6 目を払って相手の実損失から払った目数を引いた正味は −0.52 目でした（E を 0.2 目以上多く買った 90 手は +0.79 目）。
+  </p>
+  <p>
+    <b>実対局の結果（13 路）</b>: 難解 13 局と難解＋ 14 局（後半 15 局は交互に対局）を同じ方法で集計すると、相手の実損失は 1 手平均 2.25 → 3.23 目（2 目以上の失着 41% → 54%）と約 1 目増え、払った損失は 0.93 → 0.85 目で変わらず、着手時間の中央値は 0.35 → 0.40 秒でした。局ごとのばらつきに対して差は約 2σ（交互に打った 15 局だけなら 2.6σ）です。打った手の E の平均は 1.66 → 1.84 でほぼ同じなので、増えたのは「同じ代金で相手が実際に間違える量」です。9 路では難解と難解＋を交互に 11 局打っても差が出ませんでした（9 路は候補が少なく機構がほとんど働きません）。
+  </p>
+  <p>
+    難解＋は外し候補を<b>「選択手の E が最善手の E を <code>enigma13plus_min_delta_e</code> 目以上上回る」か「検証済み損失が <code>enigma13plus_cheap_loss</code> 目以下」</b>のどちらかを満たす手だけに絞り、残らなければ最善手を打ちます。
+    安い外し（序盤の定跡外し・最善手より良い手）は免除で残るので、変わるのは主に勝勢時の高額な外しです。同じ 7 局に当て直すと、200 手の外しのうち 15 手が最善手に戻り 22 手が別の候補に変わり、払う損失は合計 210 → 180 目、予測 E は 265 → 268 目でした。
+    体感では、勝勢時に「わざと数目損して珍しい手」を打つ頻度が下がり、そのぶん勝ち幅がやや大きく残ります。
+  </p>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>enigma*plus_min_delta_e</td><td>0.2<span class="jp">OFF=0</span></td><td>外しに要求する E の上積み（目）。<b>OFF（0）にすると難解（13路）と完全に同じ挙動</b>。</td><td><span class="up">上げる</span>本物の罠だけ採用＝外しが減る。<span class="down">OFF</span>難解（13路）と同一</td></tr>
+      <tr><td>enigma*plus_cheap_loss</td><td>0.3</td><td>この損失以下の外しは床を免除（序盤の安い定跡外しを残す）。</td><td><span class="up">上げる</span>免除が広がり難解（13路）に近づく</td></tr>
+      <tr><td>enigma*plus_probe_extra</td><td>4<span class="jp">0=従来</span></td><td>罠を探す範囲の拡張。安い順 7 手に加えて、高い帯から等間隔にこの数だけ候補を追加で解析する。着手時間は 4 で +0.8 秒程度（先読みが当たった手番は変わらない）。</td><td><span class="up">上げる</span>より高い帯まで探す＝大きい罠が見つかりやすいが着手が遅くなる。<span class="down">0</span>従来の 8 手</td></tr>
+      <tr><td>その他 10 項目</td><td>同じ盤の難解と同じ</td><td><code>enigma9plus_*</code> / <code>enigma13plus_*</code> / <code>enigma19plus_*</code> として別々に保存されます（難解の設定は引き継がれないので、変えていた値はこちらにも入れてください）。</td><td>—</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout warn">
+    <span class="label">校正状況</span>
+    閾値 0.2 / 0.3 と追加プローブ数 4 は 13 路 7 局のログから置いた仮置きです。13 路は実対局 3 局で方向を確認済み。9 路・19 路は同じ既定値をそのまま流用したもので未校正です（19 路は 1 手の解析が重いので、着手が遅ければ追加プローブ数を 2 に）。
   </div>
 </div>
 

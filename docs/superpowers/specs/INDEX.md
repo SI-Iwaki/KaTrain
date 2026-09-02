@@ -54,7 +54,7 @@
 | spec | |
 |---|---|
 | `2026-08-06-parity9-strategy-design.md` | 🟢 一致率追随（9路）`ai:parity9` |
-| `2026-08-10-enigma9-strategy-design.md` | 🟢 難解 `ai:enigma9` / `enigma13` / `enigma19`（追記2=13路・追記4=19路・追記5=持碁狙い） |
+| `2026-08-10-enigma9-strategy-design.md` | 🟢 難解 `ai:enigma9` / `enigma13` / `enigma19`（追記2=13路・追記4=19路・追記5=持碁狙い・追記12〜12-3=難解＋ `enigma{9,13,19}plus`＝ΔE 床＋罠探索の拡張・13路実対局で E/手 1.37→1.97） |
 | `2026-08-25-enigma-locality-design.md` | 🟢 難解 13/19路の局所性オプション（own_rare の局所化＋同点帯タイブレーク・実装済み・13路実測あり（推奨 σ3・既定 OFF）・19路未校正） |
 | `2026-05-23-maze-strategy-9x9-design.md` | ⛔ **未実装**（`MazeStrategy` はコードに無い） |
 | `2026-05-24-ko-strategy-design.md` | ⛔ **未実装**（`KoStrategy` はコードに無い） |
