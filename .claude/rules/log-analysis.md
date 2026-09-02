@@ -22,7 +22,7 @@ C:\Users\iwaki\.katrain\logs\\
 
 **`debug_level` 0 でも作られる**（0 は INFO 行のみ、1 でエンジンのクエリまで）。戦略の判定ログ（`[Parity9Strategy]` `[Enigma9Strategy]` `[HumanStyleStrategy]` 等）は**OUTPUT_DEBUG なので `debug_level` 1 が必要**。
 
-**保持数は種別ごとに独立**（詰碁30本・対局10本＝`base_katrain.KaTrainBase.LOG_KINDS`）で古い順に自動削除。20手未満の対局ログは無効試合として削除される。ただし**回答帳に記録した問題のログは保護されて削除されない**（`keep_current_log` が `<ログ名>.log.keep` を隣に置き、ローテーションは保護済みを本数からも除外する）。実測 2026-08-21: 詰碁ログ629本のうち599本が `.keep` 付き＝未保護はちょうど30本。
+**保持数は種別ごとに独立**（詰碁30本・対局40本＝`base_katrain.KaTrainBase.LOG_KINDS`）で古い順に自動削除。20手未満の対局ログは無効試合として削除される。ただし**回答帳に記録した問題のログは保護されて削除されない**（`keep_current_log` が `<ログ名>.log.keep` を隣に置き、ローテーションは保護済みを本数からも除外する）。実測 2026-08-21: 詰碁ログ629本のうち599本が `.keep` 付き＝未保護はちょうど30本。
 
 **30日より古い詰碁ログは `logs/archive/tsumego_YYYYMM.zip` へ自動で畳まれる**（`katrain/core/log_archive.py`＝`base_katrain._maybe_archive_logs` が起動後の最初のログ生成時に1セッション1回・別スレッドで走る）。保護ログは捨てられない（どれも詰碁モードの改善に使う）が放置すると年 4GB ペースで増えるため、容量とファイル数だけ抑える措置。`.keep` も同じ zip に入り、**zip に入ったことを確かめてからでないと元を消さない**（例外なしで書けても実在とサイズを検証する）。
 
