@@ -1,0 +1,3686 @@
+{
+ "sgf": "c:/Users/iwaki/Documents/katrain-1.17.1.1/katrain-1.17.1.1/docs/superpowers/specs/calibration-data/enigma9/enigma13-vs-human-20260823-white.sgf",
+ "config": "C:/Users/iwaki/.katrain/config.json",
+ "results": [
+  {
+   "move_num": 2,
+   "chosen": "C4",
+   "best": "D4",
+   "deviated": true,
+   "cands": {
+    "D4": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "56.7%",
+     "E": 0.01,
+     "cov": 1.0,
+     "find_hp": 0.248,
+     "own_hp": 0.48,
+     "prox": 1.0,
+     "reply": "C3",
+     "net": 0.02
+    },
+    "D11": {
+     "vloss": 0.06,
+     "raw": 0.08,
+     "wr": "55.0%",
+     "E": 0.13,
+     "cov": 0.99,
+     "find_hp": 0.226,
+     "own_hp": 0.084,
+     "prox": 0.13,
+     "reply": "K4",
+     "net": 0.24
+    },
+    "L4": {
+     "vloss": 0.03,
+     "raw": 0.08,
+     "wr": "56.0%",
+     "E": 0.08,
+     "cov": 1.0,
+     "find_hp": 0.236,
+     "own_hp": 0.068,
+     "prox": 0.13,
+     "reply": "C4",
+     "net": 0.19
+    },
+    "C10": {
+     "vloss": 0.08,
+     "raw": 0.08,
+     "wr": "54.1%",
+     "E": 0.08,
+     "cov": 0.99,
+     "find_hp": 0.282,
+     "own_hp": 0.013,
+     "prox": 0.13,
+     "reply": "K3",
+     "net": 0.11
+    },
+    "K3": {
+     "vloss": 0.02,
+     "raw": 0.08,
+     "wr": "55.2%",
+     "E": 0.08,
+     "cov": 1.0,
+     "find_hp": 0.25,
+     "own_hp": 0.013,
+     "prox": 0.13,
+     "reply": "C10",
+     "net": 0.18
+    },
+    "D10": {
+     "vloss": 0.1,
+     "raw": 0.09,
+     "wr": "53.3%",
+     "E": 0.09,
+     "cov": 0.99,
+     "find_hp": 0.271,
+     "own_hp": 0.086,
+     "prox": 0.14,
+     "reply": "D4",
+     "net": 0.08
+    },
+    "K4": {
+     "vloss": 0.12,
+     "raw": 0.09,
+     "wr": "53.4%",
+     "E": 0.11,
+     "cov": 0.99,
+     "find_hp": 0.262,
+     "own_hp": 0.104,
+     "prox": 0.14,
+     "reply": "D4",
+     "net": 0.07
+    },
+    "C4": {
+     "vloss": 0.15,
+     "raw": 0.12,
+     "wr": "51.5%",
+     "E": 0.05,
+     "cov": 0.99,
+     "find_hp": 0.259,
+     "own_hp": 0.038,
+     "prox": 0.95,
+     "reply": "L3",
+     "net": 0.7
+    }
+   },
+   "secs": 1.04,
+   "explanation": "Enigma13: deviated to C4 (verified loss 0.15, expected punish 0.05, reply findability 25.9%, own hp 3.8%, wr 51.5%) instead of D4 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Pool: cap=1.60 min_wr=30% admissible=56 (trusted=10, of 161, searched>=1: 161)"
+   ]
+  },
+  {
+   "move_num": 4,
+   "chosen": "C9",
+   "best": "C10",
+   "deviated": true,
+   "cands": {
+    "C10": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "62.0%",
+     "E": 0.21,
+     "cov": 0.98,
+     "find_hp": 0.461,
+     "own_hp": 0.319,
+     "prox": 1.0,
+     "reply": "K4",
+     "net": 0.21
+    },
+    "D10": {
+     "vloss": 0.15,
+     "raw": 0.12,
+     "wr": "59.8%",
+     "E": 0.04,
+     "cov": 0.94,
+     "find_hp": 0.647,
+     "own_hp": 0.142,
+     "prox": 0.95,
+     "reply": "L5",
+     "net": 0.3
+    },
+    "D11": {
+     "vloss": 0.3,
+     "raw": 0.23,
+     "wr": "56.6%",
+     "E": 0.05,
+     "cov": 0.99,
+     "find_hp": 0.467,
+     "own_hp": 0.335,
+     "prox": 0.89,
+     "reply": "C9",
+     "net": -0.25
+    },
+    "C11": {
+     "vloss": 0.44,
+     "raw": 0.33,
+     "wr": "53.1%",
+     "E": 0.05,
+     "cov": 0.98,
+     "find_hp": 0.822,
+     "own_hp": 0.171,
+     "prox": 0.95,
+     "reply": "L5",
+     "net": -0.1
+    },
+    "D4": {
+     "vloss": 0.34,
+     "raw": 0.44,
+     "wr": "56.2%",
+     "E": 0.0,
+     "cov": 1.0,
+     "find_hp": 0.619,
+     "own_hp": 0.004,
+     "prox": 0.89,
+     "reply": "D3",
+     "net": 0.55
+    },
+    "K11": {
+     "vloss": 0.5,
+     "raw": 0.44,
+     "wr": "51.2%",
+     "E": 0.07,
+     "cov": 0.99,
+     "find_hp": 0.673,
+     "own_hp": 0.0,
+     "prox": 0.06,
+     "reply": "K4",
+     "net": -0.37
+    },
+    "L11": {
+     "vloss": 0.56,
+     "raw": 0.33,
+     "wr": "50.4%",
+     "E": 0.17,
+     "cov": 0.97,
+     "find_hp": 0.524,
+     "own_hp": 0.017,
+     "prox": 0.03,
+     "reply": "K11",
+     "net": -0.36
+    },
+    "C9": {
+     "vloss": 0.54,
+     "raw": 0.57,
+     "wr": "50.6%",
+     "E": 0.11,
+     "cov": 0.99,
+     "find_hp": 0.369,
+     "own_hp": 0.001,
+     "prox": 0.95,
+     "reply": "C11",
+     "net": 0.51
+    }
+   },
+   "secs": 1.28,
+   "explanation": "Enigma13: deviated to C9 (verified loss 0.54, expected punish 0.11, reply findability 36.9%, own hp 0.1%, wr 50.6%) instead of C10 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Pool: cap=1.60 min_wr=30% admissible=44 (trusted=4, of 63, searched>=1: 63)"
+   ]
+  },
+  {
+   "move_num": 6,
+   "chosen": "C11",
+   "best": "C10",
+   "deviated": true,
+   "cands": {
+    "C10": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "56.1%",
+     "E": 0.11,
+     "cov": 0.63,
+     "find_hp": 0.378,
+     "own_hp": 0.278,
+     "prox": 1.0,
+     "reply": "E10",
+     "net": 0.11
+    },
+    "D10": {
+     "vloss": 0.06,
+     "raw": 0.06,
+     "wr": "56.3%",
+     "E": 0.03,
+     "cov": 0.88,
+     "find_hp": 0.618,
+     "own_hp": 0.358,
+     "prox": 0.95,
+     "reply": "L5",
+     "net": -0.04
+    },
+    "D11": {
+     "vloss": 0.19,
+     "raw": 0.22,
+     "wr": "52.0%",
+     "E": 0.03,
+     "cov": 0.95,
+     "find_hp": 0.391,
+     "own_hp": 0.248,
+     "prox": 0.89,
+     "reply": "C9",
+     "net": -0.15
+    },
+    "E4": {
+     "vloss": 0.2,
+     "raw": 0.27,
+     "wr": "52.1%",
+     "E": 0.11,
+     "cov": 1.0,
+     "find_hp": 0.465,
+     "own_hp": 0.025,
+     "prox": 0.89,
+     "reply": "K4",
+     "net": 0.71
+    },
+    "L11": {
+     "vloss": 0.42,
+     "raw": 0.32,
+     "wr": "47.9%",
+     "E": 0.16,
+     "cov": 0.99,
+     "find_hp": 0.477,
+     "own_hp": 0.012,
+     "prox": 0.03,
+     "reply": "K11",
+     "net": -0.23
+    },
+    "C11": {
+     "vloss": 0.34,
+     "raw": 0.39,
+     "wr": "49.4%",
+     "E": 0.07,
+     "cov": 0.98,
+     "find_hp": 0.727,
+     "own_hp": 0.065,
+     "prox": 0.95,
+     "reply": "L5",
+     "net": 0.43
+    },
+    "K11": {
+     "vloss": 0.43,
+     "raw": 0.5,
+     "wr": "47.6%",
+     "E": 0.06,
+     "cov": 0.99,
+     "find_hp": 0.709,
+     "own_hp": 0.0,
+     "prox": 0.06,
+     "reply": "L11",
+     "net": -0.31
+    },
+    "L10": {
+     "vloss": 0.81,
+     "raw": 0.7,
+     "wr": "40.3%",
+     "E": 0.17,
+     "cov": 1.0,
+     "find_hp": 0.628,
+     "own_hp": 0.0,
+     "prox": 0.03,
+     "reply": "L11",
+     "net": -0.61
+    }
+   },
+   "secs": 1.25,
+   "explanation": "Enigma13: deviated to C11 (verified loss 0.34, expected punish 0.07, reply findability 72.7%, own hp 6.5%, wr 49.4%) instead of C10 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Pool: cap=1.60 min_wr=30% admissible=31 (trusted=3, of 67, searched>=1: 67)"
+   ]
+  },
+  {
+   "move_num": 8,
+   "chosen": "F3",
+   "best": "D10",
+   "deviated": true,
+   "cands": {
+    "D10": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "55.7%",
+     "E": 0.1,
+     "cov": 0.92,
+     "find_hp": 0.466,
+     "own_hp": 0.376,
+     "prox": 1.0,
+     "reply": "L5",
+     "net": 0.1
+    },
+    "C10": {
+     "vloss": 0.02,
+     "raw": 0.05,
+     "wr": "54.3%",
+     "E": 0.12,
+     "cov": 0.74,
+     "find_hp": 0.245,
+     "own_hp": 0.154,
+     "prox": 0.95,
+     "reply": "E10",
+     "net": 0.48
+    },
+    "D11": {
+     "vloss": 0.15,
+     "raw": 0.16,
+     "wr": "51.4%",
+     "E": 0.15,
+     "cov": 0.99,
+     "find_hp": 0.365,
+     "own_hp": 0.153,
+     "prox": 0.95,
+     "reply": "D9",
+     "net": 0.37
+    },
+    "C11": {
+     "vloss": 0.17,
+     "raw": 0.32,
+     "wr": "51.1%",
+     "E": 0.03,
+     "cov": 0.98,
+     "find_hp": 0.492,
+     "own_hp": 0.039,
+     "prox": 0.89,
+     "reply": "L5",
+     "net": 0.61
+    },
+    "L11": {
+     "vloss": 0.25,
+     "raw": 0.26,
+     "wr": "49.8%",
+     "E": 0.11,
+     "cov": 1.0,
+     "find_hp": 0.48,
+     "own_hp": 0.015,
+     "prox": 0.06,
+     "reply": "K11",
+     "net": -0.08
+    },
+    "C9": {
+     "vloss": 0.34,
+     "raw": 0.42,
+     "wr": "48.2%",
+     "E": 0.17,
+     "cov": 0.98,
+     "find_hp": 0.231,
+     "own_hp": 0.004,
+     "prox": 0.89,
+     "reply": "C11",
+     "net": 0.79
+    },
+    "F3": {
+     "vloss": 0.4,
+     "raw": 0.43,
+     "wr": "45.6%",
+     "E": 0.21,
+     "cov": 1.0,
+     "find_hp": 0.452,
+     "own_hp": 0.054,
+     "prox": 0.95,
+     "reply": "D11",
+     "net": 0.55
+    },
+    "K11": {
+     "vloss": 0.45,
+     "raw": 0.45,
+     "wr": "46.1%",
+     "E": 0.05,
+     "cov": 1.0,
+     "find_hp": 0.805,
+     "own_hp": 0.001,
+     "prox": 0.13,
+     "reply": "L11",
+     "net": -0.27
+    }
+   },
+   "secs": 1.25,
+   "explanation": "Enigma13: deviated to F3 (verified loss 0.40, expected punish 0.21, reply findability 45.2%, own hp 5.4%, wr 45.6%) instead of D10 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Pool: cap=1.60 min_wr=30% admissible=30 (trusted=2, of 62, searched>=1: 62)"
+   ]
+  },
+  {
+   "move_num": 10,
+   "chosen": "C4",
+   "best": "E10",
+   "deviated": true,
+   "cands": {
+    "E10": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "49.7%",
+     "E": 0.03,
+     "cov": 0.99,
+     "find_hp": 0.777,
+     "own_hp": 0.469,
+     "prox": 1.0,
+     "reply": "E11",
+     "net": 0.03
+    },
+    "C4": {
+     "vloss": 0.2,
+     "raw": 0.16,
+     "wr": "46.2%",
+     "E": 0.31,
+     "cov": 0.99,
+     "find_hp": 0.067,
+     "own_hp": 0.23,
+     "prox": 0.11,
+     "reply": "D9",
+     "net": 0.85
+    },
+    "L11": {
+     "vloss": 0.18,
+     "raw": 0.16,
+     "wr": "46.1%",
+     "E": 0.08,
+     "cov": 0.99,
+     "find_hp": 0.789,
+     "own_hp": 0.136,
+     "prox": 0.13,
+     "reply": "K11",
+     "net": -0.04
+    },
+    "L8": {
+     "vloss": 0.15,
+     "raw": 0.2,
+     "wr": "46.2%",
+     "E": 0.11,
+     "cov": 0.96,
+     "find_hp": 0.292,
+     "own_hp": 0.049,
+     "prox": 0.11,
+     "reply": "F4",
+     "net": 0.05
+    },
+    "L7": {
+     "vloss": 0.43,
+     "raw": 0.61,
+     "wr": "40.9%",
+     "E": 0.14,
+     "cov": 0.97,
+     "find_hp": 0.257,
+     "own_hp": 0.0,
+     "prox": 0.08,
+     "reply": "L9",
+     "net": -0.2
+    },
+    "K11": {
+     "vloss": 0.71,
+     "raw": 0.78,
+     "wr": "35.5%",
+     "E": 0.04,
+     "cov": 0.91,
+     "find_hp": 0.88,
+     "own_hp": 0.077,
+     "prox": 0.24,
+     "reply": "L4",
+     "net": -0.54
+    },
+    "L10": {
+     "vloss": 0.76,
+     "raw": 0.57,
+     "wr": "35.3%",
+     "E": 0.2,
+     "cov": 1.0,
+     "find_hp": 0.706,
+     "own_hp": 0.001,
+     "prox": 0.14,
+     "reply": "L11",
+     "net": -0.43
+    },
+    "K8": {
+     "vloss": 0.42,
+     "raw": 0.66,
+     "wr": "41.1%",
+     "E": 0.14,
+     "cov": 0.98,
+     "find_hp": 0.521,
+     "own_hp": 0.0,
+     "prox": 0.2,
+     "reply": "F4",
+     "net": -0.08
+    }
+   },
+   "secs": 1.25,
+   "explanation": "Enigma13: deviated to C4 (verified loss 0.20, expected punish 0.31, reply findability 6.7%, own hp 23.0%, wr 46.2%) instead of E10 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Pool: cap=1.60 min_wr=30% admissible=29 (trusted=3, of 59, searched>=1: 59)"
+   ]
+  },
+  {
+   "move_num": 12,
+   "chosen": "D10",
+   "best": "E10",
+   "deviated": true,
+   "cands": {
+    "E10": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "53.4%",
+     "E": 0.03,
+     "cov": 0.94,
+     "find_hp": 0.497,
+     "own_hp": 0.447,
+     "prox": 1.0,
+     "reply": "C10",
+     "net": 0.03
+    },
+    "L11": {
+     "vloss": 0.13,
+     "raw": 0.13,
+     "wr": "50.4%",
+     "E": 0.07,
+     "cov": 0.99,
+     "find_hp": 0.705,
+     "own_hp": 0.055,
+     "prox": 0.13,
+     "reply": "K11",
+     "net": 0.04
+    },
+    "F5": {
+     "vloss": 0.36,
+     "raw": 0.15,
+     "wr": "46.1%",
+     "E": 0.18,
+     "cov": 1.0,
+     "find_hp": 0.51,
+     "own_hp": 0.344,
+     "prox": 0.95,
+     "reply": "G5",
+     "net": -0.18
+    },
+    "B3": {
+     "vloss": 0.3,
+     "raw": 0.29,
+     "wr": "47.1%",
+     "E": 0.14,
+     "cov": 1.0,
+     "find_hp": 0.781,
+     "own_hp": 0.079,
+     "prox": 0.39,
+     "reply": "G3",
+     "net": 0.11
+    },
+    "L8": {
+     "vloss": 0.23,
+     "raw": 0.47,
+     "wr": "47.8%",
+     "E": 0.26,
+     "cov": 0.95,
+     "find_hp": 0.176,
+     "own_hp": 0.014,
+     "prox": 0.11,
+     "reply": "D9",
+     "net": 0.44
+    },
+    "K11": {
+     "vloss": 0.56,
+     "raw": 0.52,
+     "wr": "41.5%",
+     "E": 0.04,
+     "cov": 0.99,
+     "find_hp": 0.879,
+     "own_hp": 0.013,
+     "prox": 0.24,
+     "reply": "L11",
+     "net": -0.33
+    },
+    "G2": {
+     "vloss": 1.13,
+     "raw": 0.3,
+     "wr": "33.9%",
+     "E": 0.2,
+     "cov": 0.99,
+     "find_hp": 0.807,
+     "own_hp": 0.008,
+     "prox": 0.76,
+     "reply": "G3",
+     "net": -0.2
+    },
+    "D10": {
+     "vloss": 0.68,
+     "raw": 0.36,
+     "wr": "37.9%",
+     "E": 0.37,
+     "cov": 1.0,
+     "find_hp": 0.203,
+     "own_hp": 0.0,
+     "prox": 0.95,
+     "reply": "C11",
+     "net": 0.83
+    }
+   },
+   "secs": 1.25,
+   "explanation": "Enigma13: deviated to D10 (verified loss 0.68, expected punish 0.37, reply findability 20.3%, own hp 0.0%, wr 37.9%) instead of E10 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Pool: cap=1.60 min_wr=30% admissible=38 (trusted=3, of 43, searched>=1: 43)"
+   ]
+  },
+  {
+   "move_num": 14,
+   "chosen": "D7",
+   "best": "E10",
+   "deviated": true,
+   "cands": {
+    "E10": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "47.7%",
+     "E": 0.09,
+     "cov": 0.94,
+     "find_hp": 0.497,
+     "own_hp": 0.245,
+     "prox": 1.0,
+     "reply": "E11",
+     "net": 0.11
+    },
+    "C6": {
+     "vloss": 0.03,
+     "raw": 0.1,
+     "wr": "46.5%",
+     "E": 0.16,
+     "cov": 0.99,
+     "find_hp": 0.415,
+     "own_hp": 0.062,
+     "prox": 0.57,
+     "reply": "J2",
+     "net": 0.56
+    },
+    "D6": {
+     "vloss": 0.22,
+     "raw": 0.14,
+     "wr": "42.8%",
+     "E": 0.26,
+     "cov": 0.95,
+     "find_hp": 0.428,
+     "own_hp": 0.12,
+     "prox": 0.76,
+     "reply": "D9",
+     "net": 0.43
+    },
+    "C7": {
+     "vloss": 0.14,
+     "raw": 0.15,
+     "wr": "44.5%",
+     "E": 0.08,
+     "cov": 0.96,
+     "find_hp": 0.414,
+     "own_hp": 0.018,
+     "prox": 0.49,
+     "reply": "L5",
+     "net": 0.4
+    },
+    "D7": {
+     "vloss": 0.54,
+     "raw": 0.19,
+     "wr": "38.5%",
+     "E": 0.65,
+     "cov": 0.97,
+     "find_hp": 0.016,
+     "own_hp": 0.045,
+     "prox": 0.64,
+     "reply": "C6",
+     "net": 1.57
+    },
+    "B5": {
+     "vloss": 0.26,
+     "raw": 0.23,
+     "wr": "42.7%",
+     "E": 0.19,
+     "cov": 0.97,
+     "find_hp": 0.285,
+     "own_hp": 0.129,
+     "prox": 0.41,
+     "reply": "K5",
+     "net": 0.13
+    },
+    "G3": {
+     "vloss": 0.23,
+     "raw": 0.24,
+     "wr": "44.1%",
+     "E": 0.32,
+     "cov": 0.99,
+     "find_hp": 0.188,
+     "own_hp": 0.08,
+     "prox": 0.76,
+     "reply": "D6",
+     "net": 0.85
+    },
+    "B3": {
+     "vloss": 0.34,
+     "raw": 0.37,
+     "wr": "40.7%",
+     "E": 0.13,
+     "cov": 0.34,
+     "find_hp": 0.099,
+     "own_hp": 0.235,
+     "prox": 0.33,
+     "reply": "H3",
+     "net": 0.41
+    }
+   },
+   "secs": 1.23,
+   "explanation": "Enigma13: deviated to D7 (verified loss 0.54, expected punish 0.65, reply findability 1.6%, own hp 4.5%, wr 38.5%) instead of E10 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Pool: cap=1.60 min_wr=30% admissible=20 (trusted=7, of 45, searched>=1: 45)"
+   ]
+  },
+  {
+   "move_num": 16,
+   "chosen": "C6",
+   "best": "C6",
+   "deviated": false,
+   "cands": {
+    "C6": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "56.1%",
+     "E": 0.11,
+     "cov": 0.93,
+     "find_hp": 0.768,
+     "own_hp": 0.875,
+     "prox": 1.0,
+     "reply": "K5",
+     "net": 0.11
+    }
+   },
+   "secs": 0.38,
+   "explanation": "Enigma13: best move is also the most confusing in budget, playing it.",
+   "notes": [
+    "[Enigma13Strategy] Pool: cap=1.60 min_wr=30% admissible=1 (trusted=1, of 119, searched>=1: 119)",
+    "[Enigma13Strategy] Drop E6: verified loss 1.70 > cap 1.60 (raw 1.34, v11)",
+    "[Enigma13Strategy] Best move wins the confusion race -> best move"
+   ]
+  },
+  {
+   "move_num": 18,
+   "chosen": "G3",
+   "best": "G3",
+   "deviated": false,
+   "cands": {
+    "G3": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "80.5%",
+     "E": 1.04,
+     "cov": 0.95,
+     "find_hp": 0.08,
+     "own_hp": 0.034,
+     "prox": 1.0,
+     "reply": "H4",
+     "net": 2.58
+    },
+    "E10": {
+     "vloss": 0.05,
+     "raw": 0.11,
+     "wr": "79.8%",
+     "E": 0.33,
+     "cov": 0.89,
+     "find_hp": 0.729,
+     "own_hp": 0.142,
+     "prox": 0.41,
+     "reply": "L5",
+     "net": 0.46
+    },
+    "L11": {
+     "vloss": 0.28,
+     "raw": 0.35,
+     "wr": "79.0%",
+     "E": 0.76,
+     "cov": 0.97,
+     "find_hp": 0.259,
+     "own_hp": 0.048,
+     "prox": 0.03,
+     "reply": "L10",
+     "net": 0.5
+    },
+    "B5": {
+     "vloss": 0.6,
+     "raw": 0.46,
+     "wr": "77.5%",
+     "E": 0.4,
+     "cov": 0.91,
+     "find_hp": 0.384,
+     "own_hp": 0.475,
+     "prox": 0.57,
+     "reply": "C10",
+     "net": -0.2
+    },
+    "K5": {
+     "vloss": 0.54,
+     "raw": 0.47,
+     "wr": "76.8%",
+     "E": 0.58,
+     "cov": 0.98,
+     "find_hp": 0.307,
+     "own_hp": 0.018,
+     "prox": 0.49,
+     "reply": "L9",
+     "net": 0.49
+    },
+    "K11": {
+     "vloss": 1.3,
+     "raw": 0.96,
+     "wr": "65.9%",
+     "E": 0.48,
+     "cov": 0.99,
+     "find_hp": 0.688,
+     "own_hp": 0.0,
+     "prox": 0.06,
+     "reply": "L11",
+     "net": -0.76
+    },
+    "B3": {
+     "vloss": 1.11,
+     "raw": 0.97,
+     "wr": "68.6%",
+     "E": 0.92,
+     "cov": 0.63,
+     "find_hp": 0.102,
+     "own_hp": 0.118,
+     "prox": 0.37,
+     "reply": "L5",
+     "net": 0.59
+    },
+    "J9": {
+     "vloss": 0.95,
+     "raw": 1.02,
+     "wr": "69.8%",
+     "E": 0.47,
+     "cov": 0.99,
+     "find_hp": 0.241,
+     "own_hp": 0.001,
+     "prox": 0.25,
+     "reply": "H11",
+     "net": -0.19
+    }
+   },
+   "secs": 0.98,
+   "explanation": "Enigma13: best move is also the most confusing in budget, playing it.",
+   "notes": [
+    "[Enigma13Strategy] Pool: cap=1.60 min_wr=30% admissible=25 (trusted=9, of 39, searched>=1: 39)",
+    "[Enigma13Strategy] Best move wins the confusion race -> best move"
+   ]
+  },
+  {
+   "move_num": 20,
+   "chosen": "C5",
+   "best": "C5",
+   "deviated": false,
+   "cands": {},
+   "secs": 0.0,
+   "explanation": "Enigma13: no admissible deviation (cap 3.72), playing best move.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=5.22 budget=3.72 cap=3.72 cost_weight=0.43",
+    "[Enigma13Strategy] Pool: cap=3.72 min_wr=30% admissible=0 (trusted=0, of 151, searched>=1: 151)"
+   ]
+  },
+  {
+   "move_num": 22,
+   "chosen": "C5",
+   "best": "C5",
+   "deviated": false,
+   "cands": {},
+   "secs": 0.0,
+   "explanation": "Enigma13: no admissible deviation (cap 3.53), playing best move.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=5.03 budget=3.53 cap=3.53 cost_weight=0.45",
+    "[Enigma13Strategy] Pool: cap=3.53 min_wr=30% admissible=0 (trusted=0, of 149, searched>=1: 149)"
+   ]
+  },
+  {
+   "move_num": 24,
+   "chosen": "G3",
+   "best": "D10",
+   "deviated": true,
+   "cands": {
+    "D10": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "96.6%",
+     "E": 0.19,
+     "cov": 1.0,
+     "find_hp": 0.925,
+     "own_hp": 0.489,
+     "prox": 1.0,
+     "reply": "C10",
+     "net": 0.19
+    },
+    "B10": {
+     "vloss": 0.85,
+     "raw": 1.5,
+     "wr": "97.6%",
+     "E": 0.26,
+     "cov": 0.99,
+     "find_hp": 0.584,
+     "own_hp": 0.158,
+     "prox": 0.8,
+     "reply": "D10",
+     "net": 0.29
+    },
+    "C8": {
+     "vloss": 1.31,
+     "raw": 1.64,
+     "wr": "94.8%",
+     "E": 0.42,
+     "cov": 0.96,
+     "find_hp": 0.268,
+     "own_hp": 0.071,
+     "prox": 0.89,
+     "reply": "J3",
+     "net": 0.66
+    },
+    "C10": {
+     "vloss": 1.41,
+     "raw": 2.0,
+     "wr": "95.5%",
+     "E": 0.08,
+     "cov": 0.99,
+     "find_hp": 0.968,
+     "own_hp": 0.161,
+     "prox": 0.95,
+     "reply": "D10",
+     "net": -0.28
+    },
+    "D8": {
+     "vloss": 2.09,
+     "raw": 2.36,
+     "wr": "93.4%",
+     "E": 0.35,
+     "cov": 0.97,
+     "find_hp": 0.821,
+     "own_hp": 0.105,
+     "prox": 0.95,
+     "reply": "C10",
+     "net": 0.26
+    },
+    "B9": {
+     "vloss": 2.88,
+     "raw": 2.97,
+     "wr": "91.4%",
+     "E": 0.8,
+     "cov": 0.92,
+     "find_hp": 0.356,
+     "own_hp": 0.002,
+     "prox": 0.8,
+     "reply": "D10",
+     "net": 0.71
+    },
+    "G3": {
+     "vloss": 1.68,
+     "raw": 3.34,
+     "wr": "84.6%",
+     "E": 1.17,
+     "cov": 0.99,
+     "find_hp": 0.094,
+     "own_hp": 0.005,
+     "prox": 0.08,
+     "reply": "C10",
+     "net": 1.36
+    },
+    "B8": {
+     "vloss": 3.74,
+     "raw": 4.11,
+     "wr": "86.0%",
+     "E": 1.36,
+     "cov": 0.93,
+     "find_hp": 0.392,
+     "own_hp": 0.003,
+     "prox": 0.76,
+     "reply": "D10",
+     "net": 0.96
+    }
+   },
+   "secs": 1.11,
+   "explanation": "Enigma13: deviated to G3 (verified loss 1.68, expected punish 1.17, reply findability 9.4%, own hp 0.5%, wr 84.6%) instead of D10 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=6.72 budget=5.22 cap=5.22 cost_weight=0.31",
+    "[Enigma13Strategy] Pool: cap=5.22 min_wr=30% admissible=17 (trusted=5, of 96, searched>=1: 96)"
+   ]
+  },
+  {
+   "move_num": 26,
+   "chosen": "C7",
+   "best": "C7",
+   "deviated": false,
+   "cands": {},
+   "secs": 0.0,
+   "explanation": "Enigma13: no admissible deviation (cap 3.81), playing best move.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=5.31 budget=3.81 cap=3.81 cost_weight=0.42",
+    "[Enigma13Strategy] Pool: cap=3.81 min_wr=30% admissible=0 (trusted=0, of 90, searched>=1: 90)"
+   ]
+  },
+  {
+   "move_num": 28,
+   "chosen": "B3",
+   "best": "F3",
+   "deviated": true,
+   "cands": {
+    "F3": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.2%",
+     "E": 0.68,
+     "cov": 0.98,
+     "find_hp": 0.174,
+     "own_hp": 0.446,
+     "prox": 1.0,
+     "reply": "H4",
+     "net": 0.98
+    },
+    "D8": {
+     "vloss": -0.21,
+     "raw": 0.06,
+     "wr": "99.4%",
+     "E": 0.2,
+     "cov": 1.0,
+     "find_hp": 0.766,
+     "own_hp": 0.547,
+     "prox": 0.8,
+     "reply": "B9",
+     "net": 0.2
+    },
+    "D10": {
+     "vloss": 5.57,
+     "raw": 6.38,
+     "wr": "87.4%",
+     "E": 1.28,
+     "cov": 1.0,
+     "find_hp": 0.098,
+     "own_hp": 0.003,
+     "prox": 0.64,
+     "reply": "D8",
+     "net": 1.5
+    },
+    "B3": {
+     "vloss": 5.76,
+     "raw": 7.19,
+     "wr": "91.6%",
+     "E": 3.89,
+     "cov": 1.0,
+     "find_hp": 0.288,
+     "own_hp": 0.0,
+     "prox": 0.41,
+     "reply": "F3",
+     "net": 3.25
+    }
+   },
+   "secs": 0.6,
+   "explanation": "Enigma13: deviated to B3 (verified loss 5.76, expected punish 3.89, reply findability 28.8%, own hp 0.0%, wr 91.6%) instead of F3 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=10.24 budget=8.74 cap=8.00 cost_weight=0.18",
+    "[Enigma13Strategy] Pool: cap=8.00 min_wr=30% admissible=3 (trusted=1, of 143, searched>=1: 143)"
+   ]
+  },
+  {
+   "move_num": 30,
+   "chosen": "F3",
+   "best": "D8",
+   "deviated": true,
+   "cands": {
+    "D8": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.3%",
+     "E": 0.36,
+     "cov": 1.0,
+     "find_hp": 0.741,
+     "own_hp": 0.197,
+     "prox": 1.0,
+     "reply": "B9",
+     "net": 0.57
+    },
+    "F3": {
+     "vloss": 0.25,
+     "raw": 0.18,
+     "wr": "99.1%",
+     "E": 0.91,
+     "cov": 0.98,
+     "find_hp": 0.087,
+     "own_hp": 0.756,
+     "prox": 0.39,
+     "reply": "D8",
+     "net": 1.51
+    },
+    "D10": {
+     "vloss": 6.11,
+     "raw": 7.06,
+     "wr": "81.5%",
+     "E": 1.15,
+     "cov": 1.0,
+     "find_hp": 0.116,
+     "own_hp": 0.003,
+     "prox": 0.8,
+     "reply": "E9",
+     "net": 1.2
+    }
+   },
+   "secs": 0.33,
+   "explanation": "Enigma13: deviated to F3 (verified loss 0.25, expected punish 0.91, reply findability 8.7%, own hp 75.6%, wr 99.1%) instead of D8 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=9.14 budget=7.64 cap=7.64 cost_weight=0.21",
+    "[Enigma13Strategy] Pool: cap=7.64 min_wr=30% admissible=2 (trusted=1, of 129, searched>=1: 129)"
+   ]
+  },
+  {
+   "move_num": 32,
+   "chosen": "G8",
+   "best": "D8",
+   "deviated": true,
+   "cands": {
+    "D8": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.3%",
+     "E": 1.57,
+     "cov": 1.0,
+     "find_hp": 0.354,
+     "own_hp": 0.747,
+     "prox": 1.0,
+     "reply": "B9",
+     "net": 1.57
+    },
+    "B5": {
+     "vloss": 1.66,
+     "raw": 1.41,
+     "wr": "98.6%",
+     "E": 0.01,
+     "cov": 1.0,
+     "find_hp": 0.996,
+     "own_hp": 0.089,
+     "prox": 0.95,
+     "reply": "A3",
+     "net": -0.32
+    },
+    "F8": {
+     "vloss": 2.05,
+     "raw": 2.51,
+     "wr": "95.3%",
+     "E": 0.78,
+     "cov": 0.95,
+     "find_hp": 0.549,
+     "own_hp": 0.017,
+     "prox": 0.8,
+     "reply": "H4",
+     "net": 1.09
+    },
+    "E2": {
+     "vloss": 4.08,
+     "raw": 3.18,
+     "wr": "91.8%",
+     "E": 2.57,
+     "cov": 0.97,
+     "find_hp": 0.221,
+     "own_hp": 0.078,
+     "prox": 0.49,
+     "reply": "A3",
+     "net": 2.16
+    },
+    "F7": {
+     "vloss": 4.43,
+     "raw": 6.47,
+     "wr": "88.9%",
+     "E": 0.63,
+     "cov": 0.93,
+     "find_hp": 0.702,
+     "own_hp": 0.038,
+     "prox": 0.76,
+     "reply": "H4",
+     "net": 0.34
+    },
+    "E8": {
+     "vloss": 4.92,
+     "raw": 4.5,
+     "wr": "90.2%",
+     "E": 0.45,
+     "cov": 0.93,
+     "find_hp": 0.63,
+     "own_hp": 0.002,
+     "prox": 0.95,
+     "reply": "H4",
+     "net": 0.36
+    },
+    "G8": {
+     "vloss": 1.85,
+     "raw": 4.21,
+     "wr": "95.0%",
+     "E": 1.14,
+     "cov": 0.97,
+     "find_hp": 0.046,
+     "own_hp": 0.0,
+     "prox": 0.61,
+     "reply": "J3",
+     "net": 2.18
+    },
+    "E7": {
+     "vloss": 5.41,
+     "raw": 4.48,
+     "wr": "90.5%",
+     "E": 0.84,
+     "cov": 1.0,
+     "find_hp": 0.635,
+     "own_hp": 0.014,
+     "prox": 0.89,
+     "reply": "K8",
+     "net": 0.56
+    }
+   },
+   "secs": 1.36,
+   "explanation": "Enigma13: deviated to G8 (verified loss 1.85, expected punish 1.14, reply findability 4.6%, own hp 0.0%, wr 95.0%) instead of D8 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=9.15 budget=7.65 cap=7.65 cost_weight=0.21",
+    "[Enigma13Strategy] Pool: cap=7.65 min_wr=30% admissible=20 (trusted=3, of 29, searched>=1: 29)"
+   ]
+  },
+  {
+   "move_num": 34,
+   "chosen": "B7",
+   "best": "D8",
+   "deviated": true,
+   "cands": {
+    "D8": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "97.6%",
+     "E": 0.99,
+     "cov": 0.94,
+     "find_hp": 0.375,
+     "own_hp": 0.338,
+     "prox": 1.0,
+     "reply": "E9",
+     "net": 0.99
+    },
+    "B7": {
+     "vloss": -0.11,
+     "raw": 0.7,
+     "wr": "93.5%",
+     "E": 1.91,
+     "cov": 0.92,
+     "find_hp": 0.116,
+     "own_hp": 0.024,
+     "prox": 0.8,
+     "reply": "E9",
+     "net": 3.17
+    },
+    "C2": {
+     "vloss": 0.35,
+     "raw": 1.08,
+     "wr": "94.8%",
+     "E": 0.0,
+     "cov": 1.0,
+     "find_hp": 1.0,
+     "own_hp": 0.507,
+     "prox": 0.57,
+     "reply": "A3",
+     "net": -0.08
+    },
+    "E7": {
+     "vloss": 1.68,
+     "raw": 1.77,
+     "wr": "95.6%",
+     "E": 0.76,
+     "cov": 0.99,
+     "find_hp": 0.039,
+     "own_hp": 0.033,
+     "prox": 0.89,
+     "reply": "J4",
+     "net": 1.98
+    },
+    "D10": {
+     "vloss": 2.37,
+     "raw": 2.48,
+     "wr": "94.5%",
+     "E": 0.33,
+     "cov": 1.0,
+     "find_hp": 0.523,
+     "own_hp": 0.018,
+     "prox": 0.8,
+     "reply": "C10",
+     "net": 0.51
+    },
+    "E8": {
+     "vloss": 4.05,
+     "raw": 3.46,
+     "wr": "88.3%",
+     "E": 1.74,
+     "cov": 0.8,
+     "find_hp": 0.179,
+     "own_hp": 0.033,
+     "prox": 0.95,
+     "reply": "G8",
+     "net": 1.89
+    },
+    "E9": {
+     "vloss": 4.19,
+     "raw": 5.28,
+     "wr": "85.6%",
+     "E": 0.08,
+     "cov": 0.88,
+     "find_hp": 0.63,
+     "own_hp": 0.014,
+     "prox": 0.89,
+     "reply": "D10",
+     "net": -0.06
+    }
+   },
+   "secs": 0.95,
+   "explanation": "Enigma13: deviated to B7 (verified loss -0.11, expected punish 1.91, reply findability 11.6%, own hp 2.4%, wr 93.5%) instead of D8 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=8.28 budget=6.78 cap=6.78 cost_weight=0.24",
+    "[Enigma13Strategy] Pool: cap=6.78 min_wr=30% admissible=8 (trusted=6, of 120, searched>=1: 120)",
+    "[Enigma13Strategy] Drop F10: verified loss 7.49 > cap 6.78 (raw 5.83, v1)"
+   ]
+  },
+  {
+   "move_num": 36,
+   "chosen": "E7",
+   "best": "C2",
+   "deviated": true,
+   "cands": {
+    "C2": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "98.3%",
+     "E": 0.0,
+     "cov": 1.0,
+     "find_hp": 1.0,
+     "own_hp": 0.226,
+     "prox": 1.0,
+     "reply": "A3",
+     "net": 0.0
+    },
+    "D8": {
+     "vloss": 0.4,
+     "raw": 0.89,
+     "wr": "98.1%",
+     "E": 1.39,
+     "cov": 0.97,
+     "find_hp": 0.751,
+     "own_hp": 0.561,
+     "prox": 0.8,
+     "reply": "B9",
+     "net": 1.32
+    },
+    "F8": {
+     "vloss": 3.39,
+     "raw": 6.47,
+     "wr": "91.5%",
+     "E": 2.59,
+     "cov": 0.93,
+     "find_hp": 0.378,
+     "own_hp": 0.014,
+     "prox": 0.64,
+     "reply": "E7",
+     "net": 2.61
+    },
+    "E7": {
+     "vloss": 6.83,
+     "raw": 6.43,
+     "wr": "81.0%",
+     "E": 3.71,
+     "cov": 0.95,
+     "find_hp": 0.021,
+     "own_hp": 0.028,
+     "prox": 0.57,
+     "reply": "J4",
+     "net": 3.97
+    },
+    "E8": {
+     "vloss": 7.62,
+     "raw": 6.76,
+     "wr": "77.3%",
+     "E": 2.27,
+     "cov": 0.86,
+     "find_hp": 0.103,
+     "own_hp": 0.013,
+     "prox": 0.76,
+     "reply": "H4",
+     "net": 2.27
+    }
+   },
+   "secs": 0.67,
+   "explanation": "Enigma13: deviated to E7 (verified loss 6.83, expected punish 3.71, reply findability 2.1%, own hp 2.8%, wr 81.0%) instead of C2 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=10.83 budget=9.33 cap=8.00 cost_weight=0.17",
+    "[Enigma13Strategy] Pool: cap=8.00 min_wr=30% admissible=4 (trusted=2, of 93, searched>=1: 93)"
+   ]
+  },
+  {
+   "move_num": 38,
+   "chosen": "F8",
+   "best": "C2",
+   "deviated": true,
+   "cands": {
+    "C2": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "85.1%",
+     "E": 0.0,
+     "cov": 1.0,
+     "find_hp": 1.0,
+     "own_hp": 0.014,
+     "prox": 1.0,
+     "reply": "A3",
+     "net": 0.0
+    },
+    "F8": {
+     "vloss": 1.88,
+     "raw": 1.03,
+     "wr": "83.3%",
+     "E": 2.19,
+     "cov": 0.99,
+     "find_hp": 0.339,
+     "own_hp": 0.964,
+     "prox": 0.95,
+     "reply": "G8",
+     "net": 1.57
+    },
+    "D8": {
+     "vloss": 3.36,
+     "raw": 2.71,
+     "wr": "74.3%",
+     "E": 2.19,
+     "cov": 0.91,
+     "find_hp": 0.526,
+     "own_hp": 0.009,
+     "prox": 0.76,
+     "reply": "B9",
+     "net": 1.82
+    }
+   },
+   "secs": 0.17,
+   "explanation": "Enigma13: deviated to F8 (verified loss 1.88, expected punish 2.19, reply findability 33.9%, own hp 96.4%, wr 83.3%) instead of C2 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=6.38 budget=4.88 cap=4.88 cost_weight=0.33",
+    "[Enigma13Strategy] Pool: cap=4.88 min_wr=30% admissible=2 (trusted=2, of 124, searched>=1: 124)"
+   ]
+  },
+  {
+   "move_num": 40,
+   "chosen": "B10",
+   "best": "F8",
+   "deviated": true,
+   "cands": {
+    "F8": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "83.1%",
+     "E": 0.41,
+     "cov": 0.99,
+     "find_hp": 0.669,
+     "own_hp": 0.97,
+     "prox": 1.0,
+     "reply": "G8",
+     "net": 0.41
+    },
+    "C2": {
+     "vloss": -2.51,
+     "raw": 0.1,
+     "wr": "88.4%",
+     "E": 0.0,
+     "cov": 1.0,
+     "find_hp": 0.999,
+     "own_hp": 0.016,
+     "prox": 0.08,
+     "reply": "A3",
+     "net": 0.0
+    },
+    "B10": {
+     "vloss": 3.99,
+     "raw": 6.28,
+     "wr": "65.8%",
+     "E": 1.33,
+     "cov": 0.98,
+     "find_hp": 0.028,
+     "own_hp": 0.004,
+     "prox": 0.95,
+     "reply": "F8",
+     "net": 2.19
+    }
+   },
+   "secs": 0.3,
+   "explanation": "Enigma13: deviated to B10 (verified loss 3.99, expected punish 1.33, reply findability 2.8%, own hp 0.4%, wr 65.8%) instead of F8 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=8.12 budget=6.62 cap=6.62 cost_weight=0.24",
+    "[Enigma13Strategy] Pool: cap=6.62 min_wr=30% admissible=2 (trusted=2, of 50, searched>=1: 50)"
+   ]
+  },
+  {
+   "move_num": 42,
+   "chosen": "F8",
+   "best": "F8",
+   "deviated": false,
+   "cands": {
+    "F8": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "80.2%",
+     "E": 0.47,
+     "cov": 0.99,
+     "find_hp": 0.712,
+     "own_hp": 0.658,
+     "prox": 1.0,
+     "reply": "G8",
+     "net": 0.47
+    },
+    "C2": {
+     "vloss": -1.28,
+     "raw": 0.23,
+     "wr": "84.8%",
+     "E": 0.0,
+     "cov": 1.0,
+     "find_hp": 0.999,
+     "own_hp": 0.134,
+     "prox": 0.08,
+     "reply": "A3",
+     "net": 0.0
+    }
+   },
+   "secs": 0.06,
+   "explanation": "Enigma13: best move is also the most confusing in budget, playing it.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=7.24 budget=5.74 cap=5.74 cost_weight=0.28",
+    "[Enigma13Strategy] Pool: cap=5.74 min_wr=30% admissible=1 (trusted=1, of 84, searched>=1: 84)",
+    "[Enigma13Strategy] Best move wins the confusion race -> best move"
+   ]
+  },
+  {
+   "move_num": 44,
+   "chosen": "G8",
+   "best": "C2",
+   "deviated": true,
+   "cands": {
+    "C2": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "90.6%",
+     "E": 0.0,
+     "cov": 1.0,
+     "find_hp": 0.999,
+     "own_hp": 0.067,
+     "prox": 1.0,
+     "reply": "A3",
+     "net": 0.0
+    },
+    "G8": {
+     "vloss": 0.51,
+     "raw": 0.62,
+     "wr": "90.5%",
+     "E": 1.78,
+     "cov": 0.99,
+     "find_hp": 0.121,
+     "own_hp": 0.849,
+     "prox": 0.95,
+     "reply": "E9",
+     "net": 2.17
+    }
+   },
+   "secs": 0.07,
+   "explanation": "Enigma13: deviated to G8 (verified loss 0.51, expected punish 1.78, reply findability 12.1%, own hp 84.9%, wr 90.5%) instead of C2 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=8.03 budget=6.53 cap=6.53 cost_weight=0.25",
+    "[Enigma13Strategy] Pool: cap=6.53 min_wr=30% admissible=1 (trusted=1, of 53, searched>=1: 53)"
+   ]
+  },
+  {
+   "move_num": 46,
+   "chosen": "G8",
+   "best": "G8",
+   "deviated": false,
+   "cands": {
+    "G8": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "90.9%",
+     "E": 0.63,
+     "cov": 0.97,
+     "find_hp": 0.717,
+     "own_hp": 0.043,
+     "prox": 1.0,
+     "reply": "H8",
+     "net": 1.46
+    },
+    "D2": {
+     "vloss": -0.43,
+     "raw": -0.21,
+     "wr": "91.4%",
+     "E": 0.0,
+     "cov": 1.0,
+     "find_hp": 0.996,
+     "own_hp": 0.956,
+     "prox": 0.57,
+     "reply": "B3",
+     "net": 0.0
+    }
+   },
+   "secs": 0.05,
+   "explanation": "Enigma13: best move is also the most confusing in budget, playing it.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=9.87 budget=8.37 cap=8.00 cost_weight=0.19",
+    "[Enigma13Strategy] Pool: cap=8.00 min_wr=30% admissible=1 (trusted=1, of 24, searched>=1: 24)",
+    "[Enigma13Strategy] Best move wins the confusion race -> best move"
+   ]
+  },
+  {
+   "move_num": 48,
+   "chosen": "H7",
+   "best": "D2",
+   "deviated": true,
+   "cands": {
+    "D2": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "91.2%",
+     "E": 0.0,
+     "cov": 0.99,
+     "find_hp": 0.99,
+     "own_hp": 0.561,
+     "prox": 1.0,
+     "reply": "B3",
+     "net": 0.0
+    },
+    "H7": {
+     "vloss": 0.79,
+     "raw": 0.23,
+     "wr": "89.9%",
+     "E": 1.17,
+     "cov": 0.94,
+     "find_hp": 0.148,
+     "own_hp": 0.403,
+     "prox": 0.95,
+     "reply": "E9",
+     "net": 1.39
+    }
+   },
+   "secs": 0.05,
+   "explanation": "Enigma13: deviated to H7 (verified loss 0.79, expected punish 1.17, reply findability 14.8%, own hp 40.3%, wr 89.9%) instead of D2 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=8.31 budget=6.81 cap=6.81 cost_weight=0.23",
+    "[Enigma13Strategy] Pool: cap=6.81 min_wr=30% admissible=1 (trusted=1, of 32, searched>=1: 32)"
+   ]
+  },
+  {
+   "move_num": 50,
+   "chosen": "G4",
+   "best": "H9",
+   "deviated": true,
+   "cands": {
+    "H9": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.5%",
+     "E": 0.09,
+     "cov": 0.99,
+     "find_hp": 0.973,
+     "own_hp": 0.121,
+     "prox": 1.0,
+     "reply": "E9",
+     "net": 0.19
+    },
+    "D2": {
+     "vloss": -0.1,
+     "raw": 0.3,
+     "wr": "99.3%",
+     "E": 0.1,
+     "cov": 0.99,
+     "find_hp": 0.948,
+     "own_hp": 0.721,
+     "prox": 0.25,
+     "reply": "B3",
+     "net": 0.1
+    },
+    "H6": {
+     "vloss": 2.28,
+     "raw": 2.48,
+     "wr": "99.4%",
+     "E": 0.07,
+     "cov": 1.0,
+     "find_hp": 0.979,
+     "own_hp": 0.032,
+     "prox": 0.95,
+     "reply": "H5",
+     "net": -0.03
+    },
+    "G4": {
+     "vloss": 3.28,
+     "raw": 3.48,
+     "wr": "99.6%",
+     "E": 3.38,
+     "cov": 0.99,
+     "find_hp": 0.007,
+     "own_hp": 0.004,
+     "prox": 0.8,
+     "reply": "D2",
+     "net": 4.83
+    },
+    "J7": {
+     "vloss": 4.58,
+     "raw": 4.17,
+     "wr": "98.0%",
+     "E": 3.67,
+     "cov": 0.95,
+     "find_hp": 0.327,
+     "own_hp": 0.053,
+     "prox": 0.76,
+     "reply": "H9",
+     "net": 3.84
+    },
+    "G10": {
+     "vloss": 3.84,
+     "raw": 4.93,
+     "wr": "98.1%",
+     "E": 1.36,
+     "cov": 0.96,
+     "find_hp": 0.456,
+     "own_hp": 0.03,
+     "prox": 0.89,
+     "reply": "E9",
+     "net": 1.79
+    },
+    "G9": {
+     "vloss": 4.54,
+     "raw": 4.97,
+     "wr": "99.0%",
+     "E": 1.31,
+     "cov": 0.98,
+     "find_hp": 0.201,
+     "own_hp": 0.005,
+     "prox": 0.95,
+     "reply": "J4",
+     "net": 2.0
+    },
+    "H5": {
+     "vloss": 3.78,
+     "raw": 5.24,
+     "wr": "98.8%",
+     "E": 2.33,
+     "cov": 0.97,
+     "find_hp": 0.142,
+     "own_hp": 0.03,
+     "prox": 0.89,
+     "reply": "H9",
+     "net": 3.19
+    }
+   },
+   "secs": 0.81,
+   "explanation": "Enigma13: deviated to G4 (verified loss 3.28, expected punish 3.38, reply findability 0.7%, own hp 0.4%, wr 99.6%) instead of H9 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=18.41 budget=16.91 cap=8.00 cost_weight=0.09",
+    "[Enigma13Strategy] Pool: cap=8.00 min_wr=30% admissible=12 (trusted=11, of 51, searched>=1: 51)"
+   ]
+  },
+  {
+   "move_num": 52,
+   "chosen": "D2",
+   "best": "H6",
+   "deviated": true,
+   "cands": {
+    "H6": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.8%",
+     "E": 2.62,
+     "cov": 0.98,
+     "find_hp": 0.078,
+     "own_hp": 0.486,
+     "prox": 1.0,
+     "reply": "L9",
+     "net": 3.31
+    },
+    "D2": {
+     "vloss": 3.49,
+     "raw": 3.7,
+     "wr": "99.6%",
+     "E": 4.45,
+     "cov": 1.0,
+     "find_hp": 0.114,
+     "own_hp": 0.483,
+     "prox": 0.17,
+     "reply": "J6",
+     "net": 4.61
+    },
+    "J7": {
+     "vloss": 4.78,
+     "raw": 4.71,
+     "wr": "99.4%",
+     "E": 2.59,
+     "cov": 0.98,
+     "find_hp": 0.291,
+     "own_hp": 0.021,
+     "prox": 0.89,
+     "reply": "E9",
+     "net": 2.88
+    },
+    "J6": {
+     "vloss": 7.38,
+     "raw": 7.27,
+     "wr": "99.1%",
+     "E": 2.96,
+     "cov": 0.97,
+     "find_hp": 0.238,
+     "own_hp": 0.0,
+     "prox": 0.95,
+     "reply": "E9",
+     "net": 3.14
+    }
+   },
+   "secs": 0.53,
+   "explanation": "Enigma13: deviated to D2 (verified loss 3.49, expected punish 4.45, reply findability 11.4%, own hp 48.3%, wr 99.6%) instead of H6 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=16.14 budget=14.64 cap=8.00 cost_weight=0.11",
+    "[Enigma13Strategy] Pool: cap=8.00 min_wr=30% admissible=3 (trusted=3, of 84, searched>=1: 84)"
+   ]
+  },
+  {
+   "move_num": 54,
+   "chosen": "J7",
+   "best": "H6",
+   "deviated": true,
+   "cands": {
+    "H6": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.7%",
+     "E": 2.73,
+     "cov": 0.95,
+     "find_hp": 0.115,
+     "own_hp": 0.666,
+     "prox": 1.0,
+     "reply": "A7",
+     "net": 3.27
+    },
+    "J7": {
+     "vloss": 7.96,
+     "raw": 7.3,
+     "wr": "98.4%",
+     "E": 3.74,
+     "cov": 0.99,
+     "find_hp": 0.242,
+     "own_hp": 0.058,
+     "prox": 0.89,
+     "reply": "E9",
+     "net": 3.78
+    }
+   },
+   "secs": 0.28,
+   "explanation": "Enigma13: deviated to J7 (verified loss 7.96, expected punish 3.74, reply findability 24.2%, own hp 5.8%, wr 98.4%) instead of H6 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=20.22 budget=18.72 cap=8.00 cost_weight=0.09",
+    "[Enigma13Strategy] Pool: cap=8.00 min_wr=30% admissible=1 (trusted=1, of 61, searched>=1: 61)"
+   ]
+  },
+  {
+   "move_num": 56,
+   "chosen": "M11",
+   "best": "L11",
+   "deviated": true,
+   "cands": {
+    "L11": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.8%",
+     "E": 2.31,
+     "cov": 0.98,
+     "find_hp": 0.008,
+     "own_hp": 0.005,
+     "prox": 1.0,
+     "reply": "L3",
+     "net": 4.26
+    },
+    "L10": {
+     "vloss": 0.42,
+     "raw": 0.47,
+     "wr": "99.7%",
+     "E": 1.57,
+     "cov": 0.99,
+     "find_hp": 0.052,
+     "own_hp": 0.005,
+     "prox": 0.95,
+     "reply": "L9",
+     "net": 3.25
+    },
+    "M11": {
+     "vloss": 1.36,
+     "raw": 0.75,
+     "wr": "99.8%",
+     "E": 2.51,
+     "cov": 0.97,
+     "find_hp": 0.012,
+     "own_hp": 0.0,
+     "prox": 0.95,
+     "reply": "L3",
+     "net": 4.3
+    },
+    "M10": {
+     "vloss": 0.91,
+     "raw": 0.84,
+     "wr": "99.9%",
+     "E": 1.48,
+     "cov": 0.98,
+     "find_hp": 0.083,
+     "own_hp": 0.018,
+     "prox": 0.89,
+     "reply": "L11",
+     "net": 2.9
+    },
+    "K11": {
+     "vloss": 1.16,
+     "raw": 1.63,
+     "wr": "99.6%",
+     "E": 2.39,
+     "cov": 0.99,
+     "find_hp": 0.027,
+     "own_hp": 0.0,
+     "prox": 0.95,
+     "reply": "L9",
+     "net": 4.13
+    },
+    "M9": {
+     "vloss": 3.0,
+     "raw": 2.7,
+     "wr": "99.6%",
+     "E": 1.83,
+     "cov": 0.98,
+     "find_hp": 0.052,
+     "own_hp": 0.0,
+     "prox": 0.76,
+     "reply": "M11",
+     "net": 3.13
+    },
+    "A8": {
+     "vloss": 1.95,
+     "raw": 3.41,
+     "wr": "99.5%",
+     "E": 0.12,
+     "cov": 1.0,
+     "find_hp": 0.879,
+     "own_hp": 0.002,
+     "prox": 0.95,
+     "reply": "A9",
+     "net": 0.72
+    },
+    "G5": {
+     "vloss": 4.43,
+     "raw": 4.53,
+     "wr": "99.9%",
+     "E": 1.26,
+     "cov": 0.98,
+     "find_hp": 0.359,
+     "own_hp": 0.819,
+     "prox": 0.11,
+     "reply": "M9",
+     "net": 0.89
+    }
+   },
+   "secs": 0.99,
+   "explanation": "Enigma13: deviated to M11 (verified loss 1.36, expected punish 2.51, reply findability 1.2%, own hp 0.0%, wr 99.8%) instead of L11 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=20.64 budget=19.14 cap=8.00 cost_weight=0.08",
+    "[Enigma13Strategy] Pool: cap=8.00 min_wr=30% admissible=17 (trusted=11, of 35, searched>=1: 35)"
+   ]
+  },
+  {
+   "move_num": 58,
+   "chosen": "F10",
+   "best": "L11",
+   "deviated": true,
+   "cands": {
+    "L11": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.8%",
+     "E": 0.95,
+     "cov": 1.0,
+     "find_hp": 0.003,
+     "own_hp": 0.36,
+     "prox": 1.0,
+     "reply": "J7",
+     "net": 1.94
+    },
+    "L10": {
+     "vloss": 1.09,
+     "raw": 0.75,
+     "wr": "99.7%",
+     "E": 0.37,
+     "cov": 1.0,
+     "find_hp": 0.74,
+     "own_hp": 0.447,
+     "prox": 0.95,
+     "reply": "J7",
+     "net": 0.28
+    },
+    "M9": {
+     "vloss": 0.95,
+     "raw": 0.81,
+     "wr": "99.8%",
+     "E": 1.44,
+     "cov": 0.99,
+     "find_hp": 0.052,
+     "own_hp": 0.174,
+     "prox": 0.95,
+     "reply": "L9",
+     "net": 2.44
+    },
+    "A6": {
+     "vloss": 2.97,
+     "raw": 4.26,
+     "wr": "99.4%",
+     "E": 0.68,
+     "cov": 0.99,
+     "find_hp": 0.058,
+     "own_hp": 0.001,
+     "prox": 0.0,
+     "reply": "A8",
+     "net": 1.2
+    },
+    "F10": {
+     "vloss": 6.77,
+     "raw": 5.5,
+     "wr": "99.2%",
+     "E": 3.16,
+     "cov": 0.99,
+     "find_hp": 0.059,
+     "own_hp": 0.001,
+     "prox": 0.24,
+     "reply": "M8",
+     "net": 3.58
+    },
+    "A8": {
+     "vloss": 4.18,
+     "raw": 5.78,
+     "wr": "99.5%",
+     "E": 0.35,
+     "cov": 0.98,
+     "find_hp": 0.843,
+     "own_hp": 0.001,
+     "prox": 0.0,
+     "reply": "A9",
+     "net": -0.01
+    },
+    "G5": {
+     "vloss": 7.42,
+     "raw": 6.55,
+     "wr": "99.9%",
+     "E": 2.51,
+     "cov": 0.97,
+     "find_hp": 0.456,
+     "own_hp": 0.012,
+     "prox": 0.06,
+     "reply": "M8",
+     "net": 1.94
+    }
+   },
+   "secs": 1.2,
+   "explanation": "Enigma13: deviated to F10 (verified loss 6.77, expected punish 3.16, reply findability 5.9%, own hp 0.1%, wr 99.2%) instead of L11 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=20.20 budget=18.70 cap=8.00 cost_weight=0.09",
+    "[Enigma13Strategy] Pool: cap=8.00 min_wr=30% admissible=10 (trusted=9, of 38, searched>=1: 38)",
+    "[Enigma13Strategy] Drop L12: verified loss 9.58 > cap 8.00 (raw 5.08, v17)"
+   ]
+  },
+  {
+   "move_num": 60,
+   "chosen": "N10",
+   "best": "L11",
+   "deviated": true,
+   "cands": {
+    "L11": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.9%",
+     "E": 2.88,
+     "cov": 1.0,
+     "find_hp": 0.001,
+     "own_hp": 0.195,
+     "prox": 1.0,
+     "reply": "L3",
+     "net": 4.09
+    },
+    "L10": {
+     "vloss": 1.07,
+     "raw": 1.27,
+     "wr": "99.7%",
+     "E": 1.38,
+     "cov": 1.0,
+     "find_hp": 0.01,
+     "own_hp": 0.177,
+     "prox": 0.95,
+     "reply": "K2",
+     "net": 2.51
+    },
+    "M9": {
+     "vloss": 2.22,
+     "raw": 2.19,
+     "wr": "99.8%",
+     "E": 2.91,
+     "cov": 0.99,
+     "find_hp": 0.002,
+     "own_hp": 0.067,
+     "prox": 0.76,
+     "reply": "J6",
+     "net": 4.25
+    },
+    "N10": {
+     "vloss": 5.16,
+     "raw": 4.86,
+     "wr": "99.3%",
+     "E": 3.79,
+     "cov": 0.99,
+     "find_hp": 0.013,
+     "own_hp": 0.0,
+     "prox": 0.76,
+     "reply": "J7",
+     "net": 5.02
+    },
+    "F10": {
+     "vloss": 5.39,
+     "raw": 5.41,
+     "wr": "99.5%",
+     "E": 2.82,
+     "cov": 1.0,
+     "find_hp": 0.011,
+     "own_hp": 0.007,
+     "prox": 0.89,
+     "reply": "K8",
+     "net": 4.15
+    },
+    "A6": {
+     "vloss": 1.48,
+     "raw": 5.96,
+     "wr": "99.6%",
+     "E": 0.53,
+     "cov": 1.0,
+     "find_hp": 0.0,
+     "own_hp": 0.006,
+     "prox": 0.25,
+     "reply": "J6",
+     "net": 1.63
+    },
+    "J9": {
+     "vloss": 6.68,
+     "raw": 6.08,
+     "wr": "99.4%",
+     "E": 2.67,
+     "cov": 0.99,
+     "find_hp": 0.003,
+     "own_hp": 0.0,
+     "prox": 0.64,
+     "reply": "L10",
+     "net": 3.68
+    },
+    "J10": {
+     "vloss": 6.44,
+     "raw": 7.01,
+     "wr": "99.5%",
+     "E": 2.79,
+     "cov": 0.99,
+     "find_hp": 0.004,
+     "own_hp": 0.001,
+     "prox": 0.76,
+     "reply": "J7",
+     "net": 3.93
+    }
+   },
+   "secs": 1.23,
+   "explanation": "Enigma13: deviated to N10 (verified loss 5.16, expected punish 3.79, reply findability 1.3%, own hp 0.0%, wr 99.3%) instead of L11 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=18.67 budget=17.17 cap=8.00 cost_weight=0.09",
+    "[Enigma13Strategy] Pool: cap=8.00 min_wr=30% admissible=7 (trusted=7, of 32, searched>=1: 32)"
+   ]
+  },
+  {
+   "move_num": 62,
+   "chosen": "L11",
+   "best": "L10",
+   "deviated": true,
+   "cands": {
+    "L10": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.8%",
+     "E": 0.59,
+     "cov": 1.0,
+     "find_hp": 0.002,
+     "own_hp": 0.96,
+     "prox": 1.0,
+     "reply": "J7",
+     "net": 1.58
+    },
+    "A8": {
+     "vloss": 1.22,
+     "raw": 0.74,
+     "wr": "99.7%",
+     "E": 0.32,
+     "cov": 0.99,
+     "find_hp": 0.82,
+     "own_hp": 0.001,
+     "prox": 0.0,
+     "reply": "A9",
+     "net": 0.21
+    },
+    "A6": {
+     "vloss": 1.73,
+     "raw": 1.04,
+     "wr": "99.6%",
+     "E": 0.11,
+     "cov": 1.0,
+     "find_hp": 0.917,
+     "own_hp": 0.001,
+     "prox": 0.0,
+     "reply": "A5",
+     "net": -0.04
+    },
+    "F10": {
+     "vloss": 3.26,
+     "raw": 2.17,
+     "wr": "99.6%",
+     "E": 2.49,
+     "cov": 1.0,
+     "find_hp": 0.023,
+     "own_hp": 0.0,
+     "prox": 0.25,
+     "reply": "L9",
+     "net": 3.36
+    },
+    "L11": {
+     "vloss": 5.61,
+     "raw": 3.89,
+     "wr": "99.6%",
+     "E": 2.36,
+     "cov": 1.0,
+     "find_hp": 0.001,
+     "own_hp": 0.012,
+     "prox": 0.95,
+     "reply": "J7",
+     "net": 3.76
+    },
+    "J9": {
+     "vloss": 7.32,
+     "raw": 6.15,
+     "wr": "99.5%",
+     "E": 2.64,
+     "cov": 1.0,
+     "find_hp": 0.086,
+     "own_hp": 0.0,
+     "prox": 0.76,
+     "reply": "K9",
+     "net": 3.41
+    },
+    "J10": {
+     "vloss": 7.04,
+     "raw": 7.11,
+     "wr": "99.4%",
+     "E": 2.4,
+     "cov": 1.0,
+     "find_hp": 0.146,
+     "own_hp": 0.001,
+     "prox": 0.8,
+     "reply": "L10",
+     "net": 2.99
+    }
+   },
+   "secs": 0.92,
+   "explanation": "Enigma13: deviated to L11 (verified loss 5.61, expected punish 2.36, reply findability 0.1%, own hp 1.2%, wr 99.6%) instead of L10 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=19.70 budget=18.20 cap=8.00 cost_weight=0.09",
+    "[Enigma13Strategy] Pool: cap=8.00 min_wr=30% admissible=6 (trusted=6, of 33, searched>=1: 33)"
+   ]
+  },
+  {
+   "move_num": 64,
+   "chosen": "G5",
+   "best": "L10",
+   "deviated": true,
+   "cands": {
+    "L10": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.6%",
+     "E": 0.12,
+     "cov": 1.0,
+     "find_hp": 0.942,
+     "own_hp": 0.735,
+     "prox": 1.0,
+     "reply": "G9",
+     "net": 0.12
+    },
+    "A6": {
+     "vloss": 0.68,
+     "raw": 0.43,
+     "wr": "99.7%",
+     "E": 0.5,
+     "cov": 0.99,
+     "find_hp": 0.851,
+     "own_hp": 0.001,
+     "prox": 0.01,
+     "reply": "A8",
+     "net": 0.43
+    },
+    "A8": {
+     "vloss": 0.72,
+     "raw": 0.66,
+     "wr": "99.7%",
+     "E": 0.2,
+     "cov": 1.0,
+     "find_hp": 0.859,
+     "own_hp": 0.001,
+     "prox": 0.02,
+     "reply": "A9",
+     "net": 0.13
+    },
+    "G5": {
+     "vloss": 4.78,
+     "raw": 4.36,
+     "wr": "99.7%",
+     "E": 2.99,
+     "cov": 0.92,
+     "find_hp": 0.02,
+     "own_hp": 0.015,
+     "prox": 0.2,
+     "reply": "L10",
+     "net": 3.49
+    },
+    "G9": {
+     "vloss": 4.91,
+     "raw": 4.93,
+     "wr": "99.4%",
+     "E": 2.36,
+     "cov": 0.99,
+     "find_hp": 0.624,
+     "own_hp": 0.075,
+     "prox": 0.76,
+     "reply": "G10",
+     "net": 2.26
+    },
+    "J8": {
+     "vloss": 5.93,
+     "raw": 5.3,
+     "wr": "99.1%",
+     "E": 1.13,
+     "cov": 0.99,
+     "find_hp": 0.379,
+     "own_hp": 0.08,
+     "prox": 0.8,
+     "reply": "G9",
+     "net": 0.91
+    },
+    "L9": {
+     "vloss": 5.62,
+     "raw": 5.32,
+     "wr": "98.8%",
+     "E": 0.13,
+     "cov": 1.0,
+     "find_hp": 0.889,
+     "own_hp": 0.0,
+     "prox": 0.95,
+     "reply": "L10",
+     "net": 0.11
+    },
+    "M7": {
+     "vloss": 6.98,
+     "raw": 6.43,
+     "wr": "99.2%",
+     "E": 0.79,
+     "cov": 0.95,
+     "find_hp": 0.115,
+     "own_hp": 0.0,
+     "prox": 0.57,
+     "reply": "G9",
+     "net": 1.01
+    }
+   },
+   "secs": 1.02,
+   "explanation": "Enigma13: deviated to G5 (verified loss 4.78, expected punish 2.99, reply findability 2.0%, own hp 1.5%, wr 99.7%) instead of L10 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=13.99 budget=12.49 cap=8.00 cost_weight=0.13",
+    "[Enigma13Strategy] Pool: cap=8.00 min_wr=30% admissible=17 (trusted=10, of 38, searched>=1: 38)"
+   ]
+  },
+  {
+   "move_num": 66,
+   "chosen": "J7",
+   "best": "L10",
+   "deviated": true,
+   "cands": {
+    "L10": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.8%",
+     "E": 0.0,
+     "cov": 1.0,
+     "find_hp": 0.999,
+     "own_hp": 0.969,
+     "prox": 1.0,
+     "reply": "L11",
+     "net": 0.0
+    },
+    "A6": {
+     "vloss": 0.64,
+     "raw": 0.3,
+     "wr": "99.8%",
+     "E": 0.52,
+     "cov": 0.99,
+     "find_hp": 0.052,
+     "own_hp": 0.002,
+     "prox": 0.02,
+     "reply": "A8",
+     "net": 1.24
+    },
+    "A8": {
+     "vloss": 0.66,
+     "raw": 0.46,
+     "wr": "99.8%",
+     "E": 0.49,
+     "cov": 0.99,
+     "find_hp": 0.854,
+     "own_hp": 0.001,
+     "prox": 0.03,
+     "reply": "A6",
+     "net": 0.42
+    },
+    "G9": {
+     "vloss": 1.02,
+     "raw": 0.79,
+     "wr": "99.8%",
+     "E": 1.5,
+     "cov": 1.0,
+     "find_hp": 0.007,
+     "own_hp": 0.001,
+     "prox": 0.76,
+     "reply": "J7",
+     "net": 3.07
+    },
+    "G10": {
+     "vloss": 2.64,
+     "raw": 2.51,
+     "wr": "99.5%",
+     "E": 1.31,
+     "cov": 0.99,
+     "find_hp": 0.595,
+     "own_hp": 0.008,
+     "prox": 0.64,
+     "reply": "G9",
+     "net": 1.53
+    },
+    "F9": {
+     "vloss": 4.07,
+     "raw": 3.05,
+     "wr": "99.6%",
+     "E": 2.74,
+     "cov": 0.98,
+     "find_hp": 0.011,
+     "own_hp": 0.0,
+     "prox": 0.57,
+     "reply": "L10",
+     "net": 3.65
+    },
+    "J7": {
+     "vloss": 4.25,
+     "raw": 3.67,
+     "wr": "99.7%",
+     "E": 3.09,
+     "cov": 0.96,
+     "find_hp": 0.024,
+     "own_hp": 0.002,
+     "prox": 0.95,
+     "reply": "L10",
+     "net": 4.29
+    },
+    "K8": {
+     "vloss": 4.68,
+     "raw": 4.2,
+     "wr": "99.5%",
+     "E": 1.55,
+     "cov": 0.97,
+     "find_hp": 0.054,
+     "own_hp": 0.0,
+     "prox": 0.95,
+     "reply": "L10",
+     "net": 2.57
+    }
+   },
+   "secs": 0.94,
+   "explanation": "Enigma13: deviated to J7 (verified loss 4.25, expected punish 3.09, reply findability 2.4%, own hp 0.2%, wr 99.7%) instead of L10 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=12.05 budget=10.55 cap=8.00 cost_weight=0.15",
+    "[Enigma13Strategy] Pool: cap=8.00 min_wr=30% admissible=24 (trusted=14, of 29, searched>=1: 29)"
+   ]
+  },
+  {
+   "move_num": 68,
+   "chosen": "G9",
+   "best": "L10",
+   "deviated": true,
+   "cands": {
+    "L10": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.8%",
+     "E": 0.0,
+     "cov": 0.99,
+     "find_hp": 0.995,
+     "own_hp": 0.926,
+     "prox": 1.0,
+     "reply": "L11",
+     "net": 0.0
+    },
+    "A6": {
+     "vloss": 0.18,
+     "raw": 0.25,
+     "wr": "99.8%",
+     "E": 0.45,
+     "cov": 1.0,
+     "find_hp": 0.914,
+     "own_hp": 0.0,
+     "prox": 0.01,
+     "reply": "A8",
+     "net": 0.43
+    },
+    "A8": {
+     "vloss": 0.22,
+     "raw": 0.32,
+     "wr": "99.8%",
+     "E": 0.96,
+     "cov": 1.0,
+     "find_hp": 0.101,
+     "own_hp": 0.0,
+     "prox": 0.01,
+     "reply": "A6",
+     "net": 1.54
+    },
+    "G9": {
+     "vloss": 5.95,
+     "raw": 5.02,
+     "wr": "97.8%",
+     "E": 2.82,
+     "cov": 0.97,
+     "find_hp": 0.173,
+     "own_hp": 0.001,
+     "prox": 0.57,
+     "reply": "L7",
+     "net": 2.82
+    },
+    "G10": {
+     "vloss": 5.96,
+     "raw": 5.18,
+     "wr": "98.5%",
+     "E": 1.87,
+     "cov": 0.97,
+     "find_hp": 0.246,
+     "own_hp": 0.001,
+     "prox": 0.49,
+     "reply": "L7",
+     "net": 1.49
+    },
+    "K7": {
+     "vloss": 6.78,
+     "raw": 6.59,
+     "wr": "99.1%",
+     "E": 1.2,
+     "cov": 0.97,
+     "find_hp": 0.632,
+     "own_hp": 0.056,
+     "prox": 0.95,
+     "reply": "L10",
+     "net": 0.94
+    },
+    "F10": {
+     "vloss": 6.93,
+     "raw": 7.5,
+     "wr": "97.2%",
+     "E": 2.18,
+     "cov": 0.84,
+     "find_hp": 0.122,
+     "own_hp": 0.0,
+     "prox": 0.33,
+     "reply": "L7",
+     "net": 2.0
+    }
+   },
+   "secs": 1.1,
+   "explanation": "Enigma13: deviated to G9 (verified loss 5.95, expected punish 2.82, reply findability 17.3%, own hp 0.1%, wr 97.8%) instead of L10 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=12.33 budget=10.83 cap=8.00 cost_weight=0.15",
+    "[Enigma13Strategy] Pool: cap=8.00 min_wr=30% admissible=8 (trusted=4, of 48, searched>=1: 48)",
+    "[Enigma13Strategy] Drop L11: verified loss 8.37 > cap 8.00 (raw 7.57, v3)"
+   ]
+  },
+  {
+   "move_num": 70,
+   "chosen": "A6",
+   "best": "L10",
+   "deviated": true,
+   "cands": {
+    "L10": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.7%",
+     "E": 0.06,
+     "cov": 1.0,
+     "find_hp": 0.99,
+     "own_hp": 0.818,
+     "prox": 1.0,
+     "reply": "L11",
+     "net": 0.06
+    },
+    "A6": {
+     "vloss": 0.36,
+     "raw": 0.44,
+     "wr": "99.5%",
+     "E": 0.88,
+     "cov": 1.0,
+     "find_hp": 0.07,
+     "own_hp": 0.005,
+     "prox": 0.06,
+     "reply": "A8",
+     "net": 1.6
+    },
+    "K7": {
+     "vloss": 7.14,
+     "raw": 7.29,
+     "wr": "98.0%",
+     "E": 1.78,
+     "cov": 0.98,
+     "find_hp": 0.616,
+     "own_hp": 0.106,
+     "prox": 0.57,
+     "reply": "L9",
+     "net": 1.02
+    },
+    "L9": {
+     "vloss": 7.83,
+     "raw": 7.56,
+     "wr": "99.0%",
+     "E": 0.06,
+     "cov": 0.98,
+     "find_hp": 0.971,
+     "own_hp": 0.035,
+     "prox": 0.95,
+     "reply": "L10",
+     "net": -0.98
+    },
+    "A8": {
+     "vloss": 0.47,
+     "raw": 5.11,
+     "wr": "98.9%",
+     "E": 0.6,
+     "cov": 1.0,
+     "find_hp": 0.113,
+     "own_hp": 0.005,
+     "prox": 0.11,
+     "reply": "A6",
+     "net": 1.18
+    }
+   },
+   "secs": 0.92,
+   "explanation": "Enigma13: deviated to A6 (verified loss 0.36, expected punish 0.88, reply findability 7.0%, own hp 0.5%, wr 99.5%) instead of L10 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=11.98 budget=10.48 cap=8.00 cost_weight=0.15",
+    "[Enigma13Strategy] Pool: cap=8.00 min_wr=30% admissible=5 (trusted=2, of 83, searched>=1: 83)",
+    "[Enigma13Strategy] Drop L11: verified loss 11.23 > cap 8.00 (raw 7.76, v3)"
+   ]
+  },
+  {
+   "move_num": 72,
+   "chosen": "N8",
+   "best": "L10",
+   "deviated": true,
+   "cands": {
+    "L10": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.9%",
+     "E": 0.87,
+     "cov": 0.98,
+     "find_hp": 0.768,
+     "own_hp": 0.196,
+     "prox": 1.0,
+     "reply": "L11",
+     "net": 1.08
+    },
+    "A6": {
+     "vloss": 1.14,
+     "raw": 0.47,
+     "wr": "99.5%",
+     "E": 2.62,
+     "cov": 1.0,
+     "find_hp": 0.009,
+     "own_hp": 0.001,
+     "prox": 0.0,
+     "reply": "L9",
+     "net": 3.43
+    },
+    "L9": {
+     "vloss": 6.5,
+     "raw": 6.51,
+     "wr": "99.8%",
+     "E": 0.0,
+     "cov": 0.99,
+     "find_hp": 0.989,
+     "own_hp": 0.496,
+     "prox": 0.95,
+     "reply": "L10",
+     "net": -0.86
+    },
+    "N8": {
+     "vloss": 7.89,
+     "raw": 6.95,
+     "wr": "99.4%",
+     "E": 3.65,
+     "cov": 1.0,
+     "find_hp": 0.471,
+     "own_hp": 0.013,
+     "prox": 0.95,
+     "reply": "L9",
+     "net": 3.5
+    },
+    "M7": {
+     "vloss": 7.76,
+     "raw": 7.69,
+     "wr": "99.4%",
+     "E": 0.53,
+     "cov": 1.0,
+     "find_hp": 0.921,
+     "own_hp": 0.285,
+     "prox": 0.95,
+     "reply": "L9",
+     "net": -0.49
+    },
+    "A8": {
+     "vloss": 2.26,
+     "raw": 7.9,
+     "wr": "99.1%",
+     "E": 1.64,
+     "cov": 1.0,
+     "find_hp": 0.138,
+     "own_hp": 0.001,
+     "prox": 0.0,
+     "reply": "A6",
+     "net": 1.79
+    }
+   },
+   "secs": 0.83,
+   "explanation": "Enigma13: deviated to N8 (verified loss 7.89, expected punish 3.65, reply findability 47.1%, own hp 1.3%, wr 99.4%) instead of L10 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=13.61 budget=12.11 cap=8.00 cost_weight=0.13",
+    "[Enigma13Strategy] Pool: cap=8.00 min_wr=30% admissible=5 (trusted=4, of 98, searched>=1: 98)"
+   ]
+  },
+  {
+   "move_num": 74,
+   "chosen": "A8",
+   "best": "L9",
+   "deviated": true,
+   "cands": {
+    "L9": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.9%",
+     "E": 0.08,
+     "cov": 0.99,
+     "find_hp": 0.981,
+     "own_hp": 0.999,
+     "prox": 1.0,
+     "reply": "M12",
+     "net": 0.08
+    },
+    "A8": {
+     "vloss": 4.77,
+     "raw": 2.04,
+     "wr": "99.1%",
+     "E": 4.09,
+     "cov": 0.99,
+     "find_hp": 0.102,
+     "own_hp": 0.0,
+     "prox": 0.0,
+     "reply": "L9",
+     "net": 4.04
+    },
+    "A6": {
+     "vloss": 4.47,
+     "raw": 2.55,
+     "wr": "98.9%",
+     "E": 3.99,
+     "cov": 0.99,
+     "find_hp": 0.112,
+     "own_hp": 0.0,
+     "prox": 0.0,
+     "reply": "L9",
+     "net": 3.95
+    }
+   },
+   "secs": 0.41,
+   "explanation": "Enigma13: deviated to A8 (verified loss 4.77, expected punish 4.09, reply findability 10.2%, own hp 0.0%, wr 99.1%) instead of L9 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Spend: lead=13.39 budget=11.89 cap=8.00 cost_weight=0.13",
+    "[Enigma13Strategy] Pool: cap=8.00 min_wr=30% admissible=2 (trusted=2, of 29, searched>=1: 29)"
+   ]
+  },
+  {
+   "move_num": 76,
+   "chosen": "L9",
+   "best": "L9",
+   "deviated": false,
+   "cands": {},
+   "secs": 0.13,
+   "explanation": "Enigma13: no admissible deviation (cap 1.60), playing best move.",
+   "notes": [
+    "[Enigma13Strategy] Endgame check: depth=75 thr=75 unsettled=0 max=16 -> yose",
+    "[Enigma13Strategy] Endgame budget: lead=13.31 target=1.5 cap=1.60",
+    "[Enigma13Strategy] Pool: cap=1.60 min_wr=30% admissible=0 (trusted=0, of 86, searched>=1: 86)"
+   ]
+  },
+  {
+   "move_num": 78,
+   "chosen": "K11",
+   "best": "K9",
+   "deviated": true,
+   "cands": {
+    "K9": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.9%",
+     "E": 0.0,
+     "cov": 1.0,
+     "find_hp": 0.998,
+     "own_hp": 0.121,
+     "prox": 1.0,
+     "reply": "H10",
+     "net": 0.0
+    },
+    "K11": {
+     "vloss": 0.08,
+     "raw": -0.05,
+     "wr": "99.9%",
+     "E": 1.17,
+     "cov": 1.0,
+     "find_hp": 0.811,
+     "own_hp": 0.159,
+     "prox": 0.8,
+     "reply": "L12",
+     "net": 1.09
+    },
+    "N9": {
+     "vloss": 0.23,
+     "raw": 0.18,
+     "wr": "99.9%",
+     "E": 0.0,
+     "cov": 0.99,
+     "find_hp": 0.988,
+     "own_hp": 0.433,
+     "prox": 0.61,
+     "reply": "N11",
+     "net": -0.23
+    },
+    "N12": {
+     "vloss": 0.21,
+     "raw": 0.19,
+     "wr": "99.9%",
+     "E": 0.51,
+     "cov": 0.98,
+     "find_hp": 0.861,
+     "own_hp": 0.026,
+     "prox": 0.95,
+     "reply": "N11",
+     "net": 0.3
+    },
+    "M7": {
+     "vloss": 0.29,
+     "raw": 0.3,
+     "wr": "99.9%",
+     "E": 0.28,
+     "cov": 1.0,
+     "find_hp": 0.441,
+     "own_hp": 0.142,
+     "prox": 0.64,
+     "reply": "L7",
+     "net": -0.0
+    },
+    "L12": {
+     "vloss": 0.45,
+     "raw": 0.37,
+     "wr": "99.9%",
+     "E": 0.87,
+     "cov": 1.0,
+     "find_hp": 0.889,
+     "own_hp": 0.016,
+     "prox": 0.95,
+     "reply": "K11",
+     "net": 0.42
+    },
+    "N8": {
+     "vloss": 0.59,
+     "raw": 0.67,
+     "wr": "99.9%",
+     "E": 0.4,
+     "cov": 1.0,
+     "find_hp": 0.378,
+     "own_hp": 0.0,
+     "prox": 0.57,
+     "reply": "K9",
+     "net": -0.19
+    },
+    "M13": {
+     "vloss": 1.19,
+     "raw": 1.59,
+     "wr": "99.8%",
+     "E": 0.87,
+     "cov": 1.0,
+     "find_hp": 0.534,
+     "own_hp": 0.0,
+     "prox": 0.95,
+     "reply": "N11",
+     "net": -0.32
+    }
+   },
+   "secs": 0.69,
+   "explanation": "Enigma13: deviated to K11 (verified loss 0.08, expected punish 1.17, reply findability 81.1%, own hp 15.9%, wr 99.9%) instead of K9 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Endgame check: depth=77 thr=75 unsettled=0 max=16 -> yose",
+    "[Enigma13Strategy] Endgame budget: lead=13.27 target=1.5 cap=1.60",
+    "[Enigma13Strategy] Pool: cap=1.60 min_wr=30% admissible=7 (trusted=7, of 30, searched>=1: 30)"
+   ]
+  },
+  {
+   "move_num": 80,
+   "chosen": "N12",
+   "best": "K9",
+   "deviated": true,
+   "cands": {
+    "K9": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.9%",
+     "E": 0.0,
+     "cov": 1.0,
+     "find_hp": 0.999,
+     "own_hp": 0.222,
+     "prox": 1.0,
+     "reply": "H10",
+     "net": 0.0
+    },
+    "N12": {
+     "vloss": 0.17,
+     "raw": 0.18,
+     "wr": "99.9%",
+     "E": 0.59,
+     "cov": 1.0,
+     "find_hp": 0.831,
+     "own_hp": 0.027,
+     "prox": 0.8,
+     "reply": "N11",
+     "net": 0.42
+    },
+    "N9": {
+     "vloss": 0.35,
+     "raw": 0.24,
+     "wr": "99.9%",
+     "E": 0.05,
+     "cov": 1.0,
+     "find_hp": 0.989,
+     "own_hp": 0.514,
+     "prox": 0.61,
+     "reply": "N11",
+     "net": -0.3
+    },
+    "M7": {
+     "vloss": 0.63,
+     "raw": 0.76,
+     "wr": "99.9%",
+     "E": 0.26,
+     "cov": 1.0,
+     "find_hp": 0.371,
+     "own_hp": 0.091,
+     "prox": 0.64,
+     "reply": "K9",
+     "net": -0.37
+    },
+    "N8": {
+     "vloss": 0.96,
+     "raw": 1.01,
+     "wr": "99.7%",
+     "E": 0.64,
+     "cov": 1.0,
+     "find_hp": 0.283,
+     "own_hp": 0.0,
+     "prox": 0.57,
+     "reply": "K9",
+     "net": -0.32
+    },
+    "M13": {
+     "vloss": 0.76,
+     "raw": 1.19,
+     "wr": "99.8%",
+     "E": 0.75,
+     "cov": 0.99,
+     "find_hp": 0.318,
+     "own_hp": 0.0,
+     "prox": 0.89,
+     "reply": "K9",
+     "net": -0.02
+    }
+   },
+   "secs": 0.73,
+   "explanation": "Enigma13: deviated to N12 (verified loss 0.17, expected punish 0.59, reply findability 83.1%, own hp 2.7%, wr 99.9%) instead of K9 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Endgame check: depth=79 thr=75 unsettled=0 max=16 -> yose",
+    "[Enigma13Strategy] Endgame budget: lead=13.30 target=1.5 cap=1.60",
+    "[Enigma13Strategy] Pool: cap=1.60 min_wr=30% admissible=5 (trusted=5, of 37, searched>=1: 37)"
+   ]
+  },
+  {
+   "move_num": 82,
+   "chosen": "M7",
+   "best": "N9",
+   "deviated": true,
+   "cands": {
+    "N9": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.8%",
+     "E": 0.67,
+     "cov": 1.0,
+     "find_hp": 0.482,
+     "own_hp": 0.448,
+     "prox": 1.0,
+     "reply": "L7",
+     "net": 0.67
+    },
+    "N12": {
+     "vloss": 0.14,
+     "raw": 0.06,
+     "wr": "99.8%",
+     "E": 0.67,
+     "cov": 1.0,
+     "find_hp": 0.069,
+     "own_hp": 0.325,
+     "prox": 0.95,
+     "reply": "L7",
+     "net": 1.26
+    },
+    "M7": {
+     "vloss": 0.0,
+     "raw": 0.34,
+     "wr": "99.9%",
+     "E": 1.61,
+     "cov": 1.0,
+     "find_hp": 0.036,
+     "own_hp": 0.155,
+     "prox": 0.76,
+     "reply": "F6",
+     "net": 2.47
+    }
+   },
+   "secs": 0.51,
+   "explanation": "Enigma13: deviated to M7 (verified loss 0.00, expected punish 1.61, reply findability 3.6%, own hp 15.5%, wr 99.9%) instead of N9 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Endgame check: depth=81 thr=75 unsettled=1 max=16 -> yose",
+    "[Enigma13Strategy] Endgame budget: lead=12.59 target=1.5 cap=1.60",
+    "[Enigma13Strategy] Pool: cap=1.60 min_wr=30% admissible=2 (trusted=2, of 37, searched>=1: 37)"
+   ]
+  },
+  {
+   "move_num": 84,
+   "chosen": "N9",
+   "best": "N12",
+   "deviated": true,
+   "cands": {
+    "N12": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.9%",
+     "E": 0.61,
+     "cov": 1.0,
+     "find_hp": 0.701,
+     "own_hp": 0.061,
+     "prox": 1.0,
+     "reply": "F6",
+     "net": 0.61
+    },
+    "N9": {
+     "vloss": 0.18,
+     "raw": 0.12,
+     "wr": "99.7%",
+     "E": 1.58,
+     "cov": 1.0,
+     "find_hp": 0.125,
+     "own_hp": 0.905,
+     "prox": 0.61,
+     "reply": "N12",
+     "net": 1.9
+    },
+    "A8": {
+     "vloss": 1.06,
+     "raw": 0.8,
+     "wr": "99.8%",
+     "E": 0.95,
+     "cov": 1.0,
+     "find_hp": 0.137,
+     "own_hp": 0.001,
+     "prox": 0.01,
+     "reply": "F6",
+     "net": 0.33
+    }
+   },
+   "secs": 0.6,
+   "explanation": "Enigma13: deviated to N9 (verified loss 0.18, expected punish 1.58, reply findability 12.5%, own hp 90.5%, wr 99.7%) instead of N12 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Endgame check: depth=83 thr=75 unsettled=0 max=16 -> yose",
+    "[Enigma13Strategy] Endgame budget: lead=12.23 target=1.5 cap=1.60",
+    "[Enigma13Strategy] Pool: cap=1.60 min_wr=30% admissible=2 (trusted=2, of 35, searched>=1: 35)"
+   ]
+  },
+  {
+   "move_num": 86,
+   "chosen": "J11",
+   "best": "C1",
+   "deviated": true,
+   "cands": {
+    "C1": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.9%",
+     "E": 0.34,
+     "cov": 1.0,
+     "find_hp": 0.599,
+     "own_hp": 0.517,
+     "prox": 1.0,
+     "reply": "F9",
+     "net": 0.34
+    },
+    "B1": {
+     "vloss": -0.9,
+     "raw": -0.83,
+     "wr": "99.7%",
+     "E": 0.07,
+     "cov": 1.0,
+     "find_hp": 0.845,
+     "own_hp": 0.221,
+     "prox": 0.95,
+     "reply": "C1",
+     "net": 0.07
+    },
+    "N12": {
+     "vloss": -0.4,
+     "raw": -0.57,
+     "wr": "99.8%",
+     "E": 0.57,
+     "cov": 1.0,
+     "find_hp": 0.008,
+     "own_hp": 0.04,
+     "prox": 0.61,
+     "reply": "F6",
+     "net": 1.54
+    },
+    "A8": {
+     "vloss": -0.25,
+     "raw": -0.35,
+     "wr": "99.9%",
+     "E": 0.26,
+     "cov": 1.0,
+     "find_hp": 0.727,
+     "own_hp": 0.002,
+     "prox": 0.05,
+     "reply": "A9",
+     "net": 0.26
+    },
+    "J11": {
+     "vloss": 0.15,
+     "raw": 0.08,
+     "wr": "99.8%",
+     "E": 1.29,
+     "cov": 1.0,
+     "find_hp": 0.188,
+     "own_hp": 0.004,
+     "prox": 0.89,
+     "reply": "F9",
+     "net": 1.39
+    },
+    "J12": {
+     "vloss": 0.4,
+     "raw": 0.36,
+     "wr": "99.8%",
+     "E": 1.17,
+     "cov": 1.0,
+     "find_hp": 0.161,
+     "own_hp": 0.0,
+     "prox": 0.95,
+     "reply": "F6",
+     "net": 1.13
+    },
+    "F9": {
+     "vloss": 0.62,
+     "raw": 0.41,
+     "wr": "99.8%",
+     "E": 0.69,
+     "cov": 1.0,
+     "find_hp": 0.0,
+     "own_hp": 0.031,
+     "prox": 0.25,
+     "reply": "N8",
+     "net": 1.08
+    },
+    "F6": {
+     "vloss": 0.38,
+     "raw": 0.42,
+     "wr": "99.9%",
+     "E": 0.11,
+     "cov": 1.0,
+     "find_hp": 0.968,
+     "own_hp": 0.18,
+     "prox": 0.15,
+     "reply": "L6",
+     "net": -0.27
+    }
+   },
+   "secs": 1.35,
+   "explanation": "Enigma13: deviated to J11 (verified loss 0.15, expected punish 1.29, reply findability 18.8%, own hp 0.4%, wr 99.8%) instead of C1 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Endgame check: depth=85 thr=75 unsettled=1 max=16 -> yose",
+    "[Enigma13Strategy] Endgame budget: lead=12.37 target=1.5 cap=1.60",
+    "[Enigma13Strategy] Pool: cap=1.60 min_wr=30% admissible=8 (trusted=8, of 38, searched>=1: 38)"
+   ]
+  },
+  {
+   "move_num": 88,
+   "chosen": "F9",
+   "best": "C1",
+   "deviated": true,
+   "cands": {
+    "C1": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.9%",
+     "E": 0.35,
+     "cov": 1.0,
+     "find_hp": 0.629,
+     "own_hp": 0.509,
+     "prox": 1.0,
+     "reply": "F9",
+     "net": 0.35
+    },
+    "J11": {
+     "vloss": -0.76,
+     "raw": -1.01,
+     "wr": "99.8%",
+     "E": 0.37,
+     "cov": 1.0,
+     "find_hp": 0.352,
+     "own_hp": 0.087,
+     "prox": 0.61,
+     "reply": "N13",
+     "net": 0.37
+    },
+    "B1": {
+     "vloss": -0.31,
+     "raw": -0.48,
+     "wr": "99.5%",
+     "E": 0.07,
+     "cov": 1.0,
+     "find_hp": 0.745,
+     "own_hp": 0.227,
+     "prox": 0.95,
+     "reply": "C1",
+     "net": 0.07
+    },
+    "A8": {
+     "vloss": -0.22,
+     "raw": -0.45,
+     "wr": "99.4%",
+     "E": 0.28,
+     "cov": 1.0,
+     "find_hp": 0.697,
+     "own_hp": 0.008,
+     "prox": 0.05,
+     "reply": "A9",
+     "net": 0.28
+    },
+    "J12": {
+     "vloss": -0.29,
+     "raw": -0.32,
+     "wr": "99.8%",
+     "E": 0.35,
+     "cov": 1.0,
+     "find_hp": 0.752,
+     "own_hp": 0.004,
+     "prox": 0.57,
+     "reply": "J11",
+     "net": 0.35
+    },
+    "F9": {
+     "vloss": 0.86,
+     "raw": 0.39,
+     "wr": "99.5%",
+     "E": 1.77,
+     "cov": 1.0,
+     "find_hp": 0.0,
+     "own_hp": 0.028,
+     "prox": 0.11,
+     "reply": "N8",
+     "net": 1.91
+    },
+    "F6": {
+     "vloss": 0.38,
+     "raw": 0.4,
+     "wr": "99.9%",
+     "E": 0.11,
+     "cov": 1.0,
+     "find_hp": 0.971,
+     "own_hp": 0.113,
+     "prox": 0.15,
+     "reply": "L6",
+     "net": -0.27
+    },
+    "H11": {
+     "vloss": 1.42,
+     "raw": 0.91,
+     "wr": "99.7%",
+     "E": 1.59,
+     "cov": 1.0,
+     "find_hp": 0.008,
+     "own_hp": 0.013,
+     "prox": 0.41,
+     "reply": "F6",
+     "net": 1.14
+    }
+   },
+   "secs": 1.19,
+   "explanation": "Enigma13: deviated to F9 (verified loss 0.86, expected punish 1.77, reply findability 0.0%, own hp 2.8%, wr 99.5%) instead of C1 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Endgame check: depth=87 thr=75 unsettled=0 max=16 -> yose",
+    "[Enigma13Strategy] Endgame budget: lead=12.12 target=1.5 cap=1.60",
+    "[Enigma13Strategy] Pool: cap=1.60 min_wr=30% admissible=11 (trusted=10, of 41, searched>=1: 41)"
+   ]
+  },
+  {
+   "move_num": 90,
+   "chosen": "H12",
+   "best": "C1",
+   "deviated": true,
+   "cands": {
+    "C1": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.9%",
+     "E": 0.45,
+     "cov": 1.0,
+     "find_hp": 0.418,
+     "own_hp": 0.237,
+     "prox": 1.0,
+     "reply": "F9",
+     "net": 0.45
+    },
+    "B1": {
+     "vloss": -0.91,
+     "raw": -1.0,
+     "wr": "99.7%",
+     "E": 0.07,
+     "cov": 1.0,
+     "find_hp": 0.727,
+     "own_hp": 0.128,
+     "prox": 0.95,
+     "reply": "C1",
+     "net": 0.07
+    },
+    "A8": {
+     "vloss": -0.66,
+     "raw": -0.61,
+     "wr": "99.9%",
+     "E": 0.2,
+     "cov": 1.0,
+     "find_hp": 0.77,
+     "own_hp": 0.015,
+     "prox": 0.05,
+     "reply": "A9",
+     "net": 0.2
+    },
+    "J12": {
+     "vloss": -0.41,
+     "raw": -0.61,
+     "wr": "99.8%",
+     "E": 0.28,
+     "cov": 1.0,
+     "find_hp": 0.783,
+     "own_hp": 0.327,
+     "prox": 0.89,
+     "reply": "H12",
+     "net": 0.28
+    },
+    "H12": {
+     "vloss": -0.42,
+     "raw": -0.54,
+     "wr": "99.8%",
+     "E": 0.55,
+     "cov": 1.0,
+     "find_hp": 0.69,
+     "own_hp": 0.002,
+     "prox": 0.95,
+     "reply": "J12",
+     "net": 0.55
+    },
+    "L13": {
+     "vloss": -0.06,
+     "raw": -0.53,
+     "wr": "99.8%",
+     "E": 0.24,
+     "cov": 1.0,
+     "find_hp": 0.831,
+     "own_hp": 0.006,
+     "prox": 0.49,
+     "reply": "J12",
+     "net": 0.24
+    },
+    "K13": {
+     "vloss": -0.16,
+     "raw": -0.24,
+     "wr": "99.8%",
+     "E": 0.31,
+     "cov": 1.0,
+     "find_hp": 0.884,
+     "own_hp": 0.001,
+     "prox": 0.64,
+     "reply": "J12",
+     "net": 0.31
+    },
+    "F9": {
+     "vloss": 0.48,
+     "raw": 0.31,
+     "wr": "99.8%",
+     "E": 0.2,
+     "cov": 1.0,
+     "find_hp": 0.892,
+     "own_hp": 0.029,
+     "prox": 0.64,
+     "reply": "L7",
+     "net": -0.28
+    }
+   },
+   "secs": 1.29,
+   "explanation": "Enigma13: deviated to H12 (verified loss -0.42, expected punish 0.55, reply findability 69.0%, own hp 0.2%, wr 99.8%) instead of C1 to deny the opponent familiar shapes.",
+   "notes": [
+    "[Enigma13Strategy] Endgame check: depth=89 thr=75 unsettled=1 max=16 -> yose",
+    "[Enigma13Strategy] Endgame budget: lead=12.55 target=1.5 cap=1.60",
+    "[Enigma13Strategy] Pool: cap=1.60 min_wr=30% admissible=11 (trusted=11, of 40, searched>=1: 40)"
+   ]
+  },
+  {
+   "move_num": 92,
+   "chosen": "C1",
+   "best": "C1",
+   "deviated": false,
+   "cands": {
+    "C1": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.9%",
+     "E": 0.55,
+     "cov": 1.0,
+     "find_hp": 0.532,
+     "own_hp": 0.29,
+     "prox": 1.0,
+     "reply": "F9",
+     "net": 0.55
+    },
+    "A8": {
+     "vloss": 0.68,
+     "raw": 0.33,
+     "wr": "99.7%",
+     "E": 0.32,
+     "cov": 1.0,
+     "find_hp": 0.546,
+     "own_hp": 0.098,
+     "prox": 0.05,
+     "reply": "C1",
+     "net": -0.36
+    },
+    "F9": {
+     "vloss": 0.87,
+     "raw": 0.43,
+     "wr": "99.8%",
+     "E": 0.3,
+     "cov": 1.0,
+     "find_hp": 0.891,
+     "own_hp": 0.054,
+     "prox": 0.37,
+     "reply": "F6",
+     "net": -0.57
+    }
+   },
+   "secs": 1.11,
+   "explanation": "Enigma13: best move is also the most confusing in budget, playing it.",
+   "notes": [
+    "[Enigma13Strategy] Endgame check: depth=91 thr=75 unsettled=0 max=16 -> yose",
+    "[Enigma13Strategy] Endgame budget: lead=11.80 target=1.5 cap=1.60",
+    "[Enigma13Strategy] Pool: cap=1.60 min_wr=30% admissible=4 (trusted=4, of 50, searched>=1: 50)",
+    "[Enigma13Strategy] Drop B1: verified loss 1.78 > cap 1.60 (raw 1.28, v265)",
+    "[Enigma13Strategy] Drop F6: verified loss 1.80 > cap 1.60 (raw 1.39, v148)",
+    "[Enigma13Strategy] Best move wins the confusion race -> best move"
+   ]
+  },
+  {
+   "move_num": 94,
+   "chosen": "F9",
+   "best": "F9",
+   "deviated": false,
+   "cands": {
+    "F9": {
+     "vloss": 0.0,
+     "raw": -0.0,
+     "wr": "99.9%",
+     "E": 0.27,
+     "cov": 1.0,
+     "find_hp": 0.965,
+     "own_hp": 0.701,
+     "prox": 1.0,
+     "reply": "L7",
+     "net": 0.27
+    },
+    "A8": {
+     "vloss": 1.31,
+     "raw": 1.32,
+     "wr": "99.8%",
+     "E": 0.47,
+     "cov": 1.0,
+     "find_hp": 0.463,
+     "own_hp": 0.014,
+     "prox": 0.24,
+     "reply": "F9",
+     "net": -0.83
+    },
+    "F1": {
+     "vloss": 1.5,
+     "raw": 1.5,
+     "wr": "99.9%",
+     "E": 0.07,
+     "cov": 1.0,
+     "find_hp": 0.943,
+     "own_hp": 0.0,
+     "prox": 0.41,
+     "reply": "F6",
+     "net": -1.43
+    },
+    "J6": {
+     "vloss": 1.58,
+     "raw": 1.55,
+     "wr": "99.9%",
+     "E": 0.19,
+     "cov": 1.0,
+     "find_hp": 0.944,
+     "own_hp": 0.0,
+     "prox": 0.37,
+     "reply": "N8",
+     "net": -1.39
+    },
+    "H5": {
+     "vloss": 1.58,
+     "raw": 1.58,
+     "wr": "99.9%",
+     "E": 0.15,
+     "cov": 1.0,
+     "find_hp": 0.926,
+     "own_hp": 0.0,
+     "prox": 0.33,
+     "reply": "G2",
+     "net": -1.44
+    },
+    "J5": {
+     "vloss": 1.59,
+     "raw": 1.58,
+     "wr": "99.9%",
+     "E": 0.33,
+     "cov": 1.0,
+     "find_hp": 0.031,
+     "own_hp": 0.0,
+     "prox": 0.25,
+     "reply": "L7",
+     "net": -0.39
+    }
+   },
+   "secs": 2.09,
+   "explanation": "Enigma13: best move is also the most confusing in budget, playing it.",
+   "notes": [
+    "[Enigma13Strategy] Endgame check: depth=93 thr=75 unsettled=0 max=16 -> yose",
+    "[Enigma13Strategy] Endgame budget: lead=13.42 target=1.5 cap=1.60",
+    "[Enigma13Strategy] Pool: cap=1.60 min_wr=30% admissible=9 (trusted=8, of 40, searched>=1: 40)",
+    "[Enigma13Strategy] Drop M2: verified loss 1.64 > cap 1.60 (raw 1.47, v12)",
+    "[Enigma13Strategy] Drop G2: verified loss 1.61 > cap 1.60 (raw 1.57, v56)",
+    "[Enigma13Strategy] Best move wins the confusion race -> best move"
+   ]
+  },
+  {
+   "move_num": 96,
+   "chosen": "F6",
+   "best": "F6",
+   "deviated": false,
+   "cands": {},
+   "secs": 0.08,
+   "explanation": "Enigma13: no admissible deviation (cap 1.60), playing best move.",
+   "notes": [
+    "[Enigma13Strategy] Endgame check: depth=95 thr=75 unsettled=0 max=16 -> yose",
+    "[Enigma13Strategy] Endgame budget: lead=13.62 target=1.5 cap=1.60",
+    "[Enigma13Strategy] Pool: cap=1.60 min_wr=30% admissible=0 (trusted=0, of 37, searched>=1: 37)"
+   ]
+  },
+  {
+   "move_num": 98,
+   "chosen": "E5",
+   "best": "E5",
+   "deviated": false,
+   "cands": {},
+   "secs": 0.02,
+   "explanation": "Enigma13: game is nearly over, playing the 9d finishing move E5 (loss 0.05) instead of a deviation.",
+   "notes": []
+  },
+  {
+   "move_num": 100,
+   "chosen": "E5",
+   "best": "E5",
+   "deviated": false,
+   "cands": {},
+   "secs": 0.02,
+   "explanation": "Enigma13: game is nearly over, playing the 9d finishing move E5 (loss -0.00) instead of a deviation.",
+   "notes": []
+  }
+ ]
+}

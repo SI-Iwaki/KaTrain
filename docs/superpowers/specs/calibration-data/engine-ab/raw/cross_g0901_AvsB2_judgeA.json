@@ -1,0 +1,160 @@
+{
+ "judge": "C:/Users/iwaki/.katrain/config.json",
+ "sgf": "c:/Users/iwaki/Documents/katrain-1.17.1.1/katrain-1.17.1.1/docs/superpowers/specs/calibration-data/enigma13/enigma13-vs-human-20260901-white.sgf",
+ "X": "C:\\Users\\iwaki\\AppData\\Local\\Temp\\claude\\c--Users-iwaki-Documents-katrain-1-17-1-1-katrain-1-17-1-1\\dd7d7c99-54f7-4db9-8798-455717d5a883\\scratchpad\\ab\\out\\enigma_A_g0901_r1.json",
+ "Y": "C:\\Users\\iwaki\\AppData\\Local\\Temp\\claude\\c--Users-iwaki-Documents-katrain-1-17-1-1-katrain-1-17-1-1\\dd7d7c99-54f7-4db9-8798-455717d5a883\\scratchpad\\ab\\out\\enigma_B2_g0901_r1.json",
+ "rows": [
+  {
+   "move_num": 2,
+   "sel_X": "C3",
+   "sel_Y": "K11",
+   "loss_X": 0.142946894,
+   "loss_Y": 0.10965806899999997,
+   "judge_top": "K10"
+  },
+  {
+   "move_num": 4,
+   "sel_X": "D10",
+   "sel_Y": "D10",
+   "loss_X": 0.024403321000000006,
+   "loss_Y": 0.024403321000000006,
+   "judge_top": "K10"
+  },
+  {
+   "move_num": 6,
+   "sel_X": "E10",
+   "sel_Y": "C9",
+   "loss_X": 0.45489450499999995,
+   "loss_Y": 0.521641577,
+   "judge_top": "E11"
+  },
+  {
+   "move_num": 8,
+   "sel_X": "J3",
+   "sel_Y": "C9",
+   "loss_X": 0.2099387138,
+   "loss_Y": -0.004986211300000001,
+   "judge_top": "J4"
+  },
+  {
+   "move_num": 10,
+   "sel_X": "E4",
+   "sel_Y": "E4",
+   "loss_X": 0.18867383659999998,
+   "loss_Y": 0.18867383659999998,
+   "judge_top": "C9"
+  },
+  {
+   "move_num": 12,
+   "sel_X": "K6",
+   "sel_Y": "K6",
+   "loss_X": 0.19299493029999998,
+   "loss_Y": 0.19299493029999998,
+   "judge_top": "J4"
+  },
+  {
+   "move_num": 14,
+   "sel_X": "H7",
+   "sel_Y": "H6",
+   "loss_X": 0.05508861000000001,
+   "loss_Y": -0.02575047800000002,
+   "judge_top": "H6"
+  },
+  {
+   "move_num": 16,
+   "sel_X": "H3",
+   "sel_Y": "C8",
+   "loss_X": 0.421308025,
+   "loss_Y": 0.39726475299999997,
+   "judge_top": "C9"
+  },
+  {
+   "move_num": 18,
+   "sel_X": "K7",
+   "sel_Y": "K7",
+   "loss_X": -0.00026869300000004204,
+   "loss_Y": -0.00026869300000004204,
+   "judge_top": "K7"
+  },
+  {
+   "move_num": 20,
+   "sel_X": "C9",
+   "sel_Y": "H6",
+   "loss_X": 0.2095455756,
+   "loss_Y": 0.140961734,
+   "judge_top": "G10"
+  },
+  {
+   "move_num": 22,
+   "sel_X": "H6",
+   "sel_Y": "H6",
+   "loss_X": -0.06984346800000002,
+   "loss_Y": -0.06984346800000002,
+   "judge_top": "B10"
+  },
+  {
+   "move_num": 24,
+   "sel_X": "K10",
+   "sel_Y": "L9",
+   "loss_X": 0.678286227405,
+   "loss_Y": -0.055507430999999996,
+   "judge_top": "L9"
+  },
+  {
+   "move_num": 26,
+   "sel_X": "C5",
+   "sel_Y": "C5",
+   "loss_X": -0.2063648800000002,
+   "loss_Y": -0.2063648800000002,
+   "judge_top": "C5"
+  },
+  {
+   "move_num": 28,
+   "sel_X": "B10",
+   "sel_Y": "B10",
+   "loss_X": -0.00017399999999945237,
+   "loss_Y": -0.00017399999999945237,
+   "judge_top": "B10"
+  },
+  {
+   "move_num": 30,
+   "sel_X": "B10",
+   "sel_Y": "B10",
+   "loss_X": -0.02809222999999994,
+   "loss_Y": -0.02809222999999994,
+   "judge_top": "B10"
+  },
+  {
+   "move_num": 32,
+   "sel_X": "C3",
+   "sel_Y": "C3",
+   "loss_X": -0.052691176000000006,
+   "loss_Y": -0.052691176000000006,
+   "judge_top": "C3"
+  },
+  {
+   "move_num": 34,
+   "sel_X": "C4",
+   "sel_Y": "C4",
+   "loss_X": -0.19516761000000038,
+   "loss_Y": -0.19516761000000038,
+   "judge_top": "C4"
+  },
+  {
+   "move_num": 36,
+   "sel_X": "B5",
+   "sel_Y": "B5",
+   "loss_X": -0.02847675999999999,
+   "loss_Y": -0.02847675999999999,
+   "judge_top": "B5"
+  },
+  {
+   "move_num": 38,
+   "sel_X": "C11",
+   "sel_Y": "C11",
+   "loss_X": 1.534796023,
+   "loss_Y": 1.534796023,
+   "judge_top": "B5"
+  }
+ ]
+}

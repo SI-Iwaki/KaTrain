@@ -1,0 +1,408 @@
+{
+ "judge": "C:/Users/iwaki/.katrain/config_ab_v1181_b10c384.json",
+ "sgf": "c:/Users/iwaki/Documents/katrain-1.17.1.1/katrain-1.17.1.1/docs/superpowers/specs/calibration-data/enigma9/enigma13-vs-human-20260823-white.sgf",
+ "X": "C:\\Users\\iwaki\\AppData\\Local\\Temp\\claude\\c--Users-iwaki-Documents-katrain-1-17-1-1-katrain-1-17-1-1\\dd7d7c99-54f7-4db9-8798-455717d5a883\\scratchpad\\ab\\out\\enigma_A_g0823_r1.json",
+ "Y": "C:\\Users\\iwaki\\AppData\\Local\\Temp\\claude\\c--Users-iwaki-Documents-katrain-1-17-1-1-katrain-1-17-1-1\\dd7d7c99-54f7-4db9-8798-455717d5a883\\scratchpad\\ab\\out\\enigma_B_g0823_r1.json",
+ "rows": [
+  {
+   "move_num": 2,
+   "sel_X": "C4",
+   "sel_Y": "D10",
+   "loss_X": 0.3291355742,
+   "loss_Y": 0.06510944800000001,
+   "judge_top": "D4"
+  },
+  {
+   "move_num": 4,
+   "sel_X": "C4",
+   "sel_Y": "D10",
+   "loss_X": 0.6266927205,
+   "loss_Y": 0.09130833999999999,
+   "judge_top": "C10"
+  },
+  {
+   "move_num": 6,
+   "sel_X": "C11",
+   "sel_Y": "E4",
+   "loss_X": 0.32144711200000003,
+   "loss_Y": 0.2786128549,
+   "judge_top": "C10"
+  },
+  {
+   "move_num": 8,
+   "sel_X": "C10",
+   "sel_Y": "C10",
+   "loss_X": 0.024956126999999995,
+   "loss_Y": 0.024956126999999995,
+   "judge_top": "D10"
+  },
+  {
+   "move_num": 10,
+   "sel_X": "F11",
+   "sel_Y": "C4",
+   "loss_X": 0.9734791617999999,
+   "loss_Y": -0.014403118899999998,
+   "judge_top": "C4"
+  },
+  {
+   "move_num": 12,
+   "sel_X": "D10",
+   "sel_Y": "E9",
+   "loss_X": 1.292738237,
+   "loss_Y": null,
+   "judge_top": "E10"
+  },
+  {
+   "move_num": 14,
+   "sel_X": "G3",
+   "sel_Y": "D6",
+   "loss_X": 0.288879036,
+   "loss_Y": 0.36550849099999994,
+   "judge_top": "E10"
+  },
+  {
+   "move_num": 16,
+   "sel_X": "C6",
+   "sel_Y": "C6",
+   "loss_X": -0.003997445000000016,
+   "loss_Y": -0.003997445000000016,
+   "judge_top": "C6"
+  },
+  {
+   "move_num": 18,
+   "sel_X": "G3",
+   "sel_Y": "G3",
+   "loss_X": 0.13422655000000017,
+   "loss_Y": 0.13422655000000017,
+   "judge_top": "L11"
+  },
+  {
+   "move_num": 20,
+   "sel_X": "C5",
+   "sel_Y": "C5",
+   "loss_X": -0.2720396599999999,
+   "loss_Y": -0.2720396599999999,
+   "judge_top": "C5"
+  },
+  {
+   "move_num": 22,
+   "sel_X": "C5",
+   "sel_Y": "C5",
+   "loss_X": -0.037440939999999756,
+   "loss_Y": -0.037440939999999756,
+   "judge_top": "C5"
+  },
+  {
+   "move_num": 24,
+   "sel_X": "G3",
+   "sel_Y": "B9",
+   "loss_X": 2.80803701,
+   "loss_Y": 2.2399331399999998,
+   "judge_top": "D10"
+  },
+  {
+   "move_num": 26,
+   "sel_X": "C7",
+   "sel_Y": "C7",
+   "loss_X": -0.05342337999999991,
+   "loss_Y": -0.05342337999999991,
+   "judge_top": "C7"
+  },
+  {
+   "move_num": 28,
+   "sel_X": "B3",
+   "sel_Y": "B3",
+   "loss_X": 7.08251906,
+   "loss_Y": 7.08251906,
+   "judge_top": "D8"
+  },
+  {
+   "move_num": 30,
+   "sel_X": "F3",
+   "sel_Y": "F3",
+   "loss_X": -0.05596567999999991,
+   "loss_Y": -0.05596567999999991,
+   "judge_top": "F3"
+  },
+  {
+   "move_num": 32,
+   "sel_X": "G8",
+   "sel_Y": "F8",
+   "loss_X": 4.398507250000001,
+   "loss_Y": 2.5337594500000007,
+   "judge_top": "D8"
+  },
+  {
+   "move_num": 34,
+   "sel_X": "B7",
+   "sel_Y": "B7",
+   "loss_X": -1.2325047199999997,
+   "loss_Y": -1.2325047199999997,
+   "judge_top": "D8"
+  },
+  {
+   "move_num": 36,
+   "sel_X": "G6",
+   "sel_Y": "E7",
+   "loss_X": 7.20491225,
+   "loss_Y": 3.7780702899999987,
+   "judge_top": "C2"
+  },
+  {
+   "move_num": 38,
+   "sel_X": "F8",
+   "sel_Y": "F8",
+   "loss_X": -0.006066050000000267,
+   "loss_Y": -0.006066050000000267,
+   "judge_top": "F8"
+  },
+  {
+   "move_num": 40,
+   "sel_X": "B10",
+   "sel_Y": "F8",
+   "loss_X": 8.522349853000001,
+   "loss_Y": -0.1152560600000001,
+   "judge_top": "F8"
+  },
+  {
+   "move_num": 42,
+   "sel_X": "F8",
+   "sel_Y": "F8",
+   "loss_X": -0.1385331799999996,
+   "loss_Y": -0.1385331799999996,
+   "judge_top": "F8"
+  },
+  {
+   "move_num": 44,
+   "sel_X": "G8",
+   "sel_Y": "G8",
+   "loss_X": 0.13992027000000018,
+   "loss_Y": 0.13992027000000018,
+   "judge_top": "G8"
+  },
+  {
+   "move_num": 46,
+   "sel_X": "G8",
+   "sel_Y": "G8",
+   "loss_X": 0.047321150000000145,
+   "loss_Y": 0.047321150000000145,
+   "judge_top": "D2"
+  },
+  {
+   "move_num": 48,
+   "sel_X": "H7",
+   "sel_Y": "H7",
+   "loss_X": 0.31810895000000006,
+   "loss_Y": 0.31810895000000006,
+   "judge_top": "D2"
+  },
+  {
+   "move_num": 50,
+   "sel_X": "G4",
+   "sel_Y": "G4",
+   "loss_X": 2.894814499999999,
+   "loss_Y": 2.894814499999999,
+   "judge_top": "H9"
+  },
+  {
+   "move_num": 52,
+   "sel_X": "D2",
+   "sel_Y": "D2",
+   "loss_X": 2.229828099999999,
+   "loss_Y": 2.229828099999999,
+   "judge_top": "H6"
+  },
+  {
+   "move_num": 54,
+   "sel_X": "H6",
+   "sel_Y": "H6",
+   "loss_X": -0.08285060000000044,
+   "loss_Y": -0.08285060000000044,
+   "judge_top": "H6"
+  },
+  {
+   "move_num": 56,
+   "sel_X": "M10",
+   "sel_Y": "L11",
+   "loss_X": 0.2938848000000007,
+   "loss_Y": -1.2368555000000008,
+   "judge_top": "L11"
+  },
+  {
+   "move_num": 58,
+   "sel_X": "J9",
+   "sel_Y": "L11",
+   "loss_X": 10.97416523,
+   "loss_Y": -0.5366676999999989,
+   "judge_top": "L11"
+  },
+  {
+   "move_num": 60,
+   "sel_X": "N10",
+   "sel_Y": "F10",
+   "loss_X": 5.416293999999999,
+   "loss_Y": 4.081505499999999,
+   "judge_top": "L11"
+  },
+  {
+   "move_num": 62,
+   "sel_X": "L11",
+   "sel_Y": "F10",
+   "loss_X": 5.2468603,
+   "loss_Y": 1.6207460000000005,
+   "judge_top": "L10"
+  },
+  {
+   "move_num": 64,
+   "sel_X": "G5",
+   "sel_Y": "G5",
+   "loss_X": 3.4018158000000014,
+   "loss_Y": 3.4018158000000014,
+   "judge_top": "L10"
+  },
+  {
+   "move_num": 66,
+   "sel_X": "J7",
+   "sel_Y": "J7",
+   "loss_X": 3.48686178,
+   "loss_Y": 3.48686178,
+   "judge_top": "L10"
+  },
+  {
+   "move_num": 68,
+   "sel_X": "G9",
+   "sel_Y": "G9",
+   "loss_X": 4.714642770000001,
+   "loss_Y": 4.714642770000001,
+   "judge_top": "L10"
+  },
+  {
+   "move_num": 70,
+   "sel_X": "K7",
+   "sel_Y": "K7",
+   "loss_X": 6.874619769999999,
+   "loss_Y": 6.874619769999999,
+   "judge_top": "L10"
+  },
+  {
+   "move_num": 72,
+   "sel_X": "N8",
+   "sel_Y": "A6",
+   "loss_X": 6.51202974,
+   "loss_Y": 0.9914518999999995,
+   "judge_top": "L10"
+  },
+  {
+   "move_num": 74,
+   "sel_X": "A6",
+   "sel_Y": "A6",
+   "loss_X": 3.3234719800000008,
+   "loss_Y": 3.3234719800000008,
+   "judge_top": "L9"
+  },
+  {
+   "move_num": 76,
+   "sel_X": "L9",
+   "sel_Y": "L9",
+   "loss_X": -0.00329080000000026,
+   "loss_Y": -0.00329080000000026,
+   "judge_top": "L9"
+  },
+  {
+   "move_num": 78,
+   "sel_X": "N12",
+   "sel_Y": "L12",
+   "loss_X": 0.13542960000000015,
+   "loss_Y": 0.31343860000000134,
+   "judge_top": "K9"
+  },
+  {
+   "move_num": 80,
+   "sel_X": "M13",
+   "sel_Y": "M13",
+   "loss_X": 0.9000973999999999,
+   "loss_Y": 0.9000973999999999,
+   "judge_top": "K9"
+  },
+  {
+   "move_num": 82,
+   "sel_X": "M7",
+   "sel_Y": "M7",
+   "loss_X": 0.3643648000000006,
+   "loss_Y": 0.3643648000000006,
+   "judge_top": "N9"
+  },
+  {
+   "move_num": 84,
+   "sel_X": "N9",
+   "sel_Y": "N12",
+   "loss_X": -0.01927650000000014,
+   "loss_Y": -0.19704060000000112,
+   "judge_top": "N9"
+  },
+  {
+   "move_num": 86,
+   "sel_X": "J11",
+   "sel_Y": "N12",
+   "loss_X": 1.0541687,
+   "loss_Y": 0.21860870000000077,
+   "judge_top": "B1"
+  },
+  {
+   "move_num": 88,
+   "sel_X": "F9",
+   "sel_Y": "J11",
+   "loss_X": 0.36136740000000067,
+   "loss_Y": -0.21919439999999923,
+   "judge_top": "C1"
+  },
+  {
+   "move_num": 90,
+   "sel_X": "B1",
+   "sel_Y": "B1",
+   "loss_X": -0.3430920999999998,
+   "loss_Y": -0.3430920999999998,
+   "judge_top": "B1"
+  },
+  {
+   "move_num": 92,
+   "sel_X": "F9",
+   "sel_Y": "F9",
+   "loss_X": -0.31561400000000006,
+   "loss_Y": -0.31561400000000006,
+   "judge_top": "C1"
+  },
+  {
+   "move_num": 94,
+   "sel_X": "F9",
+   "sel_Y": "F9",
+   "loss_X": -0.17763220000000146,
+   "loss_Y": -0.17763220000000146,
+   "judge_top": "F9"
+  },
+  {
+   "move_num": 96,
+   "sel_X": "F6",
+   "sel_Y": "F6",
+   "loss_X": 0.00033709999999942397,
+   "loss_Y": 0.00033709999999942397,
+   "judge_top": "F6"
+  },
+  {
+   "move_num": 98,
+   "sel_X": "E5",
+   "sel_Y": "K13",
+   "loss_X": 0.0007998999999987433,
+   "loss_Y": -0.21168900000000157,
+   "judge_top": "G7"
+  },
+  {
+   "move_num": 100,
+   "sel_X": "E5",
+   "sel_Y": "pass",
+   "loss_X": 0.013389200000000656,
+   "loss_Y": -0.015080400000000438,
+   "judge_top": "pass"
+  }
+ ]
+}

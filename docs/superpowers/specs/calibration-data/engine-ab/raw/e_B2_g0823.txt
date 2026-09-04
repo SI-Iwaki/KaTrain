@@ -1,0 +1,63 @@
+#  2 chosen=C4   best=D4   dev=1 cands=8 E_chosen=0.05 vloss=0.17 1.1s
+#  4 chosen=C4   best=C10  dev=1 cands=8 E_chosen=0.04 vloss=0.55 1.35s
+#  6 chosen=C9   best=C10  dev=1 cands=8 E_chosen=0.12 vloss=0.59 1.3s
+#  8 chosen=F3   best=D10  dev=1 cands=8 E_chosen=0.24 vloss=0.39 1.29s
+# 10 chosen=H11  best=E10  dev=1 cands=8 E_chosen=0.11 vloss=0.4 1.27s
+# 12 chosen=D10  best=E10  dev=1 cands=8 E_chosen=0.29 vloss=0.7 1.3s
+# 14 chosen=D7   best=E10  dev=1 cands=8 E_chosen=0.63 vloss=0.5 1.21s
+# 16 chosen=C6   best=C6   dev=0 cands=1 E_chosen=0.09 vloss=0.0 0.4s
+# 18 chosen=G3   best=G3   dev=0 cands=8 E_chosen=1.1 vloss=0.0 1.06s
+# 20 chosen=C5   best=C5   dev=0 cands=0 E_chosen=None vloss=None 0.0s
+# 22 chosen=C5   best=C5   dev=0 cands=0 E_chosen=None vloss=None 0.0s
+# 24 chosen=G3   best=D10  dev=1 cands=8 E_chosen=1.53 vloss=2.1 1.13s
+# 26 chosen=C7   best=C7   dev=0 cands=1 E_chosen=0.47 vloss=0.0 0.33s
+# 28 chosen=B3   best=D8   dev=1 cands=4 E_chosen=3.86 vloss=6.18 0.63s
+# 30 chosen=F3   best=F3   dev=0 cands=3 E_chosen=0.8 vloss=0.0 0.34s
+# 32 chosen=E2   best=D8   dev=1 cands=8 E_chosen=2.38 vloss=4.14 1.31s
+# 34 chosen=B7   best=D8   dev=1 cands=7 E_chosen=1.94 vloss=-0.05 0.96s
+# 36 chosen=G6   best=D8   dev=1 cands=6 E_chosen=4.65 vloss=4.35 0.82s
+# 38 chosen=F8   best=C2   dev=1 cands=3 E_chosen=1.96 vloss=1.83 0.2s
+# 40 chosen=F8   best=F8   dev=0 cands=3 E_chosen=2.8 vloss=0.0 0.32s
+# 42 chosen=F8   best=F8   dev=0 cands=2 E_chosen=0.8 vloss=0.0 0.08s
+# 44 chosen=G8   best=C2   dev=1 cands=2 E_chosen=0.67 vloss=0.71 0.06s
+# 46 chosen=G8   best=G8   dev=0 cands=2 E_chosen=1.03 vloss=0.0 0.06s
+# 48 chosen=H7   best=H7   dev=0 cands=2 E_chosen=1.1 vloss=0.0 0.05s
+# 50 chosen=G4   best=H9   dev=1 cands=8 E_chosen=3.2 vloss=3.44 0.76s
+# 52 chosen=D2   best=H6   dev=1 cands=4 E_chosen=5.81 vloss=3.77 0.72s
+# 54 chosen=H6   best=H6   dev=0 cands=0 E_chosen=None vloss=None 0.0s
+# 56 chosen=L10  best=L11  dev=1 cands=8 E_chosen=3.47 vloss=0.55 1.15s
+# 58 chosen=F10  best=L11  dev=1 cands=8 E_chosen=2.56 vloss=6.79 1.2s
+# 60 chosen=F10  best=L11  dev=1 cands=8 E_chosen=3.8 vloss=5.08 1.2s
+# 62 chosen=L11  best=L10  dev=1 cands=7 E_chosen=2.12 vloss=5.73 0.95s
+# 64 chosen=G5   best=L10  dev=1 cands=8 E_chosen=3.02 vloss=5.16 1.05s
+# 66 chosen=J7   best=L10  dev=1 cands=8 E_chosen=2.91 vloss=3.98 0.92s
+# 68 chosen=G9   best=L10  dev=1 cands=7 E_chosen=2.93 vloss=5.67 1.1s
+# 70 chosen=K7   best=L10  dev=1 cands=5 E_chosen=1.58 vloss=7.18 0.74s
+# 72 chosen=N8   best=L10  dev=1 cands=6 E_chosen=4.15 vloss=7.69 0.85s
+# 74 chosen=A8   best=L9   dev=1 cands=3 E_chosen=4.64 vloss=4.8 0.42s
+# 76 chosen=L9   best=L9   dev=0 cands=0 E_chosen=None vloss=None 0.09s
+# 78 chosen=M7   best=K9   dev=1 cands=8 E_chosen=0.38 vloss=0.27 0.71s
+# 80 chosen=M13  best=K9   dev=1 cands=6 E_chosen=1.06 vloss=0.56 0.72s
+# 82 chosen=M7   best=N9   dev=1 cands=3 E_chosen=1.22 vloss=0.14 0.42s
+# 84 chosen=N9   best=N12  dev=1 cands=3 E_chosen=1.18 vloss=0.09 0.72s
+# 86 chosen=J12  best=C1   dev=1 cands=8 E_chosen=1.33 vloss=0.37 1.37s
+# 88 chosen=J11  best=C1   dev=1 cands=8 E_chosen=0.83 vloss=-0.62 1.28s
+# 90 chosen=F9   best=C1   dev=1 cands=8 E_chosen=0.37 vloss=0.43 1.2s
+# 92 chosen=C1   best=C1   dev=0 cands=3 E_chosen=0.32 vloss=0.0 1.17s
+# 94 chosen=F9   best=F9   dev=0 cands=4 E_chosen=0.26 vloss=0.0 2.14s
+# 96 chosen=F6   best=F6   dev=0 cands=0 E_chosen=None vloss=None 0.07s
+# 98 chosen=E5   best=E5   dev=0 cands=0 E_chosen=None vloss=None 0.02s
+#100 chosen=E5   best=E5   dev=0 cands=0 E_chosen=None vloss=None 0.02s
+wrote C:\Users\iwaki\AppData\Local\Temp\claude\c--Users-iwaki-Documents-katrain-1-17-1-1-katrain-1-17-1-1\dd7d7c99-54f7-4db9-8798-455717d5a883\scratchpad\ab\out\e_B2_g0823.json: 50 positions, deviated 33
+
+--- stderr ---
+[[1;32mINFO[0m   ] [Logger      ] Record log in C:\Users\iwaki\.kivy\logs\kivy_26-09-04_4.txt
+[[1;32mINFO[0m   ] [deps        ] Successfully imported "kivy_deps.angle" 0.4.0
+[[1;32mINFO[0m   ] [deps        ] Successfully imported "kivy_deps.glew" 0.3.1
+[[1;32mINFO[0m   ] [deps        ] Successfully imported "kivy_deps.sdl2" 0.8.0
+[[1;32mINFO[0m   ] [Kivy        ] v2.3.1
+[[1;32mINFO[0m   ] [Kivy        ] Installed at "C:\Users\iwaki\AppData\Local\Programs\Python\Python312\Lib\site-packages\kivy\__init__.py"
+[[1;32mINFO[0m   ] [Python      ] v3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]
+[[1;32mINFO[0m   ] [Python      ] Interpreter at "C:\Users\iwaki\AppData\Local\Programs\Python\Python312\python.exe"
+[[1;32mINFO[0m   ] [Logger      ] Purge log fired. Processing...
+[[1;32mINFO[0m   ] [Logger      ] Purge finished!

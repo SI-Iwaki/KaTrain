@@ -1,0 +1,48 @@
+2026-09-04 11:11:42+0900: Running with following config:
+conservativePass = true
+homeDataDir = C:/Users/iwaki/.katrain
+maxVisits = 500
+nnCacheSizePowerOfTwo = 20
+nnMaxBatchSize = 96
+nnMutexPoolSizePowerOfTwo = 16
+nnRandomize = true
+numAnalysisThreads = 12
+numSearchThreads = 24
+reportAnalysisWinratesAs = BLACK
+
+2026-09-04 11:11:42+0900: Loading model and initializing benchmark...
+2026-09-04 11:11:42+0900: Testing with default positions for board size: 19
+WARNING: Your nnMaxBatchSize is hardcoded to 96, ignoring it and assuming it is >= threads, for this benchmark.
+2026-09-04 11:11:42+0900: nnRandSeed0 = 2596655623160079601
+2026-09-04 11:11:42+0900: After dedups: nnModelFile0 = c:/Users/iwaki/Documents/katrain-1.17.1.1/katrain-1.17.1.1/katrain/models/kata1-b18c384nbt-s9996604416-d4316597426.bin.gz useFP16 auto useNHWC auto
+2026-09-04 11:11:42+0900: Initializing neural net buffer to be size 19 * 19 exactly
+2026-09-04 11:11:43+0900: TensorRT backend thread 0: Found GPU NVIDIA GeForce RTX 3080 memory 10736762880 compute capability major 8 minor 6
+2026-09-04 11:11:43+0900: TensorRT backend thread 0: Initializing (may take a long time)
+2026-09-04 11:11:47+0900: Creating new timing cache (usingFP16=true 19x19 maxBatchSizeLimit=24)
+2026-09-04 11:12:46+0900: Saved new timing cache to C:/Users/iwaki/.katrain/trtcache/trt-100900_gpu-f423ef1f_tune-04e4d48f9167_exact19x19_batch24_fp16
+2026-09-04 11:12:47+0900: TensorRT backend thread 0: Model version 14 useFP16 = true
+2026-09-04 11:12:47+0900: TensorRT backend thread 0: Model name: kata1-b18c384nbt-s9996604416-d4316597426
+
+2026-09-04 11:12:48+0900: Loaded config c:/Users/iwaki/Documents/katrain-1.17.1.1/katrain-1.17.1.1/katrain/KataGo/analysis_config.cfg and/or command-line and query overrides
+2026-09-04 11:12:48+0900: Loaded model c:/Users/iwaki/Documents/katrain-1.17.1.1/katrain-1.17.1.1/katrain/models/kata1-b18c384nbt-s9996604416-d4316597426.bin.gz
+
+Testing using 3000 visits.
+
+Your GTP config is currently set to trtUseFP16 = auto
+
+Your GTP config is currently set to use numSearchThreads = 24
+Testing (board size 19x19): 
+
+numSearchThreads = 24: 0 / 10 positions, visits/s = -nan(ind) (0.0 secs)      
+numSearchThreads = 24: 1 / 10 positions, visits/s = 2723.42 (1.1 secs)      
+numSearchThreads = 24: 2 / 10 positions, visits/s = 2173.26 (2.8 secs)      
+numSearchThreads = 24: 3 / 10 positions, visits/s = 2057.18 (4.4 secs)      
+numSearchThreads = 24: 4 / 10 positions, visits/s = 2130.97 (5.7 secs)      
+numSearchThreads = 24: 5 / 10 positions, visits/s = 2217.05 (6.8 secs)      
+numSearchThreads = 24: 6 / 10 positions, visits/s = 2172.20 (8.3 secs)      
+numSearchThreads = 24: 7 / 10 positions, visits/s = 2196.95 (9.6 secs)      
+numSearchThreads = 24: 8 / 10 positions, visits/s = 2244.71 (10.8 secs)      
+numSearchThreads = 24: 9 / 10 positions, visits/s = 2295.54 (11.8 secs)      
+numSearchThreads = 24: 10 / 10 positions, visits/s = 2307.27 nnEvals/s = 1710.90 nnBatches/s = 143.78 avgBatchSize = 11.90 (13.1 secs) (EloDiff baseline)
+
+2026-09-04 11:13:01+0900: GPU -1 finishing, processed 22411 rows 1888 batches

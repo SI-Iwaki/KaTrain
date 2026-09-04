@@ -1,0 +1,36 @@
+#  2 X=C3     0.15  Y=L11    0.20  top=K10
+#  4 X=D10    0.05  Y=D10    0.05  top=K10
+#  6 X=E10    0.35  Y=C9     0.37  top=E11
+#  8 X=J3     0.24  Y=J3     0.24  top=J4
+# 10 X=E4     0.20  Y=H10    0.15  top=C9
+# 12 X=K6     0.16  Y=K6     0.16  top=J4
+# 14 X=H7     0.06  Y=H7     0.06  top=H6
+# 16 X=H3     0.47  Y=H3     0.47  top=C9
+# 18 X=K7    -0.00  Y=K7    -0.00  top=K7
+# 20 X=C9     0.19  Y=H6     0.14  top=G10
+# 22 X=H6    -0.07  Y=G10    0.55  top=H6
+# 24 X=K10    0.68  Y=K9     0.56  top=L9
+# 26 X=C5    -0.17  Y=C5    -0.17  top=C5
+# 28 X=B10   -0.00  Y=B10   -0.00  top=B10
+# 30 X=B10   -0.03  Y=B10   -0.03  top=B10
+# 32 X=C3    -0.05  Y=C3    -0.05  top=C3
+# 34 X=C4    -0.23  Y=C4    -0.23  top=C4
+# 36 X=B5    -0.04  Y=B5    -0.04  top=B5
+# 38 X=C11    1.35  Y=C11    1.35  top=B5
+
+judge=C:/Users/iwaki/.katrain/config.json
+moves=19 differing=6
+  all       mean loss X=0.17445598823684214 Y=0.19840053323684212 (unknown X=0 Y=0)
+  differing mean loss X=0.24989800231666667 Y=0.3257223948166667 (unknown X=0 Y=0)
+
+--- stderr ---
+[INFO   ] [Logger      ] Record log in C:\Users\iwaki\.kivy\logs\kivy_26-09-04_95.txt
+[INFO   ] [deps        ] Successfully imported "kivy_deps.angle" 0.4.0
+[INFO   ] [deps        ] Successfully imported "kivy_deps.glew" 0.3.1
+[INFO   ] [deps        ] Successfully imported "kivy_deps.sdl2" 0.8.0
+[INFO   ] [Kivy        ] v2.3.1
+[INFO   ] [Kivy        ] Installed at "C:\Users\iwaki\AppData\Local\Programs\Python\Python312\Lib\site-packages\kivy\__init__.py"
+[INFO   ] [Python      ] v3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]
+[INFO   ] [Python      ] Interpreter at "C:\Users\iwaki\AppData\Local\Programs\Python\Python312\python.exe"
+[INFO   ] [Logger      ] Purge log fired. Processing...
+[INFO   ] [Logger      ] Purge finished!

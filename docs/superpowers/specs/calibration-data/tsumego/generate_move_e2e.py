@@ -30,6 +30,8 @@ from katrain_debug.runner import DebugGame, load_sgf_to_move
 
 ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
 LINE_ARG = next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--line=")), None)
+# `--config=<path>` で engine 設定（config.json）を差し替える＝エンジン／モデルの A/B 用。既定は ~/.katrain/config.json
+CONFIG_ARG = next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--config=")), None)
 LINE = [m.strip().upper() for m in LINE_ARG.split(",") if m.strip()] if LINE_ARG else None
 SGF = ARGS[0]
 MOVES = [int(m) for m in ARGS[1].split(",")]
@@ -86,7 +88,7 @@ def main():
     # 誤答の run とそうでない run で**どの経路が分岐したか**はこれが無いと分からない
     debug = "--debug" in sys.argv
     stub = KaTrainStub(
-        os.path.expanduser(os.path.join(DATA_FOLDER, "config.json")),
+        CONFIG_ARG or os.path.expanduser(os.path.join(DATA_FOLDER, "config.json")),
         debug_level=1 if debug else 0,
         quiet=not debug,
     )

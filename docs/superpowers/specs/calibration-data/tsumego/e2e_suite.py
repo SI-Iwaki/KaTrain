@@ -29,6 +29,8 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 E2E = os.path.join(HERE, "generate_move_e2e.py")
+# `--config=<path>` はそのまま generate_move_e2e.py へ渡す（エンジン／モデルの A/B 用）
+PASSTHROUGH = [a for a in sys.argv[1:] if a.startswith("--config=")]
 
 # case -> dict(sgf, region, line=正解手順, expect={手数: 期待手...}, note)
 CASES = {
@@ -225,7 +227,8 @@ def run_case(case, plies, repeats):
             case["region"],
             str(repeats),
             "--line=" + ",".join(case["line"]),
-        ],
+        ]
+        + PASSTHROUGH,
         capture_output=True,
         text=True,
         encoding="utf-8",

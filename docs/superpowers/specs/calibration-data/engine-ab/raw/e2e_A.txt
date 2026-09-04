@@ -1,0 +1,84 @@
+--- D (case-d-gain-region-20260730.sgf) plies=[4] x3
+    move 4: PASS  3/3 expected=A4/B3 got={'B3': 3}
+--- E (case-e-ko-margin-20260730.sgf) plies=[6] x3
+    move 6: PASS  3/3 expected=K1 got={'K1': 3}
+--- F (case-f-gain-visit-share-20260730.sgf) plies=[2] x3
+    move 2: PASS  3/3 expected=N8 got={'N8': 3}
+--- F2 (case-f2-rescue-shadow-20260730.sgf) plies=[4] x3
+    move 4: PASS  3/3 expected=N11/M12 got={'M12': 3}
+--- G2 (case-g2-frameless-guard-20260730.sgf) plies=[2] x3
+    move 2: PASS  3/3 expected=C13/A10 got={'C13': 3}
+--- H (case-h-gate-cliff-20260730.sgf) plies=[4] x3
+    move 4: PASS  3/3 expected=N4 got={'N4': 3}
+--- J (case-j-points-tie-20260730.sgf) plies=[10] x3
+    move 10: PASS  3/3 expected=N10 got={'N10': 3}
+--- K (case-k-ko-route-20260730.sgf) plies=[0] x3
+    move 0: PASS  3/3 expected=C13 got={'C13': 3}
+--- L (case-l-immediate-ko-20260730.sgf) plies=[0] x3
+    move 0: PASS  3/3 expected=J6 got={'J6': 3}
+--- M (case-m-capture-gain-ko-20260730.sgf) plies=[4] x3
+    move 4: PASS  3/3 expected=K1 got={'K1': 3}
+--- O (case-o-all-ko-band-20260731.sgf) plies=[0] x3
+    move 0: PASS  3/3 expected=A11 got={'A11': 3}
+--- P (case-p-visits-tie-ko-20260731.sgf) plies=[2] x3
+    move 2: PASS  3/3 expected=J1 got={'J1': 3}
+--- R (case-r-declass-nonsolution-20260731.sgf) plies=[0] x3
+    move 0: PASS  3/3 expected=G13 got={'G13': 3}
+--- T (case-t-defender-seki-20260731.sgf) plies=[0, 2] x3
+    move 0: PASS  3/3 expected=M1 got={'M1': 3}
+    move 2: PASS  3/3 expected=L1 got={'L1': 3}
+--- U (case-u-move-order-ko-20260731.sgf) plies=[0] x3
+    move 0: PASS  3/3 expected=C1 got={'C1': 3}
+--- V (case-v-declass-no-kill-20260731.sgf) plies=[0] x3
+    move 0: PASS  3/3 expected=L12 got={'L12': 3}
+--- V2 (case-v2-guard-outside-ko-20260731.sgf) plies=[2] x3
+    move 2: PASS  3/3 expected=N13 got={'N13': 3}
+--- W (case-w-frameless-declass-20260801.sgf) plies=[0, 2] x3
+    move 0: PASS  3/3 expected=H1 got={'H1': 3}
+    move 2: PASS  3/3 expected=K1 got={'K1': 3}
+--- Y (case-y-declass-ko-answer-20260802.sgf) plies=[0] x3
+    move 0: PASS  3/3 expected=B1 got={'B1': 3}
+--- X (case-x-attacker-role-edge-20260801.sgf) plies=[0] x3
+    move 0: PASS  3/3 expected=A4 got={'A4': 3}
+--- Z (case-z-ko-line-perf-20260802.sgf) plies=[0, 4, 6] x3
+    move 0: PART  1/3 expected=N11 got={'N11': 1, 'N7': 2}
+    move 4: PASS  3/3 expected=N10 got={'N10': 3}
+    move 6: PASS  3/3 expected=M9 got={'M9': 3}
+--- AA (case-aa-wall-is-target-20260802.sgf) plies=[0, 2, 4, 6] x3
+    move 0: PASS  3/3 expected=L1 got={'L1': 3}
+    move 2: PASS  3/3 expected=N3 got={'N3': 3}
+    move 4: PASS  3/3 expected=K6 got={'K6': 3}
+    move 6: PASS  3/3 expected=N5 got={'N5': 3}
+
+=== E2E suite summary ===
+PASS  D@4      3/3 expected=A4/B3 got={'B3': 3} B3 は README 記載の別解（2026-08-01 の全手順スイープでは 4手目に B3 2/2）
+PASS  E@6      3/3 expected=K1 got={'K1': 3}
+PASS  F@2      3/3 expected=N8 got={'N8': 3} 壊れた枠の盤（脱出の退化再現用・どの手でも解けない）
+PASS  F2@4     3/3 expected=N11/M12 got={'M12': 3} N11/M12 はコイン投げ
+PASS  G2@2     3/3 expected=C13/A10 got={'C13': 3} A10 は別解の疑い（GUI 要観察）
+PASS  H@4      3/3 expected=N4 got={'N4': 3}
+PASS  J@10     3/3 expected=N10 got={'N10': 3}
+PASS  K@0      3/3 expected=C13 got={'C13': 3} A10 が稀に出る別解あり
+PASS  L@0      3/3 expected=J6 got={'J6': 3}
+PASS  M@4      3/3 expected=K1 got={'K1': 3}
+PASS  O@0      3/3 expected=A11 got={'A11': 3}
+PASS  P@2      3/3 expected=J1 got={'J1': 3}
+PASS  R@0      3/3 expected=G13 got={'G13': 3} root 解析の分散で稀に J13/C8。3手目 J13 も救済経路で D8 1/4（spec 追記33 の残余）
+PASS  T@0      3/3 expected=M1 got={'M1': 3}
+PASS  T@2      3/3 expected=L1 got={'L1': 3}
+PASS  U@0      3/3 expected=C1 got={'C1': 3}
+PASS  V@0      3/3 expected=L12 got={'L12': 3}
+PASS  V2@2     3/3 expected=N13 got={'N13': 3}
+PASS  W@0      3/3 expected=H1 got={'H1': 3} 初手の残り 1/3 は救済が N4 を拾う分散（spec 追記33/35）
+PASS  W@2      3/3 expected=K1 got={'K1': 3} 初手の残り 1/3 は救済が N4 を拾う分散（spec 追記33/35）
+PASS  Y@0      3/3 expected=B1 got={'B1': 3} 同深さ判定の拘束深さ（TSUMEGO_VERDICT_UNTIL_DEPTH）。ud6 では A4 が +0.78＝「白は死んだ」と読まれ、格下げ（run3）とコウ脱出（run1/2）の両方が A4 を採って誤答した（spec 追記38）
+PASS  X@0      3/3 expected=A4 got={'A4': 3} 役割指定（black_to_attack_p=True）で張り直した枠。実キャプチャは極値票 -68 の役割反転で壁が白になり C2 で誤答（-inverted.sgf、spec 追記37）
+PART  Z@0      1/3 expected=N11 got={'N11': 1, 'N7': 2} 高速化（tsumego_defender_ko_points の候補点フィルタ、spec 追記39）の実測ケース。2手目は root 分散で M9 6/9・N4 3/9（N4 もコウ経路と検出された上での、コウ同士のroot 目数タイブレーク）のため expect に含めない
+PASS  Z@4      3/3 expected=N10 got={'N10': 3} 高速化（tsumego_defender_ko_points の候補点フィルタ、spec 追記39）の実測ケース。2手目は root 分散で M9 6/9・N4 3/9（N4 もコウ経路と検出された上での、コウ同士のroot 目数タイブレーク）のため expect に含めない
+PASS  Z@6      3/3 expected=M9 got={'M9': 3} 高速化（tsumego_defender_ko_points の候補点フィルタ、spec 追記39）の実測ケース。2手目は root 分散で M9 6/9・N4 3/9（N4 もコウ経路と検出された上での、コウ同士のroot 目数タイブレーク）のため expect に含めない
+PASS  AA@0     3/3 expected=L1 got={'L1': 3} 問題抽出が「取れる連（白15子・呼吸点4）」を壁にして region を5点に潰していた盤（spec 追記6）。region さえ潰れなければ選択則は正解手順を 3/3 で再現するので、これは抽出（tsumego_problem）側の回帰ケース。単体の固定はtests/test_tsumego_solver.py::test_capturable_group_is_not_a_wall
+PASS  AA@2     3/3 expected=N3 got={'N3': 3} 問題抽出が「取れる連（白15子・呼吸点4）」を壁にして region を5点に潰していた盤（spec 追記6）。region さえ潰れなければ選択則は正解手順を 3/3 で再現するので、これは抽出（tsumego_problem）側の回帰ケース。単体の固定はtests/test_tsumego_solver.py::test_capturable_group_is_not_a_wall
+PASS  AA@4     3/3 expected=K6 got={'K6': 3} 問題抽出が「取れる連（白15子・呼吸点4）」を壁にして region を5点に潰していた盤（spec 追記6）。region さえ潰れなければ選択則は正解手順を 3/3 で再現するので、これは抽出（tsumego_problem）側の回帰ケース。単体の固定はtests/test_tsumego_solver.py::test_capturable_group_is_not_a_wall
+PASS  AA@6     3/3 expected=N5 got={'N5': 3} 問題抽出が「取れる連（白15子・呼吸点4）」を壁にして region を5点に潰していた盤（spec 追記6）。region さえ潰れなければ選択則は正解手順を 3/3 で再現するので、これは抽出（tsumego_problem）側の回帰ケース。単体の固定はtests/test_tsumego_solver.py::test_capturable_group_is_not_a_wall
+
+28/29 PASS  回帰失敗: ['Z@0']

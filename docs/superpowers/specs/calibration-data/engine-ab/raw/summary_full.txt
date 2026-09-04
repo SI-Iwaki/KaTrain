@@ -1,0 +1,80 @@
+=== 詰碁 E2E ===
+case                   A             B            B2
+AA@0            PASS 3/3      PASS 3/3      PASS 3/3
+AA@2            PASS 3/3      PASS 3/3      PASS 3/3
+AA@4            PASS 3/3      PASS 3/3      PASS 3/3
+AA@6            PASS 3/3      FAIL 0/3      PASS 3/3  <-- differs
+D@4             PASS 3/3      PASS 3/3      PASS 3/3
+E@6             PASS 3/3      PASS 3/3      PASS 3/3
+F@2             PASS 3/3      PASS 3/3      PASS 3/3
+F2@4            PASS 3/3      FAIL 0/3      PASS 3/3  <-- differs
+G2@2            PASS 3/3      PASS 3/3      PASS 3/3
+H@4             PASS 3/3      PASS 3/3      PASS 3/3
+J@10            PASS 3/3      PASS 3/3      PASS 3/3
+K@0             PASS 3/3      PASS 3/3      PASS 3/3
+L@0             PASS 3/3      PASS 3/3      PASS 3/3
+M@4             PASS 3/3      PASS 3/3      PASS 3/3
+O@0             PASS 3/3      PART 2/3      PASS 3/3  <-- differs
+P@2             PASS 3/3      PASS 3/3      PASS 3/3
+R@0             PASS 3/3      PASS 3/3      PASS 3/3
+T@0             PASS 3/3      PASS 3/3      PASS 3/3
+T@2             PASS 3/3      PASS 3/3      PASS 3/3
+U@0             PASS 3/3      PASS 3/3      PART 2/3  <-- differs
+V@0             PASS 3/3      PASS 3/3      PASS 3/3
+V2@2            PASS 3/3      PASS 3/3      PASS 3/3
+W@0             PASS 3/3      PASS 3/3      PASS 3/3
+W@2             PASS 3/3      PASS 3/3      PASS 3/3
+X@0             PASS 3/3      PASS 3/3      PASS 3/3
+Y@0             PASS 3/3      PASS 3/3      PASS 3/3
+Z@0             PART 1/3      PASS 3/3      PART 1/3  <-- differs
+Z@4             PASS 3/3      PASS 3/3      PASS 3/3
+Z@6             PASS 3/3      PASS 3/3      PASS 3/3
+A: 28/29 PASS  回帰失敗: ['Z@0']
+B: 26/29 PASS  回帰失敗: ['F2@4', 'O@0', 'AA@6']
+B2: 27/29 PASS  回帰失敗: ['U@0', 'Z@0']
+
+=== 難解13路バッチ ===
+
+--- g0823 ---
+A: runs=3 moves=50 Top1=0.320 Top5=0.513 mean_ptloss=1.572 accuracy=63.66
+   run 間で選択が安定した手番: 25/50
+B: runs=3 moves=50 Top1=0.360 Top5=0.620 mean_ptloss=1.115 accuracy=72.57
+   run 間で選択が安定した手番: 35/50
+B2: runs=1 moves=50 Top1=0.360 Top5=0.580 mean_ptloss=1.595 accuracy=63.21
+   run 間で選択が安定した手番: 50/50
+   A vs B 最頻選択の一致: 34/50
+   不一致: #2:C4/D10, #4:C4/D10, #6:C11/E4, #10:H11/C4, #12:D10/E9, #24:G3/C8, #32:G8/F8, #38:D8/F8, #40:B10/F8, #56:M10/L11, #58:J9/L11, #78:N12/L12, #84:N9/N12, #88:F9/J11, #98:E5/K13, #100:E5/pass
+   A vs B2 最頻選択の一致: 38/50
+
+--- g0901 ---
+A: runs=3 moves=19 Top1=0.456 Top5=0.649 mean_ptloss=0.176 accuracy=95.07
+   run 間で選択が安定した手番: 10/19
+B: runs=3 moves=19 Top1=0.386 Top5=0.684 mean_ptloss=0.207 accuracy=94.22
+   run 間で選択が安定した手番: 12/19
+B2: runs=1 moves=19 Top1=0.579 Top5=0.737 mean_ptloss=0.147 accuracy=95.87
+   run 間で選択が安定した手番: 19/19
+   A vs B 最頻選択の一致: 12/19
+   不一致: #2:C3/L11, #6:E10/E11, #10:E4/H10, #16:J7/H3, #20:C9/H6, #22:H6/G10, #24:L9/G10
+   A vs B2 最頻選択の一致: 13/19
+
+=== 所要時間（run.log の STEP done） ===
+  verify_A                     rc=  0    0.6 min
+  verify_B                     rc=  0    0.7 min
+  verify_B2                    rc=  0    0.7 min
+  e2e_A                        rc=  0   14.4 min
+  e2e_B                        rc=  0   15.2 min
+  enigma_A_g0823_r1            rc=  0    2.2 min
+  enigma_A_g0823_r2            rc=  0    2.2 min
+  enigma_A_g0823_r3            rc=  0    2.2 min
+  enigma_A_g0901_r1            rc=  0    1.2 min
+  enigma_A_g0901_r2            rc=  0    1.3 min
+  enigma_A_g0901_r3            rc=  0    1.2 min
+  enigma_B_g0823_r1            rc=  0    2.1 min
+  enigma_B_g0823_r2            rc=  0    2.1 min
+  enigma_B_g0823_r3            rc=  0    2.1 min
+  enigma_B_g0901_r1            rc=  0    1.2 min
+  enigma_B_g0901_r2            rc=  0    1.2 min
+  enigma_B_g0901_r3            rc=  0    1.2 min
+  e2e_B2                       rc=  0   16.2 min
+  enigma_B2_g0823_r1           rc=  0    2.2 min
+  enigma_B2_g0901_r1           rc=  0    1.4 min

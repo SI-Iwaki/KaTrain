@@ -1,0 +1,67 @@
+#  2 X=C4     0.12  Y=C4     0.12  top=D4
+#  4 X=C4     0.59  Y=C9     0.56  top=C10
+#  6 X=C11    0.31  Y=C11    0.31  top=C10
+#  8 X=C10    0.03  Y=F3     0.41  top=D10
+# 10 X=F11    0.77  Y=H11    0.41  top=E10
+# 12 X=D10    0.42  Y=B3     0.27  top=E10
+# 14 X=G3     0.22  Y=D7     0.26  top=E10
+# 16 X=C6    -0.00  Y=C6    -0.00  top=C6
+# 18 X=G3    -0.07  Y=G3    -0.07  top=G3
+# 20 X=C5    -0.04  Y=C5    -0.04  top=C5
+# 22 X=C5    -0.00  Y=C5    -0.00  top=C5
+# 24 X=G3     2.59  Y=C8     1.09  top=B10
+# 26 X=C7    -0.07  Y=C7    -0.07  top=C7
+# 28 X=B3     7.22  Y=B3     7.22  top=D8
+# 30 X=F3     0.08  Y=F3     0.08  top=D8
+# 32 X=G8     4.75  Y=E2     3.05  top=D8
+# 34 X=B7     0.50  Y=B7     0.50  top=D8
+# 36 X=G6     8.09  Y=E7     5.42  top=D8
+# 38 X=F8     0.04  Y=F8     0.04  top=F8
+# 40 X=B10    6.74  Y=B10    6.74  top=F8
+# 42 X=F8    -0.15  Y=F8    -0.15  top=F8
+# 44 X=G8     0.31  Y=G8     0.31  top=C2
+# 46 X=G8     0.06  Y=G8     0.06  top=G8
+# 48 X=H7     0.26  Y=H7     0.26  top=H7
+# 50 X=G4     3.00  Y=G4     3.00  top=H9
+# 52 X=D2     3.24  Y=D2     3.24  top=H6
+# 54 X=H6    -0.11  Y=H6    -0.11  top=H6
+# 56 X=M10   -0.34  Y=L11   -0.95  top=L11
+# 58 X=J9     9.55  Y=E8     6.47  top=L11
+# 60 X=N10    6.05  Y=F10    5.21  top=L11
+# 62 X=L11    3.60  Y=L11    3.60  top=L10
+# 64 X=G5     4.16  Y=G5     4.16  top=L10
+# 66 X=J7     3.72  Y=J7     3.72  top=L10
+# 68 X=G9     5.10  Y=G9     5.10  top=L10
+# 70 X=K7     7.34  Y=K7     7.34  top=L10
+# 72 X=N8     7.43  Y=A6     8.16  top=L10
+# 74 X=A6     2.46  Y=A6     2.46  top=L9
+# 76 X=L9    -0.00  Y=L9    -0.00  top=L9
+# 78 X=N12    0.19  Y=K11   -0.25  top=K9
+# 80 X=M13    1.96  Y=N12    0.09  top=K9
+# 82 X=M7     0.29  Y=M7     0.29  top=N9
+# 84 X=N9    -0.05  Y=N9    -0.05  top=N9
+# 86 X=J11    0.62  Y=N12   -0.07  top=B1
+# 88 X=F9     0.61  Y=J11   -0.58  top=C1
+# 90 X=B1    -0.54  Y=B1    -0.54  top=B1
+# 92 X=F9     0.33  Y=C1    -0.16  top=C1
+# 94 X=F9    -0.38  Y=F9    -0.38  top=F9
+# 96 X=F6     0.00  Y=F6     0.00  top=F6
+# 98 X=E5     0.01  Y=E5     0.01  top=N8
+#100 X=E5    -0.08  Y=E5    -0.08  top=E5
+
+judge=C:/Users/iwaki/.katrain/config.json
+moves=50 differing=17
+  all       mean loss X=1.818381055968 Y=1.5294145993800001 (unknown X=0 Y=0)
+  differing mean loss X=2.5799347318588235 Y=1.7300333889529411 (unknown X=0 Y=0)
+
+--- stderr ---
+[INFO   ] [Logger      ] Record log in C:\Users\iwaki\.kivy\logs\kivy_26-09-04_94.txt
+[INFO   ] [deps        ] Successfully imported "kivy_deps.angle" 0.4.0
+[INFO   ] [deps        ] Successfully imported "kivy_deps.glew" 0.3.1
+[INFO   ] [deps        ] Successfully imported "kivy_deps.sdl2" 0.8.0
+[INFO   ] [Kivy        ] v2.3.1
+[INFO   ] [Kivy        ] Installed at "C:\Users\iwaki\AppData\Local\Programs\Python\Python312\Lib\site-packages\kivy\__init__.py"
+[INFO   ] [Python      ] v3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]
+[INFO   ] [Python      ] Interpreter at "C:\Users\iwaki\AppData\Local\Programs\Python\Python312\python.exe"
+[INFO   ] [Logger      ] Purge log fired. Processing...
+[INFO   ] [Logger      ] Purge finished!

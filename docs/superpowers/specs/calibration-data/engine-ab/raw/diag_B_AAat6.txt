@@ -1,0 +1,88 @@
+Starting KataGo with ['C:\\Users\\iwaki\\.katrain\\katago-v1.18.1-trt\\katago.exe', 'analysis', '-model', 'C:\\Users\\iwaki\\.katrain\\b10c384h6nbttflrs.bin.gz', '-human-model', 'C:\\Users\\iwaki\\.katrain\\b18c384nbt-humanv0.bin.gz', '-config', 'C:\\Users\\iwaki\\Documents\\katrain-1.17.1.1\\katrain-1.17.1.1\\katrain\\KataGo\\analysis_config.cfg', '-override-config', 'homeDataDir=C:\\Users\\iwaki/.katrain']
+settings: {'max_points_behind': 2.0, 'gain_epsilon': 0.3, 'points_epsilon': 0.25, 'tie_ko_screen': True, 'min_visits': 10, 'gain_min_visit_ratio': 0.5, 'gain_verify': True, 'gain_verify_visits': 800, 'gain_verify_margin': 0.3, 'gain_rescue_margin': 1.0, 'ko_win_assumption': True, 'ko_win_visits': 800, 'ko_win_margin': 5.0, 'ko_success_lead': 0.0, 'ko_success_ownership': 0.5, 'ko_escape_candidates': 4, 'ko_escape_min_prior': 0.001, 'ko_escape_tolerance': 0.5, 'promotion_dominant_requires_success': True}
+Sending query QUERY:1: {"rules": "chinese", "priority": 1000, "analyzeTurns": [6], "maxVisits": 200, "komi": 7.0, "boardXSize": 13, "boardYSize": 13, "includeOwnership": true, "includeMovesOwnership": true, "includePolicy": true, "initialStones": [["B", "G8"], ["B", "H8"], ["B", "J8"], ["B", "K8"], ["B", "G7"], ["B", "K7"], ["B", "M7"], ["B", "G6"], ["B", "J6"], ["B", "L6"], ["B", "G5"], ["B", "J5"], ["B", "L5"], ["B", "M5"], ["B", "G4"], ["B", "K4"], ["B", "N4"], ["B", "G3"], ["B", "G2"], ["B", "L2"], ["B", "M2"], ["B", "G1"], ["B", "H1"], ["B", "M1"], ["W", "H7"], ["W", "J7"], ["W", "H6"], ["W", "H5"], ["W", "H4"], ["W", "L4"], ["W", "M4"], ["W", "H3"], ["W", "K3"], ["W", "L3"], ["W", "M3"], ["W", "H2"], ["W", "J2"], ["W", "K2"], ["W", "N2"], ["W", "J1"], ["W", "N1"]], "initialPlayer": "B", "moves": [["B", "L1"], ["W", "J4"], ["B", "N3"], ["W", "K5"], ["B", "K6"], ["W", "N2"]], "overrideSettings": {"reportAnalysisWinratesAs": "BLACK", "wideRootNoise": 0.04, "maxTime": 8.0}, "reportDuringSearchEvery": 1, "id": "QUERY:1"}
+2026-09-04 12:57:57+0900: Running with following config:
+conservativePass = true
+homeDataDir = C:\Users\iwaki/.katrain
+maxVisits = 500
+nnCacheSizePowerOfTwo = 20
+nnMaxBatchSize = 96
+nnMutexPoolSizePowerOfTwo = 16
+nnRandomize = true
+numAnalysisThreads = 12
+numSearchThreads = 24
+reportAnalysisWinratesAs = BLACK
+
+2026-09-04 12:57:57+0900: Analysis Engine starting...
+2026-09-04 12:57:57+0900: KataGo v1.18.1
+2026-09-04 12:57:58+0900: nnRandSeed0 = 2463328155073315645
+2026-09-04 12:57:58+0900: After dedups: nnModelFile0 = C:\Users\iwaki\.katrain\b10c384h6nbttflrs.bin.gz useFP16 auto
+2026-09-04 12:57:58+0900: Initializing neural net buffer to be size 19 * 19 allowing smaller boards
+2026-09-04 12:57:58+0900: TensorRT backend thread 0: Found GPU NVIDIA GeForce RTX 3080 memory 10736762880 compute capability major 8 minor 6
+2026-09-04 12:57:58+0900: TensorRT backend thread 0: Initializing (may take a long time)
+2026-09-04 12:58:02+0900: TensorRT backend: building network via ONNX emitter
+2026-09-04 12:58:02+0900: Building internal onnx model, requireExactNNLen=false transformerNHWC=true
+2026-09-04 12:58:03+0900: TensorRT backend: pinned 225 layers to FP32 (rmsnorm + heads)
+2026-09-04 12:58:03+0900: Using existing timing cache at C:\Users\iwaki/.katrain/trtcache/trt-100900_gpu-f423ef1f_tune-2ae571cad198_mx19x19_b96_fp16
+2026-09-04 12:58:14+0900: TensorRT backend thread 0: Model version 15 useFP16 = true
+2026-09-04 12:58:14+0900: TensorRT backend thread 0: Model name: b10c384h6nbttflrs (nbt transformer, 10545753 params)
+2026-09-04 12:58:14+0900: nnRandSeed0 = 17498618676934646857
+2026-09-04 12:58:14+0900: After dedups: nnModelFile0 = C:\Users\iwaki\.katrain\b18c384nbt-humanv0.bin.gz useFP16 auto
+2026-09-04 12:58:14+0900: Initializing neural net buffer to be size 19 * 19 allowing smaller boards
+2026-09-04 12:58:15+0900: TensorRT backend thread 0: Found GPU NVIDIA GeForce RTX 3080 memory 10736762880 compute capability major 8 minor 6
+2026-09-04 12:58:15+0900: TensorRT backend thread 0: Initializing (may take a long time)
+2026-09-04 12:58:21+0900: TensorRT backend: building network via ONNX emitter
+2026-09-04 12:58:21+0900: Building internal onnx model, requireExactNNLen=false transformerNHWC=false
+2026-09-04 12:58:21+0900: TensorRT backend: pinned 67 layers to FP32 (rmsnorm + heads)
+2026-09-04 12:58:21+0900: Using existing timing cache at C:\Users\iwaki/.katrain/trtcache/trt-100900_gpu-f423ef1f_tune-8c53fdd03084_mx19x19_b96_fp16
+2026-09-04 12:58:33+0900: TensorRT backend thread 0: Model version 15 useFP16 = true
+2026-09-04 12:58:33+0900: TensorRT backend thread 0: Model name: b18c384nbt-humanv0 (nbt convnet, 26740121 params)
+2026-09-04 12:58:33+0900: Note: nnMaxBatchSize * number of GPUs (96) is smaller than numSearchThreads * numAnalysisThreads (288)
+2026-09-04 12:58:33+0900: The number of simultaneous threads that might query the GPU could be larger than the batch size that the GPU will handle at once.
+2026-09-04 12:58:33+0900: It may improve performance to increase nnMaxBatchSize, unless you are constrained on GPU memory.
+2026-09-04 12:58:33+0900: Loaded config C:\Users\iwaki\Documents\katrain-1.17.1.1\katrain-1.17.1.1\katrain\KataGo\analysis_config.cfg and/or command-line and query overrides
+2026-09-04 12:58:33+0900: Loaded model C:\Users\iwaki\.katrain\b10c384h6nbttflrs.bin.gz
+2026-09-04 12:58:33+0900: Config override: homeDataDir = C:\Users\iwaki/.katrain
+2026-09-04 12:58:33+0900: Warning: Provided -human-model but humanSLProfile is not yet set. The human SL model will only be used on queries that provide humanSLProfile in overrideSettings.
+2026-09-04 12:58:33+0900: Analyzing up to 12 positions at a time in parallel
+2026-09-04 12:58:33+0900: Started, ready to begin handling requests
+[36.0][QUERY:1][done] KataGo analysis received: 24 candidate moves, 223 visits
+Sending query QUERY:2: {"rules": "chinese", "priority": 1000, "analyzeTurns": [6], "maxVisits": 1800, "komi": 7.0, "boardXSize": 13, "boardYSize": 13, "includeOwnership": true, "includeMovesOwnership": true, "includePolicy": true, "initialStones": [["B", "G8"], ["B", "H8"], ["B", "J8"], ["B", "K8"], ["B", "G7"], ["B", "K7"], ["B", "M7"], ["B", "G6"], ["B", "J6"], ["B", "L6"], ["B", "G5"], ["B", "J5"], ["B", "L5"], ["B", "M5"], ["B", "G4"], ["B", "K4"], ["B", "N4"], ["B", "G3"], ["B", "G2"], ["B", "L2"], ["B", "M2"], ["B", "G1"], ["B", "H1"], ["B", "M1"], ["W", "H7"], ["W", "J7"], ["W", "H6"], ["W", "H5"], ["W", "H4"], ["W", "L4"], ["W", "M4"], ["W", "H3"], ["W", "K3"], ["W", "L3"], ["W", "M3"], ["W", "H2"], ["W", "J2"], ["W", "K2"], ["W", "N2"], ["W", "J1"], ["W", "N1"]], "initialPlayer": "B", "moves": [["B", "L1"], ["W", "J4"], ["B", "N3"], ["W", "K5"], ["B", "K6"], ["W", "N2"]], "overrideSettings": {"reportAnalysisWinratesAs": "BLACK", "wideRootNoise": 0.04}, "reportDuringSearchEvery": 1, "avoidMoves": [{"moves": ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12", "A13", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "B10", "B11", "B12", "B13", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11", "C12", "C13", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10", "D11", "D12", "D13", "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11", "E12", "E13", "F10", "F11", "F12", "F13", "G10", "G11", "G12", "G13", "H10", "H11", "H12", "H13", "J10", "J11", "J12", "J13", "K10", "K11", "K12", "K13", "L10", "L11", "L12", "L13", "M10", "M11", "M12", "M13", "N10", "N11", "N12", "N13"], "player": "B", "untilDepth": 1}, {"moves": ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12", "A13", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "B10", "B11", "B12", "B13", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11", "C12", "C13", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10", "D11", "D12", "D13", "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11", "E12", "E13", "F10", "F11", "F12", "F13", "G10", "G11", "G12", "G13", "H10", "H11", "H12", "H13", "J10", "J11", "J12", "J13", "K10", "K11", "K12", "K13", "L10", "L11", "L12", "L13", "M10", "M11", "M12", "M13", "N10", "N11", "N12", "N13"], "player": "W", "untilDepth": 1}], "id": "QUERY:2"}
+[1.0][QUERY:2][....] KataGo analysis received: 28 candidate moves, 1656 visits
+[1.1][QUERY:2][done] KataGo analysis received: 28 candidate moves, 1823 visits
+Initializing TsumegoOwnershipStrategy with settings: {'max_points_behind': 2.0, 'gain_epsilon': 0.3, 'points_epsilon': 0.25, 'tie_ko_screen': True, 'min_visits': 10, 'gain_min_visit_ratio': 0.5, 'gain_verify': True, 'gain_verify_visits': 800, 'gain_verify_margin': 0.3, 'gain_rescue_margin': 1.0, 'ko_win_assumption': True, 'ko_win_visits': 800, 'ko_win_margin': 5.0, 'ko_success_lead': 0.0, 'ko_success_ownership': 0.5, 'ko_escape_candidates': 4, 'ko_escape_min_prior': 0.001, 'ko_escape_tolerance': 0.5, 'promotion_dominant_requires_success': True}
+[TsumegoOwnershipStrategy] Waiting for regular analysis to complete...
+[TsumegoOwnershipStrategy] Regular analysis completed
+[TsumegoOwnershipStrategy] 手番側の役割: 不明（役割非依存で判定）
+[TsumegoOwnershipStrategy] コウ判定: 通常最善+87.31目・関係石 ownership 自石・相手石の厳しいほう +0.87/子 で既に成功しているため省略（ko_success_lead=0.0、ko_success_ownership=0.5。役割不明（攻め方の順序 無条件 > コウ > セキ で動く））
+[TsumegoOwnershipStrategy] gain順: N5(v1739/1.00 pt-1.26 g+0.04) N1(v55/0.03 pt+14.84 g-14.24) K1(v1/0.00 pt+49.11 g-39.81) N9(v1/0.00 pt+29.25 g-40.20) G9(v1/0.00 pt+27.34 g-40.82)
+[TsumegoOwnershipStrategy] 目数順: N5(v1739/1.00 pt-1.26 g+0.04) N1(v55/0.03 pt+14.84 g-14.24) F9(v2/0.00 pt+23.70 g-42.71) M9(v1/0.00 pt+26.98 g-41.65) G9(v1/0.00 pt+27.34 g-40.82)
+[TsumegoOwnershipStrategy] 対抗馬なし: 目数ガード＋min_visits=10 を通ったのは ['N5']（候補28手中）。gain・同深さ検証・救済・コウ経路検査は全て不発で、KataGo の最善手をそのまま返します
+[TsumegoOwnershipStrategy] 投機温め: ['N5'] の子局面を先回り発行（800visits・結果は捨てる）
+Sending query QUERY:3: {"rules": "chinese", "priority": 500, "analyzeTurns": [7], "maxVisits": 800, "komi": 7.0, "boardXSize": 13, "boardYSize": 13, "includeOwnership": true, "includeMovesOwnership": true, "includePolicy": true, "initialStones": [["B", "G8"], ["B", "H8"], ["B", "J8"], ["B", "K8"], ["B", "G7"], ["B", "K7"], ["B", "M7"], ["B", "G6"], ["B", "J6"], ["B", "L6"], ["B", "G5"], ["B", "J5"], ["B", "L5"], ["B", "M5"], ["B", "G4"], ["B", "K4"], ["B", "N4"], ["B", "G3"], ["B", "G2"], ["B", "L2"], ["B", "M2"], ["B", "G1"], ["B", "H1"], ["B", "M1"], ["W", "H7"], ["W", "J7"], ["W", "H6"], ["W", "H5"], ["W", "H4"], ["W", "L4"], ["W", "M4"], ["W", "H3"], ["W", "K3"], ["W", "L3"], ["W", "M3"], ["W", "H2"], ["W", "J2"], ["W", "K2"], ["W", "N2"], ["W", "J1"], ["W", "N1"]], "initialPlayer": "B", "moves": [["B", "L1"], ["W", "J4"], ["B", "N3"], ["W", "K5"], ["B", "K6"], ["W", "N2"], ["B", "N5"]], "overrideSettings": {"reportAnalysisWinratesAs": "BLACK", "wideRootNoise": 0.0}, "avoidMoves": [{"moves": ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12", "A13", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "B10", "B11", "B12", "B13", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11", "C12", "C13", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10", "D11", "D12", "D13", "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11", "E12", "E13", "F10", "F11", "F12", "F13", "G10", "G11", "G12", "G13", "H10", "H11", "H12", "H13", "J10", "J11", "J12", "J13", "K10", "K11", "K12", "K13", "L10", "L11", "L12", "L13", "M10", "M11", "M12", "M13", "N10", "N11", "N12", "N13"], "player": "B", "untilDepth": 6}, {"moves": ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12", "A13", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "B10", "B11", "B12", "B13", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11", "C12", "C13", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10", "D11", "D12", "D13", "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11", "E12", "E13", "F10", "F11", "F12", "F13", "G10", "G11", "G12", "G13", "H10", "H11", "H12", "H13", "J10", "J11", "J12", "J13", "K10", "K11", "K12", "K13", "L10", "L11", "L12", "L13", "M10", "M11", "M12", "M13", "N10", "N11", "N12", "N13"], "player": "W", "untilDepth": 6}], "id": "QUERY:3"}
+Sending query QUERY:4: {"rules": "chinese", "priority": 10000, "analyzeTurns": [7], "maxVisits": 800, "komi": 7.0, "boardXSize": 13, "boardYSize": 13, "includeOwnership": true, "includeMovesOwnership": true, "includePolicy": true, "initialStones": [["B", "G8"], ["B", "H8"], ["B", "J8"], ["B", "K8"], ["B", "G7"], ["B", "K7"], ["B", "M7"], ["B", "G6"], ["B", "J6"], ["B", "L6"], ["B", "G5"], ["B", "J5"], ["B", "L5"], ["B", "M5"], ["B", "G4"], ["B", "K4"], ["B", "N4"], ["B", "G3"], ["B", "G2"], ["B", "L2"], ["B", "M2"], ["B", "G1"], ["B", "H1"], ["B", "M1"], ["W", "H7"], ["W", "J7"], ["W", "H6"], ["W", "H5"], ["W", "H4"], ["W", "L4"], ["W", "M4"], ["W", "H3"], ["W", "K3"], ["W", "L3"], ["W", "M3"], ["W", "H2"], ["W", "J2"], ["W", "K2"], ["W", "N2"], ["W", "J1"], ["W", "N1"]], "initialPlayer": "B", "moves": [["B", "L1"], ["W", "J4"], ["B", "N3"], ["W", "K5"], ["B", "K6"], ["W", "N2"], ["B", "N5"]], "overrideSettings": {"reportAnalysisWinratesAs": "BLACK", "wideRootNoise": 0.0}, "avoidMoves": [{"moves": ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12", "A13", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "B10", "B11", "B12", "B13", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11", "C12", "C13", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10", "D11", "D12", "D13", "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11", "E12", "E13", "F10", "F11", "F12", "F13", "G10", "G11", "G12", "G13", "H10", "H11", "H12", "H13", "J10", "J11", "J12", "J13", "K10", "K11", "K12", "K13", "L10", "L11", "L12", "L13", "M10", "M11", "M12", "M13", "N10", "N11", "N12", "N13"], "player": "B", "untilDepth": 6}, {"moves": ["A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12", "A13", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "B10", "B11", "B12", "B13", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8", "C9", "C10", "C11", "C12", "C13", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10", "D11", "D12", "D13", "E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8", "E9", "E10", "E11", "E12", "E13", "F10", "F11", "F12", "F13", "G10", "G11", "G12", "G13", "H10", "H11", "H12", "H13", "J10", "J11", "J12", "J13", "K10", "K11", "K12", "K13", "L10", "L11", "L12", "L13", "M10", "M11", "M12", "M13", "N10", "N11", "N12", "N13"], "player": "W", "untilDepth": 6}], "id": "QUERY:4"}
+[0.7][QUERY:4][done] KataGo analysis received: 14 candidate moves, 823 visits
+[0.7][QUERY:3][done] KataGo analysis received: 14 candidate moves, 822 visits
+[TsumegoOwnershipStrategy] コウ経路検査: N5 は無条件（候補自身・拮抗応手 ['K1'] の PV ともコウ形なし）
+[TsumegoOwnershipStrategy] Final decision: N5 (gain=+0.04, pointsLost=-1.26, visits=1739, 候補28手（うち対抗馬1手）, gain集計石44子, max_points_behind=2.0, gain_epsilon=0.3, min_visits=10, gain_min_visit_ratio=0.5, points_epsilon=0.25)
+[TsumegoOwnershipStrategy] 着手決定に 0.7 秒
+run1 after  6 moves: generate_move -> N5  (詰碁戦略: 28手から N5 を選択（gain=+0.04）)  [analyse 37.1s / generate 0.7s]
+Terminating KataGo process
+Terminated KataGo process
+Engine died unexpectedly without sending output: 
+Engine died unexpectedly without sending output: 
+
+=== tally (real generate_move) ===
+after  6 moves: {'N5': 1}  [avg analyse 37.1s / generate 0.7s]
+
+--- stderr ---
+[INFO   ] [Logger      ] Record log in C:\Users\iwaki\.kivy\logs\kivy_26-09-04_99.txt
+[INFO   ] [deps        ] Successfully imported "kivy_deps.angle" 0.4.0
+[INFO   ] [deps        ] Successfully imported "kivy_deps.glew" 0.3.1
+[INFO   ] [deps        ] Successfully imported "kivy_deps.sdl2" 0.8.0
+[INFO   ] [Kivy        ] v2.3.1
+[INFO   ] [Kivy        ] Installed at "C:\Users\iwaki\AppData\Local\Programs\Python\Python312\Lib\site-packages\kivy\__init__.py"
+[INFO   ] [Python      ] v3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]
+[INFO   ] [Python      ] Interpreter at "C:\Users\iwaki\AppData\Local\Programs\Python\Python312\python.exe"
+[INFO   ] [Logger      ] Purge log fired. Processing...
+[INFO   ] [Logger      ] Purge finished!
