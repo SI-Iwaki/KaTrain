@@ -44,7 +44,7 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 
 - **言語**: Python 3.12
 - **GUI**: Kivy
-- **AIエンジン**: KataGo v1.18.2（CUDA 13.2＋cuDNN 9.24 版・`~/.katrain/katago-v1.18.2-cuda/`）＋ transformer ネット `b10c384h6nbttflrs`（2026-09-04 に v1.16.4 TensorRT＋b18 から切替。A/B の記録は `docs/superpowers/specs/calibration-data/engine-ab/`。**詰碁 E2E の F2@4・AA@6 はこのネットで壊れる既知の未校正**。旧構成は `~/.katrain/katago.exe`＋`katrain/models/kata1-b18…` と `config.json.bak-20260904-pre-cuda` に残してある）
+- **AIエンジン**: KataGo v1.18.2（CUDA 13.2＋cuDNN 9.24 版・`~/.katrain/katago-v1.18.2-cuda/`）＋ transformer ネット `b10c384h6nbttflrs`（2026-09-04 に v1.16.4 TensorRT＋b18 から切替。A/B の記録は `docs/superpowers/specs/calibration-data/engine-ab/`。**詰碁 E2E の F2@4・AA@6 はこのネットで壊れ、O@0 も 1〜2/3 に落ちる既知の未校正（切替直後のベースライン 26/29）**。旧構成は `~/.katrain/katago.exe`＋`katrain/models/kata1-b18…` と `config.json.bak-20260904-pre-cuda` に残してある）
 - **GPU**: NVIDIA GeForce RTX 3080
 - **ビルド**: hatchling / uv
 

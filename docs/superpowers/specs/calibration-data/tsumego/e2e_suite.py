@@ -8,7 +8,7 @@ usage:
   `--config=<config.json>` でエンジン／ネットを差し替え（既定 ~/.katrain/config.json）。
 
 **2026-09-04 に本番ネットを transformer b10c384（KataGo v1.18.2 CUDA）へ切替**: この盤では F2@4（J10）と AA@6（N1）が
-3/3 で外れる＝ネット起因の既知失敗（`calibration-data/engine-ab/` の A/B）。b18 で回すなら `--config=~/.katrain/config.json.bak-20260904-pre-cuda`。
+3/3 で外れ、O@0 も 1〜2/3 に落ちる＝ネット起因の既知失敗（`calibration-data/engine-ab/` の A/B。切替直後のベースライン 26/29）。b18 で回すなら `--config=~/.katrain/config.json.bak-20260904-pre-cuda`。
   例: ... e2e_suite.py                # 既定（回帰点だけ・既知限界を除く）
       ... e2e_suite.py V V2 W         # ケースを絞る
       ... e2e_suite.py --full         # 正解手順の**全黒番**を回す（初手から正解まで）
