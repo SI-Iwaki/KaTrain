@@ -112,10 +112,15 @@ def test_pv_ko_is_false_for_a_clean_pv():
     assert not tsumego_pv_reaches_region_ko(game, "B", ["E5", "E4"], WHOLE_BOARD)
 
 
+# CAPTURE_KO_SGF から白 B2 を抜いた盤。着手前に黒が取れる1子は無く、白 B2 の打ち込みで初めて
+# 黒 C2 の1子取りコウ形が生まれる（＝候補手の後に生まれたコウ。打つ側の既存コウの除外に掛からない）
+CREATED_KO_SGF = "(;GM[1]FF[4]SZ[5]KM[0]RU[chinese]PL[B]AB[ad][be][bc]AW[ce][cc][dd])"
+
+
 def test_pv_ko_walks_the_pv_with_alternating_players():
     # コウ取りが PV の途中（3手目）にあっても拾う。手番は PV の並びで交互
-    game = _game(CAPTURE_KO_SGF)
-    assert tsumego_pv_reaches_region_ko(game, "B", ["E5", "E4", "C2"], WHOLE_BOARD)
+    game = _game(CREATED_KO_SGF)
+    assert tsumego_pv_reaches_region_ko(game, "B", ["E5", "B2", "C2"], WHOLE_BOARD)
 
 
 def test_pv_ko_is_false_for_an_unplayable_pv():
@@ -125,8 +130,8 @@ def test_pv_ko_is_false_for_an_unplayable_pv():
 
 
 def test_pv_ko_stops_at_max_plies():
-    game = _game(CAPTURE_KO_SGF)
-    assert not tsumego_pv_reaches_region_ko(game, "B", ["E5", "E4", "C2"], WHOLE_BOARD, max_plies=2)
+    game = _game(CREATED_KO_SGF)
+    assert not tsumego_pv_reaches_region_ko(game, "B", ["E5", "B2", "C2"], WHOLE_BOARD, max_plies=2)
 
 
 def test_pv_ko_treats_no_region_as_whole_board():
@@ -150,8 +155,8 @@ def test_candidate_ko_check_includes_the_candidate_itself():
 
 def test_candidate_ko_check_still_walks_the_reply_pv():
     # 候補自身は clean でも応手 PV の途中のコウ形（case K の A11→B11）は従来どおり拾う
-    game = _game(CAPTURE_KO_SGF)
-    assert tsumego_candidate_reaches_region_ko(game, game.current_node, "E5", ["E4", "C2"], WHOLE_BOARD)
+    game = _game(CREATED_KO_SGF)
+    assert tsumego_candidate_reaches_region_ko(game, game.current_node, "E5", ["B2", "C2"], WHOLE_BOARD)
 
 
 def test_candidate_ko_check_is_false_for_a_clean_line():
@@ -206,6 +211,65 @@ def test_pv_ko_ignores_a_ko_the_defender_already_had():
     game = _game(CAPTURE_KO_SGF)
     assert tsumego_defender_ko_points(game, "W", WHOLE_BOARD)  # 元からコウ取りがある局面
     assert not tsumego_pv_reaches_region_ko(game, "B", ["E5", "E4"], WHOLE_BOARD)
+
+
+def test_pv_ko_ignores_a_ko_capture_the_mover_already_had():
+    """打つ側が候補手より前から打てたコウ取りを PV の途中で打っても、候補のコウ経路とは数えない。
+
+    実測 2026-09-04 case AA@6（transformer b10c384）: 正解 N5 の応手 K1 の PV が K4（着手前から
+    アタリの白 K5 を取る後始末）でコウ形になり、N5 がコウ経路に化けてコウ脱出が N1（失敗手）を
+    採用した。K4 の取りは局面の性質であって N5 の性質ではない（判定2 と同じ理屈）。
+    """
+    game = _game(CAPTURE_KO_SGF)
+    assert tsumego_defender_ko_points(game, "B", WHOLE_BOARD) == {Move.from_gtp("C2").coords}
+    assert not tsumego_pv_reaches_region_ko(game, "B", ["E5", "E4", "C2"], WHOLE_BOARD, ignore_mover_preexisting=True)
+
+
+def test_pv_ko_counts_the_movers_preexisting_ko_by_default():
+    """除外は**選択手の検査だけ**が opt-in する（既定 False＝従来どおり数える）。
+
+    実測 2026-09-04 回答帳 538 手順の A/B: 除外を脱出候補・格下げ先にも掛けると、コウ経路だった対抗馬が
+    「無条件」に化けてコウに勝った前提の ownership で採用され 6 手順が改修起因で壊れた（06ac392e03 ほか）。
+    """
+    assert tsumego_pv_reaches_region_ko(_game(CAPTURE_KO_SGF), "B", ["E5", "E4", "C2"], WHOLE_BOARD)
+    game = _game(CAPTURE_KO_SGF)  # 上の呼び出しは sim に読み筋を書き足すので盤を作り直す
+    assert tsumego_candidate_reaches_region_ko(game, game.current_node, "E5", ["E4", "C2"], WHOLE_BOARD)
+
+
+def test_pv_ko_ignores_the_defender_retaking_the_movers_preexisting_ko():
+    """打つ側が既存コウを取った2手後に守り方が取り返せるようになっても、同じコウの裏面なので数えない。
+
+    実測 2026-09-04 case AA@6: 判定1 で K4 の取りを除外しても、白 N1・黒 M2 の後に「白が K5 で
+    取り返せる状態」を判定2 が新しいコウ取りと数えて N5 がコウ経路のままだった。
+    """
+    game = _game(CAPTURE_KO_SGF)
+    # 黒 C2（既存コウの取り）→ 白 E3 → 黒 D5 のあと、白は B2 で取り返せる（コウ禁が解けた）
+    assert not tsumego_pv_reaches_region_ko(
+        game, "B", ["E5", "E4", "C2", "E3", "D5"], WHOLE_BOARD, ignore_mover_preexisting=True
+    )
+
+
+def test_pv_ko_still_counts_the_candidate_taking_its_own_preexisting_ko():
+    """候補手自身（ply0）が既存のコウ取りなら従来どおりコウ経路（case L の L5）。"""
+    game = _game(CAPTURE_KO_SGF)
+    assert tsumego_pv_reaches_region_ko(game, "B", ["C2"], WHOLE_BOARD, ignore_mover_preexisting=True)
+
+
+def test_pv_ko_still_counts_a_mover_ko_created_after_the_candidate():
+    """応手で新しく生まれたコウ取りを打つ側が PV で取る形は従来どおりコウ経路（case O の A10）。"""
+    game = _game(CREATED_KO_SGF)
+    assert not tsumego_defender_ko_points(game, "B", WHOLE_BOARD)
+    # 白 B2 と打ち込まれると黒 C2 で1子取りのコウ形になる（候補手の後に生まれたコウ）
+    assert tsumego_pv_reaches_region_ko(game, "B", ["E5", "B2", "C2"], WHOLE_BOARD, ignore_mover_preexisting=True)
+
+
+def test_pv_ko_still_counts_the_defender_playing_a_preexisting_ko():
+    """守り方の既存コウを PV が打つ形は除外しない（case T: 黒 J2 → 白 L1 のコウ生き）。"""
+    game = _game(CAPTURE_KO_SGF)
+    white_ko = tsumego_defender_ko_points(game, "W", WHOLE_BOARD)
+    assert white_ko
+    reply = Move(coords=sorted(white_ko)[0]).gtp()
+    assert tsumego_pv_reaches_region_ko(game, "B", ["E5", reply], WHOLE_BOARD, ignore_mover_preexisting=True)
 
 
 def test_pv_ko_ignores_an_available_ko_too_deep_in_the_line():

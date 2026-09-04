@@ -5,7 +5,7 @@
 KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 
 - 上流リポジトリ: https://github.com/sanderland/katrain
-- 上流との同期: git remote `upstream`（`git fetch upstream --tags` で最新を取る。fork は v1.17.1.1 の tarball 起点で git 履歴を共有しないので merge はできず、cherry-pick も効かない＝差分を読んで手で移植する）。**2026-09-04 に v1.20.0 までの修正を移植済み**: エンジンのスレッド競合修正（`query_generation`・RLock・stdin flush をロック外へ）、`Game` のロック整理と `expected_node`、AI 待ちループの `raise_if_discarded`（新規対局中に AI が考えていると固まるバグ）、未知の戦略名のフォールバック、GIB パーサ、`show_move_numbers` / `anim_pv_moves` 設定、KataGo ダウンロード一覧 v1.18.1。**移植しなかったもの**: KivyMD 撤去（`widgets/material/`）、`pysgf` への置換、リモートエンジン（websocket）、ruff 整形、Ctrl+H への reset-analysis 移動、同梱エンジン／モデルの更新（TensorRT 版は手動管理＝解析条件が変わるので校正のやり直しが要る。**2026-09-04 に A/B 実測のうえ v1.18.2 CUDA＋transformer b10c384 へ切替**: 難解の E 尺度は不変、解析は +34〜54% 速いが、詰碁 E2E の回帰点 2 件〈F2@4・AA@6〉がネット起因で 3/3 壊れる＝詰碁の再校正が未了。記録と切替用 config は `docs/superpowers/specs/calibration-data/engine-ab/`）
+- 上流との同期: git remote `upstream`（`git fetch upstream --tags` で最新を取る。fork は v1.17.1.1 の tarball 起点で git 履歴を共有しないので merge はできず、cherry-pick も効かない＝差分を読んで手で移植する）。**2026-09-04 に v1.20.0 までの修正を移植済み**: エンジンのスレッド競合修正（`query_generation`・RLock・stdin flush をロック外へ）、`Game` のロック整理と `expected_node`、AI 待ちループの `raise_if_discarded`（新規対局中に AI が考えていると固まるバグ）、未知の戦略名のフォールバック、GIB パーサ、`show_move_numbers` / `anim_pv_moves` 設定、KataGo ダウンロード一覧 v1.18.1。**移植しなかったもの**: KivyMD 撤去（`widgets/material/`）、`pysgf` への置換、リモートエンジン（websocket）、ruff 整形、Ctrl+H への reset-analysis 移動、同梱エンジン／モデルの更新（TensorRT 版は手動管理＝解析条件が変わるので校正のやり直しが要る。**2026-09-04 に A/B 実測のうえ v1.18.2 CUDA＋transformer b10c384 へ切替**: 難解の E 尺度は不変、解析は +34〜54% 速いが、詰碁 E2E の回帰点 2 件〈F2@4・AA@6〉がネット起因で 3/3 壊れた。**同日に詰碁を再校正済み**（同ディレクトリの results §8）: AA@6 は PV コウ検出の「打つ側の既存コウ」除外〈判定のみ・解析不変〉で 3/3 回復、F2@4 はネットの読みそのもの＝既知限界、O@0 は PV 依存の揺れ 1〜2/3。回答帳 538 手順は 320→302〈破損 60・回復 42＝機構別の失敗率は不変の拡散した揺れ〉、閾値〈gain_epsilon / points_epsilon〉は反実仮想で差引 +4 以下＝動かさない。記録と切替用 config は `docs/superpowers/specs/calibration-data/engine-ab/`）
 - ランタイム設定: `C:\Users\iwaki\.katrain\`
 
 主な改修は3系統。**着手する前に該当 rules を Read すること**（`.claude/rules/` は自動ロードされない＝「開発ワークフロー」節参照）:
@@ -44,7 +44,7 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 
 - **言語**: Python 3.12
 - **GUI**: Kivy
-- **AIエンジン**: KataGo v1.18.2（CUDA 13.2＋cuDNN 9.24 版・`~/.katrain/katago-v1.18.2-cuda/`）＋ transformer ネット `b10c384h6nbttflrs`（2026-09-04 に v1.16.4 TensorRT＋b18 から切替。A/B の記録は `docs/superpowers/specs/calibration-data/engine-ab/`。**詰碁 E2E の F2@4・AA@6 はこのネットで壊れ、O@0 も 1〜2/3 に落ちる既知の未校正（切替直後のベースライン 26/29）**。旧構成は `~/.katrain/katago.exe`＋`katrain/models/kata1-b18…` と `config.json.bak-20260904-pre-cuda` に残してある）
+- **AIエンジン**: KataGo v1.18.2（CUDA 13.2＋cuDNN 9.24 版・`~/.katrain/katago-v1.18.2-cuda/`）＋ transformer ネット `b10c384h6nbttflrs`（2026-09-04 に v1.16.4 TensorRT＋b18 から切替。A/B の記録は `docs/superpowers/specs/calibration-data/engine-ab/`。**詰碁は同日に再校正済み（engine-ab results §8）: AA@6 はコウ検出器の修正で回復、残る既知失敗は F2@4〈ネットの読み〉と O@0 の揺れ〈1〜2/3〉、改修後の E2E ベースライン 25〜27/29**。旧構成は `~/.katrain/katago.exe`＋`katrain/models/kata1-b18…` と `config.json.bak-20260904-pre-cuda` に残してある）
 - **GPU**: NVIDIA GeForce RTX 3080
 - **ビルド**: hatchling / uv
 

@@ -459,6 +459,7 @@ def main():
         action="store_true",
         help="ソルバの永続キャッシュを使わない（過去の誤答が焼き付いていないかの A/B。case AB）",
     )
+    ap.add_argument("--config", default=None, help="engine 設定（config.json）を差し替える＝エンジン／モデルの A/B 用。既定は ~/.katrain/config.json")
     ap.add_argument("--no-solver", action="store_true", help="ソルバ経路を使わず全部 KataGo 経路で出題する")
     ap.add_argument(
         "--capture-settings",
@@ -481,7 +482,7 @@ def main():
                     pass
         print(f"resume: {len(done)} already done")
 
-    config_path = os.path.expanduser(os.path.join(DATA_FOLDER, "config.json"))
+    config_path = os.path.expanduser(args.config or os.path.join(DATA_FOLDER, "config.json"))
     # debug_level=1 は「戦略の判定ログを**捨てずに**バッファへ入れる」ため（不一致の手番で
     # 経路を切り出す）。quiet=True なら画面には出さないので、既定の走行は静かなまま
     host = ReplayHost(config_path, debug_level=1, quiet=not args.debug)

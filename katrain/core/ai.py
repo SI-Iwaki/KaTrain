@@ -4570,6 +4570,18 @@ TSUMEGO_AMBIGUOUS_TOP_N = 5
 # ply7 の3件はいずれも詰碁と無関係な偶発コウで、真陽性は ply5 までに収まる。
 TSUMEGO_KO_AVAIL_PLIES = 5
 
+# PV 判定（判定1）で、**候補手を打つ側が候補手より前から打てたコウ取り**を PV の途中（ply>=1）で打っても
+# コウ経路と数えない。守り方側の判定2 と同じ「候補手より前から打てたコウは局面の性質」の適用で、
+# 判定1 は従来これを免除していた。実測 2026-09-04 case AA@6（transformer b10c384）: 正解 N5 の応手 K1 の PV が
+# K4（着手前からアタリの白 K5 を取る後始末＝盤面の性質）でコウ形を作り N5 がコウ経路に化け、コウ脱出が
+# N1（全盤 3000visits では白 +0.29/子＝生き・16 目損）を採用して誤答した。守り方側の既存コウを PV が打つ形
+# （case T の J2 → 白 L1 でコウ生き）は候補の結果を左右するので除外しない＝除外は打つ側の既存コウだけ。
+# 候補手自身（ply0）がその既存コウを取る形（case L の L5）は従来どおりコウ経路。
+# **適用は選択手（incumbent）の検査だけ**（`_ko_route_screen(..., ignore_mover_preexisting=True)`）。脱出候補・格下げ先の
+# 検査（`_region_child_verdict` / pool[1:]）にも掛けると、コウ経路だった対抗馬が「無条件」に化けてコウに勝った前提の
+# ownership で採用される（実測 2026-09-04 回答帳 538 手順の A/B: 改修起因の破損 6 件〈脱出採用 3・格下げ 3〉が全部この型）。
+TSUMEGO_KO_PV_IGNORE_MOVER_PREEXISTING = True
+
 
 def tsumego_defender_ko_points(sim, defender, region_of_interest):
     """守り方が**今すぐ**打てるコウ取りの点（リージョン内）を集合で返す。
@@ -4634,7 +4646,9 @@ def tsumego_competitive_replies(replies, ratio=TSUMEGO_KO_REPLY_RATIO, max_repli
     return [r for r in ordered[:max_replies] if r.get("visits", 0) >= ratio * top_visits]
 
 
-def tsumego_pv_reaches_region_ko(sim, first_player, pv, region_of_interest, max_plies=TSUMEGO_TIE_KO_PLIES):
+def tsumego_pv_reaches_region_ko(
+    sim, first_player, pv, region_of_interest, max_plies=TSUMEGO_TIE_KO_PLIES, ignore_mover_preexisting=False
+):
     """PV を sim の現局面から並べ直し、リージョン内でコウのクラスに入るかを返す。
 
     判定は2本立て（どちらか成立でコウ経路）:
@@ -4675,6 +4689,14 @@ def tsumego_pv_reaches_region_ko(sim, first_player, pv, region_of_interest, max_
     defender = "W" if first_player == "B" else "B"
     # 候補手より前から守り方が打てたコウ取り。これは局面の性質なので候補の判定から除く
     already_available = tsumego_defender_ko_points(sim, defender, region_of_interest)
+    # 打つ側が候補手より前から打てたコウ取り（`TSUMEGO_KO_PV_IGNORE_MOVER_PREEXISTING`・選択手の検査だけ opt-in）
+    mover_already_available = (
+        tsumego_defender_ko_points(sim, first_player, region_of_interest)
+        if TSUMEGO_KO_PV_IGNORE_MOVER_PREEXISTING and ignore_mover_preexisting
+        else set()
+    )
+    # 打つ側が既存コウを取ったあと、守り方がそのコウを取り返せる点。同じ既存コウの裏面なので判定2 でも数えない
+    ignored_retakes = set()
     for i, gtp in enumerate(pv[:max_plies]):
         if gtp == "pass":
             break
@@ -4691,18 +4713,24 @@ def tsumego_pv_reaches_region_ko(sim, first_player, pv, region_of_interest, max_
                 sim.play(Move(coords=liberties[0], player=opponent))
             except IllegalMoveException as e:
                 if "Ko" in str(e):
-                    return True
+                    if not (i >= 1 and mover == first_player and move.coords in mover_already_available):
+                        return True
+                    # 打つ側の既存コウ取りは局面の性質なので数えず、そのまま PV を続ける。
+                    # 守り方が後でこのコウを取り返す点（liberties[0]）も同じコウの裏面なので判定2 から除く
+                    ignored_retakes.add(liberties[0])
                 # 自殺手等でそもそも取り返せない形。盤面は変わっていないので PV を続ける
             else:
                 sim.set_current_node(played)  # 取り返せた＝コウではない。試した手を外して続行
         # 攻め方が打ち終わって守り方の手番になったところで、新しく立ったコウ取りを見る
         if mover == first_player and i + 1 <= TSUMEGO_KO_AVAIL_PLIES:
-            if tsumego_defender_ko_points(sim, defender, region_of_interest) - already_available:
+            if tsumego_defender_ko_points(sim, defender, region_of_interest) - already_available - ignored_retakes:
                 return True
     return False
 
 
-def tsumego_candidate_reaches_region_ko(game, node, candidate_gtp, reply_pv, region_of_interest, max_plies=None):
+def tsumego_candidate_reaches_region_ko(
+    game, node, candidate_gtp, reply_pv, region_of_interest, max_plies=None, ignore_mover_preexisting=False
+):
     """候補手＋守り方の応手 PV を親局面から並べ直してコウ形を検査する。
 
     検査シーケンスは必ず候補手自身から始めること。コウ形は候補手そのものにも現れる
@@ -4717,7 +4745,9 @@ def tsumego_candidate_reaches_region_ko(game, node, candidate_gtp, reply_pv, reg
     pv = [candidate_gtp] + list(reply_pv or [])
     if max_plies is None:
         max_plies = 1 + TSUMEGO_TIE_KO_PLIES  # 応手 PV の深さは従来どおり、先頭に候補手が乗る分を足す
-    return tsumego_pv_reaches_region_ko(sim, node.next_player, pv, region_of_interest, max_plies)
+    return tsumego_pv_reaches_region_ko(
+        sim, node.next_player, pv, region_of_interest, max_plies, ignore_mover_preexisting=ignore_mover_preexisting
+    )
 
 
 def tsumego_decision_is_ambiguous(
@@ -6055,8 +6085,9 @@ class TsumegoOwnershipStrategy(AIStrategy):
                 class_screen_applies = tsumego_class_screen_applies(chosen, eligible)
                 # 選択手だけ敏感側の比で検査する（見逃すとクラス裁定が丸ごと no-op になるため）。
                 # 格下げ先候補（pool[1:]）は保守側のまま＝過検出は脱出の誤爆に化ける
+                # 選択手だけ「打つ側の既存コウ」を除外して検査する（対抗馬側に掛けると改修起因の誤答＝定数のコメント）
                 if class_screen_applies and self._ko_route_screen(
-                    [chosen], ratio=TSUMEGO_KO_REPLY_RATIO_CHOSEN, want_ownership=True
+                    [chosen], ratio=TSUMEGO_KO_REPLY_RATIO_CHOSEN, want_ownership=True, ignore_mover_preexisting=True
                 ):
                     ko_routes = frozenset({chosen["move"]}) | self._ko_route_screen(pool[1:])
                     declassed = tsumego_declass_choice(chosen, pool, ko_routes, points_epsilon)
@@ -6270,7 +6301,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
             OUTPUT_DEBUG,
         )
 
-    def _ko_route_screen(self, pool, ratio=TSUMEGO_KO_REPLY_RATIO, want_ownership=False):
+    def _ko_route_screen(self, pool, ratio=TSUMEGO_KO_REPLY_RATIO, want_ownership=False, ignore_mover_preexisting=False):
         """pool の各候補を1手進めてリージョン解析し、コウ経路の候補の手（GTP）を返す。
 
         詰碁の正解順序は 無条件 > コウ で、目数はクラス内のタイブレークにすぎない。
@@ -6309,7 +6340,9 @@ class TsumegoOwnershipStrategy(AIStrategy):
         pending = []
         for cand in sorted(pool, key=lambda c: -c.get("visits", 0))[:TSUMEGO_TIE_KO_MAX_CANDIDATES]:
             # 候補自身がコウを開始する形（実測 case L: L5 の1子取り）は解析クエリ不要で確定
-            if tsumego_candidate_reaches_region_ko(self.game, self.cn, cand["move"], [], region):
+            if tsumego_candidate_reaches_region_ko(
+                self.game, self.cn, cand["move"], [], region, ignore_mover_preexisting=ignore_mover_preexisting
+            ):
                 routes.add(cand["move"])
                 self.game.katrain.log(
                     f"[{self.strategy_name}] コウ経路検査: {cand['move']} はコウ経路"
@@ -6359,7 +6392,14 @@ class TsumegoOwnershipStrategy(AIStrategy):
                 (
                     r
                     for r in walk
-                    if tsumego_candidate_reaches_region_ko(self.game, self.cn, cand["move"], r.get("pv") or [], region)
+                    if tsumego_candidate_reaches_region_ko(
+                        self.game,
+                        self.cn,
+                        cand["move"],
+                        r.get("pv") or [],
+                        region,
+                        ignore_mover_preexisting=ignore_mover_preexisting,
+                    )
                 ),
                 None,
             )

@@ -7,8 +7,10 @@ usage:
   python docs/superpowers/specs/calibration-data/tsumego/e2e_suite.py [case...] [--repeats N] [--full] [--all]
   `--config=<config.json>` でエンジン／ネットを差し替え（既定 ~/.katrain/config.json）。
 
-**2026-09-04 に本番ネットを transformer b10c384（KataGo v1.18.2 CUDA）へ切替**: この盤では F2@4（J10）と AA@6（N1）が
-3/3 で外れ、O@0 も 1〜2/3 に落ちる＝ネット起因の既知失敗（`calibration-data/engine-ab/` の A/B。切替直後のベースライン 26/29）。b18 で回すなら `--config=~/.katrain/config.json.bak-20260904-pre-cuda`。
+**2026-09-04 に本番ネットを transformer b10c384（KataGo v1.18.2 CUDA）へ切替**: 切替直後は F2@4（J10）と AA@6（N1）が
+3/3 で外れ、O@0 も 1〜2/3 に落ちた（`calibration-data/engine-ab/` の A/B・ベースライン 26/29）。同日の再校正（同 §8）で
+AA@6 は PV コウ検出の「打つ側の既存コウ」除外により 3/3 回復。**残る既知失敗は F2@4（ネットの読みそのもの）と O@0 の揺れ（1〜2/3）**、
+U@0/V@0 も稀に 1/3〜1/4 外れる分散帯＝改修後のベースライン 25〜27/29。b18 で回すなら `--config=~/.katrain/config.json.bak-20260904-pre-cuda`。
   例: ... e2e_suite.py                # 既定（回帰点だけ・既知限界を除く）
       ... e2e_suite.py V V2 W         # ケースを絞る
       ... e2e_suite.py --full         # 正解手順の**全黒番**を回す（初手から正解まで）
@@ -197,7 +199,10 @@ CASES = {
         note="問題抽出が「取れる連（白15子・呼吸点4）」を壁にして region を5点に潰していた盤"
         "（spec 追記6）。region さえ潰れなければ選択則は正解手順を 3/3 で再現するので、"
         "これは抽出（tsumego_problem）側の回帰ケース。単体の固定は"
-        "tests/test_tsumego_solver.py::test_capturable_group_is_not_a_wall",
+        "tests/test_tsumego_solver.py::test_capturable_group_is_not_a_wall。"
+        "6手目は transformer b10c384 で応手 K1 の PV が K4（着手前からアタリの白 K5 を取る後始末）でコウ形になり"
+        "N5 がコウ経路に化け脱出が N1 を採る誤答が 3/3 出た（2026-09-04）＝PV コウ検出の「打つ側の既存コウ」除外"
+        "（TSUMEGO_KO_PV_IGNORE_MOVER_PREEXISTING）の回帰対象",
     ),
 }
 # 既知限界（エンジン側の value/探索の問題で選択則では救えない。spec 追記13/21）

@@ -57,7 +57,7 @@ E2E: **H1 3/3・K1 3/3**（旧実装は初手 J1）。残る揺れは**救済経
 | `case-x-attacker-role-edge-20260801.sgf` | **極値票の役割反転が構造的（タイでなく -68）で、正解 A4 が候補にすら入らなかった誤答局面の張り直し盤**（13路左辺・枠あり・黒は攻め方、初手、正解 A4→白A3→黒A8→白A7→黒A5→白C2→黒C1＝白の無条件死、実キャプチャは C2 で白の無条件生き）。region = `0,6,0,10`。case S（追記27）のタイ崩れと違い、**殺される側の白群が2線（B列）を這って左辺の極値線を占め（B8/B7/B6/B5/B3 で -97）、原問題の白い外郭石 C10・F3 が残り2辺の極値も取る**＝「外側の色＝攻め方」の前提そのものが偽で、極値線の集計改良では救えない。反転枠は 守り方判定 → コウ判定「既に成功（+56.92目・自石+0.86/子）」で全機構が素通り＋目数ガードで eligible=[C2] に潰れる二重の沈黙。**役割は測って選べない（3測定族すべて実測却下）**: 生盤 ownership は殺す問題の白が死なない（X 白+0.47・S 白+0.32、case G は逆を確信）、枠あり測定は追記27、手番フリップは誤役割の枠でも delta +1.8〜2.0（枠の壁に挟まれた群はどれも手番依存になる）。切り分けは `raw_role_probe.py` / `flip_role_probe.py` / `frame_role_ab.py`（role=True 強制で両コウダテとも A4 選択・バランス距離 0.00〜0.69）。対処は**役割指定ホットキー**（`hotkey_attack`=shift+f4 / `hotkey_defend`=ctrl+f4、`black_to_attack_p` 貫通）で、この SGF は role=True/ko=True で張り直した「修正後の本番が作る盤」（spec 追記37）。実キャプチャの反転盤は `-inverted.sgf` に保存。E2E: **A4 3/3** |
 | `case-y-declass-ko-answer-20260802.sgf` | **同深さ ownership 判定の拘束深さ（`untilDepth`）がコウ検出の PV 歩きと同じ 6 だったために、失敗手が「相手は死んだ」と読まれた誤答局面**（13路左下・枠あり・黒は攻め方＝役割指定ホットキー、初手、正解 B1→白C1→黒A2＝コウ、旧実装は A4 で白の無条件生き）。region = `0,8,0,9`。**選択則は 3run とも正解 B1 を選んでおり、壊れていたのは格下げ（`tsumego_declass_confirmed`）とコウ脱出（`tsumego_ko_escape_succeeds`）が共有する判定1点**（バンド内に入った run は格下げ、外れた run は脱出、と別経路から同じ A4 に落ちた）。A4 の子局面の白6子は ud6 で **+0.71〜+0.96**（visits を 6000 に増やすとむしろ確信が強まる）、ud10/12/16 で **-0.93〜-0.97**＝正しい。ud6 の PV は ply7 で白が M5（枠外）へ手抜きして群を捨てており、この詰碁の白は **ply7 の A1（コウ取り）で2眼**を作って生きる形なので地平線がちょうど正着を切っていた。対処は判定専用の `TSUMEGO_VERDICT_UNTIL_DEPTH`(12)（コウ検出は 6 のまま＝深くすると偶発コウ側のリスクが増える）。校正済み8判定は ud6/10/12/16 で不変（発火側 +0.97〜+1.00 / 非発火側 -0.24〜-1.00）。**ud≥10 でも正解 B1 は -0.89〜-0.96**＝答えがコウの詰碁で ply1 に成否が出ないのは不変で、直ったのは「非解を成立と誤読して incumbent を捨てる」方向だけ（spec 追記38）。E2E: **B1 3/3**（修正前は A4 3/3） |
 
-| `case-aa-wall-is-target-20260802.sgf` | **問題抽出が「取れる連」を壁（＝生きていると仮定する境界）にして region を5点に潰し、AI が3手目に打つ手を失って pass した誤答局面**（13路右下・**枠なし＝ソルバモードで出題**・黒は攻め方、初手から、正解 L1→白J4→黒N3→白K5→黒K6→白N2→黒N5＝白の大群を無条件死）。region（生盤・`region_pad=1` 相当）= `5,12,0,8`。**選択則は無実** — 潰れていない region を与えれば正解手順を**全黒番 3/3** で再現する（L1 / N3 / K6 / N5）。壊れていたのは `tsumego_problem._closure` で、隅でアタリの黒3子(L2/M1/M2)だけが単独で閉じるため、**その黒を殺している白15子（呼吸点は J3/J4/K1/N3 の4つだけ）を壁**にして「5点(K1/L1/L2/M1/M2)の中で黒が生きられるか」という別問題に化けていた（`type=defend target=3子`）。白15子を種にすれば戦い全体（約40点）を正しく吸収するのに、盤の空き地 **82点 > `FILL_CAP`(80)** で「閉じていない」と落ちるため、不健全な小問題だけが候補に残る。**呼吸点数では分離できない**（既存の正しい壁の最小は E/K/P の libs4 ＝この誤答の壁と同値）ので、anchors と同じ `_reaches_safety`（自色の壁/地に裏打ちされているか）を壁にも課す。既存21ケースの抽出結果（base + 全 ply の再抽出）は**前後で完全一致**（spec 追記6）。単体固定は `tests/test_tsumego_solver.py::test_capturable_group_is_not_a_wall`。**ソルバ自体はこの問題を解けない**（hint 付きだと矩形 region モードの72点＝df-pn の射程外）ので `solver_p1_suite.py` の `P1_SKIP` に入れてある |
+| `case-aa-wall-is-target-20260802.sgf` | **問題抽出が「取れる連」を壁（＝生きていると仮定する境界）にして region を5点に潰し、AI が3手目に打つ手を失って pass した誤答局面**（13路右下・**枠なし＝ソルバモードで出題**・黒は攻め方、初手から、正解 L1→白J4→黒N3→白K5→黒K6→白N2→黒N5＝白の大群を無条件死）。region（生盤・`region_pad=1` 相当）= `5,12,0,8`。**選択則は無実** — 潰れていない region を与えれば正解手順を**全黒番 3/3** で再現する（L1 / N3 / K6 / N5）。壊れていたのは `tsumego_problem._closure` で、隅でアタリの黒3子(L2/M1/M2)だけが単独で閉じるため、**その黒を殺している白15子（呼吸点は J3/J4/K1/N3 の4つだけ）を壁**にして「5点(K1/L1/L2/M1/M2)の中で黒が生きられるか」という別問題に化けていた（`type=defend target=3子`）。白15子を種にすれば戦い全体（約40点）を正しく吸収するのに、盤の空き地 **82点 > `FILL_CAP`(80)** で「閉じていない」と落ちるため、不健全な小問題だけが候補に残る。**呼吸点数では分離できない**（既存の正しい壁の最小は E/K/P の libs4 ＝この誤答の壁と同値）ので、anchors と同じ `_reaches_safety`（自色の壁/地に裏打ちされているか）を壁にも課す。既存21ケースの抽出結果（base + 全 ply の再抽出）は**前後で完全一致**（spec 追記6）。単体固定は `tests/test_tsumego_solver.py::test_capturable_group_is_not_a_wall`。**2026-09-04 追記（transformer b10c384）**: 7手目 N5 が応手 K1 の PV の K4（着手前からアタリの白 K5 の取り＝盤面の性質）でコウ経路に化け、コウ脱出が N1（全盤 3000visits では白 +0.29/子＝生き・16 目損）を 3/3 採用した。PV コウ検出の「打つ側の既存コウ」除外（`TSUMEGO_KO_PV_IGNORE_MOVER_PREEXISTING`・選択手の検査だけ）の回帰対象で、除外後 N5 3/3（engine-ab results §8）。**ソルバ自体はこの問題を解けない**（hint 付きだと矩形 region モードの72点＝df-pn の射程外）ので `solver_p1_suite.py` の `P1_SKIP` に入れてある |
 
 ## 回帰スイート（まずこれを回す）
 
@@ -300,6 +300,45 @@ python docs/superpowers/specs/calibration-data/tsumego/flip_role_probe.py   # �
   （黒先/白先の ownership 差）を測る。実測: **誤役割の枠でも delta +1.8〜2.0**（D 誤 +1.96 /
   M 誤 +1.92 / T 誤 +1.97 / X 誤 +1.81）＝枠の壁に挟まれた群はどれも手番依存になる（枠は約80子の
   書き換えで死活自体を作る）。逆に正役割で flat の例もある（V +0.00、Q +0.02＝エンジンが解けない問題）
+
+### `ko_pv_probe.py` — 応手ごとの PV と「何 ply 目で・どの形で」コウと判定したかを出す（2026-09-04）
+
+`_ko_route_screen` / `_region_child_verdict` と同じ条件（visits・untilDepth・wideRootNoise・拮抗比）で候補の子局面を解析し、
+歩いた応手ごとに PV・判定結果・最初にコウと判定された ply・その時点の「呼吸点1の1子」と守り方のコウ取り点を出す。
+transformer 切替後の case AA@6（正解 N5 が応手 K1 の PV の K4＝着手前からアタリの白 K5 の取り、でコウ経路に化けた）と
+case O@0（C10 の A10/A11 コウが PV に出たり出なかったり）を切り分けた。
+
+```
+python docs/superpowers/specs/calibration-data/tsumego/ko_pv_probe.py <sgf> <line_csv> <ply> <region> <moves_csv> <visits> <until_depth> <wrn> <ratio> <runs>
+例: ... case-aa-wall-is-target-20260802.sgf L1,J4,N3,K5,K6,N2,N5 6 5,12,0,8 N5,N1 800 6 0.0 0.05 3
+```
+
+### `preexisting_screen.py` — E2E 全ケースの「着手前から打てるコウ取り」の棚卸し（KataGo 不要）
+
+`e2e_suite.py` の CASES/KNOWN_LIMITS を読み、各黒番で打つ側／守り方が着手前から打てるコウ取り点を列挙する。
+PV コウ検出の除外（`TSUMEGO_KO_PV_IGNORE_MOVER_PREEXISTING`）がどの回帰点に影響しうるかを解析なしで確かめる
+（実測 2026-09-04: 打つ側の既存コウがある回帰点は L@0・Z@6・AA@6 だけ）。
+
+### `deep_child_probe.py` — 子局面を全盤・無拘束で深く読む真偽プローブ
+
+候補手を打った局面を `--region-ud` 無し（全盤・avoidMoves なし）または指定 untilDepth で 3000visits 解析し、
+相手石／自石の1子平均 ownership・手番視点の lead・上位応手の PV を出す。リージョン拘束の verdict（コウダテを
+取り上げた「コウに勝った前提」）と全盤の読みが食い違う手（AA@6 の N1: ud12 +0.94/子 vs 全盤 +0.29/子）を見つける。
+
+```
+python docs/superpowers/specs/calibration-data/tsumego/deep_child_probe.py <sgf> <line_csv> <ply> <region> <moves_csv> [visits] [--region-ud=N]
+```
+
+### `answer_book_compare.py` / `answer_book_rerun.py` / `answer_book_debug_capture.py` / `gain_override_counterfactual.py` — 回答帳スイープの A/B 一式（2026-09-04）
+
+- `answer_book_compare.py <base.jsonl> <new.jsonl> [--list]`: 2 本のスイープを (key, line_index) で対にして 回復／破損 を数え、
+  `--list` で初不一致の want/chosen（visits・pointsLost・decider）を並べる。
+- `answer_book_rerun.py <out.jsonl> <repeats> <config.json> <keysfile>`: 指定 key を**毎回新規プロセス**で回して追記（run 間分散の切り分け。
+  `answer_book_replay.py --config` でエンジン腕を替えられる＝この日追加）。
+- `answer_book_debug_capture.py <outdir> <keysfile> [--config cfg]`: `--debug` の戦略ログを key ごとに保存。
+- `gain_override_counterfactual.py <dbg_dir> <sweep.jsonl>`: 保存ログの `gain順`/`目数順` から、gain 覆し（chosen が visits 最多手でない）の
+  HURT/help を数え、`gain_epsilon` / `points_epsilon` を変えたら visits 最多手へ戻る判断の差引を出す（transformer 切替時の実測は
+  最良でも +4／1437 判断＝閾値は動かさない。engine-ab results §8.5）。
 
 ## 注意
 
