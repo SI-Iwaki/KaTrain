@@ -260,6 +260,13 @@
                     hint_text: i18n._("engine:time:hint")
 
             DescriptionLabel:
+                text: i18n._("general:anim_pv_moves")
+                size_hint_x: 1.5
+            AnchorLayout:
+                LabelledIntInput:
+                    input_property: "general/anim_pv_moves"
+
+            DescriptionLabel:
                 text: 'Restore window size on startup'
                 size_hint_x: 1.5
             AnchorLayout:
@@ -548,7 +555,7 @@
         size_hint: 1, 5
         GridLayout:
             cols: 2
-            rows: 8
+            rows: 9
             padding: 4
             size_hint: 0.95, 1
             DescriptionLabel:
@@ -592,6 +599,13 @@
             AnchorLayout:
                 LabelledIntInput:
                     input_property: "trainer/eval_on_show_last"
+            DescriptionLabel:
+                font_size: sp(Theme.DESC_FONT_SIZE) * 0.8
+                text: i18n._("show move numbers")
+                line_height: 0.75
+            AnchorLayout:
+                LabelledCheckBox:
+                    input_property: "trainer/show_move_numbers"
             DescriptionLabel:
                 font_size: sp(Theme.DESC_FONT_SIZE) * 0.8
                 text: i18n._("show ai dots")

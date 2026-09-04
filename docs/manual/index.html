@@ -496,7 +496,7 @@ python -m katrain</code></pre>
     <tr><th>AI に打たせる</th><td><kbd>Enter</kbd></td><td>今の手番が人間でも、選択中の戦略で AI に 1 手打たせます。</td></tr>
     <tr><th>手を進める</th><td><kbd>→</kbd> <kbd>x</kbd></td><td>待ったで戻した手を進め直す。</td></tr>
     <tr><th>座標表示</th><td><kbd>k</kbd></td><td>盤の座標（A〜T・1〜19）の表示切替。</td></tr>
-    <tr><th>手数表示</th><td><kbd>m</kbd></td><td>石に手数を表示。</td></tr>
+    <tr><th>手数表示</th><td><kbd>m</kbd></td><td>石に手数を表示。起動時の初期状態は指導・分析設定（<kbd>F6</kbd>）の「盤上に手数を表示する」で決まります。</td></tr>
   </tbody>
 </table>
 </div>
@@ -1561,10 +1561,10 @@ AI の応手は<b>アプリの盤の該当する交点の真上に光る輪</b>�
   <thead><tr><th>セクション</th><th>主なキー</th><th>設定画面</th></tr></thead>
   <tbody>
     <tr><th><code>engine</code></th><td>katago / model / humanlike_model / config / max_visits / fast_visits / max_time / wide_root_noise / _enable_ownership</td><td>一般・エンジン設定（<kbd>F8</kbd>）</td></tr>
-    <tr><th><code>general</code></th><td>lang / board_theme / debug_level / anim_pv_time / sgf_load / sgf_save / load_fast_analysis / load_sgf_rewind</td><td>同上（保存先フォルダは直接編集）</td></tr>
+    <tr><th><code>general</code></th><td>lang / board_theme / debug_level / anim_pv_time / anim_pv_moves / sgf_load / sgf_save / load_fast_analysis / load_sgf_rewind</td><td>同上（保存先フォルダは直接編集）</td></tr>
     <tr><th><code>game</code></th><td>size / komi / handicap / rules / clear_cache / setup_move / setup_advantage</td><td>新規対局（<kbd>Ctrl</kbd>+<kbd>N</kbd>）</td></tr>
     <tr><th><code>timer</code></th><td>main_time / byo_length / byo_periods / minimal_use / sound</td><td>時間設定（<kbd>F5</kbd>）</td></tr>
-    <tr><th><code>trainer</code></th><td>eval_thresholds / num_undo_prompts / show_dots / save_feedback / theme / top_moves_show / low_visits / eval_on_show_last / eval_show_ai / save_analysis 等</td><td>指導・分析設定（<kbd>F6</kbd>）</td></tr>
+    <tr><th><code>trainer</code></th><td>eval_thresholds / num_undo_prompts / show_dots / save_feedback / theme / top_moves_show / low_visits / eval_on_show_last / show_move_numbers / eval_show_ai / save_analysis 等</td><td>指導・分析設定（<kbd>F6</kbd>）</td></tr>
     <tr><th><code>ai</code></th><td><code>ai:&lt;戦略&gt;</code> ごとの設定値（→ <a href="#ai">06</a>）</td><td>AI設定（<kbd>F7</kbd>）</td></tr>
     <tr><th><code>tsumego_capture</code></th><td>ホットキー・ウィンドウ名・枠・ソルバ・白番監視（→ <a href="#tsumego-settings">07</a>）</td><td>なし（直接編集）</td></tr>
     <tr><th><code>board_watch</code></th><td>ホットキー・ポーリング・先読み・強調表示の色（→ <a href="#watch-settings">08</a>）</td><td>色のみ一般設定に</td></tr>

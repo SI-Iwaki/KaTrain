@@ -388,6 +388,8 @@ class ConfigTeacherPopup(QuickConfigGui):
 
     def update_config(self, save_to_file=True, close_popup=True):
         super().update_config(save_to_file=save_to_file, close_popup=close_popup)
+        # The keyboard shortcut can change this without changing the config.
+        self.katrain.show_move_num = bool(self.katrain.config("trainer/show_move_numbers", False))
         self.build_and_set_properties()
 
 

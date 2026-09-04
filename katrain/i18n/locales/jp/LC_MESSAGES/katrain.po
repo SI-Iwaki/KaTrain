@@ -361,6 +361,9 @@ msgstr "直近何手のドットを表示"
 msgid "show ai dots"
 msgstr "AIの手にもドットやSGFコメントをつける"
 
+msgid "show move numbers"
+msgstr "盤上に手数を表示する（'m' キーで切り替え）"
+
 #. show move comments for ai moves in the info panel
 msgid "show ai comments"
 msgstr "AIの着手にもコメントを表示"
@@ -429,6 +432,9 @@ msgstr "秒数"
 
 msgid "general:anim_pv_time"
 msgstr "手順アニメーションの一手毎の時間"
+
+msgid "general:anim_pv_moves"
+msgstr "手順アニメーションで表示する手数（0 でアニメーションしない）"
 
 msgid "general:debug_level"
 msgstr "コンソールのデバッグレベル"
