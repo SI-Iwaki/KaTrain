@@ -682,7 +682,7 @@ class SGF:
                 setup = line.split()
                 try:
                     handicap = int(setup[3])
-                except ParseError:
+                except (IndexError, ValueError):  # truncated INI line: skip it (upstream v1.20.0)
                     continue
 
                 if handicap < 0 or handicap > 9:

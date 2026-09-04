@@ -503,21 +503,48 @@ def generate_fighting_weights(ai_settings, policy_grid, game, cn, size):
     )
     return weighted_coords, ai_thoughts
 
+class AnalysisDiscardedException(Exception):
+    """The analysis a strategy was waiting for was thrown away, so there is nothing left to wait for."""
+
+
 class AIStrategy(ABC):
     """Base strategy class for AI move generation"""
-    
+
     def __init__(self, game: Game, ai_settings: Dict):
         self.game = game
         self.settings = ai_settings
         self.cn = game.current_node
         self.strategy_name = self.__class__.__name__
+        # A new game or an engine restart discards outstanding queries without calling back, so
+        # remember which generation our work belongs to and stop waiting once the engine moves past it
+        # (上流 v1.20.0). エンジンは id で引く＝どの待ちループからも引数なしで検査できる。
+        # query_generation を持たないスタブエンジン（テスト・デバッグ CLI）は検査対象外
+        self.query_generations = {
+            id(engine): engine.query_generation
+            for engine in getattr(game, "engines", {}).values()
+            if hasattr(engine, "query_generation")
+        }
         self.game.katrain.log(f"Initializing {self.strategy_name} with settings: {self.settings}", OUTPUT_DEBUG)
-        
+
     @abstractmethod
     def generate_move(self) -> Tuple[Move, str]:
         """Generate a move and explanation"""
         pass
-    
+
+    def raise_if_discarded(self, engine=None, player=None):
+        """Abort if the engine threw our queries away -- nothing will ever call back for them.
+
+        `engine` を省略すると `game.engines` の全エンジンを検査する（戦略の待ちループはエンジン変数の
+        持ち方がまちまちなので、引数なしで呼べるようにしてある。`player` は上流互換の飾り）。
+        """
+        engines = [engine] if engine is not None else list(getattr(self.game, "engines", {}).values())
+        for e in engines:
+            generation = self.query_generations.get(id(e))
+            if generation is not None and getattr(e, "query_generation", generation) != generation:
+                raise AnalysisDiscardedException(
+                    f"analysis for {self.strategy_name} discarded by a new game or an engine restart"
+                )
+
     def request_analysis(self, extra_settings: Dict) -> Optional[Dict]:
         """Helper to request additional analysis with custom settings"""
         self.game.katrain.log(f"[{self.strategy_name}] Requesting analysis with settings: {extra_settings}", OUTPUT_DEBUG)
@@ -546,6 +573,7 @@ class AIStrategy(ABC):
         )
         self.game.katrain.log(f"[{self.strategy_name}] Waiting for analysis to complete...", OUTPUT_DEBUG)
         while not (error or analysis):
+            self.raise_if_discarded()
             time.sleep(0.01)  # TODO: prevent deadlock if esc, check node in queries?
             engine.check_alive(exception_if_dead=True)
         
@@ -557,6 +585,7 @@ class AIStrategy(ABC):
         """Wait for the analysis to complete"""
         self.game.katrain.log(f"[{self.strategy_name}] Waiting for regular analysis to complete...", OUTPUT_DEBUG)
         while not self.cn.analysis_complete:
+            self.raise_if_discarded()
             time.sleep(0.01)
             self.game.engines[self.cn.next_player].check_alive(exception_if_dead=True)
         self.game.katrain.log(f"[{self.strategy_name}] Regular analysis completed", OUTPUT_DEBUG)
@@ -1285,6 +1314,7 @@ class JigoStrategy(AIStrategy):
             extra_settings=stage1_override,
         )
         while not (stage1_error or stage1_analysis):
+            self.raise_if_discarded()
             time.sleep(0.01)
             engine.check_alive(exception_if_dead=True)
 
@@ -1345,6 +1375,7 @@ class JigoStrategy(AIStrategy):
             extra_settings=stage2_override,
         )
         while not (stage2_error or stage2_analysis):
+            self.raise_if_discarded()
             time.sleep(0.01)
             engine.check_alive(exception_if_dead=True)
 
@@ -1762,6 +1793,7 @@ class Parity9Strategy(AIStrategy):
             **kwargs,
         )
         while not (error or analysis):
+            self.raise_if_discarded()
             time.sleep(0.01)
             engine.check_alive(exception_if_dead=True)
         return None if error else analysis
@@ -2783,6 +2815,7 @@ class Enigma9Strategy(AIStrategy):
             **kwargs,
         )
         while not (error or analysis):
+            self.raise_if_discarded()
             time.sleep(0.01)
             engine.check_alive(exception_if_dead=True)
         return None if error else analysis
@@ -2861,6 +2894,7 @@ class Enigma9Strategy(AIStrategy):
                 },
             )
         while len(results) < expected:
+            self.raise_if_discarded()
             time.sleep(0.01)
             engine.check_alive(exception_if_dead=True)
         return (
@@ -7136,6 +7170,7 @@ class TsumegoOwnershipStrategy(AIStrategy):
         handles = list(handles)
         deadline = time.time() + timeout * max(1, len(handles))
         while time.time() < deadline and any("root" not in h and "error" not in h for h in handles):
+            self.raise_if_discarded()
             time.sleep(0.02)
         for h in handles:
             if "root" not in h:
@@ -7882,6 +7917,7 @@ class FightingStrategy(PickBasedStrategy):
         )
 
         while not (error or analysis):
+            self.raise_if_discarded()
             time.sleep(0.01)
             engine.check_alive(exception_if_dead=True)
 
@@ -7921,6 +7957,7 @@ class FightingStrategy(PickBasedStrategy):
         )
 
         while not (clean_error or clean_analysis):
+            self.raise_if_discarded()
             time.sleep(0.01)
             engine.check_alive(exception_if_dead=True)
 
@@ -8704,6 +8741,7 @@ class HumanStyleStrategy(AIStrategy):
         # Wait for analysis to complete
         wait_count = 0
         while not (error or analysis):
+            self.raise_if_discarded()
             import time
             time.sleep(0.01)
             wait_count += 1
@@ -8768,6 +8806,7 @@ class HumanStyleStrategy(AIStrategy):
 
         wait_count = 0
         while not (clean_error or clean_analysis):
+            self.raise_if_discarded()
             import time
             time.sleep(0.01)
             wait_count += 1
@@ -9137,6 +9176,7 @@ class DivergenceStrategy(AIStrategy):
         )
 
         while not (error or analysis):
+            self.raise_if_discarded()
             time.sleep(0.01)
             engine.check_alive(exception_if_dead=True)
 
@@ -9181,6 +9221,7 @@ class DivergenceStrategy(AIStrategy):
         )
 
         while not (clean_error or clean_analysis):
+            self.raise_if_discarded()
             time.sleep(0.01)
             engine.check_alive(exception_if_dead=True)
 
@@ -9390,6 +9431,7 @@ class SiegeStrategy(AIStrategy):
         )
 
         while not (error or analysis):
+            self.raise_if_discarded()
             time.sleep(0.01)
             engine.check_alive(exception_if_dead=True)
 
@@ -9443,6 +9485,7 @@ class SiegeStrategy(AIStrategy):
         )
 
         while not (clean_error or clean_analysis):
+            self.raise_if_discarded()
             time.sleep(0.01)
             engine.check_alive(exception_if_dead=True)
 
@@ -10197,6 +10240,7 @@ class HuntStrategy(AIStrategy):
         )
 
         while not (error or analysis):
+            self.raise_if_discarded()
             time.sleep(0.01)
             engine.check_alive(exception_if_dead=True)
 
@@ -10235,6 +10279,7 @@ class HuntStrategy(AIStrategy):
         )
 
         while not (clean_error or clean_analysis):
+            self.raise_if_discarded()
             time.sleep(0.01)
             engine.check_alive(exception_if_dead=True)
 
@@ -10896,23 +10941,30 @@ class HuntDivergenceStrategy(HuntStrategy):
         return move, ai_thoughts
 
 
-def generate_ai_move(game: Game, ai_mode: str, ai_settings: Dict) -> Tuple[Move, GameNode]:
-    """Generate a move using the selected AI strategy"""
-    game.katrain.log(f"Generate AI move called with mode: {ai_mode}", OUTPUT_DEBUG)
-    
-    # Create the appropriate strategy based on mode
+def generate_ai_move(game: Game, ai_mode: str, ai_settings: Dict) -> Tuple[Optional[Move], Optional[GameNode]]:
+    """Generate a move using the selected AI strategy
 
-    strategy = STRATEGY_REGISTRY[ai_mode](game, ai_settings)
-    
-    # Generate the move
-    game.katrain.log(f"Generating move using {strategy.__class__.__name__}", OUTPUT_DEBUG)
-    move, ai_thoughts = strategy.generate_move()
-    
-    # Play the move and return
-    game.katrain.log(f"Playing move {move.gtp()} and creating game node", OUTPUT_DEBUG)
-    played_node = game.play(move)
-    game.katrain.log(f"AI thoughts: {ai_thoughts}", OUTPUT_DEBUG)
+    上流 v1.20.0 の修正: (1) 設定に無い戦略名は既定戦略へフォールバック（KeyError で落ちない）、
+    (2) 新規対局／エンジン再起動で解析が捨てられたら待ち続けずに (None, None) を返す、
+    (3) 着手は戦略が見ていた局面にだけ打つ＝生成中に局面が動いていたら捨てて (move, None) を返す。
+    """
+    strategy_class = STRATEGY_REGISTRY.get(ai_mode)
+    if strategy_class is None:
+        game.katrain.log(f"AI strategy '{ai_mode}' not found, falling back to '{AI_DEFAULT}'", OUTPUT_ERROR)
+        strategy_class = STRATEGY_REGISTRY[AI_DEFAULT]
+    strategy = strategy_class(game, ai_settings)
+
+    game.katrain.log(f"Generating move using {strategy.__class__.__name__} (mode {ai_mode})", OUTPUT_DEBUG)
+    try:
+        move, ai_thoughts = strategy.generate_move()
+    except AnalysisDiscardedException as e:
+        game.katrain.log(f"Discarding AI move: {e}", OUTPUT_DEBUG)
+        return None, None
+
+    played_node = game.play(move, expected_node=strategy.cn)
+    if played_node is None:
+        game.katrain.log(f"Discarding AI move {move.gtp()}: position changed", OUTPUT_DEBUG)
+        return move, None
     played_node.ai_thoughts = ai_thoughts
-    
-    game.katrain.log(f"Move generation complete: {move.gtp()}", OUTPUT_DEBUG)
+    game.katrain.log(f"Move generation complete: {move.gtp()} -- {ai_thoughts}", OUTPUT_DEBUG)
     return move, played_node

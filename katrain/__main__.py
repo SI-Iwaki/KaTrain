@@ -256,7 +256,7 @@ class KaTrainGui(Screen, KaTrainBase):
         self.controls.players["B"].captures = prisoners["B"]
 
         # update engine status dot
-        if not self.engine or not self.engine.katago_process or self.engine.katago_process.poll() is not None:
+        if not self.engine or not self.engine.check_alive():
             self.board_controls.engine_status_col = Theme.ENGINE_DOWN_COLOR
         elif self.engine.is_idle():
             self.board_controls.engine_status_col = Theme.ENGINE_READY_COLOR
@@ -467,6 +467,8 @@ class KaTrainGui(Screen, KaTrainBase):
             settings = self.config(f"ai/{mode}")
             if settings is not None:
                 move, _played = generate_ai_move(self.game, mode, settings)
+                if _played is None:  # 解析が捨てられた／局面が動いた＝着手していない（上流 v1.20.0）
+                    return
                 # 自動ループ（詰碁）: 黒＝AI の着手をアプリ盤へタップするのはループ側の仕事。
                 # ここが「KaTrain が正解手を決めた」瞬間そのものなので、その座標を渡す
                 # （パスは Move.coords が None＝コントローラ側が無視する）

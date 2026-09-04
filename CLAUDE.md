@@ -5,6 +5,7 @@
 KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 
 - 上流リポジトリ: https://github.com/sanderland/katrain
+- 上流との同期: git remote `upstream`（`git fetch upstream --tags` で最新を取る。fork は v1.17.1.1 の tarball 起点で git 履歴を共有しないので merge はできず、cherry-pick も効かない＝差分を読んで手で移植する）。**2026-09-04 に v1.20.0 までの修正を移植済み**: エンジンのスレッド競合修正（`query_generation`・RLock・stdin flush をロック外へ）、`Game` のロック整理と `expected_node`、AI 待ちループの `raise_if_discarded`（新規対局中に AI が考えていると固まるバグ）、未知の戦略名のフォールバック、GIB パーサ、`show_move_numbers` / `anim_pv_moves` 設定、KataGo ダウンロード一覧 v1.18.1。**移植しなかったもの**: KivyMD 撤去（`widgets/material/`）、`pysgf` への置換、リモートエンジン（websocket）、ruff 整形、Ctrl+H への reset-analysis 移動、同梱エンジン／モデルの更新（TensorRT 版は手動管理＝解析条件が変わるので校正のやり直しが要る）
 - ランタイム設定: `C:\Users\iwaki\.katrain\`
 
 主な改修は3系統。**着手する前に該当 rules を Read すること**（`.claude/rules/` は自動ロードされない＝「開発ワークフロー」節参照）:
@@ -49,7 +50,7 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 
 ## KataGo 解析結果の扱い（必読）
 
-- **winrate は常に黒視点**: `engine.py:108` で `reportAnalysisWinratesAs = "BLACK"` ハードコード。打つ側視点にするには `wr if player=="B" else (1-wr)` で変換
+- **winrate は常に黒視点**: `engine.py:127` で `reportAnalysisWinratesAs = "BLACK"` ハードコード。打つ側視点にするには `wr if player=="B" else (1-wr)` で変換
 - **`parent_node.winrate` と `cands[0]["winrate"]` は別物**: 前者は `analysis["root"]["winrate"]`（手を打つ前の勝率）、後者は最善手を打った後の勝率。「現在の局面の勝率」を取るなら前者
 - **`pointsLost` は符号あり**: 負値 = KataGo 予想より良い手。ユーザー向けには `max(0, pointsLost)` でクランプ、メトリック計算には生の値を使う
 - **`request_analysis` に `next_move` を渡すと ownership が強制 OFF になる**: `engine.py` の `ownership = ... and not next_move` / `"includeOwnership": ownership and not next_move` で、呼び出し側が明示的に `ownership=True` を渡しても無効化される。ownership が要る子局面は、使い捨ての複製ゲームで実ノードを作って撃つ（`ai.tsumego_simulation_game` / `Game._region_prefetch_sim`）
