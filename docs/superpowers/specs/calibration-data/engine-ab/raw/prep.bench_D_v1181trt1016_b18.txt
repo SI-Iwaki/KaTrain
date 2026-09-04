@@ -1,0 +1,51 @@
+2026-09-04 13:28:03+0900: Running with following config:
+conservativePass = true
+homeDataDir = C:/Users/iwaki/.katrain
+maxVisits = 500
+nnCacheSizePowerOfTwo = 20
+nnMaxBatchSize = 96
+nnMutexPoolSizePowerOfTwo = 16
+nnRandomize = true
+numAnalysisThreads = 12
+numSearchThreads = 24
+reportAnalysisWinratesAs = BLACK
+
+2026-09-04 13:28:03+0900: Loading model and initializing benchmark...
+2026-09-04 13:28:03+0900: Testing with default positions for board size: 19
+NOTE: Your config hardcodes nnMaxBatchSize = 96. This benchmark ignores it, and the notes at the end say how to keep it consistent with what was measured.
+2026-09-04 13:28:03+0900: nnRandSeed0 = 3238322394597548399
+2026-09-04 13:28:03+0900: After dedups: nnModelFile0 = c:/Users/iwaki/Documents/katrain-1.17.1.1/katrain-1.17.1.1/katrain/models/kata1-b18c384nbt-s9996604416-d4316597426.bin.gz useFP16 auto
+2026-09-04 13:28:03+0900: Initializing neural net buffer to be size 19 * 19 exactly
+2026-09-04 13:28:04+0900: TensorRT backend thread 0: Found GPU NVIDIA GeForce RTX 3080 memory 10736762880 compute capability major 8 minor 6
+2026-09-04 13:28:04+0900: TensorRT backend thread 0: Initializing (may take a long time)
+2026-09-04 13:28:04+0900: TensorRT backend: building network via ONNX emitter
+2026-09-04 13:28:04+0900: Building internal onnx model, requireExactNNLen=true transformerNHWC=false
+2026-09-04 13:28:04+0900: TensorRT backend: pinned 55 layers to FP32 (rmsnorm + heads)
+2026-09-04 13:28:04+0900: Creating new timing cache (usingFP16=true 19x19 maxBatchSizeLimit=24)
+2026-09-04 13:28:43+0900: Saved new timing cache to C:/Users/iwaki/.katrain/trtcache/trt-101601_gpu-f423ef1f_tune-6c7e97d9832a_ex19x19_b24_fp16
+2026-09-04 13:28:45+0900: TensorRT backend thread 0: Model version 14 useFP16 = true
+2026-09-04 13:28:45+0900: TensorRT backend thread 0: Model name: kata1-b18c384nbt-s9996604416-d4316597426 (nbt convnet, 26326985 params)
+
+2026-09-04 13:28:45+0900: Loaded config c:/Users/iwaki/Documents/katrain-1.17.1.1/katrain-1.17.1.1/katrain/KataGo/analysis_config.cfg and/or command-line and query overrides
+2026-09-04 13:28:45+0900: Loaded model c:/Users/iwaki/Documents/katrain-1.17.1.1/katrain-1.17.1.1/katrain/models/kata1-b18c384nbt-s9996604416-d4316597426.bin.gz
+
+Testing using 3000 visits.
+
+Your GTP config is currently set to trtUseFP16 = auto
+
+Your GTP config is currently set to use numSearchThreads = 24
+Testing (board size 19x19): 
+numSearchThreads = 24: 0 / 10 positions, visits/s = -nan(ind) (0.0 secs)      numSearchThreads = 24: 1 / 10 positions, visits/s = 2765.78 (1.1 secs)      numSearchThreads = 24: 2 / 10 positions, visits/s = 2276.84 (2.7 secs)      numSearchThreads = 24: 3 / 10 positions, visits/s = 2102.99 (4.3 secs)      numSearchThreads = 24: 4 / 10 positions, visits/s = 2137.75 (5.7 secs)      numSearchThreads = 24: 5 / 10 positions, visits/s = 2228.91 (6.8 secs)      numSearchThreads = 24: 6 / 10 positions, visits/s = 2194.46 (8.3 secs)      numSearchThreads = 24: 7 / 10 positions, visits/s = 2191.63 (9.7 secs)      numSearchThreads = 24: 8 / 10 positions, visits/s = 2211.07 (10.9 secs)      numSearchThreads = 24: 9 / 10 positions, visits/s = 2252.26 (12.1 secs)      numSearchThreads = 24: 10 / 10 positions, visits/s = 2283.95 nnEvals/s = 1731.01 nnBatches/s = 145.49 avgBatchSize = 11.90 (13.2 secs) (EloDiff baseline)
+
+WARNING: Your config hardcodes nnMaxBatchSize = 96, but this benchmark used the batch size this backend derives from the number of threads.
+To make normal runs match what was measured, delete nnMaxBatchSize from your config (recommended), or set it to at least the numSearchThreads you choose.
+Running additional tests of a few other settings at numSearchThreads = 24.
+Re-measuring the current recommendation as a baseline:
+numSearchThreads = 24: 0 / 10 positions, visits/s = -nan(ind) (0.0 secs)      numSearchThreads = 24: 1 / 10 positions, visits/s = 3336.64 (0.9 secs)      numSearchThreads = 24: 2 / 10 positions, visits/s = 2250.09 (2.7 secs)      numSearchThreads = 24: 3 / 10 positions, visits/s = 2102.74 (4.3 secs)      numSearchThreads = 24: 4 / 10 positions, visits/s = 2179.02 (5.5 secs)      numSearchThreads = 24: 5 / 10 positions, visits/s = 2275.11 (6.6 secs)      numSearchThreads = 24: 6 / 10 positions, visits/s = 2214.09 (8.2 secs)      numSearchThreads = 24: 7 / 10 positions, visits/s = 2233.71 (9.5 secs)      numSearchThreads = 24: 8 / 10 positions, visits/s = 2264.99 (10.7 secs)      numSearchThreads = 24: 9 / 10 positions, visits/s = 2299.21 (11.8 secs)      numSearchThreads = 24: 10 / 10 positions, visits/s = 2326.94 nnEvals/s = 1746.00 nnBatches/s = 146.72 avgBatchSize = 11.90 (13.0 secs)
+Testing a max batch size of 12, half the search threads, which can pipeline better on some GPUs:
+numSearchThreads = 24: 0 / 10 positions, visits/s = -nan(ind) (0.0 secs)      numSearchThreads = 24: 1 / 10 positions, visits/s = 3648.55 (0.8 secs)      numSearchThreads = 24: 2 / 10 positions, visits/s = 2595.79 (2.3 secs)      numSearchThreads = 24: 3 / 10 positions, visits/s = 2387.41 (3.8 secs)      numSearchThreads = 24: 4 / 10 positions, visits/s = 2440.05 (5.0 secs)      numSearchThreads = 24: 5 / 10 positions, visits/s = 2564.66 (5.9 secs)      numSearchThreads = 24: 6 / 10 positions, visits/s = 2506.08 (7.2 secs)      numSearchThreads = 24: 7 / 10 positions, visits/s = 2520.67 (8.4 secs)      numSearchThreads = 24: 8 / 10 positions, visits/s = 2617.62 (9.2 secs)      numSearchThreads = 24: 9 / 10 positions, visits/s = 2665.46 (10.2 secs)      numSearchThreads = 24: 10 / 10 positions, visits/s = 2674.93 nnEvals/s = 1923.98 nnBatches/s = 162.40 avgBatchSize = 11.85 (11.3 secs) (EloDiff +53)
+Half batch size was 15.0% faster, will recommend it.
+
+ADDITIONAL RECOMMENDATION: a smaller batch size measured faster. To use this, set nnMaxBatchSize = 12 in your config. This is half of numSearchThreads rounded up, so update it if you change numSearchThreads.
+Your config currently sets nnMaxBatchSize = 96. Replace it with 12. This supersedes any earlier note in this output about deleting it.
+2026-09-04 13:29:23+0900: GPU -1 finishing, processed 67317 rows 5670 batches
