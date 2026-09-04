@@ -5,7 +5,7 @@
 KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 
 - 上流リポジトリ: https://github.com/sanderland/katrain
-- 上流との同期: git remote `upstream`（`git fetch upstream --tags` で最新を取る。fork は v1.17.1.1 の tarball 起点で git 履歴を共有しないので merge はできず、cherry-pick も効かない＝差分を読んで手で移植する）。**2026-09-04 に v1.20.0 までの修正を移植済み**: エンジンのスレッド競合修正（`query_generation`・RLock・stdin flush をロック外へ）、`Game` のロック整理と `expected_node`、AI 待ちループの `raise_if_discarded`（新規対局中に AI が考えていると固まるバグ）、未知の戦略名のフォールバック、GIB パーサ、`show_move_numbers` / `anim_pv_moves` 設定、KataGo ダウンロード一覧 v1.18.1。**移植しなかったもの**: KivyMD 撤去（`widgets/material/`）、`pysgf` への置換、リモートエンジン（websocket）、ruff 整形、Ctrl+H への reset-analysis 移動、同梱エンジン／モデルの更新（TensorRT 版は手動管理＝解析条件が変わるので校正のやり直しが要る。**2026-09-04 に v1.18.1＋transformer b10c384 を A/B 実測して見送り**: 難解の E 尺度は不変だが詰碁 E2E の回帰点 2 件〈F2@4・AA@6〉がネット起因で 3/3 壊れ、手元の TensorRT 10.9.0 では 15〜20% 遅い。記録と切替用 config は `docs/superpowers/specs/calibration-data/engine-ab/`）
+- 上流との同期: git remote `upstream`（`git fetch upstream --tags` で最新を取る。fork は v1.17.1.1 の tarball 起点で git 履歴を共有しないので merge はできず、cherry-pick も効かない＝差分を読んで手で移植する）。**2026-09-04 に v1.20.0 までの修正を移植済み**: エンジンのスレッド競合修正（`query_generation`・RLock・stdin flush をロック外へ）、`Game` のロック整理と `expected_node`、AI 待ちループの `raise_if_discarded`（新規対局中に AI が考えていると固まるバグ）、未知の戦略名のフォールバック、GIB パーサ、`show_move_numbers` / `anim_pv_moves` 設定、KataGo ダウンロード一覧 v1.18.1。**移植しなかったもの**: KivyMD 撤去（`widgets/material/`）、`pysgf` への置換、リモートエンジン（websocket）、ruff 整形、Ctrl+H への reset-analysis 移動、同梱エンジン／モデルの更新（TensorRT 版は手動管理＝解析条件が変わるので校正のやり直しが要る。**2026-09-04 に A/B 実測のうえ v1.18.2 CUDA＋transformer b10c384 へ切替**: 難解の E 尺度は不変、解析は +34〜54% 速いが、詰碁 E2E の回帰点 2 件〈F2@4・AA@6〉がネット起因で 3/3 壊れる＝詰碁の再校正が未了。記録と切替用 config は `docs/superpowers/specs/calibration-data/engine-ab/`）
 - ランタイム設定: `C:\Users\iwaki\.katrain\`
 
 主な改修は3系統。**着手する前に該当 rules を Read すること**（`.claude/rules/` は自動ロードされない＝「開発ワークフロー」節参照）:
@@ -44,7 +44,7 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 
 - **言語**: Python 3.12
 - **GUI**: Kivy
-- **AIエンジン**: KataGo v1.16.4（TensorRT版）
+- **AIエンジン**: KataGo v1.18.2（CUDA 13.2＋cuDNN 9.24 版・`~/.katrain/katago-v1.18.2-cuda/`）＋ transformer ネット `b10c384h6nbttflrs`（2026-09-04 に v1.16.4 TensorRT＋b18 から切替。A/B の記録は `docs/superpowers/specs/calibration-data/engine-ab/`。**詰碁 E2E の F2@4・AA@6 はこのネットで壊れる既知の未校正**。旧構成は `~/.katrain/katago.exe`＋`katrain/models/kata1-b18…` と `config.json.bak-20260904-pre-cuda` に残してある）
 - **GPU**: NVIDIA GeForce RTX 3080
 - **ビルド**: hatchling / uv
 
@@ -101,7 +101,7 @@ katrain_debug/        -- 戦略デバッグCLIツール（KaTrain本体と独立
 **ランタイム設定ファイル**（`C:\Users\iwaki\.katrain\`）:
 - `config.json` — KaTrain全体の設定（エンジンパス、モデルパス、AI設定等）
 - `analysis_config.cfg` — **エンジンには参照されていない**（実測 2026-08-03）。`engine.py:140` の `cfg = find_package_resource(config["config"])` は `config.json` の `engine.config`（値=`"katrain/KataGo/analysis_config.cfg"`）をパッケージ相対パスとして解決するため、実際にエンジンへ渡されるのは**パッケージ同梱** `katrain/KataGo/analysis_config.cfg`（git管理・実効 `numAnalysisThreads=12`）。`-override-config` で上書きされるのは `homeDataDir` キーのみ。このファイルを編集しても効果がない
-- `katago.exe` — KataGoエンジン本体
+- `katago.exe` — 旧 KataGo v1.16.4 TensorRT 版（2026-09-04 まで本番）。本番は `katago-v1.18.2-cuda/katago.exe`（CUDA 版・DLL は pip の NVIDIA ホイール由来）。`katago-v1.18.1-trt/`（TRT 10.9）・`katago-v1.18.1-trt1016/`（TRT 10.16.1）は A/B 用に残置。`config_ab_*.json` は腕の設定
 - `b18c384nbt-humanv0.bin.gz` — humanSLモデル（`config.json`の`humanlike_model`が空だとhumanSLProfile系の全戦略が動作しない）
 
 ## 起動・デバッグ
