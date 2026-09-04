@@ -1,0 +1,52 @@
+2026-09-04 13:21:01+0900: Running with following config:
+conservativePass = true
+homeDataDir = C:/Users/iwaki/.katrain
+maxVisits = 500
+nnCacheSizePowerOfTwo = 20
+nnMaxBatchSize = 96
+nnMutexPoolSizePowerOfTwo = 16
+nnRandomize = true
+numAnalysisThreads = 12
+numSearchThreads = 24
+reportAnalysisWinratesAs = BLACK
+
+2026-09-04 13:21:01+0900: Loading model and initializing benchmark...
+2026-09-04 13:21:01+0900: Testing with default positions for board size: 19
+NOTE: Your config hardcodes nnMaxBatchSize = 96. This benchmark ignores it, and the notes at the end say how to keep it consistent with what was measured.
+2026-09-04 13:21:01+0900: nnRandSeed0 = 18234191748732137533
+2026-09-04 13:21:01+0900: After dedups: nnModelFile0 = C:/Users/iwaki/.katrain/b10c384h6nbttflrs.bin.gz useFP16 auto
+2026-09-04 13:21:01+0900: Initializing neural net buffer to be size 19 * 19 exactly
+2026-09-04 13:21:02+0900: Cuda backend thread 0: Found GPU NVIDIA GeForce RTX 3080 memory 10736762880 compute capability major 8 minor 6
+2026-09-04 13:21:02+0900: Cuda backend thread 0: Model version 15 useFP16 = true useNHWC = true
+2026-09-04 13:21:02+0900: Cuda backend thread 0: Model name: b10c384h6nbttflrs (nbt transformer, 10545753 params)
+2026-09-04 13:21:04+0900: CUDA backend: running 1x1 NHWC convolutions as a GEMM
+2026-09-04 13:21:04+0900: Cuda backend: using combined QKV projection for attention
+2026-09-04 13:21:12+0900: Cuda backend thread 0: warming up transformer graphs for batch sizes 1..24
+2026-09-04 13:21:12+0900: Cuda backend: using tensor-core mma flash attention kernel
+
+2026-09-04 13:21:12+0900: Loaded config c:/Users/iwaki/Documents/katrain-1.17.1.1/katrain-1.17.1.1/katrain/KataGo/analysis_config.cfg and/or command-line and query overrides
+2026-09-04 13:21:12+0900: Loaded model C:/Users/iwaki/.katrain/b10c384h6nbttflrs.bin.gz
+
+Testing using 3000 visits.
+
+Your GTP config is currently set to cudaUseFP16 = auto
+
+Your GTP config is currently set to use numSearchThreads = 24
+Testing (board size 19x19): 
+numSearchThreads = 24: 0 / 10 positions, visits/s = -nan(ind) (0.0 secs)      numSearchThreads = 24: 1 / 10 positions, visits/s = 3789.21 (0.8 secs)      numSearchThreads = 24: 2 / 10 positions, visits/s = 3119.77 (1.9 secs)      numSearchThreads = 24: 3 / 10 positions, visits/s = 3052.56 (3.0 secs)      numSearchThreads = 24: 4 / 10 positions, visits/s = 3170.30 (3.8 secs)      numSearchThreads = 24: 5 / 10 positions, visits/s = 3099.73 (4.9 secs)      numSearchThreads = 24: 6 / 10 positions, visits/s = 3014.30 (6.0 secs)      numSearchThreads = 24: 7 / 10 positions, visits/s = 3062.71 (6.9 secs)      numSearchThreads = 24: 8 / 10 positions, visits/s = 3075.85 (7.9 secs)      numSearchThreads = 24: 9 / 10 positions, visits/s = 3175.80 (8.6 secs)      numSearchThreads = 24: 10 / 10 positions, visits/s = 3233.35 nnEvals/s = 2390.71 nnBatches/s = 201.24 avgBatchSize = 11.88 (9.3 secs) (EloDiff baseline)
+
+WARNING: Your config hardcodes nnMaxBatchSize = 96, but this benchmark used the batch size this backend derives from the number of threads.
+To make normal runs match what was measured, delete nnMaxBatchSize from your config (recommended), or set it to at least the numSearchThreads you choose.
+Running additional tests of a few other settings at numSearchThreads = 24.
+Re-measuring the current recommendation as a baseline:
+numSearchThreads = 24: 0 / 10 positions, visits/s = -nan(ind) (0.0 secs)      numSearchThreads = 24: 1 / 10 positions, visits/s = 3454.86 (0.9 secs)      numSearchThreads = 24: 2 / 10 positions, visits/s = 3070.09 (2.0 secs)      numSearchThreads = 24: 3 / 10 positions, visits/s = 3006.63 (3.0 secs)      numSearchThreads = 24: 4 / 10 positions, visits/s = 3107.43 (3.9 secs)      numSearchThreads = 24: 5 / 10 positions, visits/s = 3089.76 (4.9 secs)      numSearchThreads = 24: 6 / 10 positions, visits/s = 3014.46 (6.0 secs)      numSearchThreads = 24: 7 / 10 positions, visits/s = 3056.63 (6.9 secs)      numSearchThreads = 24: 8 / 10 positions, visits/s = 3107.17 (7.8 secs)      numSearchThreads = 24: 9 / 10 positions, visits/s = 3199.62 (8.5 secs)      numSearchThreads = 24: 10 / 10 positions, visits/s = 3267.00 nnEvals/s = 2421.36 nnBatches/s = 203.76 avgBatchSize = 11.88 (9.3 secs)
+Testing 2 NN server threads per GPU. This also uses more GPU memory, since each server thread keeps its own copy of the neural net:
+numSearchThreads = 24: 0 / 10 positions, visits/s = -nan(ind) (0.0 secs)      numSearchThreads = 24: 1 / 10 positions, visits/s = 3332.97 (0.9 secs)      numSearchThreads = 24: 2 / 10 positions, visits/s = 2822.13 (2.1 secs)      numSearchThreads = 24: 3 / 10 positions, visits/s = 2788.44 (3.3 secs)      numSearchThreads = 24: 4 / 10 positions, visits/s = 2875.39 (4.2 secs)      numSearchThreads = 24: 5 / 10 positions, visits/s = 3011.96 (5.0 secs)      numSearchThreads = 24: 6 / 10 positions, visits/s = 2922.49 (6.2 secs)      numSearchThreads = 24: 7 / 10 positions, visits/s = 2955.58 (7.2 secs)      numSearchThreads = 24: 8 / 10 positions, visits/s = 2980.89 (8.1 secs)      numSearchThreads = 24: 9 / 10 positions, visits/s = 3053.54 (8.9 secs)      numSearchThreads = 24: 10 / 10 positions, visits/s = 3084.29 nnEvals/s = 2247.96 nnBatches/s = 305.61 avgBatchSize = 7.36 (9.8 secs) (EloDiff -22)
+2 NN server threads per GPU was not at least 3% faster (measured -5.6%), keeping 1.
+Testing a max batch size of 12, half the search threads, which can pipeline better on some GPUs:
+numSearchThreads = 24: 0 / 10 positions, visits/s = -nan(ind) (0.0 secs)      numSearchThreads = 24: 1 / 10 positions, visits/s = 3951.63 (0.8 secs)      numSearchThreads = 24: 2 / 10 positions, visits/s = 3394.94 (1.8 secs)      numSearchThreads = 24: 3 / 10 positions, visits/s = 3280.03 (2.8 secs)      numSearchThreads = 24: 4 / 10 positions, visits/s = 3425.05 (3.5 secs)      numSearchThreads = 24: 5 / 10 positions, visits/s = 3370.51 (4.5 secs)      numSearchThreads = 24: 6 / 10 positions, visits/s = 3288.54 (5.5 secs)      numSearchThreads = 24: 7 / 10 positions, visits/s = 3360.23 (6.3 secs)      numSearchThreads = 24: 8 / 10 positions, visits/s = 3408.57 (7.1 secs)      numSearchThreads = 24: 9 / 10 positions, visits/s = 3496.02 (7.8 secs)      numSearchThreads = 24: 10 / 10 positions, visits/s = 3549.68 nnEvals/s = 2591.85 nnBatches/s = 218.70 avgBatchSize = 11.85 (8.5 secs) (EloDiff +31)
+Half batch size was 8.7% faster, will recommend it.
+
+ADDITIONAL RECOMMENDATION: a smaller batch size measured faster. To use this, set nnMaxBatchSize = 12 in your config. This is half of numSearchThreads rounded up, so update it if you change numSearchThreads.
+Your config currently sets nnMaxBatchSize = 96. Replace it with 12. This supersedes any earlier note in this output about deleting it.
+2026-09-04 13:21:51+0900: GPU -1 finishing, processed 22072 rows 1867 batches
