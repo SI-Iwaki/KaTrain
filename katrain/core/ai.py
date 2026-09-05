@@ -2528,6 +2528,18 @@ def enigma9_yose_probe_skippable(lead, target, max_loss, margin=ENIGMA9_FAST_YOS
     return (lead - target) >= max_loss + margin
 
 
+def enigma9_opening_handoff(depth, opening_moves):
+    """序盤の HumanStyle 9段委譲（`enigma*_opening_humanstyle_moves`）を適用する手番か。
+
+    「N 手まで」＝対局の最初の N 手（depth 0〜N−1）を 9 段が打ち、depth N から難解に戻る。
+    0 以下で OFF（9路の既定）。スライダー値は float で来ることがあるので int に丸める。
+    jigo のヨセ委譲 `_jigo_endgame_handoff` の鏡像（あちらは手数以上・sticky、こちらは
+    手数未満・非 sticky＝手数だけで決まる）。
+    """
+    n = int(opening_moves or 0)
+    return n > 0 and depth < n
+
+
 def enigma9_pass_loss(candidate_moves):
     """通常解析の候補に pass があればその損失（relativePointsLost・打つ側視点に符号済み）。
 
@@ -2744,6 +2756,7 @@ class Enigma9Strategy(AIStrategy):
         "unsettled_max": 8,
         "target_score": 2.0,
         "aim_jigo": False,
+        "opening_humanstyle_moves": 0,   # 序盤 N 手を HumanStyle 9段で打つ（0=OFF）
         "locality_stddev": ENIGMA9_LOCALITY_STDDEV,   # 局所性 σ（0=OFF）。spec 2026-08-25-enigma-locality-design.md
         "locality_slack": ENIGMA9_LOCALITY_SLACK,    # 同点帯の幅（目相当）
     }
@@ -3181,6 +3194,21 @@ class Enigma9Strategy(AIStrategy):
             )
             return self._best_move(f"{self.LABEL}: not a {side}x{side} board, playing best move.")
 
+        # ---- ゲート1a: 序盤の HumanStyle 9段委譲（`<prefix>_opening_humanstyle_moves`・0=OFF） ----
+        # 対局の手数がスライダー値未満の手番は難解さの選択に入らず、素の 9 段（rank_9d・
+        # modern_style）として打つ＝jigo のヨセ委譲 `jigo_endgame_humanstyle` の鏡像。序盤は
+        # E≈0 の帯で own_rare（自手の珍しさ）だけが順位を決め、hp<0.025 の点へ外しても相手の
+        # 実損失は 0.17 目（実測 2026-09-03・13路 29 局）＝騙せていないのに「珍しい手」だけが
+        # 残るので、13/19 路は既定 20 手まで丸ごと 9 段に任せる（9路は既定 OFF）。
+        # この手番では先読み（ponder）を起動しない＝残骸は冒頭の `_cancel_ponder` が従来どおり
+        # 掃除する。手数以上の手番は解析条件・採用判断ともビット同一
+        opening_moves = self._setting("opening_humanstyle_moves")
+        if enigma9_opening_handoff(self.cn.depth, opening_moves):
+            self._log(f"Opening handoff: move={self.cn.depth} < thr={int(opening_moves)} -> HumanStyle rank_9d")
+            delegate = HumanStyleStrategy(self.game, {"human_kyu_rank": -8, "modern_style": True})
+            move, thoughts = delegate.generate_move()
+            return move, f"[{self.LABEL}→9d opening] {thoughts}"
+
         cands = self.cn.candidate_moves
         if not cands:
             return self._best_move(f"{self.LABEL}: no candidate moves.")
@@ -3563,6 +3591,7 @@ class Enigma13Strategy(Enigma9Strategy):
         "unsettled_max": 16,
         "target_score": 2.0,
         "aim_jigo": False,
+        "opening_humanstyle_moves": 20,   # 序盤 N 手を HumanStyle 9段で打つ（0=OFF）
         "locality_stddev": ENIGMA9_LOCALITY_STDDEV,   # 局所性 σ（0=OFF）。spec 2026-08-25-enigma-locality-design.md
         "locality_slack": ENIGMA9_LOCALITY_SLACK,    # 同点帯の幅（目相当）
     }
@@ -3691,6 +3720,7 @@ class Enigma19Strategy(Enigma9Strategy):
         "unsettled_max": 36,
         "target_score": 2.0,
         "aim_jigo": False,
+        "opening_humanstyle_moves": 20,   # 序盤 N 手を HumanStyle 9段で打つ（0=OFF）
         "locality_stddev": ENIGMA9_LOCALITY_STDDEV,   # 局所性 σ（0=OFF）。spec 2026-08-25-enigma-locality-design.md
         "locality_slack": ENIGMA9_LOCALITY_SLACK,    # 同点帯の幅（目相当）
     }

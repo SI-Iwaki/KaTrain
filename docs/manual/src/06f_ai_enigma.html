@@ -50,6 +50,7 @@
       <tr><td>enigma*_unsettled_max</td><td>8</td><td>16</td><td>36</td><td>ヨセ判定の未確定点上限（≒盤の 10%）。</td><td><span class="up">上げる</span>早くヨセ扱い</td></tr>
       <tr><td>enigma*_locality_stddev</td><td>OFF</td><td>OFF<span class="jp">推奨 3.0</span></td><td>OFF<span class="jp">未校正</span></td><td><b>局所性</b>。「自手の意外さ」ボーナスを相手の直前手と KataGo 最善手の近くでだけ満額にし、遠いほど減らす（σ＝この値）。難解さが同点帯で並ぶ候補の中では最も近い手を採る。</td><td>ON で「別の隅へ飛び飛びに打って手抜きに見える癖」が減る。明確に優る遠くの罠はそのまま打つ</td></tr>
       <tr><td>enigma*_locality_slack</td><td>0.3</td><td>0.3</td><td>0.3</td><td>局所性の同点帯の幅。stddev が ON のときだけ効く。</td><td><span class="up">上げる</span>近い手がより優先される</td></tr>
+      <tr><td>enigma*_opening_humanstyle_moves</td><td>OFF</td><td>20</td><td>20</td><td><b>序盤の 9 段委譲</b>。対局の手数がこの値未満の手番は難解さの選択をせず、Human-like（9段・現代布石）としてそのまま打つ（0 で OFF・1〜30 手）。序盤はどの候補も難解さがほぼ 0 で、外しても「珍しいだけで相手を惑わせていない手」になりやすい。</td><td><span class="up">上げる</span>難解さの仕組みが始まるのが遅くなる／<span class="down">OFF</span>従来どおり初手から外す</td></tr>
     </tbody>
   </table></div>
   <div class="callout tip">
@@ -90,7 +91,7 @@
       <tr><td>enigma*plus_min_delta_e</td><td>0.2<span class="jp">OFF=0</span></td><td>外しに要求する E の上積み（目）。<b>OFF（0）にすると難解（13路）と完全に同じ挙動</b>。</td><td><span class="up">上げる</span>本物の罠だけ採用＝外しが減る。<span class="down">OFF</span>難解（13路）と同一</td></tr>
       <tr><td>enigma*plus_cheap_loss</td><td>0.3</td><td>この損失以下の外しは床を免除（序盤の安い定跡外しを残す）。</td><td><span class="up">上げる</span>免除が広がり難解（13路）に近づく</td></tr>
       <tr><td>enigma*plus_probe_extra</td><td>4<span class="jp">0=従来</span></td><td>罠を探す範囲の拡張。安い順 7 手に加えて、高い帯から等間隔にこの数だけ候補を追加で解析する。着手時間は 4 で +0.8 秒程度（先読みが当たった手番は変わらない）。</td><td><span class="up">上げる</span>より高い帯まで探す＝大きい罠が見つかりやすいが着手が遅くなる。<span class="down">0</span>従来の 8 手</td></tr>
-      <tr><td>その他 10 項目</td><td>同じ盤の難解と同じ</td><td><code>enigma9plus_*</code> / <code>enigma13plus_*</code> / <code>enigma19plus_*</code> として別々に保存されます（難解の設定は引き継がれないので、変えていた値はこちらにも入れてください）。</td><td>—</td></tr>
+      <tr><td>その他 11 項目</td><td>同じ盤の難解と同じ</td><td><code>enigma9plus_*</code> / <code>enigma13plus_*</code> / <code>enigma19plus_*</code> として別々に保存されます（難解の設定は引き継がれないので、変えていた値はこちらにも入れてください）。</td><td>—</td></tr>
     </tbody>
   </table></div>
   <div class="callout warn">

@@ -230,7 +230,8 @@
             "enigma9_endgame_move": 30,
             "enigma9_unsettled_max": 8,
             "enigma9_locality_stddev": 0.0,
-            "enigma9_locality_slack": 0.3
+            "enigma9_locality_slack": 0.3,
+            "enigma9_opening_humanstyle_moves": 0
         },
         "ai:enigma9plus": {
             "enigma9plus_max_loss": 1.0,
@@ -245,7 +246,8 @@
             "enigma9plus_locality_slack": 0.3,
             "enigma9plus_min_delta_e": 0.2,
             "enigma9plus_cheap_loss": 0.3,
-            "enigma9plus_probe_extra": 4
+            "enigma9plus_probe_extra": 4,
+            "enigma9plus_opening_humanstyle_moves": 0
         },
         "ai:enigma13": {
             "enigma13_max_loss": 1.5,
@@ -257,7 +259,8 @@
             "enigma13_endgame_move": 75,
             "enigma13_unsettled_max": 16,
             "enigma13_locality_stddev": 0.0,
-            "enigma13_locality_slack": 0.3
+            "enigma13_locality_slack": 0.3,
+            "enigma13_opening_humanstyle_moves": 20
         },
         "ai:enigma13plus": {
             "enigma13plus_max_loss": 1.5,
@@ -272,7 +275,8 @@
             "enigma13plus_locality_slack": 0.3,
             "enigma13plus_min_delta_e": 0.2,
             "enigma13plus_cheap_loss": 0.3,
-            "enigma13plus_probe_extra": 4
+            "enigma13plus_probe_extra": 4,
+            "enigma13plus_opening_humanstyle_moves": 20
         },
         "ai:enigma19": {
             "enigma19_max_loss": 2.0,
@@ -284,7 +288,8 @@
             "enigma19_endgame_move": 150,
             "enigma19_unsettled_max": 36,
             "enigma19_locality_stddev": 0.0,
-            "enigma19_locality_slack": 0.3
+            "enigma19_locality_slack": 0.3,
+            "enigma19_opening_humanstyle_moves": 20
         },
         "ai:enigma19plus": {
             "enigma19plus_max_loss": 2.0,
@@ -299,7 +304,8 @@
             "enigma19plus_locality_slack": 0.3,
             "enigma19plus_min_delta_e": 0.2,
             "enigma19plus_cheap_loss": 0.3,
-            "enigma19plus_probe_extra": 4
+            "enigma19plus_probe_extra": 4,
+            "enigma19plus_opening_humanstyle_moves": 20
         },
         "ai:scoreloss": {
             "strength": 0.2

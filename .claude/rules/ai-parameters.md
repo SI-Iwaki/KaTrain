@@ -464,6 +464,7 @@ humanSL 9段 humanPolicy 8visits・全並列）し、
 | `enigma9_unsettled_max` | ヨセ判定の未確定点上限（AND の片側） | 4/6/8/10/12 | 8 |
 | `enigma9_locality_stddev` | own_rare を「相手の直前手／KataGo 最善手」の2アンカー max Gaussian（σ=この値）で減衰させ、net の同点帯では最もアンカーに近い手を採る。0=OFF＝採用判断・解析条件とも従来とビット同一。9路は既定 OFF・GUI/config の不変条件維持のために露出（9路は問題なしとの報告） | 0/1.5/2/2.5/3 | 0（OFF） |
 | `enigma9_locality_slack` | 同点帯の幅（目相当）。stddev>0 のときだけ効く | 0/0.2/0.3/0.5/1.0 | 0.3 |
+| `enigma9_opening_humanstyle_moves` | **序盤の HumanStyle 9段委譲（2026-09-04）**。対局の手数 `cn.depth` がこの値未満の手番は難解の選択パイプラインに入らず `HumanStyleStrategy(human_kyu_rank=-8, modern_style=True)`＝rank_9d としてそのまま打つ（純関数 `enigma9_opening_handoff`・jigo の `jigo_endgame_humanstyle` の鏡像・非 sticky＝手数だけで決まる。分岐は盤サイズゲートの直後で ponder はこの手番では起動しない）。手数以上の手番は解析条件・採用判断ともビット同一。9路は既定 OFF・キー集合の不変条件のために露出 | OFF/1〜30 | 0（OFF） |
 
 **own_rare の「応手自明」減衰（2026-09-01・9/13/19路共通・spec 追記11）**: `enigma9_net_score` の own_rare 項は `enigma9_own_rare_find_gate(find_hp)` で減衰する＝find_hp <= `ENIGMA9_OWN_RARE_FIND_FADE`(0.85) は 1.0（**ビット同一**）、0.85→1.0 で線形に 0。実測 `game_20260901_180139` move 36（13路白番・aim_jigo 消費モード）: B10 は E=0.03・find_hp=0.983（9段の正解応手 A10 が 98.3%）なのに own_rare 0.99 だけでnet 0.39 > 最善 B5 の 0.18 となり、0.94 目払って「誰でも正答できる手」に外した＝ヨセ（追記6・w_own=0）と同じ own_rare 支配の中盤版。reply_rare は find >= 0.25 で 0 に張り付き「それ以上自明」を罰しないのでここが唯一の穴だった。E・reply_rare は不変＝find が高くても E で勝つ本物の罠（同 move 38 C11: E=0.84・find=0.715・own_rare 抜きでもnet 0.50 > 0.02）はそのまま採る。線形ランプなのは find_hp の run 間分散 ±0.05〜0.09 で崖だと境界の採否が反転するため。回帰: `tests/test_ai_enigma9.py::TestOwnRareFindGate`。
 
@@ -638,6 +639,7 @@ move 40（+4.4 リード）はヨセ予算内に候補なしで最善 / move 39�
 | `enigma13_unsettled_max` | ヨセ判定の未確定点上限（≒169点の10%） | 8/12/16/20/24 | **16** |
 | `enigma13_locality_stddev` | **局所性（2026-08-25・spec `2026-08-25-enigma-locality-design.md`）**。own_rare（自手の意外さ）を「相手の直前手／KataGo 最善手」の2アンカー max Gaussian（σ=この値）で減衰させ、net の同点帯では最もアンカーに近い手を採る。0=OFF＝採用判断・解析条件とも従来とビット同一。実測 13路（白50手×3run平均）: dist(選択手, 直前の相手手)>=4 が off 18.67→σ3 14.00→σ4 13.67、dist(選択手, KataGo最善手)>=4 が off 25.33→σ3 18.00（−29%）→σ4 20.00（−21%）と一貫して減少。mean_ptloss は off 1.739→σ3 1.710（ノイズ内）→σ4 1.780（σ3比 +0.070 は実差でσ4が悪化）。point_loss 5.9〜7.4・チェビシェフ距離5〜10の遠い罠3手番はσ3 の ON でも `Band: 1`（帯に対抗馬なし）で全件そのまま選択され保持された | OFF/2/2.5/3/4/5 | **0（OFF）**・推奨 **3.0** |
 | `enigma13_locality_slack` | 同点帯の幅（目相当）。stddev>0 のときだけ効く。帯の中で prox 最大の手を pick し、**pick 自身が最善 net + margin 以上**のときだけ外す。slack は net 単位。勝勢時の消費モードでは loss 項が cost_weight で割引されているので、0.3 net ≒ 0.3/cost_weight 目の生損失差まで帯に入る（cap で有界）。raw 目単位の帯にする案は 19路 3run 再測時の検討項目 | 0/0.2/0.3/0.5/1.0 | 0.3 |
+| `enigma13_opening_humanstyle_moves` | **序盤の HumanStyle 9段委譲（2026-09-04・ユーザー報告「13/19路の序盤 15〜25 手で珍しすぎる手を打ちすぎる」が起点）**。対局の手数がこの値未満の手番は難解の選択に入らず rank_9d（modern_style）として打つ（機構は `enigma9_opening_humanstyle_moves` と同一・難解＋も `generate_move` 非オーバーライドなので同名キーで継承）。根拠は実測 2026-09-03（13路監視対局 29 局・KataGo 再解析）: 序盤（手数<20）は E がどの候補も ≈0 で own_rare だけが順位を決め、hp<0.025 の点へ外しても相手の直後応手の実損失は 0.17 目（1目以上の失着 1%）＝騙せていない。既定 20 はその手数帯をそのまま覆う値。手数以上の手番はビット同一 | OFF/1〜30 | **20** |
 
 CLI: `python -m katrain_debug --sgf <13路SGF> --move N --strategy enigma13`（batch 可）。
 **13路の実戦校正は未実施**（GUI 実戦ログ `[Enigma13Strategy]` と batch 3-run 平均で行う）。
@@ -661,7 +663,7 @@ vloss 210→180 目・予測 E 265→268）。sticky ヨセフラグは `game._e
 | `enigma13plus_min_delta_e` | 外しに要求する E の上積み（目）＝選択手の E − 最善手の E の下限。**0（OFF）で難解（13路）と同一挙動** | OFF/0.1/0.2/0.3/0.5 | **0.2** |
 | `enigma13plus_cheap_loss` | この検証済み損失以下の外しは床を免除（序盤の定跡外し・最善手より良い手を残す）。大きくすると難解（13路）に近づく | 0/0.2/0.3/0.5/1.0 | **0.3** |
 | `enigma13plus_probe_extra` | **罠探索の拡張**（spec 追記12-2）。子局面プローブの挑戦者を「安い順 7 手」＋「残りの admissible 候補から loss の範囲で等間隔にこの本数」にする（`_shortlist` → `enigma9_shortlist_spread`）。従来は cap 5 目の手番でも 2 目より高い手を調べておらず（118手番で最大 loss/cap 中央値 0.38）、E>=2 の罠は高い帯に多い（vloss<0.3 で 6%・4目超で 21%）。代金の上限は不変＝同じ予算でより大きい罠を net 比較に乗せる。**先読み wave2 も同じ規則で温める**（`_ponder_wave2_targets`・cap は予測局面の root lead から消費モードの式で近似）ので的中時の即着手は保たれる。コールド実測 **+0.8 秒/手**（katrain_debug 13路 1.2→2.0 秒。先読み的中時は乗らない）。重ければ 2。0 で従来の 8 手 | 0/2/4/6/8 | **4** |
-| 他10項目（`enigma*plus_max_loss` 等） | 基底の難解（同じ盤）の同名項目と同じ意味・同じ候補値・同じ既定（テスト `test_base_options_are_shared_with_the_base_strategy` で固定）。ユーザーローカル config は基底の現在値を写してある（9路: max_loss 1.6・large 6.0・min_wr 0.25・target 0.2・aim_jigo true / 13路: max_loss 1.6・target 1.5 / 19路: max_loss 2.6・endgame 180・locality 3.0） | — | — |
+| 他11項目（`enigma*plus_max_loss` 〜 `enigma*plus_opening_humanstyle_moves`） | 基底の難解（同じ盤）の同名項目と同じ意味・同じ候補値・同じ既定（テスト `test_base_options_are_shared_with_the_base_strategy` で固定）。ユーザーローカル config は基底の現在値を写してある（9路: max_loss 1.6・large 6.0・min_wr 0.25・target 0.2・aim_jigo true / 13路: max_loss 1.6・target 1.5 / 19路: max_loss 2.6・endgame 180・locality 3.0） | — | — |
 
 **盤サイズ別の校正状況（追記12-3／12-4・2026-09-02）**: 13路は実対局 難解13局 vs 難解＋14局（後半 15 局は交互）で E 平均/手 1.66→1.84（z 0.7・有意でない）・**相手の実損失/手 2.25→3.23（+1.0・局平均 z 1.9・pooled z 2.4、交互 15 局だけなら z 2.6〜2.7）**・>=2目の失着 41%→54%・vloss/手 0.93→0.85（同じ代金で回収 2.4→3.8 倍）・着手中央 0.35→0.40 秒（spec 追記12-5・2026-09-03＝13路は校正済み扱い）。**9路は交互対局 難解6局 vs 難解＋5局で利点を確認できず**（E 1.74→1.84〈z 0.3〉・外し率 35%→33% 不変・vloss 0.60→0.36。実損失は測れる手番が 1局 3〜13 で崩壊局 1 局が平均を支配＝比較不能。spread 発火 3〜7 手番/局、ΔE 床は選ばれない候補しか落とさない）＝**9路の既定は難解のまま・校正は打ち止め**（spec 追記12-4）。**19路は 13路の値を流用で未校正**（ログなし・候補プールが最大なので spread の余地は構造上最大の見込み。probe 1本が重いぶん `probe_extra` 4 のコールド増分は 13路の +0.8 秒より大）。
 
@@ -690,6 +692,7 @@ CLI: `python -m katrain_debug --sgf <SGF> --move N --strategy enigma9plus|enigma
 | `enigma19_unsettled_max` | ヨセ判定の未確定点上限（≒361点の10%） | 24/30/36/42/48 | **36** |
 | `enigma19_locality_stddev` | 13路と同じ機構（own_rare の2アンカー減衰＋同点帯タイブレーク）。0=OFF＝採用判断・解析条件とも従来とビット同一。実測 19路（`tests/data/ogs.sgf` 白56手・**1run のみ**）: dist(選択手, 直前の相手手)>=4 が off 24→σ5 17 と減少方向だが `mean_ptloss` は 0.312→0.519（+0.207・run間ノイズ閾値±0.05を大きく超える）・`total_loss` も 17.45→29.08 とほぼ倍増。増加は終盤の数手番（move_num 94/100/108 付近）に集中しており、個別再現では3手番とも `Band: 1`（同点帯に対抗馬なし）で局所性タイブレーク自体は発火していない。**原因は未特定**（Band=1 は局所性が効かなかった証拠にならない＝own_rare減衰はBand=1でもnetを変える。単発runの+11.6目は想定ノイズの約4倍でOFFの2本目も未取得。3run再測=OFF最低2本まで結論しない）。**19路は方向確認のみ・未校正・要3run再測**（本タスクのスコープ外） | OFF/3/4/5/6/7 | **0（OFF）** |
 | `enigma19_locality_slack` | 同上（13路と同じ意味）。slack は net 単位。勝勢時の消費モードでは loss 項が cost_weight で割引されているので、0.3 net ≒ 0.3/cost_weight 目の生損失差まで帯に入る（cap で有界）。raw 目単位の帯にする案は 19路 3run 再測時の検討項目 | 0/0.2/0.3/0.5/1.0 | 0.3 |
+| `enigma19_opening_humanstyle_moves` | 13路と同じ機構（序盤 N 手を rank_9d で打つ・難解＋も継承）。19路は実戦ログ無し＝既定 20 はユーザーの体感（序盤 15〜25 手）に合わせた値で**未校正** | OFF/1〜30 | **20** |
 
 CLI: `python -m katrain_debug --sgf <19路SGF> --move N --strategy enigma19`（batch 可）。
 **19路の実戦校正は未実施**（GUI 実戦ログ `[Enigma19Strategy]` と batch 3-run 平均で行う）。
