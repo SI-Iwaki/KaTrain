@@ -112,6 +112,8 @@ uv sync          # 依存パッケージのインストール
 python -m katrain
 ```
 
+**起動が `[WinError 4551] アプリケーション制御ポリシーによってこのファイルがブロックされました` で失敗したら**: この PC は Smart App Control が有効で、未署名 exe の許可判定は NTFS 拡張属性 `$KERNEL.PURGE.ESBCACHE` に載る。名前のとおり**再起動で purge され、purge 後の初回実行だけがクラウド照会を待たずに拒否される**（数分後には自然に通る＝一過性で、ファイル単位の永続的な deny ではない。実測 2026-09-09: 9/8 14:17 の再起動後、9/9 3:11・3:12 の起動が連続で 4551 → 3:15 には同じファイル実体が通った。旧 `katago.exe` でも 8/2 に同じ単発ブロックが1回だけ出ている）。再発防止に**ログオン時に `tools/warm_katago_sac.ps1` が `~/.katrain` 配下の katago 実行ファイルを空打ちして評価を済ませる**（タスク `KaTrain-WarmKataGoSAC`・ログオン1分後・所要4秒・ログ `~/.katrain/logs/sac_warmup.log`。登録は `-Install` / 解除は `-Uninstall`。**リポジトリを移動したらタスクのパスも直すこと**）。それでも 4551 が出たら数分待って起動し直す。**署名しても効かない**（WDAC/SAC はローカルの証明書ストアを見ず、許可署名者はポリシー内で固定）。切り分けは `Get-WinEvent -LogName Microsoft-Windows-CodeIntegrity/Operational` の 3077/3033（ブロック・ファイル名入り）と 3099（起動時のポリシー読み込み＝再起動時刻）。CLAUDE.md 内の `cargo` の `os error 4551` も同じ SAC が原因
+
 テスト: `pytest`（SGFパーサ、盤面ロジック、AI着手生成のユニットテスト）。AI系テスト（`test_ai.py`）はhumanSLモデルが必要なため、モデル未配置の環境では `pytest --ignore=tests/test_ai.py` で除外する
 
 フォーマッタ: `black katrain/`（line-length=120、設定は`pyproject.toml`）
