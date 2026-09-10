@@ -431,10 +431,13 @@ msgid "engine:time:hint"
 msgstr "秒数"
 
 msgid "general:anim_pv_time"
-msgstr "手順アニメーションの一手毎の時間"
+msgstr "手順アニメの1手の時間"
 
 msgid "general:anim_pv_moves"
-msgstr "手順アニメーションで表示する手数（0 でアニメーションしない）"
+msgstr "手順アニメの表示手数"
+msgid "general:anim_pv_moves:hint"
+msgstr "0 で無効"
+
 
 msgid "general:debug_level"
 msgstr "コンソールのデバッグレベル"
@@ -443,7 +446,7 @@ msgid "general:board_theme"
 msgstr "盤面テーマ"
 
 msgid "board_watch:highlight_color"
-msgstr "AI 着手の強調表示（監視モード）"
+msgstr "AI 着手の強調表示（監視）"
 
 msgid "board_watch:highlight_color:off"
 msgstr "表示しない"
@@ -467,7 +470,7 @@ msgid "board_watch:highlight_color:white"
 msgstr "白"
 
 msgid "board_watch:move_cursor"
-msgstr "カーソルも移動"
+msgstr "カーソル"
 
 msgid "default"
 msgstr "デフォルト"

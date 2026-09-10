@@ -257,7 +257,8 @@
             AnchorLayout:
                 LabelledFloatInput:
                     input_property: "general/anim_pv_time"
-                    hint_text: i18n._("engine:time:hint")
+                    helper_text: i18n._("engine:time:hint")
+                    helper_text_mode: "on_focus"
 
             DescriptionLabel:
                 text: i18n._("general:anim_pv_moves")
@@ -265,6 +266,8 @@
             AnchorLayout:
                 LabelledIntInput:
                     input_property: "general/anim_pv_moves"
+                    helper_text: i18n._("general:anim_pv_moves:hint")
+                    helper_text_mode: "on_focus"
 
             DescriptionLabel:
                 text: 'Restore window size on startup'
@@ -307,12 +310,12 @@
                     id: highlight_color
                     input_property: "board_watch/highlight_color"
                     i18n_prefix: "board_watch:highlight_color:"
-                    size_hint: 0.55, 0.8
+                    size_hint: 0.5, 0.8
                     pos_hint: {'center_y': 0.5}
                     font_size: sp(Theme.DESC_FONT_SIZE)
                 SmallDescriptionLabel:
                     text: i18n._("board_watch:move_cursor")
-                    size_hint_x: 0.3
+                    size_hint_x: 0.36
                 LabelledCheckBox:
                     input_property: "board_watch/move_cursor"
                     pos_hint: {'center_y': 0.5}
@@ -341,7 +344,8 @@
             AnchorLayout:
                 LabelledFloatInput:
                     input_property: "engine/max_time"
-                    hint_text: i18n._("engine:time:hint")
+                    helper_text: i18n._("engine:time:hint")
+                    helper_text_mode: "on_focus"
 
             DescriptionLabel:
                 text: i18n._("engine:wide_root_noise")
@@ -349,7 +353,8 @@
             AnchorLayout:
                 LabelledFloatInput:
                     input_property: "engine/wide_root_noise"
-                    hint_text: i18n._("engine:wide_root_noise:hint")
+                    helper_text: i18n._("engine:wide_root_noise:hint")
+                    helper_text_mode: "on_focus"
 
             DescriptionLabel:
                 text: i18n._("engine:enable_ownership")
