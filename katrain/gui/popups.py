@@ -832,8 +832,9 @@ class ConfigPopup(BaseConfigPopup):
 
         if "general/board_theme" in updated:
             self.apply_board_theme()
-        if any(key.startswith("board_watch/highlight_") for key in updated):
-            self.katrain._board_watch_highlight_refresh()  # 走っている対局監視の輪に即反映
+        if any(key.startswith("board_watch/") for key in updated):
+            # 走っている対局監視の輪・カーソル移動に即反映（highlight_color / move_cursor）
+            self.katrain._board_watch_highlight_refresh()
 
         ignore = {"max_visits", "fast_visits", "max_time", "enable_ownership", "wide_root_noise"}
         detected_restart = [key for key in updated if "engine" in key and not any(ig in key for ig in ignore)]

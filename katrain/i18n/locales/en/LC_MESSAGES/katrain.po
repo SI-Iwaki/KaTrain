@@ -717,6 +717,9 @@ msgstr "Orange"
 msgid "board_watch:highlight_color:white"
 msgstr "White"
 
+msgid "board_watch:move_cursor"
+msgstr "move cursor"
+
 msgid "default"
 msgstr "default"
 

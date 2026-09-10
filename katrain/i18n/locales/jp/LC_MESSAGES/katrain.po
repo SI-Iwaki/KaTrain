@@ -466,6 +466,9 @@ msgstr "オレンジ"
 msgid "board_watch:highlight_color:white"
 msgstr "白"
 
+msgid "board_watch:move_cursor"
+msgstr "カーソルも移動"
+
 msgid "default"
 msgstr "デフォルト"
 

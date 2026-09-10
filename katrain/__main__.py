@@ -716,6 +716,7 @@ class KaTrainGui(Screen, KaTrainBase):
             stones_to_grid,
             watch_settings_from_config,
         )
+        from katrain.core import screen_cursor
         from katrain.core.screen_marker import ScreenMarker
 
         ai_players = [bw for bw, info in self.players_info.items() if info.ai]
@@ -783,6 +784,12 @@ class KaTrainGui(Screen, KaTrainBase):
         if ScreenMarker.available():
             # ON/OFF・色は _board_watch_ahead が毎回設定を読む＝設定画面で変えれば走っている監視にも効く
             self._board_watch_marker = ScreenMarker(log=lambda message: self.log(message, OUTPUT_INFO))
+        if screen_cursor.available():
+            # AI の着手の交点へマウスカーソルを運ぶ（screen_cursor・spec 追記8）。ON/OFF は
+            # _board_watch_ahead が毎回設定を読む。前面判定は reader と同じ窓タイトルで行う
+            self._board_watch_cursor = screen_cursor.CursorParker(
+                window_title=reader.window_title, log=lambda message: self.log(message, OUTPUT_INFO)
+            )
         watcher = BoardWatcher(
             capture_fn=reader.read,
             get_state_fn=self._board_watch_state,
@@ -1587,25 +1594,31 @@ class KaTrainGui(Screen, KaTrainBase):
 
         監視スレッド（BoardWatcher.on_ahead＝ahead の間は毎周・解消で1回 None）と `_do_ai_move`
         （着手と同時）の両方から呼ばれる。輪の座標は reader がキャッシュする窓矩形＋盤矩形から
-        毎回引き直すので、アプリの窓が動いても次の周で追い直す。ScreenMarker はスレッド安全
+        毎回引き直すので、アプリの窓が動いても次の周で追い直す。ScreenMarker はスレッド安全。
+
+        同じ交点へマウスカーソルも運ぶ（screen_cursor・spec 追記8）。輪とは独立した設定
+        （board_watch/move_cursor）で、輪「表示しない」でもカーソルだけ運べる。毎周呼ばれるので
+        カーソル側は CursorParker が「新しい手のとき1回だけ」に間引く（貼り付き防止）
         """
         from katrain.core.screen_marker import ring_color
 
-        marker = getattr(self, "_board_watch_marker", None)
-        if marker is None:
-            return
         cfg = self._config.get("board_watch") or {}
         reader = getattr(self, "_board_watch_reader", None)
-        color = ring_color(cfg.get("highlight_color"))  # None ＝設定「表示しない」
-        point = reader.screen_point(*move) if (color and move is not None and reader is not None) else None
-        if point is None:
-            marker.hide()
-        else:
-            marker.set_color(color)
-            marker.show(*point)
+        point = reader.screen_point(*move) if (move is not None and reader is not None) else None
+        marker = getattr(self, "_board_watch_marker", None)
+        if marker is not None:
+            color = ring_color(cfg.get("highlight_color"))  # None ＝設定「表示しない」
+            if point is None or color is None:
+                marker.hide()
+            else:
+                marker.set_color(color)
+                marker.show(*point)
+        parker = getattr(self, "_board_watch_cursor", None)
+        if parker is not None:
+            parker.park(move, point, enabled=bool(cfg.get("move_cursor", False)))
 
     def _board_watch_highlight_refresh(self):
-        """設定画面で強調表示の ON/OFF・色が変わった。対局監視が走っていれば今の ahead に当て直す"""
+        """設定画面で強調表示（輪の色・カーソル移動）が変わった。対局監視が走っていれば今の ahead に当て直す"""
         watcher = getattr(self, "_board_watcher", None)
         if watcher is None or getattr(self, "_board_watch_kind", None) != "game":
             return
@@ -1614,6 +1627,7 @@ class KaTrainGui(Screen, KaTrainBase):
     def _board_watch_marker_close(self):
         marker = getattr(self, "_board_watch_marker", None)
         self._board_watch_marker = None
+        self._board_watch_cursor = None
         self._board_watch_reader = None
         if marker is not None:
             marker.close()

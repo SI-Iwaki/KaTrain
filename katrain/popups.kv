@@ -298,13 +298,24 @@
             DescriptionLabel:
                 text: i18n._("board_watch:highlight_color")
                 size_hint_x: 1.5
-            AnchorLayout:
+            # 輪の色（左）と「同じ交点へマウスカーソルも運ぶ」チェック（右・screen_cursor・spec 追記8）を
+            # 1行に同居させる。上の実測どおり行を増やすと2行ラベルが重なるため
+            MDBoxLayout:
+                orientation: 'horizontal'
+                spacing: dp(4)
                 LabelledSpinner:
                     id: highlight_color
                     input_property: "board_watch/highlight_color"
                     i18n_prefix: "board_watch:highlight_color:"
-                    size_hint: 0.95, 0.8
+                    size_hint: 0.55, 0.8
+                    pos_hint: {'center_y': 0.5}
                     font_size: sp(Theme.DESC_FONT_SIZE)
+                SmallDescriptionLabel:
+                    text: i18n._("board_watch:move_cursor")
+                    size_hint_x: 0.3
+                LabelledCheckBox:
+                    input_property: "board_watch/move_cursor"
+                    pos_hint: {'center_y': 0.5}
 
         # Engine Settings
         ConfigSectionGridLayout:
