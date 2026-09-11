@@ -95,3 +95,14 @@ def weighted_selection_without_replacement(items: List[Tuple], pick_n: int) -> L
     """For a list of tuples where the second element is a weight, returns random items with those weights, without replacement."""
     elt = [(math.log(random.random()) / (item[1] + 1e-18), item) for item in items]  # magic
     return [e[1] for e in heapq.nlargest(pick_n, elt)]  # NB fine if too small
+
+
+def alt_pressed_alone(modifiers) -> bool:
+    """Alt が他の修飾キー（Ctrl/Shift/Meta）を押さずに押されたか。modifiers は Alt 押下時の Kivy の修飾キー一覧。
+
+    Alt 単独押しはナビドロワーの開閉だが、ctrl+alt+d 等のグローバルホットキーは RegisterHotKey が
+    トリガーキーだけをフォーカス窓から奪うので、Kivy には「Ctrl↓ Alt↓ Alt↑」＝Alt を押して離した
+    だけに見える。押下時に Ctrl/Shift/Meta が押されていたら組み合わせの一部とみなす
+    （numlock/capslock はロック状態なので数えない）。
+    """
+    return not any(m in modifiers for m in ("ctrl", "shift", "meta"))

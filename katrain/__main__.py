@@ -19,7 +19,7 @@ import kivy
 kivy.require("2.0.0")
 
 # next, icon
-from katrain.core.utils import find_package_resource, PATHS
+from katrain.core.utils import find_package_resource, PATHS, alt_pressed_alone
 from kivy.config import Config
 
 if kivy_platform == "macosx":
@@ -159,6 +159,7 @@ class KaTrainGui(Screen, KaTrainBase):
         self.message_queue = Queue()
 
         self.last_key_down = None
+        self.last_key_down_modifiers = []
         self.last_focus_event = 0
         self._tsumego_flash_event = None  # バナー一時メッセージの消去タイマー
         self._autoloop = None  # 詰碁自動ループのコントローラ（ctrl+alt+a で開始/停止）
@@ -2577,6 +2578,7 @@ class KaTrainGui(Screen, KaTrainBase):
 
     def _on_keyboard_down(self, _keyboard, keycode, _text, modifiers):
         self.last_key_down = keycode
+        self.last_key_down_modifiers = modifiers
         ctrl_pressed = "ctrl" in modifiers or ("meta" in modifiers and kivy_platform == "macosx")
         shift_pressed = "shift" in modifiers
         if self.controls.note.focus:
@@ -2697,7 +2699,10 @@ class KaTrainGui(Screen, KaTrainBase):
         ):
             return
         if keycode[1] == "alt":
-            self.nav_drawer.set_state("toggle")
+            # Ctrl/Shift を押しながらの Alt は ctrl+alt+d 等の一部。グローバルホットキーが d を奪うと
+            # Kivy には「Alt を押して離しただけ」に見えるので、押下時の修飾キーで見分ける
+            if alt_pressed_alone(self.last_key_down_modifiers):
+                self.nav_drawer.set_state("toggle")
         elif keycode[1] == "tab":
             self.play_mode.switch_ui_mode()
 
