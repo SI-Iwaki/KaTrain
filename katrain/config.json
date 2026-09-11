@@ -102,6 +102,8 @@
         "failure_warn_frames": 8,
         "inject_timeout_ms": 5000,
         "stall_warn_sec": 20,
+        "active_slowdown_sec": 20,
+        "auto_stop_sec": 300,
         "resync_hint_frames": 10,
         "backoff_after_failures": 3,
         "backoff_factor": 2.0,

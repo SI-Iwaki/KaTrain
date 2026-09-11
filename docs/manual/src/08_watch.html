@@ -12,7 +12,7 @@ AI の応手は<b>アプリの盤の該当する交点の真上に光る輪</b>�
   <li>KaTrain で新規対局を作り、対局者設定で<b>自分の色を AI</b>（戦略は「難解」など何でも）、<b>相手の色を人間</b>にします。ルールとコミはアプリに合わせます。</li>
   <li><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd> を押します。現在のアプリの盤面を取り込んでから監視が始まり、盤の上に緑の帯「盤面監視中」が出ます。</li>
   <li>相手（アプリ）が打つと数百ミリ秒以内に KaTrain の盤に反映され、AI が応手を決めます。応手はアプリの盤の上に色つきの輪で表示されるので、その交点をアプリでタップします。</li>
-  <li>もう一度 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd> で監視を止めます。</li>
+  <li>もう一度 <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd> で監視を止めます。止め忘れても、対局が 5 分間進まなければ（アプリで投了・時間切れになった後など）監視は自動で止まり、青い帯でお知らせします。続けるときは <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd> を 1 回押せば再開します。</li>
 </ol>
 <div class="shots">
   <figure class="shot"><img src="img/board_watch_banner.png" alt="盤面監視中のバナー"><figcaption><b>監視中（緑）。</b>相手の手を自動反映しています。</figcaption></figure>
@@ -33,7 +33,7 @@ AI の応手は<b>アプリの盤の該当する交点の真上に光る輪</b>�
     <tr><th>相手の着手の取り込み</th><td>○ 自動（アプリ→KaTrain の片方向）</td></tr>
     <tr><th>AI の着手をアプリへ打つ</th><td>× 自動タップはしません。輪の位置をあなたがタップします（詰碁の自動ループは別で、ADB でタップします）</td></tr>
     <tr><th>相手のパス</th><td>× 盤面が変わらないので検出できません。KaTrain 側で手動でパスしてください</td></tr>
-    <tr><th>終局・整地</th><td>× 盤面が大きく変わるので警告になります。監視を止めてください</td></tr>
+    <tr><th>終局・整地</th><td>× 盤面が大きく変わるので警告になります。監視を止めてください（止め忘れても、対局が 5 分間進まなければ自動で止まります）</td></tr>
     <tr><th>コウの取り返し</th><td>△ 盤 1 枚では「1 手前に戻った」のと区別できないため、注入しない側に倒れます（安全側）</td></tr>
   </tbody>
 </table>
@@ -57,6 +57,8 @@ AI の応手は<b>アプリの盤の該当する交点の真上に光る輪</b>�
     <tr><td>prefetch_replies</td><td>5</td><td>先読みする相手の応手の数（0 で無効）</td></tr>
     <tr><td>stable_frames</td><td>2</td><td>同じ変化が何回連続で見えたら確定するか（誤検出防止）</td></tr>
     <tr><td>stall_warn_sec</td><td>20</td><td>何も変化しないまま経過したら警告する秒数</td></tr>
+    <tr><td>active_slowdown_sec</td><td>20</td><td>相手の手をこの秒数以上待ったら確認間隔を poll_interval_ms に落とす（省電力。長考のあとの反映が最大 0.35 秒遅れるだけ。0 で無効）</td></tr>
+    <tr><td>auto_stop_sec</td><td>300</td><td>対局（KaTrain の手数）がこの秒数進まなければ監視を自動停止する（0 で無効）</td></tr>
     <tr><td>highlight_color</td><td>cyan</td><td>輪の色（設定画面のドロップダウンと同じ）</td></tr>
   </tbody>
 </table>

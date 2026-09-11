@@ -17,6 +17,7 @@
     <tr><th>詰碁で AI が不正解を打つ</th><td>役割の自動推定が外れている場合は <kbd>Shift</kbd>+<kbd>F4</kbd>（殺す）／<kbd>Ctrl</kbd>+<kbd>F4</kbd>（生きる）で撮り直し。正解手順が枠の外に出る大型問題は <kbd>Shift</kbd>+<kbd>Ctrl</kbd>+<kbd>F4</kbd>（枠なし）。それでも違えば正解を「回答帳」に記録すると次回から確実です。ログ <code>~/.katrain/logs/tsumego_*.log</code> に判定の根拠が残ります。</td></tr>
     <tr><th>盤面監視で「同期できません」の警告が続く</th><td>アプリ側でパス・投了・整地が起きたか、KaTrain 側の局面とずれました。監視を止め（<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd>）、必要なら手動で局面を合わせてから再度 ON にすると現在の盤を取り込み直します。</td></tr>
     <tr><th>盤面監視中に相手の手が反映されない</th><td>アプリの盤が KaTrain の盤と同じ手番・同じ局面から始まっているか確認。相手のパスは検出できないので KaTrain 側で手動パス。BlueStacks が別ウィンドウに隠れていると認識できません。</td></tr>
+    <tr><th>盤面監視がいつの間にか止まっている（青い帯）</th><td>対局が 5 分間進まないと、終局後の空回り（電力・発熱）を防ぐため監視が自動で止まります。<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd> を 1 回押せば再開します（アプリが次の対局に移っていればその盤を取り込みます）。止まるまでの時間は <code>board_watch.auto_stop_sec</code>（0 で無効）。</td></tr>
     <tr><th>自動ループが「ADB に接続できません」</th><td>BlueStacks の設定 → 詳細 →「Android デバッグブリッジ」を ON にして BlueStacks を再起動。<code>tsumego_autoloop.adb_path</code> が <code>HD-Adb.exe</code> を指しているか確認。複数インスタンスがある場合は <code>adb_serial</code>（例 <code>127.0.0.1:5585</code>）で固定。</td></tr>
     <tr><th>評価レポートの一致率が高すぎる（AI っぽい）</th><td>「一致率追随（9路）」「AI一致率低減」「狩猟（一致率低減）」「難解」を使う。難解は勝勢のときほど一致率が下がり、接戦では勝ちを優先して上がります。Human-like でも「第一感ブレ」を ON にすると下がります。</td></tr>
     <tr><th>対局アプリと目差が合わない</th><td>ルール（日本／中国）とコミをアプリに合わせてください。中国ルールでは終局時のダメ詰めや死石の取り込みで目差が動きます。</td></tr>

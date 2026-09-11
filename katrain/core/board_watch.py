@@ -287,6 +287,14 @@ class WatchSettings(NamedTuple):
     # 反映の体感遅延はほぼ「位相待ち＋確定待ち」＝この値2つぶんで決まる（spec 追記3）。
     # poll_interval_ms と同値にすれば適応をやめて従来どおりの固定周期に戻る。
     poll_interval_active_ms: int = 50
+    # 相手の着手を待つ状態（active_kinds）がこの秒数続いたら低遅延周期をやめて idle 周期に落とす
+    # （spec 追記9）。アプリで投了・時間切れが起きても KaTrain には伝わらず、監視は in_sync のまま
+    # 50ms で撮り続ける（実測 1コアの約25%）。代償はこの秒数を超える長考のあとの反映が最大
+    # poll_interval_ms 遅れることだけ（着手が見えた周から確定待ちは再び低遅延）。0 以下で従来どおり
+    active_slowdown_sec: float = 20.0
+    # 対局（KaTrain の手数）がこの秒数進まなければ監視を自動停止する（spec 追記9）。基準はアプリの
+    # 画素ではなく対局の進行＝終局後の結果ダイアログやロビー画面で画面が動いても止まる。0 以下で無効
+    auto_stop_sec: float = 300.0
 
 
 def watch_settings_from_config(cfg):
@@ -303,6 +311,8 @@ def watch_settings_from_config(cfg):
         backoff_factor=float(d.get("backoff_factor", default.backoff_factor)),
         poll_interval_max_ms=int(d.get("poll_interval_max_ms", default.poll_interval_max_ms)),
         poll_interval_active_ms=int(d.get("poll_interval_active_ms", default.poll_interval_active_ms)),
+        active_slowdown_sec=float(d.get("active_slowdown_sec", default.active_slowdown_sec)),
+        auto_stop_sec=float(d.get("auto_stop_sec", default.auto_stop_sec)),
     )
 
 
@@ -325,8 +335,24 @@ def apply_game_watch_flags(game, cfg):
     return prefetch
 
 
+def clear_game_watch_flags(game):
+    """apply_game_watch_flags の逆。対局監視を止めたら止め方を問わず呼ぶ（`__main__._stop_board_watcher`）。
+
+    `board_watch_active` が残ると、監視を止めた後の普通の対局でも難解のヨセの Probe 省略（enigma spec
+    追記7）と自ノード解析の後回し（同 追記9）が効き続ける（旧ホットキー OFF 経路は先読み本数しか
+    戻していなかった）。走っている応手先読みも打ち切る（通常の対局・検討で GPU を焼かない）。
+    """
+    game.board_watch_active = False
+    game.board_watch_prefetch_replies = 0
+    game.board_watch_probe_warm = False
+    game._cancel_board_watch_prefetch()
+
+
 STATUS_WATCHING = "bw-watching"
 STATUS_WARN = "bw-warn"
+# 対局が進まないので自動停止した（auto_stop_sec）。警告ではなくお知らせなので色を分け、
+# 監視トグルはこのバナーを「消すだけ」でなく1押しで再開する（watch_toggle_action）
+STATUS_IDLE = "bw-idle"
 WATCHING_TEXT = "盤面監視中（相手の手を自動反映）"
 RESYNC_HINT = "（監視トグルのホットキーで OFF にし、1秒ほどおいてからもう一度押すと現局面を取り込み直します）"
 # 対局モード向けの既定の停滞警告文（_on_quiet 参照）。詰碁モードは __main__._start_tsumego_watch が
@@ -335,6 +361,15 @@ STALL_TEXT = (
     "盤面が変化しません（着手をアプリへ入力し忘れていないか、"
     "または KaTrain の手番かもしれません。Enter で AI が着手します）"
 )
+# 自動停止のお知らせの既定文面。{duration} に auto_stop_sec を「5分間」のように入れる
+IDLE_STOP_TEXT = "対局が{duration}進まないため盤面監視を停止しました"
+
+
+def _duration_text(seconds):
+    """auto_stop_sec をお知らせ用の「5分間」「90秒間」にする"""
+    if seconds >= 60 and seconds % 60 == 0:
+        return f"{int(seconds // 60)}分間"
+    return f"{seconds:g}秒間"
 
 
 # 強調表示の輪（screen_marker）を消すまでに許す連続の撮影失敗回数。アプリが盤以外の画面へ
@@ -374,7 +409,8 @@ class BoardWatcher:
       capture_fn()    -> 観測グリッド（失敗は例外）
       get_state_fn()  -> WatchState または None
       on_move(i, j, color, move_number, board_size)
-      on_status(kind, text)   kind: "bw-watching" / "bw-warn" / ""
+      on_status(kind, text)   kind: "bw-watching" / "bw-warn" / "bw-idle" / ""
+      on_idle_stop()          対局が auto_stop_sec 進まず自分で止まった（省略可・後始末用）
     """
 
     def __init__(
@@ -389,6 +425,8 @@ class BoardWatcher:
         stall_kinds=("in_sync", "ahead", "waiting"),
         stall_text=STALL_TEXT,
         on_ahead=None,
+        on_idle_stop=None,
+        idle_stop_text=IDLE_STOP_TEXT,
     ):
         self.capture_fn = capture_fn
         self.get_state_fn = get_state_fn
@@ -411,6 +449,11 @@ class BoardWatcher:
         # stall_kinds=("in_sync",) だけを渡す（spec 2026-08-22 §5）
         self.stall_kinds = tuple(stall_kinds)
         self.stall_text = stall_text
+        # 自動停止（auto_stop_sec）。止まったらループを抜ける前に on_status(STATUS_IDLE, 文面) と
+        # on_idle_stop() を呼ぶ。監視スレッドから呼ばれるので、呼び出し側の後始末（強調表示の輪・
+        # 先読みフラグ）は自分のスレッドへ回すこと（stop() は join するので監視スレッドから呼べない）
+        self.on_idle_stop = on_idle_stop
+        self.idle_stop_text = idle_stop_text
         self.clock = clock
         self.interval_ms = settings.poll_interval_ms
         self._stopped = threading.Event()
@@ -422,10 +465,16 @@ class BoardWatcher:
         self._pending = None  # (i, j, move_number, deadline)
         self._blocked = None  # (i, j, move_number) タイムアウトした手を同じ局面で再注入しない
         self._quiet_key = None
-        self._quiet_since = None
+        self._quiet_since = None  # 停滞警告の基準（警告のたびに打ち直す）
+        self._quiet_started = None  # 今の無音状態に入った時刻（減速の基準。警告では打ち直さない）
+        self._progress_move = None  # 最後に見た KaTrain の手数（自動停止の基準）
+        self._progress_since = None  # その手数になった時刻
 
     # --- 1周ぶんの判断（テストはここを直接叩く） ---
     def step(self):
+        if self._idle_expired():
+            self._idle_stop()
+            return
         try:
             observed = self.capture_fn()
         except Exception as e:  # CaptureError も未知の例外もここで吸収する
@@ -436,6 +485,7 @@ class BoardWatcher:
         if state is None:
             self._notify_ahead(None)  # 盤が読めない・対象外の盤＝輪を残さない
             return
+        self._note_progress(state.move_number)
         if self._pending is not None and not self._resolve_pending(state):
             if self._pending is not None:
                 self._active()  # 注入した手が反映されるまでは速く確認する（タイムアウト後は idle へ戻す）
@@ -520,17 +570,19 @@ class BoardWatcher:
         """waiting / ahead / in_sync = 無音の終端状態。長すぎたら警告する（spec §2.5c）"""
         self._stable_move = None
         self._stable_count = 0
-        if kind in self.active_kinds:
+        key = (kind, state.move_number, _grid_key(observed))
+        now = self.clock()
+        if kind in self.active_kinds and not self._waited_long(key, now):
             # 盤がアプリと一致している＝次に変わるのは相手の石。ここだけが低遅延を要する
             # 局面で、waiting（KaTrain の AI が思考中）は相手の石が来ようがないので idle の
             # まま。ahead（ユーザーがまだアプリへタップしていない）は対局モードでは同じく
-            # idle だが、詰碁ではタップ直後にアプリが白を返すので active に含める
+            # idle だが、詰碁ではタップ直後にアプリが白を返すので active に含める。
+            # ただし待ちが active_slowdown_sec を超えたら idle に落とす（終局後の空回り対策）
             self._active()
-        key = (kind, state.move_number, _grid_key(observed))
-        now = self.clock()
         if key != self._quiet_key:
             self._quiet_key = key
             self._quiet_since = now
+            self._quiet_started = now
             self._watching()
         elif (
             kind in self.stall_kinds
@@ -547,6 +599,35 @@ class BoardWatcher:
             # どちらが実際の原因かは判定しない（対象 kind・文面は stall_kinds/stall_text 参照＝
             # 詰碁モードは ahead/waiting を対象から外し文面も専用のものに差し替える）
             self._warn(self.stall_text)
+
+    def _waited_long(self, key, now):
+        """同じ無音状態（key）が active_slowdown_sec 以上続いているか。新しい状態なら False"""
+        limit = self.settings.active_slowdown_sec
+        if limit <= 0 or key != self._quiet_key or self._quiet_started is None:
+            return False
+        return now - self._quiet_started >= limit
+
+    def _note_progress(self, move_number):
+        if move_number != self._progress_move:
+            self._progress_move = move_number
+            self._progress_since = self.clock()
+
+    def _idle_expired(self):
+        """対局（KaTrain の手数）が auto_stop_sec 進んでいないか。撮影失敗の周も数える"""
+        limit = self.settings.auto_stop_sec
+        if limit <= 0:
+            return False
+        now = self.clock()
+        if self._progress_since is None:
+            self._progress_since = now  # 最初の周から数える（撮影が一度も通らなくても止まる）
+            return False
+        return now - self._progress_since >= limit
+
+    def _idle_stop(self):
+        self._stopped.set()  # run() はこの周を最後に抜ける
+        self.on_status(STATUS_IDLE, self.idle_stop_text.format(duration=_duration_text(self.settings.auto_stop_sec)))
+        if self.on_idle_stop is not None:
+            self.on_idle_stop()
 
     def _on_capture_failure(self, message, permanent=False):
         self._fail_count += 1
@@ -883,3 +964,17 @@ def tsumego_watch_status(kind, text):
     if kind == STATUS_WARN:
         return kind, text
     return "", ""
+
+
+def watch_toggle_action(running, banner_kind):
+    """監視トグル（ホットキー）を押したときの動作。"stop" / "clear" / "start" を返す。
+
+    監視が走っていれば止める。走っていないのにバナーが残っているのは、認識失敗などで監視を
+    作らずに出た警告なので1押しで消す（消せないとバナーが一生残る＝Finding A）。ただし自動停止
+    のお知らせ（STATUS_IDLE）は「ホットキーで再開」と案内しているので、消すだけでなく再開する
+    """
+    if running:
+        return "stop"
+    if banner_kind and banner_kind != STATUS_IDLE:
+        return "clear"
+    return "start"

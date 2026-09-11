@@ -64,7 +64,7 @@ from kivy.properties import BooleanProperty, NumericProperty, ObjectProperty, St
 from kivy.clock import Clock
 from kivy.metrics import dp
 from katrain.core.ai import generate_ai_move, tsumego_book_status as compute_tsumego_book_status
-from katrain.core.board_watch import STATUS_WARN as BW_STATUS_WARN, apply_game_watch_flags
+from katrain.core.board_watch import STATUS_WARN as BW_STATUS_WARN, apply_game_watch_flags, clear_game_watch_flags
 
 from katrain.core.lang import DEFAULT_LANGUAGE, i18n
 from katrain.core.constants import (
@@ -709,6 +709,7 @@ class KaTrainGui(Screen, KaTrainBase):
         ここで1メッセージ内に完結させる（_do_tsumego_capture_apply と同じ作法）。
         """
         from katrain.core.board_watch import (
+            IDLE_STOP_TEXT,
             BoardWatcher,
             board_sgf,
             grid_to_move,
@@ -790,6 +791,7 @@ class KaTrainGui(Screen, KaTrainBase):
             self._board_watch_cursor = screen_cursor.CursorParker(
                 window_title=reader.window_title, log=lambda message: self.log(message, OUTPUT_INFO)
             )
+        hotkey = watch_cfg.get("hotkey") or "ctrl+alt+d"
         watcher = BoardWatcher(
             capture_fn=reader.read,
             get_state_fn=self._board_watch_state,
@@ -797,6 +799,10 @@ class KaTrainGui(Screen, KaTrainBase):
             on_status=self._board_watch_status,
             on_ahead=self._board_watch_ahead,
             settings=watch_settings_from_config(watch_cfg),
+            # 対局が auto_stop_sec 進まなければ自分で止まる（アプリの投了・時間切れは KaTrain に
+            # 伝わらない＝終局後の空回り対策・spec 追記9）。後始末は Kivy スレッドで行う
+            on_idle_stop=lambda: Clock.schedule_once(lambda _dt: self._board_watch_idle_stopped(watcher), 0),
+            idle_stop_text=IDLE_STOP_TEXT + f"（{hotkey} で再開）",
         )
         existing = getattr(self, "_board_watcher", None)
         if existing is not None:
@@ -1674,6 +1680,25 @@ class KaTrainGui(Screen, KaTrainBase):
             previous_grid=previous,
         )
 
+    def _board_watch_idle_stopped(self, watcher):
+        """監視スレッドが自動停止した（対局が auto_stop_sec 進まない・spec 追記9）あとの後始末。
+
+        監視スレッドの on_idle_stop から Kivy スレッドへ回して呼ぶ（stop() は join するので
+        監視スレッド自身からは呼べない）。バナーは監視スレッドが出し済み＝対局は STATUS_IDLE の
+        お知らせ（ホットキー1押しで再開）、詰碁は tsumego_watch_status が消している。
+        張り替え・手動停止とすれ違った古い監視なら何もしない（新しい監視を巻き添えで止めない）
+        """
+        if getattr(self, "_board_watcher", None) is not watcher:
+            return
+        kind = getattr(self, "_board_watch_kind", None)
+        self._stop_board_watcher()
+        if kind == "tsumego":
+            self.log("tsumego_watch: 局面が進まないため白番の自動反映を停止しました", OUTPUT_INFO)
+            # 詰碁ビューは右パネルが消えるので一時メッセージで知らせる（回答帳バナーは覆わない）
+            self._tsumego_message("白番の自動反映を停止しました（局面が進まないため）", kind="info")
+            return
+        self.log("board_watch: 対局が進まないため監視を自動停止しました", OUTPUT_INFO)
+
     def _stop_board_watcher(self, kinds=None):
         """走っている監視スレッドを止める。kinds を渡すとその種別のときだけ止める。
 
@@ -1691,13 +1716,12 @@ class KaTrainGui(Screen, KaTrainBase):
         self._board_watch_kind = None
         self._board_watch_marker_close()
         if stopped_kind == "game":
-            # 監視 OFF で先読み系のフラグも戻す（game.py の board_watch_* の契約）。
-            # 戻さないと監視を止めた後も応手先読みが回り続ける
+            # 監視 OFF で先読み系のフラグも戻す（game.py の board_watch_* の契約）。戻さないと監視を
+            # 止めた後も応手先読みや難解のヨセの Probe 省略が効き続ける。停止経路（ホットキー OFF・
+            # 自動停止・詰碁の出題）はすべてここを通す＝止め方でフラグの戻り方が変わらない
             game = getattr(self, "game", None)
             if game is not None:
-                game.board_watch_active = False
-                game.board_watch_prefetch_replies = 0
-                game.board_watch_probe_warm = False
+                clear_game_watch_flags(game)
         return True
 
     def _tsumego_watch_state(self, watch_game):
@@ -1818,6 +1842,7 @@ class KaTrainGui(Screen, KaTrainBase):
             # 文面も「Enter で AI が着手します」（対局モード向け・詰碁では誤案内）から差し替える
             stall_kinds=("in_sync",),
             stall_text="アプリが白を返していないようです（アプリ側の盤を確認してください）",
+            on_idle_stop=lambda: Clock.schedule_once(lambda _dt: self._board_watch_idle_stopped(watcher), 0),
         )
         self._board_watcher = watcher
         self._board_watch_kind = "tsumego"
@@ -1832,7 +1857,7 @@ class KaTrainGui(Screen, KaTrainBase):
 
     def _board_watch_trigger(self):
         """ctrl+alt+d のワーカースレッド。OFF なら認識してから開始、ON なら停止する"""
-        from katrain.core.board_watch import AppBoardReader
+        from katrain.core.board_watch import AppBoardReader, watch_toggle_action
 
         now = time.time()
         if now - getattr(self, "_board_watch_last_trigger", 0.0) < 2.0:
@@ -1841,21 +1866,19 @@ class KaTrainGui(Screen, KaTrainBase):
         if getattr(self, "_board_watch_busy", False):
             return
         watcher = getattr(self, "_board_watcher", None)
-        if watcher is not None or self.board_watch_status:
+        # 自動停止のお知らせ（STATUS_IDLE）は下の「バナーだけ消す」に落とさず、そのまま再開する
+        # （お知らせが「ホットキーで再開」と案内している＝watch_toggle_action）
+        if watch_toggle_action(watcher is not None, self.board_watch_status) != "start":
             # watcher が None でも banner が残っていることがある（認識失敗・AI判定不成立・
             # SGF解析失敗の3経路は watcher を作らず warn を出して return するため、次のトグルは
             # ここではなく START 分岐に落ちてバナーが一生消えなかった＝Finding A）。
             # banner の有無を停止条件に含めることで、その場合も1押しでクリアできる
             # （停止時競合が残した緑バナーも同じ経路で拾える）
             if watcher is not None:
-                watcher.stop()
-                self._board_watcher = None
-                self._board_watch_kind = None
-                self._board_watch_marker_close()
-                # 監視を止めたら先読みも止める（通常の対局・検討で GPU を焼かない）
-                if self.game:
-                    self.game.board_watch_prefetch_replies = 0
-                    self.game._cancel_board_watch_prefetch()
+                # 片付け（輪・カーソル・先読みフラグ・走っている先読み）は _stop_board_watcher に任せる。
+                # 以前はここで自前に片付けて board_watch_active を戻し忘れ、監視を止めた後の普通の対局でも
+                # 難解のヨセの Probe 省略と自ノード解析の後回しが効き続けていた
+                self._stop_board_watcher()
                 self.log("board_watch: 監視を停止しました", OUTPUT_INFO)
             self._board_watch_status("", "")
             return

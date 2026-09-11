@@ -317,8 +317,9 @@ def test_ai_move_highlight_is_wired_through_main():
     assert "_board_watch_ahead" in [callee(c) for c in calls("_do_ai_move")]
     watcher_calls = [c for c in calls("_do_board_watch_start") if callee(c) == "BoardWatcher"]
     assert watcher_calls and any(kw.arg == "on_ahead" for kw in watcher_calls[0].keywords)
-    for name in ("_stop_board_watcher", "_board_watch_trigger"):
-        assert "_board_watch_marker_close" in [callee(c) for c in calls(name)], name
+    assert "_board_watch_marker_close" in [callee(c) for c in calls("_stop_board_watcher")]
+    # トグル（ホットキー OFF）は停止を _stop_board_watcher に任せる＝輪の消去もそこを通る
+    assert "_stop_board_watcher" in [callee(c) for c in calls("_board_watch_trigger")]
 
 
 def test_highlight_settings_are_exposed_in_the_config_popup():
@@ -342,3 +343,67 @@ def test_highlight_settings_are_exposed_in_the_config_popup():
         po = open(os.path.join(root, "i18n", "locales", locale, "LC_MESSAGES", "katrain.po"), encoding="utf-8").read()
         for name in highlight_choices():
             assert f'msgid "board_watch:highlight_color:{name}"' in po, (locale, name)
+
+
+def test_idle_auto_stop_is_wired_through_main():
+    """静的検査（追記9）: 監視を作る2経路（対局 `_do_board_watch_start` / 詰碁 `_start_tsumego_watch`）が
+    BoardWatcher に `on_idle_stop` を渡し、後始末 `_board_watch_idle_stopped` が `_stop_board_watcher` で
+    輪・先読みフラグを片付け、トグル `_board_watch_trigger` が `watch_toggle_action` で判断する（自動停止の
+    お知らせからは1押しで再開）。渡し忘れると監視スレッドは止まるが、輪と `_board_watcher` が残る"""
+    main_path = os.path.join(os.path.dirname(__file__), "..", "katrain", "__main__.py")
+    with open(main_path, encoding="utf-8") as f:
+        tree = ast.parse(f.read())
+    funcs = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+
+    def calls(name):
+        return [n for n in ast.walk(funcs[name]) if isinstance(n, ast.Call)]
+
+    def callee(call):
+        return call.func.id if isinstance(call.func, ast.Name) else getattr(call.func, "attr", None)
+
+    for name in ("_do_board_watch_start", "_start_tsumego_watch"):
+        watcher_calls = [c for c in calls(name) if callee(c) == "BoardWatcher"]
+        assert watcher_calls and any(kw.arg == "on_idle_stop" for kw in watcher_calls[0].keywords), name
+    assert "_stop_board_watcher" in [callee(c) for c in calls("_board_watch_idle_stopped")]
+    assert "watch_toggle_action" in [callee(c) for c in calls("_board_watch_trigger")]
+
+
+def test_clearing_the_watch_flags_undoes_apply_and_stops_running_prefetch():
+    """監視を止めたら（止め方を問わず）Game のフラグは apply_game_watch_flags の前に戻り、走っている
+    応手先読みも打ち切られる。board_watch_active が残ると、監視を止めた後の普通の対局でも難解のヨセの
+    Probe 省略（enigma spec 追記7）と自ノード解析の後回し（同 追記9）が効き続ける＝旧ホットキー OFF
+    経路は先読み本数しか戻していなかった"""
+    from katrain.core.board_watch import clear_game_watch_flags
+
+    game, node, engine = _watch_game(replies=2)
+    apply_game_watch_flags(game, {"prefetch_replies": 2})
+    game._board_watch_prefetch_worker(node, 2)
+    prefetch_nodes = [child for child, _ in engine.requests]
+    assert prefetch_nodes  # 先読みが走っている状態から止める
+    game.board_watch_probe_warm = True  # 難解がヨセの接戦で立てる
+    clear_game_watch_flags(game)
+    assert game.board_watch_active is False
+    assert game.board_watch_prefetch_replies == 0
+    assert game.board_watch_probe_warm is False
+    assert engine.terminated == prefetch_nodes
+
+
+def test_every_stop_path_clears_the_watch_flags():
+    """静的検査: 監視の停止は1か所（_stop_board_watcher）に集め、そこがフラグを戻す。ホットキー OFF
+    （_board_watch_trigger）と自動停止（_board_watch_idle_stopped）もそこを通る＝止め方でフラグの
+    戻り方が変わらない"""
+    main_path = os.path.join(os.path.dirname(__file__), "..", "katrain", "__main__.py")
+    with open(main_path, encoding="utf-8") as f:
+        tree = ast.parse(f.read())
+    funcs = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+
+    def callees(name):
+        return [
+            n.func.id if isinstance(n.func, ast.Name) else getattr(n.func, "attr", None)
+            for n in ast.walk(funcs[name])
+            if isinstance(n, ast.Call)
+        ]
+
+    assert "clear_game_watch_flags" in callees("_stop_board_watcher")
+    for name in ("_board_watch_trigger", "_board_watch_idle_stopped"):
+        assert "_stop_board_watcher" in callees(name), name

@@ -715,3 +715,61 @@ show は無視）、`tests/test_board_watch.py`（`intersection_screen_point`・
 呼び出しは `__main__._board_watch_ahead` の1箇所で、輪と同じ `reader.screen_point(*move)` の座標を使う
 （輪が使えない環境でもカーソルは動くよう、`marker is None` の早期 return をやめた）。
 テストは `tests/test_screen_cursor.py`（Win32 を呼ばず `move_fn` / `foreground_fn` を注入）。
+
+## 追記9（2026-09-11）: 終局後も監視が回り続ける問題（待ちが長いと減速・対局が5分進まなければ自動停止）
+
+**問題**: アプリ側の投了・時間切れ・中断は KaTrain に伝わらない（§0 スコープ外「終局・整地の自動処理」）ので、
+監視はホットキーで止めるまで回り続けていた。GPU は焼かない（先読み・ponder は着手ごとに数本で終わる）が、
+キャプチャの CPU が残る。終局後のアプリの見え方で3通りある（本機 1920×1080・監視と同じ
+`capture_screen_rect`＋盤矩形の指紋を各周期で10秒回した実測）:
+
+| 終局後 | 判定 | 周期 | CPU（1コア比） |
+|---|---|---|---|
+| 盤が見えたまま・KaTrain は相手番（こちらの着手後に相手が投了・時間切れ＝最も多い） | in_sync | 50ms | **24.8%**（11.2 frames/s） |
+| 結果ダイアログ等で食い違う／自分の手番で投了（ahead） | mismatch / ahead | 400ms | 5.4% |
+| 盤が消えた（ロビーへ移った・最小化） | 撮影失敗→バックオフ | 2000ms | 1.2% |
+
+1周のコストはキャプチャ（22〜28ms）がほぼ全部で、`_board_watch_state` の盤再生（`previous_app_grid`）は
+19路200手でも 1.7ms。追記3 の「27ms/50ms＝約54%」は待ち時間を周期に含めない見積もりで、実際は
+撮影＋50ms 待ちで1周約 77ms になる。
+
+**やらなかったこと: アプリの終局画面の認識**。結果ダイアログやロビー画面の判定はアプリの版が上がると
+静かに壊れる（自動ループ spec 追記9: 3.0.72 でヘッダが消え、固定の箱で書いた判定が全問失敗した）。
+判定は時間と対局の進行だけで行う。
+
+**対処1（減速）**: `active_slowdown_sec`（既定20）。相手の着手を待つ無音状態（active_kinds）が同じまま
+20秒続いたら 50ms → idle（400ms）に落とす。最悪ケースが 24.8% → 5.4%。代償は20秒を超える長考のあとの
+反映が最大 +350ms 遅れることだけ（着手が見えた周から確定待ちは `_on_move_verdict` が 50ms に戻す）。
+基準は `_quiet_started`（今の無音状態に入った時刻）で、停滞警告の `_quiet_since` は使わない — 警告の
+たびに打ち直すので、それを基準にすると永久に減速しない（`test_slowdown_counts_from_the_start_of_the_wait_not_from_the_last_stall_warning`）。
+0 以下で従来動作。詰碁（active_kinds に ahead を含む）にも同じく効く。
+
+**対処2（自動停止）**: `auto_stop_sec`（既定300＝5分・ユーザー指定）。**KaTrain の手数
+（`WatchState.move_number`）が300秒変わらなければ**監視スレッドが自分で止まる。基準をアプリの画素・観測
+グリッドにしなかったのは、結果ダイアログのアニメーションやロビー画面で観測が揺れ続けると止まらないから
+（`test_app_screen_changes_alone_do_not_keep_the_watch_alive`）。撮影失敗の周も時計は進む（ロビーへ移った場合）。
+止まるときは `on_status(STATUS_IDLE="bw-idle", 文面)` → `on_idle_stop()` の順に呼ぶ。`__main__` は後始末
+（`_stop_board_watcher`＝輪・カーソル・先読みフラグ）を Kivy スレッドへ回す（`stop()` は join するので
+監視スレッド自身からは呼べない）。張り替え・手動停止とすれ違った古い監視の後始末は identity で弾く。
+
+- 対局: 青い帯「対局が5分間進まないため盤面監視を停止しました（ctrl+alt+d で再開）」。トグルの判断を
+  純関数 `watch_toggle_action` に出し、このお知らせからは**1押しで再開**する（従来の「監視なし＋バナーあり
+  ＝消すだけ」＝Finding A の経路に落とすと、2秒のデバウンスを挟んで2回押す必要があった）。再開は通常の
+  開始と同じ＝盤が一致していれば取り込み直さず、アプリが次の対局に移っていればその盤を取り込む。
+- 詰碁: 帯は出さない（`tsumego_watch_status` が握りつぶす）。出すと回答帳バナーを覆い、しかもホットキーの
+  「再開」は対局監視を起動しようとして詰碁専用戦略で拒否され、詰碁ビューまで解除してしまう。一時メッセージ
+  「白番の自動反映を停止しました」だけ出す。次のキャプチャで張り直される。
+
+**既知の代償**: 相手が5分以上長考すると監視が止まる。再開は1押しだが、その間に相手が打っていれば盤は
+「新しい局面」として取り込み直され、KaTrain 側の棋譜が分かれる。気になるなら `auto_stop_sec` を延ばす（0 で無効）。
+
+**テスト**: `tests/test_board_watch.py` に17本（減速5・自動停止6・設定読み込み1・詰碁のバナー1・トグル4）。
+
+**同時に直したバグ: ホットキー OFF で `board_watch_active` が戻らない**。停止経路が2系統あり、
+`_stop_board_watcher`（詰碁の出題・自動停止）は `board_watch_active` / `board_watch_prefetch_replies` /
+`board_watch_probe_warm` を戻すのに、ホットキー OFF（`_board_watch_trigger`）は自前で片付けて**先読み本数しか
+戻していなかった**。監視を止めた後の普通の対局でも、難解のヨセの Probe 省略（enigma spec 追記7）と自ノード解析の
+後回し（同 追記9）が効き続ける（電力ではなく挙動の問題）。フラグの戻しを `board_watch.clear_game_watch_flags`
+（`apply_game_watch_flags` の逆・走っている応手先読みの打ち切り込み）に集め、`_stop_board_watcher` だけが呼ぶ。
+ホットキー OFF と自動停止はその `_stop_board_watcher` を通す＝止め方でフラグの戻り方が変わらない。
+テストは `tests/test_board_watch_prefetch.py`（`clear_game_watch_flags` の単体＋停止経路の静的検査）。

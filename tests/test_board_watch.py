@@ -1485,3 +1485,219 @@ def test_watcher_without_on_ahead_is_unchanged():
     _current, observed, state = _ahead_case()
     h.step(observed, state)  # on_ahead 未指定でも落ちない・注入もしない
     assert h.moves == [] and h.watcher.ahead_move == (1, 1)
+
+
+# --- 終局後の空回り対策（spec 追記9）: 待ちが長いと減速・対局が進まなければ自動停止 ---
+# 対局アプリで投了・時間切れが起きても KaTrain には伝わらないので、監視は in_sync（相手の着手待ち）
+# のまま 50ms 周期で撮り続けていた（実測 1コアの約25%）。アプリの終局画面は認識しない
+# （アプリの版が上がると静かに壊れる）＝時間と対局の進行だけで判定する。
+
+
+def _slowdown(sec=20.0, **kw):
+    return WatchSettings(poll_interval_ms=400, poll_interval_active_ms=50, active_slowdown_sec=sec, **kw)
+
+
+def test_in_sync_drops_to_idle_interval_after_waiting_long():
+    h = Harness(_slowdown(20.0))
+    board = _grid(["...", "...", "..."])
+    state = _state(board, move_number=7)
+    h.step(board, state)
+    assert h.watcher.interval_ms == 50
+    h.clock.advance(19.0)
+    h.step(board, state)
+    assert h.watcher.interval_ms == 50  # まだ相手の長考の範囲
+    h.clock.advance(2.0)
+    h.step(board, state)
+    assert h.watcher.interval_ms == 400
+
+
+def test_slowdown_counts_from_the_start_of_the_wait_not_from_the_last_stall_warning():
+    # 停滞警告は _quiet_since を20秒ごとに打ち直すので、それを基準にすると永久に減速しない
+    h = Harness(_slowdown(30.0, stall_warn_sec=20))
+    board = _grid(["...", "...", "..."])
+    state = _state(board, move_number=7)
+    h.step(board, state)
+    h.clock.advance(25.0)
+    h.step(board, state)  # ここで停滞警告が出る
+    assert any(kind == "bw-warn" for kind, _t in h.statuses)
+    assert h.watcher.interval_ms == 50
+    h.clock.advance(10.0)  # 待ち始めから35秒・警告から10秒
+    h.step(board, state)
+    assert h.watcher.interval_ms == 400
+
+
+def test_new_wait_after_progress_is_fast_again():
+    h = Harness(_slowdown(20.0))
+    board = _grid(["...", "...", "..."])
+    h.step(board, _state(board, move_number=7))
+    h.clock.advance(30.0)
+    h.step(board, _state(board, move_number=7))
+    assert h.watcher.interval_ms == 400
+    after = _grid(["W..", ".B.", "..."])
+    h.step(after, _state(after, to_play="B", last_move=(0, 0, "W"), move_number=9))
+    assert h.watcher.interval_ms == 50
+
+
+def test_opponent_stone_after_slowdown_is_confirmed_at_active_interval():
+    h = Harness(_slowdown(20.0, stable_frames=2))
+    current = _grid(["...", "...", "..."])
+    state = _state(current, to_play="B", move_number=4)
+    h.step(current, state)
+    h.clock.advance(30.0)
+    h.step(current, state)
+    assert h.watcher.interval_ms == 400
+    observed = _grid(["...", ".B.", "..."])
+    h.step(observed, state)  # 1フレーム目: 確定待ちは速く回す
+    assert h.watcher.interval_ms == 50
+    h.step(observed, state)
+    assert h.moves == [(1, 1, "B", 4)]
+
+
+def test_slowdown_disabled_with_zero_keeps_legacy_active_interval():
+    h = Harness(_slowdown(0))
+    board = _grid(["...", "...", "..."])
+    state = _state(board, move_number=7)
+    h.step(board, state)
+    h.clock.advance(3600.0)
+    h.step(board, state)
+    assert h.watcher.interval_ms == 50
+
+
+class IdleHarness(Harness):
+    """on_idle_stop を観測できる Harness"""
+
+    def __init__(self, settings):
+        super().__init__(settings)
+        self.idle_stops = []
+        self.watcher = BoardWatcher(
+            capture_fn=self._capture,
+            get_state_fn=lambda: self.state,
+            on_move=lambda i, j, color, move_number, size: self.moves.append((i, j, color, move_number)),
+            on_status=lambda kind, text: self.statuses.append((kind, text)),
+            settings=settings,
+            clock=self.clock,
+            on_idle_stop=lambda: self.idle_stops.append(self.clock()),
+        )
+
+
+def _auto_stop(sec=300.0, **kw):
+    return WatchSettings(auto_stop_sec=sec, **kw)
+
+
+def test_watcher_stops_when_the_game_has_not_progressed_for_auto_stop_sec():
+    h = IdleHarness(_auto_stop(300.0))
+    board = _grid(["...", "...", "..."])
+    state = _state(board, move_number=40)
+    h.step(board, state)
+    h.clock.advance(299.0)
+    h.step(board, state)
+    assert h.idle_stops == []
+    h.clock.advance(2.0)
+    h.step(board, state)
+    assert len(h.idle_stops) == 1
+    kind, text = h.statuses[-1]
+    assert kind == bw.STATUS_IDLE
+    assert "5分間" in text
+
+
+def test_progress_restarts_the_auto_stop_timer():
+    h = IdleHarness(_auto_stop(300.0))
+    board = _grid(["...", "...", "..."])
+    h.step(board, _state(board, move_number=40))
+    h.clock.advance(200.0)
+    h.step(board, _state(board, move_number=41))  # KaTrain 側の局面が進んだ
+    h.clock.advance(200.0)
+    h.step(board, _state(board, move_number=41))
+    assert h.idle_stops == []
+    h.clock.advance(101.0)
+    h.step(board, _state(board, move_number=41))
+    assert len(h.idle_stops) == 1
+
+
+def test_auto_stop_timer_keeps_running_while_the_board_cannot_be_read():
+    # 終局後にアプリがロビーへ移ると撮影が毎周失敗する＝その間も時計は進む
+    h = IdleHarness(_auto_stop(300.0))
+    board = _grid(["...", "...", "..."])
+    h.step(board, _state(board, move_number=40))
+    for _ in range(3):
+        h.clock.advance(100.0)
+        h.step(RuntimeError("judgement failed"))
+    assert len(h.idle_stops) == 1
+
+
+def test_app_screen_changes_alone_do_not_keep_the_watch_alive():
+    # 結果ダイアログのアニメーション等で観測グリッドが揺れても、対局（KaTrain の手数）が
+    # 進まなければ止める＝判定の基準はアプリの画素ではなく対局の進行
+    h = IdleHarness(_auto_stop(300.0))
+    current = _grid(["...", "...", "..."])
+    state = _state(current, move_number=40)
+    frames = [_grid(["BB.", "...", "..."]), _grid(["...", "WW.", "..."])]
+    for k in range(7):
+        h.clock.advance(50.0)
+        h.step(frames[k % 2], state)
+    assert len(h.idle_stops) == 1
+
+
+def test_auto_stop_disabled_with_zero():
+    h = IdleHarness(_auto_stop(0))
+    board = _grid(["...", "...", "..."])
+    state = _state(board, move_number=40)
+    h.step(board, state)
+    h.clock.advance(36000.0)
+    h.step(board, state)
+    assert h.idle_stops == []
+
+
+def test_run_loop_ends_by_itself_after_auto_stop():
+    clock = FakeClock()
+    board = _grid(["..", ".."])
+    calls = []
+    holder = {}
+
+    def capture():
+        calls.append(1)
+        if len(calls) > 20:  # 自分で止まらなかった場合の安全弁（テストを固めない）
+            holder["watcher"].stop()
+        clock.advance(60.0)
+        return board
+
+    holder["watcher"] = BoardWatcher(
+        capture_fn=capture,
+        get_state_fn=lambda: _state(board, move_number=3),
+        on_move=lambda *a: None,
+        on_status=lambda *a: None,
+        settings=WatchSettings(auto_stop_sec=300.0, poll_interval_ms=1, poll_interval_active_ms=1),
+        clock=clock,
+    )
+    holder["watcher"].run()
+    assert len(calls) <= 7
+
+
+def test_slowdown_and_auto_stop_read_from_config():
+    s = bw.watch_settings_from_config({"active_slowdown_sec": 45, "auto_stop_sec": 600})
+    assert s.active_slowdown_sec == 45
+    assert s.auto_stop_sec == 600
+
+
+def test_watch_status_swallows_auto_stop_notice_in_tsumego_mode():
+    # 詰碁経路で自動停止のお知らせを通すと回答帳バナーを覆い、しかもホットキーの「再開」は
+    # 対局監視を起動しようとして詰碁を壊す。詰碁は __main__ が一時メッセージで知らせる
+    assert bw.tsumego_watch_status(bw.STATUS_IDLE, "止めました") == ("", "")
+
+
+def test_toggle_stops_a_running_watch():
+    assert bw.watch_toggle_action(running=True, banner_kind=bw.STATUS_WATCHING) == "stop"
+
+
+def test_toggle_only_clears_a_leftover_warning():
+    # 認識失敗などで監視を作らずに出た警告は1押しで消せる（Finding A）
+    assert bw.watch_toggle_action(running=False, banner_kind=bw.STATUS_WARN) == "clear"
+
+
+def test_toggle_restarts_right_away_after_auto_stop():
+    # 自動停止のお知らせは「ホットキーで再開」と案内している＝1押しで再開する
+    assert bw.watch_toggle_action(running=False, banner_kind=bw.STATUS_IDLE) == "start"
+
+
+def test_toggle_starts_when_nothing_is_shown():
+    assert bw.watch_toggle_action(running=False, banner_kind="") == "start"
