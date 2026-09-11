@@ -701,13 +701,18 @@ class KaTrainGui(Screen, KaTrainBase):
             self.log(f"board_watch: 注入した手が非合法でした: {e}", OUTPUT_INFO)
             self._board_watch_status(BW_STATUS_WARN, f"注入した手が非合法でした: {e}")
 
-    def _do_board_watch_start(self, reader, grid, size):
+    def _do_board_watch_start(self, reader, grid, size, near_color=None, force_import=False):
         """監視の開始。前提チェック → 必要なら局面取り込み → プレイモード → スレッド起動。
 
         既存の capture-fullboard-apply は流用しない（両者を人間に戻す・raise_window で
         フォーカスを奪う・解析モードに入る、の3つが監視モードに不都合）。
         new-game と後続を分けると game_id 更新で後続メッセージが黙って破棄されるため、
         ここで1メッセージ内に完結させる（_do_tsumego_capture_apply と同じ作法）。
+
+        near_color は対局者アイコンから読んだ手前（自分）の色（spec 追記10）。読めていれば KaTrain の AI を
+        その色へ移す（戦略は今 AI にしている側のもの）。None なら従来どおりプレイヤー設定のまま。
+        force_import は「アプリで次の対局が始まった」経路（_do_board_watch_new_game）用で、盤が一致して
+        いても取り込み直す＝前の対局の棋譜の続きに次の対局を積まない
         """
         from katrain.core.board_watch import (
             IDLE_STOP_TEXT,
@@ -716,19 +721,18 @@ class KaTrainGui(Screen, KaTrainBase):
             grid_to_move,
             import_next_player,
             stones_to_grid,
+            watch_player_assignment,
             watch_settings_from_config,
         )
         from katrain.core import screen_cursor
         from katrain.core.screen_marker import ScreenMarker
 
         ai_players = [bw for bw, info in self.players_info.items() if info.ai]
-        if len(ai_players) != 1:
-            self._board_watch_status(
-                BW_STATUS_WARN, "片方を AI・片方を人間に設定してから開始してください"
-            )
+        ai_color, assignment = watch_player_assignment(ai_players, near_color)
+        if ai_color is None:
+            self._board_watch_status(BW_STATUS_WARN, assignment)
             return
-        ai_color = ai_players[0]
-        ai_subtype = self.players_info[ai_color].player_subtype
+        ai_subtype = self.players_info[ai_players[0]].player_subtype
         if ai_subtype in (AI_TSUMEGO, AI_TSUMEGO_SOLVER):
             # 直前が詰碁キャプチャだと ROI に加えて B=ai:tsumego(_solver) も残る
             # （_do_capture_fullboard_apply が両方を人間に戻しているのと同じ事故、design §3.2）。
@@ -737,7 +741,7 @@ class KaTrainGui(Screen, KaTrainBase):
             # だと設定を変える手段が見えない。パネルを復元してから拒否する
             self.tsumego_view = False
             self.log(
-                f"board_watch: {ai_color} が詰碁専用戦略（{ai_subtype}）のため開始しません",
+                f"board_watch: {ai_players[0]} が詰碁専用戦略（{ai_subtype}）のため開始しません",
                 OUTPUT_INFO,
             )
             self._board_watch_status(
@@ -746,11 +750,21 @@ class KaTrainGui(Screen, KaTrainBase):
             )
             return
         human_color = "W" if ai_color == "B" else "B"
+        if ai_color != ai_players[0]:
+            # 対局者アイコンから読んだ手前の色へ AI を移す（spec 追記10）。戦略は今 AI にしている側のもの、
+            # 人間側の設定（通常／指導）は入れ替え前に人間だった側のものをそのまま使う
+            human_subtype = self.players_info[ai_color].player_subtype
+            self.update_player(ai_color, player_type=PLAYER_AI, player_subtype=ai_subtype)
+            self.update_player(human_color, player_type=PLAYER_HUMAN, player_subtype=human_subtype)
+        self.log(
+            f"board_watch: KaTrain の AI は{'黒' if ai_color == 'B' else '白'}（{ai_subtype}・{assignment}）",
+            OUTPUT_INFO,
+        )
         if self.game.region_of_interest is not None:
             self.game.set_region_of_interest([0, 0, 0, 0])  # 解除（詰碁キャプチャの残骸）
         size_x, size_y = self.game.board_size
         current = stones_to_grid(((s.coords, s.player) for s in self.game.stones), size_x) if size_x == size_y else None
-        if current != grid or size_x != size:
+        if force_import or current != grid or size_x != size:
             # 取り込みの手番は純関数に決めさせる（判定ロジックは __main__ に置かない・spec §1）。
             # 盤上2子以内は取りが起き得ないので石数から確定でき、それ以外は取りでパリティが
             # 崩れる（b-w = cw-cb）ので安全側の human_color に倒す。根拠は reason で受け取り
@@ -804,6 +818,12 @@ class KaTrainGui(Screen, KaTrainBase):
             # 伝わらない＝終局後の空回り対策・spec 追記9）。後始末は Kivy スレッドで行う
             on_idle_stop=lambda: Clock.schedule_once(lambda _dt: self._board_watch_idle_stopped(watcher), 0),
             idle_stop_text=IDLE_STOP_TEXT + f"（{hotkey} で再開）",
+            # 連続対局（spec 追記10）: アプリで次の対局が始まったら、監視スレッドは自分で止まってここへ知らせる。
+            # 張り直し（色の入れ替え＋取り込み）はメッセージループで行う（監視スレッドから stop() は呼べない）
+            player_color_fn=reader.near_player_color,
+            on_new_game=lambda new_grid, new_size, color: self(
+                "board-watch-new-game", watcher, reader, new_grid, new_size, color
+            ),
         )
         existing = getattr(self, "_board_watcher", None)
         if existing is not None:
@@ -816,6 +836,19 @@ class KaTrainGui(Screen, KaTrainBase):
         prefetch = apply_game_watch_flags(self.game, self._config.get("board_watch"))
         watcher.start()
         self.log(f"board_watch: 監視を開始しました（応手先読み {prefetch} 手）", OUTPUT_INFO)
+
+    def _do_board_watch_new_game(self, watcher, reader, grid, size, near_color):
+        """監視中にアプリで次の対局が始まった（spec 追記10）。監視を張り直す＝色の入れ替え＋局面の取り込み。
+
+        監視スレッドは on_new_game を呼んだ周で自分で止まっている。張り替え・手動停止とすれ違った古い
+        監視なら何もしない（新しい監視を巻き添えにしない＝_board_watch_idle_stopped と同じ identity 判定）。
+        止めてから開始するので、開始の前提チェックで拒否されても監視は残らない（バナーの警告だけが残る）
+        """
+        if getattr(self, "_board_watcher", None) is not watcher:
+            return
+        self._stop_board_watcher()
+        self.log(f"board_watch: アプリで新しい対局（{size}路）が始まったため監視を張り直します", OUTPUT_INFO)
+        self._do_board_watch_start(reader, grid, size, near_color=near_color, force_import=True)
 
     def _do_analyze_extra(self, mode, **kwargs):
         self.game.analyze_extra(mode, **kwargs)
@@ -1858,7 +1891,7 @@ class KaTrainGui(Screen, KaTrainBase):
 
     def _board_watch_trigger(self):
         """ctrl+alt+d のワーカースレッド。OFF なら認識してから開始、ON なら停止する"""
-        from katrain.core.board_watch import AppBoardReader, watch_toggle_action
+        from katrain.core.board_watch import AppBoardReader, confirmed_near_color, watch_toggle_action
 
         now = time.time()
         if now - getattr(self, "_board_watch_last_trigger", 0.0) < 2.0:
@@ -1896,7 +1929,11 @@ class KaTrainGui(Screen, KaTrainBase):
                 self.log(f"board_watch: 盤面を認識できないため開始しません: {e}", OUTPUT_ERROR)
                 self._board_watch_status(BW_STATUS_WARN, f"盤面を認識できません: {e}")
                 return
-            self("board-watch-start", reader, grid, reader.size)
+            # 手前の対局者（＝KaTrain の AI が打つ側）の色を対局者アイコンから読む（spec 追記10）。
+            # 読めなければ None＝従来どおり KaTrain のプレイヤー設定のまま
+            near, far = reader.player_icon_colors()
+            self.log(f"board_watch: 対局者アイコン 手前={near or '?'} 相手={far or '?'}", OUTPUT_INFO)
+            self("board-watch-start", reader, grid, reader.size, confirmed_near_color(near, far))
         finally:
             self._board_watch_busy = False
 

@@ -94,13 +94,45 @@ def import_next_player(grid, human_color):
     現れないので1枚の盤からは区別できない。そもそも監視はパスを検出対象外に
     している＝§0）。実戦の2手目までのパスは考えなくてよい。
     """
-    stones = [cell for row in grid for cell in row if cell != EMPTY]
-    if not stones:
+    if all(cell == EMPTY for row in grid for cell in row):
         return BLACK, "空盤なので黒番"
+    player = opening_next_player(grid)
+    if player is not None:
+        return player, "2子以内なので石数から確定"
+    return human_color, "人間側に固定"
+
+
+def opening_next_player(grid):
+    """盤上2子以内で手番が確定する序盤形なら手番を、そうでなければ None を返す。
+
+    import_next_player の確定ゾーン（空盤→黒 / 黒1子→白 / 黒白1子ずつ→黒）そのもの。取りが
+    起きた形（黒2子・白0子など b − w ∉ {0, 1}）と3子以上は None。監視中の「アプリで次の対局が
+    始まった」判定（BoardWatcher._new_game_seen・spec 追記10）も、この形を新しい対局の証拠に使う
+    （対局の途中の盤は2子以内に戻らない）
+    """
+    stones = [cell for row in grid for cell in row if cell != EMPTY]
     black, white = stones.count(BLACK), stones.count(WHITE)
     if len(stones) <= 2 and black - white in (0, 1):
-        return (BLACK if black == white else WHITE), "2子以内なので石数から確定"
-    return human_color, "人間側に固定"
+        return BLACK if black == white else WHITE
+    return None
+
+
+def watch_player_assignment(ai_colors, near_color):
+    """監視を始めるときに KaTrain の AI を打たせる色を決める。(色, ログ用の根拠) を返す（spec 追記10）。
+
+    ai_colors は今 AI になっている色のリスト。戦略は「今 AI にしている側」のものをそのまま使う
+    （どの戦略で打つかはユーザーの選択＝勝手に選ばない）ので、AI がちょうど1人のときだけ開始できる。
+    開始できなければ (None, バナーに出す理由)。near_color は対局者アイコンから読んだ手前（自分）の色で、
+    読めなければ None＝従来どおりプレイヤー設定のまま
+    """
+    if len(ai_colors) != 1:
+        return None, "片方を AI・片方を人間に設定してから開始してください"
+    current = ai_colors[0]
+    if near_color is None:
+        return current, "対局者アイコンから手番を読めないため設定のまま"
+    if near_color == current:
+        return current, "手前の対局者の色＝設定どおり"
+    return near_color, "手前の対局者の色に入れ替え"
 
 
 def _neighbours(i, j, size):
@@ -363,6 +395,11 @@ STALL_TEXT = (
 )
 # 自動停止のお知らせの既定文面。{duration} に auto_stop_sec を「5分間」のように入れる
 IDLE_STOP_TEXT = "対局が{duration}進まないため盤面監視を停止しました"
+# 監視中にアプリで次の対局が始まったと判定した（spec 追記10）。この周で監視は止まり、呼び出し側が張り直す
+NEW_GAME_TEXT = "アプリで新しい対局が始まりました（監視を張り直します）"
+# 「次の対局が始まった」と判定するのに要る連続周数。張り直しは新規対局＝重いので Move の確定
+# （stable_frames=2）より1周多く見る。確認中は低遅延周期（50ms）で回すので0.1〜0.2秒で決まる
+NEW_GAME_STABLE_FRAMES = 3
 
 
 def _duration_text(seconds):
@@ -411,6 +448,8 @@ class BoardWatcher:
       on_move(i, j, color, move_number, board_size)
       on_status(kind, text)   kind: "bw-watching" / "bw-warn" / "bw-idle" / ""
       on_idle_stop()          対局が auto_stop_sec 進まず自分で止まった（省略可・後始末用）
+      player_color_fn()       対局者アイコンから読んだ手前（KaTrain の AI）の色 "B"/"W"/None（省略可）
+      on_new_game(grid, size, color)  アプリで次の対局が始まり自分で止まった（省略可・張り直し用）
     """
 
     def __init__(
@@ -427,6 +466,8 @@ class BoardWatcher:
         on_ahead=None,
         on_idle_stop=None,
         idle_stop_text=IDLE_STOP_TEXT,
+        player_color_fn=None,
+        on_new_game=None,
     ):
         self.capture_fn = capture_fn
         self.get_state_fn = get_state_fn
@@ -454,6 +495,13 @@ class BoardWatcher:
         # 先読みフラグ）は自分のスレッドへ回すこと（stop() は join するので監視スレッドから呼べない）
         self.on_idle_stop = on_idle_stop
         self.idle_stop_text = idle_stop_text
+        # 連続対局（spec 追記10）。mismatch の周にアプリの盤が「次の対局の序盤」に見え、手前の色も
+        # 読めたら on_new_game を呼んで自分は止まる。どちらかが None なら無効＝従来どおり
+        # （詰碁の白番自動反映は渡さない＝詰碁の盤を「新しい対局」と取り違えない）
+        self.player_color_fn = player_color_fn
+        self.on_new_game = on_new_game
+        self._new_game_key = None  # 確認中の (盤, 色)
+        self._new_game_count = 0
         self.clock = clock
         self.interval_ms = settings.poll_interval_ms
         self._stopped = threading.Event()
@@ -493,8 +541,11 @@ class BoardWatcher:
         verdict = reconcile(state, observed)
         self._notify_ahead(state.last_move[:2] if verdict.kind == "ahead" and state.last_move else None)
         if verdict.kind == "mismatch":
+            if self._new_game_seen(state, observed):
+                return
             self._on_mismatch(verdict.reason)
             return
+        self._forget_new_game()
         self._mismatch_count = 0
         if verdict.kind == "move":
             self._on_move_verdict(state, verdict.move)
@@ -566,6 +617,48 @@ class BoardWatcher:
             message += RESYNC_HINT
         self._warn(message)
 
+    def _new_game_seen(self, state, observed):
+        """mismatch の周に、アプリが次の対局へ移ったかを見る（spec 追記10）。確認中・張り直しなら True。
+
+        条件は3つ: 観測が KaTrain の盤と違う（同じ盤で AI が応手できないだけの局面を張り直すと、
+        取り込みが起きず同じ mismatch に戻って張り直しが止まらない）、盤上2子以内で手番が確定する
+        序盤形（opening_next_player＝対局の途中には現れない形）、対局者アイコンから手前の色が読める。
+        同じ (盤, 色) が NEW_GAME_STABLE_FRAMES 周続いたら on_new_game を1回呼んで自分は止まる
+        （呼び出し側の張り直しが済むまでに同じ判定を何度も投げないため。stop() は join するので
+        監視スレッド自身からは呼べない＝_idle_stop と同じ止まり方）
+        """
+        if self.on_new_game is None or self.player_color_fn is None:
+            return False
+        if observed == state.current_grid or opening_next_player(observed) is None:
+            self._forget_new_game()
+            return False
+        try:
+            color = self.player_color_fn()
+        except Exception:
+            color = None
+        if color is None:
+            self._forget_new_game()
+            return False  # 手前の色が読めない＝従来どおりの警告（再同期はホットキー）
+        key = (_grid_key(observed), color)
+        if key == self._new_game_key:
+            self._new_game_count += 1
+        else:
+            self._new_game_key = key
+            self._new_game_count = 1
+        if self._new_game_count < NEW_GAME_STABLE_FRAMES:
+            self._active()  # 盤が見えている＝撮影は安い。確認の周を詰める
+            return True
+        self._forget_new_game()
+        self._stopped.set()  # run() はこの周を最後に抜ける
+        self._notify_ahead(None)
+        self.on_status(STATUS_WATCHING, NEW_GAME_TEXT)
+        self.on_new_game([row[:] for row in observed], len(observed), color)
+        return True
+
+    def _forget_new_game(self):
+        self._new_game_key = None
+        self._new_game_count = 0
+
     def _on_quiet(self, state, observed, kind):
         """waiting / ahead / in_sync = 無音の終端状態。長すぎたら警告する（spec §2.5c）"""
         self._stable_move = None
@@ -630,6 +723,7 @@ class BoardWatcher:
             self.on_idle_stop()
 
     def _on_capture_failure(self, message, permanent=False):
+        self._forget_new_game()  # 「次の対局」の確認は連続した周だけで数える
         self._fail_count += 1
         if self._fail_count >= self.settings.backoff_after_failures:
             self.interval_ms = min(
@@ -754,6 +848,69 @@ def _board_fingerprint(img, board_rect):
         return None
 
 
+# --- 対局者アイコンから手前（KaTrain の AI）の色を読む（spec 追記10） ---
+# 囲碁クエスト系の対局画面は、盤のすぐ下（手前＝自分）の左端と、盤のすぐ上（相手）の右端に、その
+# 対局者の石の色のアイコンを出す（tests/data/board_watch_start_black.png / _start_white.png /
+# board_watch_before.png）。窓は盤矩形の幅 W に対する比で持つ＝ウィンドウの大きさが変わってもそのまま効く。
+# 実測（W=547〜551）で石は盤の縁から 0.03〜0.095W・盤の端から 0.005〜0.075W の円（直径 約0.07W）、
+# 隣のアバター画像は盤の端から 0.08W より内側に来ない
+PLAYER_ICON_SPAN_RATIO = 0.072  # 窓の横幅（手前は盤の左端から右へ／相手は右端から左へ）
+PLAYER_ICON_NEAR_RATIO = 0.02  # 盤の縁から窓の近い側まで
+PLAYER_ICON_FAR_RATIO = 0.11  # 盤の縁から窓の遠い側まで
+# 窓の中で「その色の石」とみなす画素の割合。実測: 石 0.50〜0.63・反対色 0〜0.037（背景の稲妻の筋）。
+# 上限は「窓がまるごと同じ色」＝石ではなく背景を弾くため（木目盤アプリの黒い余白は 1.00）
+PLAYER_ICON_MIN_FRACTION = 0.3
+PLAYER_ICON_MAX_FRACTION = 0.85
+PLAYER_ICON_MAX_OTHER = 0.1
+
+
+def _icon_color(img, box):
+    """窓 box に写っている石アイコンの色 "B"/"W"。どちらとも言えなければ None"""
+    left, top, right, bottom = box
+    width, height = img.size
+    left, top, right, bottom = max(0, left), max(0, top), min(width, right), min(height, bottom)
+    if right - left < 4 or bottom - top < 4:
+        return None  # 窓が画面の外＝盤の上下に対局者の帯が写っていない
+    data = img.crop((left, top, right, bottom)).convert("RGB").tobytes()
+    total = len(data) // 3
+    white = black = 0
+    for k in range(0, len(data), 3):
+        r, g, b = data[k], data[k + 1], data[k + 2]
+        spread = max(r, g, b) - min(r, g, b)
+        mean = (r + g + b) / 3
+        if mean > 200 and spread < 40:  # 白石（無彩色で明るい）。背景の紺・青は spread が大きい
+            white += 1
+        elif mean < 60 and spread < 25:  # 黒石（無彩色で暗い）
+            black += 1
+    white_fraction, black_fraction = white / total, black / total
+    if PLAYER_ICON_MIN_FRACTION <= white_fraction <= PLAYER_ICON_MAX_FRACTION and black_fraction < PLAYER_ICON_MAX_OTHER:
+        return WHITE
+    if PLAYER_ICON_MIN_FRACTION <= black_fraction <= PLAYER_ICON_MAX_FRACTION and white_fraction < PLAYER_ICON_MAX_OTHER:
+        return BLACK
+    return None
+
+
+def player_icon_colors(img, board_rect):
+    """(手前の対局者, 相手) のアイコンの色 "B"/"W"/None。board_rect は img 上の盤矩形 (x0, y0, x1, y1)"""
+    x0, y0, x1, y1 = board_rect
+    width = x1 - x0
+    span = round(width * PLAYER_ICON_SPAN_RATIO)
+    near, far = round(width * PLAYER_ICON_NEAR_RATIO), round(width * PLAYER_ICON_FAR_RATIO)
+    near_box = (x0, y1 + near, x0 + span, y1 + far)
+    far_box = (x1 - span, y0 - far, x1, y0 - near)
+    return _icon_color(img, near_box), _icon_color(img, far_box)
+
+
+def confirmed_near_color(near, far):
+    """手前の対局者（＝KaTrain の AI が打つ側）の色。手前と相手が逆の色に読めたときだけ確定する。
+
+    片方しか読めない・両方同じ色（背景を石と読んだ）は None＝判定しない側に倒す
+    """
+    if near is None or far is None or near == far:
+        return None
+    return near
+
+
 class AppBoardReader:
     """アプリ窓を撮って観測グリッドを返す。盤矩形・盤サイズ・直前フレームをキャッシュする。
 
@@ -792,6 +949,9 @@ class AppBoardReader:
         # ありえない組み合わせを引けてしまい、輪が窓の移動量ぶんずれる。まとめて
         # 1つの参照で差し替えることで、読む側は必ず整合した組を見る
         self._calibration = None  # (window_rect, board_rect, size, lines) or None
+        # 直近に撮ったフレーム。盤の外にある対局者アイコン（player_icon_colors）を読むために持つ
+        # （盤矩形の指紋は盤の中しか見ないので、指紋が同じ周でも毎回差し替える）
+        self._last_img = None
 
     def read(self):
         find_window_rect, capture_screen_rect, detect_board, detect_size_and_classify = _capture_api()
@@ -804,6 +964,7 @@ class AppBoardReader:
             self._window_rect = rect
             self._forget_board_rect()
         img = capture_screen_rect(rect)
+        self._last_img = img
         if self._board_rect is None:
             self._forget_frame()
             board_rect, grid = self._full_detect(img, detect_board, detect_size_and_classify)
@@ -920,6 +1081,21 @@ class AppBoardReader:
         if lines is not None:  # 木目盤＝検出済みの格子線位置から引く（規則配置の割り算では帯ぶんずれる）
             return grid_screen_point(window_rect, lines[0], lines[1], i, j)
         return intersection_screen_point(window_rect, board_rect, size, i, j)
+
+    def player_icon_colors(self):
+        """直近のフレームの対局者アイコンの色 (手前, 相手)（spec 追記10）。
+
+        黄盤（囲碁クエスト系）の対局画面だけが対象で、木目盤アプリ・盤が未確定・直前の read() が
+        失敗した周は (None, None)。read() と同じスレッドから呼ぶこと（直近のフレームを共有する）
+        """
+        img, board_rect = self._last_img, self._board_rect
+        if img is None or board_rect is None or self._profile != "quest":
+            return None, None
+        return player_icon_colors(img, board_rect)
+
+    def near_player_color(self):
+        """手前の対局者（＝KaTrain の AI が打つ側）の色。確定できなければ None（BoardWatcher の player_color_fn）"""
+        return confirmed_near_color(*self.player_icon_colors())
 
     def _remember_frame(self, fingerprint, grid):
         self._fingerprint = fingerprint
