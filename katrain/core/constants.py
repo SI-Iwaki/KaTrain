@@ -104,7 +104,7 @@ AI_MIMIC_13 = "ai:mimic13"
 
 AI_CONFIG_DEFAULT = AI_RANK
 
-AI_STRATEGIES_ENGINE = [AI_DEFAULT, AI_HANDICAP, AI_SCORELOSS, AI_SIMPLE_OWNERSHIP, AI_JIGO, AI_JIGO_9, AI_PARITY_9, AI_ENIGMA_9, AI_ENIGMA_9_PLUS, AI_ENIGMA_13, AI_ENIGMA_13_PLUS, AI_ENIGMA_19, AI_ENIGMA_19_PLUS, AI_ANTIMIRROR]
+AI_STRATEGIES_ENGINE = [AI_DEFAULT, AI_HANDICAP, AI_SCORELOSS, AI_SIMPLE_OWNERSHIP, AI_JIGO, AI_JIGO_9, AI_PARITY_9, AI_ENIGMA_9, AI_ENIGMA_9_PLUS, AI_ENIGMA_13, AI_ENIGMA_13_PLUS, AI_ENIGMA_19, AI_ENIGMA_19_PLUS, AI_MIMIC_13, AI_ANTIMIRROR]
 AI_STRATEGIES_PICK = [AI_PICK, AI_LOCAL, AI_TENUKI, AI_INFLUENCE, AI_TERRITORY, AI_FIGHTING, AI_RANK]
 AI_STRATEGIES_POLICY = [AI_WEIGHTED, AI_POLICY] + AI_STRATEGIES_PICK
 AI_STRATEGIES = AI_STRATEGIES_ENGINE + AI_STRATEGIES_POLICY + [AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE, AI_TSUMEGO, AI_TSUMEGO_SOLVER]
@@ -128,6 +128,7 @@ AI_STRATEGIES_RECOMMENDED_ORDER = [
     AI_ENIGMA_13_PLUS,
     AI_ENIGMA_19,
     AI_ENIGMA_19_PLUS,
+    AI_MIMIC_13,
     AI_ANTIMIRROR,
     AI_PICK,
     AI_LOCAL,
@@ -155,6 +156,7 @@ AI_STRENGTH = {  # dan ranks, backup if model is missing. TODO: remove some?
     AI_ENIGMA_9_PLUS: float("nan"),
     AI_ENIGMA_19_PLUS: float("nan"),
     AI_ENIGMA_19: float("nan"),
+    AI_MIMIC_13: float("nan"),
     AI_SCORELOSS: -4,
     AI_WEIGHTED: -4,
     AI_PICK: -7,
@@ -411,6 +413,23 @@ AI_OPTION_VALUES = {
     "enigma19plus_cheap_loss": [0.0, 0.2, 0.3, 0.5, 1.0],
     "enigma19plus_probe_extra": [0, 2, 4, 6, 8],
     "enigma19plus_opening_humanstyle_moves": _ENIGMA_OPENING_HUMANSTYLE_MOVES,
+    # ===== Mimic13Strategy（13路専用・擬態）spec 2026-09-17-mimic13-strategy-design.md =====
+    # 相手より低い一致率で勝つ。price = vloss − ΔE をリード連動の λ で買う
+    "mimic13_max_loss": [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0],
+    "mimic13_reserve": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 7.0, 10.0],
+    "mimic13_spend_rate": [0.1, 0.25, 0.5, 1.0],
+    "mimic13_free_loss": [0.0, 0.1, 0.2, 0.3, 0.5],
+    "mimic13_min_winrate": [(0.3, "30%"), (0.35, "35%"), (0.4, "40%"), (0.45, "45%"), (0.5, "50%")],
+    "mimic13_dominant_hp": [(0.6, "60%"), (0.7, "70%"), (0.8, "80%"), (0.9, "90%"), (0.95, "95%")],
+    "mimic13_min_human_policy": [(0.01, "1%"), (0.02, "2%"), (0.03, "3%"), (0.05, "5%"), (0.1, "10%")],
+    "mimic13_natural_ratio": [0.1, 0.2, 0.3, 0.5],
+    # 99 = OFF（罠の「人間らしさ免除」を使わない）
+    "mimic13_trap_min_delta_e": [(0.3, "0.3"), (0.5, "0.5"), (1.0, "1.0"), (1.5, "1.5"), (99.0, "OFF")],
+    "mimic13_cost_slack": [0.0, 0.2, 0.3, 0.5, 1.0],
+    "mimic13_probe_extra": [0, 2, 4, 6],
+    # 85 = HumanStyle 自身の終局閾値 ceil(0.5×169)。それ未満だと委譲先が hp 重みのランダム選択になる
+    "mimic13_endgame_move": [65, 75, 85, 95, 105],
+    "mimic13_unsettled_max": [8, 12, 16, 20, 24],
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）
@@ -578,6 +597,19 @@ AI_OPTION_ORDER = {
     "enigma19plus_cheap_loss": 11,
     "enigma19plus_probe_extra": 12,
     "enigma19plus_opening_humanstyle_moves": 13,
+    "mimic13_max_loss": 0,
+    "mimic13_reserve": 1,
+    "mimic13_spend_rate": 2,
+    "mimic13_free_loss": 3,
+    "mimic13_min_winrate": 4,
+    "mimic13_dominant_hp": 5,
+    "mimic13_min_human_policy": 6,
+    "mimic13_natural_ratio": 7,
+    "mimic13_trap_min_delta_e": 8,
+    "mimic13_cost_slack": 9,
+    "mimic13_probe_extra": 10,
+    "mimic13_endgame_move": 11,
+    "mimic13_unsettled_max": 12,
 }
 
 AI_KEY_PROPERTIES = {

@@ -328,9 +328,7 @@ class TestGenerateMove(_Harness):
 
     def test_price_above_lambda_keeps_the_best_move(self):
         # lead 3（余剰 0）→ λ=0.3。D4 は自然だが vloss 0.8
-        s, logs = self._strategy(
-            lead=3.0, hp=_hp_array(13, {"G7": 0.40, "D4": 0.30}), probes=self._probes(d4_lead=7.2)
-        )
+        s, logs = self._strategy(lead=3.0, hp=_hp_array(13, {"G7": 0.40, "D4": 0.30}), probes=self._probes(d4_lead=7.2))
         move, _ = s.generate_move()
         assert move.gtp() == "G7"
 
@@ -405,3 +403,57 @@ class TestYose(_Harness):
         move, _ = s.generate_move()
         assert getattr(s.game, "_mimic13_endgame", False) is False
         assert s.queries == ["Probe", "HumanSL"] and move.gtp() == "D4"
+
+
+class TestGuiConfigConsistency:
+    """SETTING_DEFAULTS・AI_OPTION_VALUES・AI_OPTION_ORDER・パッケージ config.json・戦略リストの整合。"""
+
+    def test_listed_everywhere(self):
+        from katrain.core.constants import (
+            AI_MIMIC_13,
+            AI_STRATEGIES,
+            AI_STRATEGIES_ENGINE,
+            AI_STRATEGIES_RECOMMENDED_ORDER,
+            AI_STRENGTH,
+        )
+
+        assert AI_MIMIC_13 in AI_STRATEGIES_ENGINE  # 通常解析の完了を待つ系
+        assert AI_MIMIC_13 in AI_STRATEGIES
+        assert AI_MIMIC_13 in AI_STRATEGIES_RECOMMENDED_ORDER
+        assert AI_MIMIC_13 in AI_STRENGTH
+
+    def test_defaults_in_gui_options_and_package_config(self):
+        import json
+        from pathlib import Path
+
+        import katrain
+        from katrain.core.constants import AI_OPTION_ORDER, AI_OPTION_VALUES
+
+        with open(Path(katrain.__file__).parent / "config.json", encoding="utf-8") as f:
+            package_ai_conf = json.load(f)["ai"]["ai:mimic13"]
+        expected = {f"mimic13_{suffix}" for suffix in Mimic13Strategy.SETTING_DEFAULTS}
+        assert set(package_ai_conf) == expected
+        for suffix, default in Mimic13Strategy.SETTING_DEFAULTS.items():
+            key = f"mimic13_{suffix}"
+            assert package_ai_conf[key] == default, key
+            assert key in AI_OPTION_ORDER, key
+            plain = [v[0] if isinstance(v, tuple) else v for v in AI_OPTION_VALUES[key]]
+            assert default in plain, key
+
+    def test_debug_cli_knows_the_strategy(self):
+        from katrain.core.constants import AI_MIMIC_13
+        from katrain_debug.runner import STRATEGY_NAME_MAP
+
+        assert STRATEGY_NAME_MAP["mimic13"] == AI_MIMIC_13
+
+    @pytest.mark.parametrize("lang", ["jp", "en"])
+    def test_i18n_has_every_label(self, lang):
+        from pathlib import Path
+
+        import katrain
+
+        po = (Path(katrain.__file__).parent / "i18n" / "locales" / lang / "LC_MESSAGES" / "katrain.po").read_text(
+            encoding="utf-8"
+        )
+        for msgid in ["ai:mimic13", "aihelp:mimic13"] + [f"mimic13_{s}" for s in Mimic13Strategy.SETTING_DEFAULTS]:
+            assert f'msgid "{msgid}"' in po, msgid

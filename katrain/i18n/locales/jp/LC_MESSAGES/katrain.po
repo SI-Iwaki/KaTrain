@@ -833,6 +833,51 @@ msgstr "[19路＋] 罠探索の追加プローブ数（0=従来の8手）"
 msgid "enigma19plus_opening_humanstyle_moves"
 msgstr "[19路] 序盤の9段委譲手数（0=OFF）"
 
+msgid "ai:mimic13"
+msgstr "擬態（13路）"
+
+msgid "aihelp:mimic13"
+msgstr "13路盤専用。相手より低い「AIの最善手との一致率」を保ったまま勝つことを狙います。序盤〜中盤は、人間らしい非最善手（9段の humanPolicy が高い手）か、相手を騙す罠（相手の期待損失 E が最善手より大きく増える手）へ外します。1回の不一致の値段は「検証済み損失 − E の上積み」で測り、リードの余剰（リード − 確保するリード）に応じた上限の中で最も安い手を選びます。値段が負の罠は余剰が無くても打つので、相手の悪手を誘って外しの原資を作ります。9段の第一感が1点に集中している局面（外すとわざとだとバレる）では最善手を打ちます。ヨセ（手数と未確定点で判定）は Human-like 9段へ委譲し、リードが確保ラインを割った手番だけ最善手で勝ちを守ります。humanSL モデルが必要です。13路以外では常に最善手を打ちます。"
+
+msgid "mimic13_max_loss"
+msgstr "[擬態13] 1手あたり損失上限（目）"
+
+msgid "mimic13_reserve"
+msgstr "[擬態13] 確保するリード（目）"
+
+msgid "mimic13_spend_rate"
+msgstr "[擬態13] 1手で使う余剰リードの割合"
+
+msgid "mimic13_free_loss"
+msgstr "[擬態13] 余剰なしでも払う値段（目）"
+
+msgid "mimic13_min_winrate"
+msgstr "[擬態13] 着手後の勝率フロア"
+
+msgid "mimic13_dominant_hp"
+msgstr "[擬態13] 最善手の第一感がこれ以上なら外さない"
+
+msgid "mimic13_min_human_policy"
+msgstr "[擬態13] 自然な外しの humanPolicy 下限"
+
+msgid "mimic13_natural_ratio"
+msgstr "[擬態13] 自然な外しの下限（第一感トップ比）"
+
+msgid "mimic13_trap_min_delta_e"
+msgstr "[擬態13] 罠とみなす E の上積み（目・OFF=罠の免除なし）"
+
+msgid "mimic13_cost_slack"
+msgstr "[擬態13] 値段の同値帯（帯の中は人間らしさ優先）"
+
+msgid "mimic13_probe_extra"
+msgstr "[擬態13] 罠探索の追加プローブ数"
+
+msgid "mimic13_endgame_move"
+msgstr "[擬態13] ヨセ切替手数（85未満は9段がランダム選択）"
+
+msgid "mimic13_unsettled_max"
+msgstr "[擬態13] ヨセ判定の未確定点上限"
+
 msgid "ai:enigma19"
 msgstr "難解（19路）"
 

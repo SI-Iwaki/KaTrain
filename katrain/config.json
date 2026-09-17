@@ -310,6 +310,21 @@
             "enigma19plus_probe_extra": 4,
             "enigma19plus_opening_humanstyle_moves": 20
         },
+        "ai:mimic13": {
+            "mimic13_max_loss": 2.0,
+            "mimic13_reserve": 3.0,
+            "mimic13_spend_rate": 0.25,
+            "mimic13_free_loss": 0.3,
+            "mimic13_min_winrate": 0.4,
+            "mimic13_dominant_hp": 0.8,
+            "mimic13_min_human_policy": 0.05,
+            "mimic13_natural_ratio": 0.2,
+            "mimic13_trap_min_delta_e": 0.5,
+            "mimic13_cost_slack": 0.3,
+            "mimic13_probe_extra": 4,
+            "mimic13_endgame_move": 85,
+            "mimic13_unsettled_max": 16
+        },
         "ai:scoreloss": {
             "strength": 0.2
         },

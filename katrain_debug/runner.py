@@ -9,7 +9,7 @@ from katrain.core.constants import (
     AI_WEIGHTED, AI_PICK, AI_RANK, AI_INFLUENCE, AI_TERRITORY,
     AI_LOCAL, AI_TENUKI, AI_SIMPLE_OWNERSHIP, AI_SETTLE_STONES,
     AI_JIGO, AI_JIGO_9, AI_ANTIMIRROR, AI_PARITY_9, AI_ENIGMA_9, AI_ENIGMA_13, AI_ENIGMA_19, AI_ENIGMA_13_PLUS,
-    AI_ENIGMA_9_PLUS, AI_ENIGMA_19_PLUS,
+    AI_ENIGMA_9_PLUS, AI_ENIGMA_19_PLUS, AI_MIMIC_13,
 )
 from katrain.core.ai import STRATEGY_REGISTRY
 from katrain.core.engine import KataGoEngine
@@ -49,6 +49,7 @@ STRATEGY_NAME_MAP = {
     "enigma13plus": AI_ENIGMA_13_PLUS,
     "enigma19plus": AI_ENIGMA_19_PLUS,
     "enigma19": AI_ENIGMA_19,
+    "mimic13": AI_MIMIC_13,
 }
 
 

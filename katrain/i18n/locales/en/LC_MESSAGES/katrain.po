@@ -1142,6 +1142,51 @@ msgstr "[19x19+] Extra trap-search probes (0 = classic 8)"
 msgid "enigma19plus_opening_humanstyle_moves"
 msgstr "[19x19] Opening moves played as 9d (0 = OFF)"
 
+msgid "ai:mimic13"
+msgstr "Mimic (13x13)"
+
+msgid "aihelp:mimic13"
+msgstr "13x13 only. Aims to win while keeping its AI-best-move match rate below the opponent's. Before the endgame it deviates to a human-looking non-best move (high 9d humanPolicy) or to a trap (a move that raises the opponent's expected loss E well above the best move's). The price of one mismatch is 'verified loss minus the extra E'; the cheapest qualifying move is played if its price fits the per-move budget derived from the surplus lead (lead minus the reserve). Traps with a negative price are played even without surplus, which is how the mode earns budget from opponent mistakes. When the 9d first instinct is concentrated on the best move, the best move is played (deviating would look deliberate). The endgame (move number AND unsettled points) is handed to Human-like 9d; when the lead drops below the reserve the best move is played instead. Requires the humanSL model. On other board sizes it always plays the best move."
+
+msgid "mimic13_max_loss"
+msgstr "[Mimic13] Max loss per move (pts)"
+
+msgid "mimic13_reserve"
+msgstr "[Mimic13] Lead to keep in reserve (pts)"
+
+msgid "mimic13_spend_rate"
+msgstr "[Mimic13] Share of surplus lead spent per move"
+
+msgid "mimic13_free_loss"
+msgstr "[Mimic13] Price paid even without surplus (pts)"
+
+msgid "mimic13_min_winrate"
+msgstr "[Mimic13] Winrate floor after the move"
+
+msgid "mimic13_dominant_hp"
+msgstr "[Mimic13] Never deviate when best move humanPolicy >="
+
+msgid "mimic13_min_human_policy"
+msgstr "[Mimic13] Min humanPolicy of a natural deviation"
+
+msgid "mimic13_natural_ratio"
+msgstr "[Mimic13] Natural deviation floor (ratio of top humanPolicy)"
+
+msgid "mimic13_trap_min_delta_e"
+msgstr "[Mimic13] Extra E that makes a move a trap (OFF = no exemption)"
+
+msgid "mimic13_cost_slack"
+msgstr "[Mimic13] Price tie band (most human move wins inside)"
+
+msgid "mimic13_probe_extra"
+msgstr "[Mimic13] Extra probes for trap search"
+
+msgid "mimic13_endgame_move"
+msgstr "[Mimic13] Endgame switch move (below 85 the 9d samples randomly)"
+
+msgid "mimic13_unsettled_max"
+msgstr "[Mimic13] Max unsettled points for endgame"
+
 msgid "ai:enigma19"
 msgstr "Enigma (19x19)"
 
