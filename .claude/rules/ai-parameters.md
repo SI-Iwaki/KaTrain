@@ -726,6 +726,13 @@ sticky ヨセフラグ `game._mimic13_endgame`・ログタグ `[Mimic13Strategy]
 モジュール定数: `MIMIC_BEHIND_LIMIT=-1.0` / `MIMIC_TRAP_MIN_HP=0.005` / `MIMIC_SHORTLIST_NATURAL=4` /
 `MIMIC_SHORTLIST_CHEAP=4`（プローブは最善手＋最大 12 手）。プローブ条件は `ENIGMA9_*` を共有。
 
+**各スライダーを動かしたときの挙動**（上げる/下げるの両側）は GUI の AI 設定画面のヘルプ `aihelp:mimic13`（jp/en の
+`.po`・13 スライダーぶん＋調整の目安）と、マニュアル `docs/manual/src/06d_ai_parity.html#ai-mimic13` の表に書いてある
+（**スライダーを足す・意味を変えるときは3箇所とも更新する**: この表 / `aihelp:mimic13` / マニュアルの表）。調整の目安:
+一致率をもっと下げたい → `reserve`↓・`spend_rate`↑・`max_loss`↑・`dominant_hp`↑・`endgame_move`↑（勝ちの安全度や自然さと引き換え）／
+接戦を落とす → `reserve`↑・`min_winrate`↑・`free_loss`↓／外しがわざとらしい → `dominant_hp`↓・`max_loss`↓・`min_human_policy`↑・
+`natural_ratio`↑・`trap_min_delta_e`↑ or OFF／1手が遅い → `probe_extra`↓・`dominant_hp`↓。
+
 **確認**: ログの `Rate:`（一致率の推移）/ `Budget:`（lead・λ）/ `Dominant:` / `Natural:` / `Score …`（vloss・dE・price・hp・kind）/
 `Deviate:` / `Yose:`。CLI: `python -m katrain_debug --sgf <13路SGF> --move N --strategy mimic13`。
 **実戦校正は未実施**（成功基準は 勝ち かつ 終局レポートで自分の一致率 < 相手の一致率。一致率だけで判定せず

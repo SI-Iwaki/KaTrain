@@ -457,3 +457,23 @@ class TestGuiConfigConsistency:
         )
         for msgid in ["ai:mimic13", "aihelp:mimic13"] + [f"mimic13_{s}" for s in Mimic13Strategy.SETTING_DEFAULTS]:
             assert f'msgid "{msgid}"' in po, msgid
+
+    @pytest.mark.parametrize("lang,bullet", [("jp", "■ "), ("en", "* ")])
+    def test_help_explains_every_slider(self, lang, bullet):
+        """GUI のヘルプ（aihelp:mimic13）はスライダー1本につき1行ずつ「上げると／下げると」を説明している。
+
+        スライダーを足したのにヘルプを足し忘れる、を検出するための本数チェック（.po を直接読む＝.mo 非依存）。
+        """
+        import re
+        from pathlib import Path
+
+        import katrain
+
+        po = (Path(katrain.__file__).parent / "i18n" / "locales" / lang / "LC_MESSAGES" / "katrain.po").read_text(
+            encoding="utf-8"
+        )
+        m = re.search(r'msgid "aihelp:mimic13"\s*\nmsgstr "(.*)"', po)
+        assert m, "aihelp:mimic13 not found"
+        lines = m.group(1).split("\\n")  # .po の中では改行は 2 文字のエスケープ \n
+        explained = [line for line in lines if line.startswith(bullet)]
+        assert len(explained) == len(Mimic13Strategy.SETTING_DEFAULTS)

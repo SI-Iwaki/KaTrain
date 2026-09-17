@@ -1150,21 +1150,28 @@ KaTrain の AI は「戦略」を選ぶことで棋風や強さが変わりま�
   <div class="tablewrap"><table class="params">
     <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
     <tbody>
-      <tr><td>mimic13_max_loss</td><td>2.0</td><td>0.5〜5.0</td><td>1 手の損失上限（目）。</td><td><span class="up">上げる</span>大差のとき外せる手番が増えるが、外しが目立つ</td></tr>
-      <tr><td>mimic13_reserve</td><td>3.0</td><td>0〜10</td><td>確保するリード（目）。これを超えた分だけを外しに使う。ヨセの 9段委譲の条件でもある。</td><td><span class="up">上げる</span>安全だが一致率が下がりにくい</td></tr>
-      <tr><td>mimic13_spend_rate</td><td>0.25</td><td>0.1〜1.0</td><td>1 手で余剰の何割まで払うか。</td><td><span class="up">上げる</span>早く使い切る</td></tr>
-      <tr><td>mimic13_free_loss</td><td>0.3</td><td>0〜0.5</td><td>余剰が無くても払う「タダ同然」の値段（目）。</td><td>0 で接戦の外しは期待値プラスの罠だけに</td></tr>
-      <tr><td>mimic13_min_winrate</td><td>40%</td><td>30〜50%</td><td>着手後の勝率フロア。</td><td><span class="up">上げる</span>互角の局面で罠を打たなくなる</td></tr>
-      <tr><td>mimic13_dominant_hp</td><td>80%</td><td>60〜95%</td><td>最善手の第一感がこれ以上なら外さない。</td><td><span class="down">下げる</span>より慎重（一致率は上がる）</td></tr>
-      <tr><td>mimic13_min_human_policy</td><td>5%</td><td>1〜10%</td><td>人間らしい外しの humanPolicy 下限。</td><td><span class="down">下げる</span>外せる手番が増えるが珍しい手が混ざる</td></tr>
-      <tr><td>mimic13_natural_ratio</td><td>0.2</td><td>0.1〜0.5</td><td>同じ下限を第一感トップとの比でも課す。</td><td><span class="up">上げる</span>第一感の強い局面で外さなくなる</td></tr>
-      <tr><td>mimic13_trap_min_delta_e</td><td>0.5</td><td>0.3〜1.5／OFF</td><td>罠とみなす E の上積み（目）。罠は人間らしさの条件を免除。</td><td>OFF で人間らしい手しか打たない</td></tr>
-      <tr><td>mimic13_cost_slack</td><td>0.3</td><td>0〜1.0</td><td>値段の同値帯。帯の中は最も人間らしい手。</td><td>0 で常に最安</td></tr>
-      <tr><td>mimic13_probe_extra</td><td>4</td><td>0〜6</td><td>罠探索のために損失の高い帯から足すプローブ数。</td><td><span class="down">下げる</span>1 手が速くなる</td></tr>
-      <tr><td>mimic13_endgame_move</td><td>85</td><td>65〜105</td><td>ヨセ判定の手数側の条件。</td><td>85 未満にすると、その間の 9段は候補から確率で選ぶ（ブレが出る）</td></tr>
-      <tr><td>mimic13_unsettled_max</td><td>16</td><td>8〜24</td><td>ヨセ判定の未確定点上限。手数条件との AND。</td><td><span class="up">上げる</span>早くヨセ扱いに</td></tr>
+      <tr><td>mimic13_max_loss</td><td>2.0</td><td>0.5〜5.0</td><td>1 手で失ってよい目数の天井（支払い上限もこれを超えない）。</td><td><span class="up">上げる</span>大差のとき外せる手番が増えて一致率は下がるが、外しがはっきりした悪手に見えやすく、リードの減りも速い。<span class="down">下げる</span>小さな損の外しだけになり、勝っている碁でも最善手が増える</td></tr>
+      <tr><td>mimic13_reserve</td><td>3.0</td><td>0〜10</td><td>確保するリード（目）。これを超えた分（余剰）だけを外しの代金に使う。ヨセを 9段に任せる条件でもある（これ未満のヨセは最善手）。</td><td><span class="up">上げる</span>勝ちは堅いが余剰ができにくく一致率が下がりにくい。ヨセも最善手が増える。<span class="down">下げる</span>早くから代金を払って外すので一致率は下がるが、僅差の決着が増え接戦を落とすリスクが上がる</td></tr>
+      <tr><td>mimic13_spend_rate</td><td>0.25</td><td>0.1〜1.0</td><td>1 手の支払い上限＝余剰 × この値（天井は損失上限）。余剰 4 目なら 0.25 で 1.0 目、0.5 で 2.0 目。</td><td><span class="up">上げる</span>少しのリードでも高い外しを買うので一致率は下がるが、リードをすぐ使い切って確保ライン付近の碁になりやすい。<span class="down">下げる</span>大きくリードするまでタダ同然の外ししか打たない</td></tr>
+      <tr><td>mimic13_free_loss</td><td>0.3</td><td>0〜0.5</td><td>リードが確保ライン以下（ただし 1 目以上負けてはいない）でも払う値段（目）。</td><td><span class="up">上げる</span>接戦でも外す手番が増えるが、小さな損が積み重なって接戦を落としやすい。<span class="down">下げる</span>接戦の外しが減る。0 で接戦は「値段が 0 以下＝期待値で得をする罠」だけ</td></tr>
+      <tr><td>mimic13_min_winrate</td><td>40%</td><td>30〜50%</td><td>外した後の勝率（相手の最善応手込み）がこれを割る手は打たない。</td><td><span class="up">上げる</span>安全だが互角の局面でほとんど外せない（50% にすると黒番の序盤は勝率が 50% 弱なので全く外せない）。<span class="down">下げる</span>少し不利でも罠や外しを打つようになり、逆転負けのリスクが上がる</td></tr>
+      <tr><td>mimic13_dominant_hp</td><td>80%</td><td>60〜95%</td><td>9段が最善手を選ぶ確率（humanPolicy）がこれ以上の局面は外さない（その手番は追加の読みをしないので即打ち）。</td><td><span class="up">上げる</span>「誰でもそこに打つ」局面でも外すようになり一致率は下がるが、わざとらしさが増し 1 手も遅くなる。<span class="down">下げる</span>より慎重で自然。そのぶん一致率は上がる</td></tr>
+      <tr><td>mimic13_min_human_policy</td><td>5%</td><td>1〜10%</td><td>外す先を「人間らしい手」と認める最低ライン（9段がその手を選ぶ確率）。</td><td><span class="down">下げる</span>外せる手番が増えて一致率は下がるが、9段があまり打たない珍しい手が混ざる。<span class="up">上げる</span>はっきり人間らしい手にしか外さず、一致率は上がる</td></tr>
+      <tr><td>mimic13_natural_ratio</td><td>0.2</td><td>0.1〜0.5</td><td>同じ下限を「9段の第一感トップの何割以上か」でも課す（絶対値とこの比の厳しいほうが効く）。</td><td><span class="up">上げる</span>第一感と同じくらい有力な手にしか外さない（自然だが外せる手番が減る）。<span class="down">下げる</span>第一感がはっきりした局面でも 2 番手・3 番手へ外しやすい</td></tr>
+      <tr><td>mimic13_trap_min_delta_e</td><td>0.5</td><td>0.3〜1.5／OFF</td><td>相手の期待損失 E が最善手よりこの目数以上増える手は「罠」として人間らしさの条件を免除する。</td><td><span class="down">下げる</span>罠扱いの手が増えて一致率は下がるが、E の誤差（0.2〜0.4 目）を罠と誤認して珍しいだけの手が混ざりやすい。<span class="up">上げる</span>はっきり大きい罠だけ免除。OFF で人間らしい手にしか外さない（罠の効果は値段の割引として評価に残る）</td></tr>
+      <tr><td>mimic13_cost_slack</td><td>0.3</td><td>0〜1.0</td><td>最安の手からこの目数以内に並ぶ候補を同じ安さとみなし、その中で最も人間らしい手を選ぶ。</td><td><span class="up">上げる</span>人間らしさ優先になり、1 回の外しに払う目数が少し増える（支払い上限は超えない）。0 で常に最安</td></tr>
+      <tr><td>mimic13_probe_extra</td><td>4</td><td>0〜6</td><td>罠を探すために、損失の大きい候補まで広げて読む手の数。</td><td><span class="up">上げる</span>罠を見つけやすいが 1 手が遅くなる（1 手ぶんにつき約 0.1 秒）。<span class="down">下げる</span>速くなるが、少し高い代金で大きく騙せる罠を見落とす</td></tr>
+      <tr><td>mimic13_endgame_move</td><td>85</td><td>65〜105</td><td>この手数以降、かつ未確定点が下の上限以下になったらヨセとして 9段に委譲（一度入ったら戻らない）。</td><td><span class="up">上げる</span>中盤扱いが長く続き一致率は下がるが、ヨセに近い局面での外しは気づかれやすい。<span class="down">下げる</span>早くヨセに入り一致率は上がる。85 未満にすると、その間の 9段は候補からランダムに選ぶので数目損する手が混ざる</td></tr>
+      <tr><td>mimic13_unsettled_max</td><td>16</td><td>8〜24</td><td>盤上の未確定点（どちらの地か決まっていない交点）がこの数以下になったらヨセと判定（手数条件との AND）。</td><td><span class="up">上げる</span>早くヨセ扱いになり一致率が上がる。<span class="down">下げる</span>盤面がほぼ確定するまで中盤の外しを続ける</td></tr>
     </tbody>
   </table></div>
+  <div class="callout">
+    <span class="label">こんなときはここを動かす</span>
+    <b>一致率をもっと下げたい</b>: <code>mimic13_reserve</code> を下げる／<code>mimic13_spend_rate</code>・<code>mimic13_max_loss</code>・<code>mimic13_dominant_hp</code>・<code>mimic13_endgame_move</code> を上げる（どれも勝ちの安全度や自然さと引き換え）。<br>
+    <b>接戦を落とす・負けが出る</b>: <code>mimic13_reserve</code> と <code>mimic13_min_winrate</code> を上げる／<code>mimic13_free_loss</code> を下げる。<br>
+    <b>外しがわざとらしい</b>: <code>mimic13_dominant_hp</code> と <code>mimic13_max_loss</code> を下げる／<code>mimic13_min_human_policy</code>・<code>mimic13_natural_ratio</code> を上げる／<code>mimic13_trap_min_delta_e</code> を上げるか OFF。<br>
+    <b>1 手が遅い</b>: <code>mimic13_probe_extra</code> と <code>mimic13_dominant_hp</code> を下げる。
+  </div>
   <div class="callout">
     <span class="label">一致率は相手次第です</span>
     相手が悪手を打つほど余剰ができて外せます。強い相手との接戦では「タダ同然の外し」と「期待値プラスの罠」しか打たないので一致率は高めに残ります（勝ちを優先する設計どおり）。
