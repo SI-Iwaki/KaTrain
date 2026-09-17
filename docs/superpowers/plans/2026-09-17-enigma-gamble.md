@@ -1,6 +1,6 @@
 # 難解「序盤の賭け罠（gamble）」オプション Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** 難解 / 難解＋（9・13・19路）に、序盤の窓の中で「正しく応じられたときの勝率フロアの内側にある本物の罠」を net 比較を飛ばして打つオプションを足す（既定 OFF＝ビット同一）。
 
@@ -33,7 +33,7 @@
   `enigma9_gamble_pick(scored, best_gtp, min_winrate, min_delta_e, max_find=ENIGMA9_GAMBLE_MAX_FIND, cost_weight=ENIGMA9_GAMBLE_COST_WEIGHT) -> (pick|None, qualifiers)`。
   `scored` の要素は `_generate_move` が作る dict（`gtp` / `loss`=検証済み損失 / `wr_after` / `e` / `find`）。返す dict には `d_e` と `u` が足される
 
-- [ ] **Step 1: 失敗するテストを書く**（`tests/test_ai_enigma_gamble.py`）
+- [x] **Step 1: 失敗するテストを書く**（`tests/test_ai_enigma_gamble.py`）
 
 ```python
 # tests/test_ai_enigma_gamble.py
@@ -134,12 +134,12 @@ class TestGamblePick:
         assert "u" not in trap and "d_e" not in trap
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `python -m pytest tests/test_ai_enigma_gamble.py -q`
 Expected: ImportError（`ENIGMA9_GAMBLE_COST_WEIGHT` が無い）
 
-- [ ] **Step 3: 実装**（python パッチスクリプトで `katrain/core/ai.py` に挿入）
+- [x] **Step 3: 実装**（python パッチスクリプトで `katrain/core/ai.py` に挿入）
 
 定数（`ENIGMA9_LOCALITY_SLACK = 0.3 ...` の行の直後）:
 
@@ -208,12 +208,12 @@ def enigma9_gamble_pick(scored, best_gtp, min_winrate, min_delta_e,
     return max(qualifiers, key=lambda c: (c["u"], c["e"], -c["loss"])), qualifiers
 ```
 
-- [ ] **Step 4: 通過を確認**
+- [x] **Step 4: 通過を確認**
 
 Run: `python -m pytest tests/test_ai_enigma_gamble.py -q`
 Expected: 全部 PASS
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```bash
 git add katrain/core/ai.py tests/test_ai_enigma_gamble.py
@@ -240,7 +240,7 @@ git commit -m "feat(enigma): 序盤の賭け罠の純関数（窓の判定と資
   （prefix = enigma9 / enigma9plus / enigma13 / enigma13plus / enigma19 / enigma19plus）。
   `self._setting("gamble_until_move")` 等で読める
 
-- [ ] **Step 1: 失敗するテストを追記**（`tests/test_ai_enigma_gamble.py` の末尾）
+- [x] **Step 1: 失敗するテストを追記**（`tests/test_ai_enigma_gamble.py` の末尾）
 
 ```python
 from katrain.core.ai import (
@@ -278,12 +278,12 @@ class TestGambleSettings:
         assert not any(k.startswith("gamble") for k in Mimic13Strategy.SETTING_DEFAULTS)
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `python -m pytest tests/test_ai_enigma_gamble.py -q`
 Expected: `KeyError: 'gamble_until_move'`
 
-- [ ] **Step 3: 実装**（python パッチスクリプト 1 本で 5 ファイルを書き換える）
+- [x] **Step 3: 実装**（python パッチスクリプト 1 本で 5 ファイルを書き換える）
 
 `ai.py`: 3 クラスの `SETTING_DEFAULTS` の `"locality_slack": ENIGMA9_LOCALITY_SLACK, ...` 行の直後に
 
@@ -361,13 +361,13 @@ en:
 
 パッチスクリプトは各置換のヒット数を assert する（6 セクション × 各ファイル）。
 
-- [ ] **Step 4: `.mo` を再コンパイルしてテスト**
+- [x] **Step 4: `.mo` を再コンパイルしてテスト**
 
 Run: `python tools/compile_mo.py`
 Run: `python -m pytest tests/test_ai_enigma_gamble.py tests/test_ai_enigma9.py tests/test_ai_enigma_plus.py tests/test_ai_enigma_opening.py tests/test_ai_mimic13.py tests/test_ai_options_grid.py -q`
 Expected: 全部 PASS（`TestGuiConfigConsistency` が新キーを検査する）
 
-- [ ] **Step 5: 差分の健全性を確認してコミット**
+- [x] **Step 5: 差分の健全性を確認してコミット**
 
 Run: `git diff --stat`（削除行が「config.json の 6 行＋.po の help 6 行」以外に出ていないこと＝再整形の混入なし）
 
@@ -387,7 +387,7 @@ git commit -m "feat(enigma): 序盤の賭け罠の設定キーを GUI・config�
 **Interfaces:**
 - Consumes: Task 1 の純関数・Task 2 の設定キー・既存の `enigma9_shortlist_spread(pool, base_k, extra)`
 
-- [ ] **Step 1: 失敗する接続テストを追記**
+- [x] **Step 1: 失敗する接続テストを追記**
 
 ```python
 import types
@@ -528,12 +528,12 @@ class TestGambleEndToEnd:
         assert move.gtp() == "G7"
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `python -m pytest tests/test_ai_enigma_gamble.py::TestGambleEndToEnd -q`
 Expected: `test_off_*` / `test_outside_*` / `test_spending_*` は PASS、`test_on_*` など ON 系が FAIL（K10 のまま）
 
-- [ ] **Step 3: 実装**（python パッチスクリプト・3 箇所）
+- [x] **Step 3: 実装**（python パッチスクリプト・3 箇所）
 
 (a) `# ヨセでは「自手の意外さ」を net から外す（`enigma9_own_rarity_weight`）` の行の直前に:
 
@@ -589,12 +589,12 @@ Expected: `test_off_*` / `test_outside_*` / `test_spending_*` は PASS、`test_o
 
 ```
 
-- [ ] **Step 4: 通過を確認**
+- [x] **Step 4: 通過を確認**
 
 Run: `python -m pytest tests/test_ai_enigma_gamble.py tests/test_ai_enigma9.py tests/test_ai_enigma_plus.py tests/test_ai_enigma_opening.py tests/test_ai_mimic13.py -q`
 Expected: 全部 PASS
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```bash
 git add katrain/core/ai.py tests/test_ai_enigma_gamble.py
@@ -608,11 +608,11 @@ git commit -m "feat(enigma): 序盤の賭け罠を難解の選択フローに接
 **Files:**
 - Modify: `C:\Users\iwaki\.katrain\config.json`（git 管理外）
 
-- [ ] **Step 1: KaTrain が起動していないことを確認**
+- [x] **Step 1: KaTrain が起動していないことを確認**
 
 Run: `tasklist | grep -a -i "python\|katrain"`（KaTrain のウィンドウを持つ python が居たら、ユーザーに閉じてもらうまで書かない）
 
-- [ ] **Step 2: バックアップを取り、6 セクションに 3 キーを既定値で足す**
+- [x] **Step 2: バックアップを取り、6 セクションに 3 キーを既定値で足す**
 
 各 `"<prefix>_opening_humanstyle_moves": <値>` 行（セクション末尾）の後ろに Task 2 の config と同じ 3 行
 （`0` / `0.35` / `0.5`）を python パッチスクリプトで足す。`json.load` で読み直して 18 キーが入っていること、
@@ -629,7 +629,7 @@ Run: `tasklist | grep -a -i "python\|katrain"`（KaTrain のウィンドウを�
 - Modify: `docs/superpowers/specs/INDEX.md`（enigma-locality の行の直後に 1 行）
 - Modify: `docs/superpowers/specs/2026-09-17-enigma-gamble-design.md`（GUI 表示名「賭け罠」と検証結果の追記）
 
-- [ ] **Step 1: パッチスクリプトで追記**（CRLF ファイルは CRLF を保つ。`.claude/rules/` の Edit が拒否されたらスクリプト経由で書く）
+- [x] **Step 1: パッチスクリプトで追記**（CRLF ファイルは CRLF を保つ。`.claude/rules/` の Edit が拒否されたらスクリプト経由で書く）
 
 `ai-parameters.md` の Enigma13 の表（`enigma13_opening_humanstyle_moves` の行の直後）:
 
@@ -662,12 +662,12 @@ Enigma9 / Enigma19 の表にも同じ 3 行を接頭辞と候補値（9路 OFF/8
 | `2026-09-17-enigma-gamble-design.md` | 🟢 難解 / 難解＋の序盤の賭け罠オプション（窓の中で ΔE・応手の見つけにくさ・勝率フロアの資格がある罠を net 比較を飛ばして打つ・既定 OFF）。ログ 18 局の再集計で「応じ損ねたら優勢」の在庫はほぼゼロと確認したうえでの緩和版・**実戦校正は未実施** |
 ```
 
-- [ ] **Step 2: マニュアルを再ビルドして確認**
+- [x] **Step 2: マニュアルを再ビルドして確認**
 
 Run: `python tools/build_manual.py`
 Run: `grep -c "enigma\*_gamble_until_move" docs/manual/index.html` → `1`
 
-- [ ] **Step 3: コミット**
+- [x] **Step 3: コミット**
 
 ```bash
 git add .claude/rules/ai-parameters.md .claude/rules/ai-strategies.md docs/manual docs/superpowers/specs/INDEX.md docs/superpowers/specs/2026-09-17-enigma-gamble-design.md
@@ -682,28 +682,28 @@ git commit -m "docs(enigma): 序盤の賭け罠の rules・マニュアル・IND
 - Create: `docs/superpowers/specs/calibration-data/enigma13/enigma13plus-vs-app-20260911-184025.sgf`（ログから復元）
 - Modify: `docs/superpowers/specs/2026-09-17-enigma-gamble-design.md`（§9 検証結果を追記）
 
-- [ ] **Step 1: ログから SGF を復元**
+- [x] **Step 1: ログから SGF を復元**
 
 Run: `python docs/superpowers/specs/calibration-data/enigma9/restore_sgf_from_log.py ~/.katrain/logs/game_20260911_184025.log`
 （使い方はスクリプト先頭の docstring に従う。AI の手番は `Opening handoff: move=<偶奇>` で確認して記録する）
 
-- [ ] **Step 2: 資格があった局面（手数 12）を OFF / ON で 3 run ずつ**
+- [x] **Step 2: 資格があった局面（手数 12）を OFF / ON で 3 run ずつ**
 
 Run（ON）: `python -m katrain_debug --sgf <復元SGF> --move 12 --strategy enigma13plus --settings enigma13plus_gamble_until_move=35 enigma13plus_opening_humanstyle_moves=8 enigma13plus_max_loss=1.6 enigma13plus_min_winrate=0.25 enigma13plus_probe_extra=6 enigma13plus_locality_stddev=3.0 enigma13plus_target_score=1.0 2>&1 | grep -a "Gamble\|Deviate\|Best move wins\|Score "`
 Expected: `Gamble: window depth=12 < 35 ...` が出る。資格のある手（ログでは D5: dE 1.24・vloss 0.60・wr 41%）が居れば
 `Gamble: played ...`、居なければ `qualifiers=[]` のあと従来の選択。OFF は `Gamble` 行が 1 本も出ないこと。
 E・hp は run 間で揺れるので、3 run の資格の出入りをそのまま記録する。
 
-- [ ] **Step 3: 窓の外（手数 40 前後）と消費モードの手番で `Gamble` 行が出ないことを 1 run ずつ確認**
+- [x] **Step 3: 窓の外（手数 40 前後）と消費モードの手番で `Gamble` 行が出ないことを 1 run ずつ確認**
 
-- [ ] **Step 4: 結果を spec §9 に追記してコミット**
+- [x] **Step 4: 結果を spec §9 に追記してコミット**
 
 ```bash
 git add docs/superpowers/specs
 git commit -m "docs(enigma): 序盤の賭け罠の実局面検証を spec に追記"
 ```
 
-- [ ] **Step 5: 回帰（KataGo と並走させない）**
+- [x] **Step 5: 回帰（KataGo と並走させない）**
 
 Run: `python -m pytest tests/test_ai_enigma_gamble.py tests/test_ai_enigma9.py tests/test_ai_enigma_plus.py tests/test_ai_enigma_opening.py tests/test_ai_mimic13.py tests/test_ai_options_grid.py tests/test_board_watch_prefetch.py -q`
 Expected: 全部 PASS
