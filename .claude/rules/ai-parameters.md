@@ -696,3 +696,45 @@ CLI: `python -m katrain_debug --sgf <SGF> --move N --strategy enigma9plus|enigma
 
 CLI: `python -m katrain_debug --sgf <19路SGF> --move N --strategy enigma19`（batch 可）。
 **19路の実戦校正は未実施**（GUI 実戦ログ `[Enigma19Strategy]` と batch 3-run 平均で行う）。
+
+## Mimic13Strategy（`ai:mimic13` / 擬態（13路））
+
+13路専用。**相手より低い AI 最善手一致率を保ったまま勝つ**。設計: `2026-09-17-mimic13-strategy-design.md`。
+`Mimic13Strategy(Enigma13Strategy)` が `_generate_move` を上書き（プローブ条件・E・先読み・終局帯は難解と共有。
+sticky ヨセフラグ `game._mimic13_endgame`・ログタグ `[Mimic13Strategy]`）。
+
+`price = max(0, vloss) − (E − E_best)`。λ = lead < −1.0 → 0 ／ 余剰（lead − reserve）<= 0 → free_loss ／
+余剰 > 0 → min(max_loss, max(free_loss, 余剰 × spend_rate))。資格（自然 or 罠）あり・price <= λ の最安、
+`cost_slack` 以内の帯は hp 最大。ハード条件は vloss <= max_loss と着手後勝率 >= min_winrate（検証値）。
+
+| キー | 意味 | 候補値 | 既定 |
+|---|---|---|---|
+| `mimic13_max_loss` | 1手の損失上限（検証済み・目）＝λ の天井 | 0.5〜5.0 | 2.0 |
+| `mimic13_reserve` | 確保するリード（目）。余剰 = lead − これ。ヨセの 9段委譲の条件にも使う | 0〜10 | 3.0 |
+| `mimic13_spend_rate` | 1手で余剰の何割まで払うか | 0.1/0.25/0.5/1.0 | 0.25 |
+| `mimic13_free_loss` | 余剰が無くても払う price（目） | 0〜0.5 | 0.3 |
+| `mimic13_min_winrate` | 着手後勝率フロア | 30〜50% | 0.40 |
+| `mimic13_dominant_hp` | 最善手の hp がこれ以上なら外さない（罠も不可・プローブ0本） | 60〜95% | 0.8 |
+| `mimic13_min_human_policy` | 自然な外しの hp 下限（絶対値） | 1〜10% | 0.05 |
+| `mimic13_natural_ratio` | 同（第一感トップ比） | 0.1/0.2/0.3/0.5 | 0.2 |
+| `mimic13_trap_min_delta_e` | 罠とみなす ΔE（目）。99=OFF | 0.3/0.5/1.0/1.5/OFF | 0.5 |
+| `mimic13_cost_slack` | price の同値帯（帯の中は hp 最大） | 0〜1.0 | 0.3 |
+| `mimic13_probe_extra` | 罠探索で高い帯から足すプローブ数 | 0/2/4/6 | 4 |
+| `mimic13_endgame_move` | ヨセ切替手数（AND の片側・sticky）。**85 未満は委譲先 HumanStyle が hp 重みのランダム選択** | 65〜105 | 85 |
+| `mimic13_unsettled_max` | ヨセ判定の未確定点上限 | 8〜24 | 16 |
+
+モジュール定数: `MIMIC_BEHIND_LIMIT=-1.0` / `MIMIC_TRAP_MIN_HP=0.005` / `MIMIC_SHORTLIST_NATURAL=4` /
+`MIMIC_SHORTLIST_CHEAP=4`（プローブは最善手＋最大 12 手）。プローブ条件は `ENIGMA9_*` を共有。
+
+**確認**: ログの `Rate:`（一致率の推移）/ `Budget:`（lead・λ）/ `Dominant:` / `Natural:` / `Score …`（vloss・dE・price・hp・kind）/
+`Deviate:` / `Yose:`。CLI: `python -m katrain_debug --sgf <13路SGF> --move N --strategy mimic13`。
+**実戦校正は未実施**（成功基準は 勝ち かつ 終局レポートで自分の一致率 < 相手の一致率。一致率だけで判定せず
+払った vloss 合計・罠の実現値と並べて読む）。
+
+**単一局面の実測（2026-09-17・katrain_debug・config visits 2500・コールド）**:
+`enigma13-vs-human-20260901-white.sgf` @11（白・lead −0.05・λ 0.30）→ **C9**（natural・hp 16.4%・vloss −0.07・price −0.06・1.1 秒）／
+@21（lead +0.23・最善手 hp 78.7%）→ **B5**（trap・ΔE +0.63・vloss 0.53・price −0.09・hp 2.7%）／@31 → 支配ガード（最善手 hp 80.1%・0.0 秒）／
+@30（黒・lead −0.48）→ 勝率フロア 40% で pool 空＝最善手。`jigo-speedup/katrain-13ro-20260401-game1.sgf` @45（白・lead +0.26）→ **G8**
+（natural・hp 9.4%・ΔE +1.07・price −0.78）／@75（lead +40.5・λ 2.00）→ **H2**（natural・**hp 60.4% ＞ 最善手 G1 の 27.8%**＝9段の第一感へ外す形・
+vloss 1.40・price 0.51・0.3 秒）／@67（λ 2.00）→ N5（trap・price 1.14。第一感 N9〈hp 60.5%〉は最善手自身が E 4.3 の罠で ΔE −1.60＝price 2.70 > λ）／
+@88（黒・lead −60）→ `Endgame check: unsettled=15 -> yose` → lead < reserve で最善手。プローブ 8〜9 手で 1.1 秒・2〜3 手で 0.2〜0.3 秒。

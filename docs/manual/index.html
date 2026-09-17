@@ -600,7 +600,7 @@ KaTrain の AI は「戦略」を選ぶことで棋風や強さが変わりま�
   <div class="item"><b>自分の棋力に合わせた相手が欲しい</b><span>→ <a href="#ai-rank">段級位相応</a>（15級〜3段）／置碁なら <a href="#ai-handicap">Kata置碁</a></span></div>
   <div class="item"><b>人間らしい自然な手を打つ相手が欲しい</b><span>→ <a href="#ai-human">Human-like</a>（20級〜9段の人間モデル）／昔のプロ風なら <a href="#ai-pro">Historical Pro</a></span></div>
   <div class="item"><b>戦い好きの相手と打ちたい</b><span>→ <a href="#ai-fighting">力戦派</a>（接触戦・複雑化）／<a href="#ai-hunt">狩猟戦略</a>（侵入と攻め）／<a href="#ai-siege">攻城戦略</a>（序盤に譲って中盤で大石を攻める）</span></div>
-  <div class="item"><b>AI っぽさ（最善手との一致率）を下げたい</b><span>→ <a href="#ai-diverge">AI一致率低減</a>／9路なら <a href="#ai-parity9">一致率追随（9路）</a>／狩猟の棋風で下げるなら <a href="#ai-hunt-diverge">狩猟戦略（一致率低減）</a></span></div>
+  <div class="item"><b>AI っぽさ（最善手との一致率）を下げたい</b><span>→ <a href="#ai-diverge">AI一致率低減</a>／9路なら <a href="#ai-parity9">一致率追随（9路）</a>／13路で相手より低く保つなら <a href="#ai-mimic13">擬態（13路）</a>／狩猟の棋風で下げるなら <a href="#ai-hunt-diverge">狩猟戦略（一致率低減）</a></span></div>
   <div class="item"><b>僅差で勝つ・持碁を狙う相手</b><span>→ <a href="#ai-jigo">Kata持碁</a>（13/19路）／<a href="#ai-jigo9">Kata持碁（9路）</a></span></div>
   <div class="item"><b>定跡・手筋の勉強を無効化する「難しい」相手</b><span>→ <a href="#ai-enigma">難解（9路／13路／19路）</a></span></div>
   <div class="item"><b>弱い・変わった相手（練習用）</b><span>→ <a href="#ai-scoreloss">損も混ぜて</a>／<a href="#ai-policy">第一感</a>系／<a href="#ai-local">おつきあい派</a>・<a href="#ai-tenuki">手抜き派</a>・<a href="#ai-influence">勢力派</a>・<a href="#ai-territory">実利派</a>／<a href="#ai-simple">簡明派</a></span></div>
@@ -624,6 +624,7 @@ KaTrain の AI は「戦略」を選ぶことで棋風や強さが変わりま�
     <tr><th><a href="#ai-jigo">Kata持碁</a></th><td><code>ai:jigo</code></td><td>13・19</td><td>必須</td><td>指定の目差で僅差勝ちを狙う</td></tr>
     <tr><th><a href="#ai-jigo9">Kata持碁（9路）</a></th><td><code>ai:jigo9</code></td><td>9</td><td>必須</td><td>同・9路専用</td></tr>
     <tr><th><a href="#ai-parity9">一致率追随（9路）</a></th><td><code>ai:parity9</code></td><td>9</td><td>必須</td><td>一致率を目標値まで下げつつ勝ち切る</td></tr>
+    <tr><th><a href="#ai-mimic13">擬態（13路）</a></th><td><code>ai:mimic13</code></td><td>13</td><td>必須</td><td>相手より低い一致率を保って勝つ（人間らしい外し＋罠・ヨセは9段）</td></tr>
     <tr><th><a href="#ai-enigma">難解（9路）</a></th><td><code>ai:enigma9</code></td><td>9</td><td>必須</td><td>相手が正しく応じにくい手を選ぶ</td></tr>
     <tr><th><a href="#ai-enigma">難解（13路）</a></th><td><code>ai:enigma13</code></td><td>13</td><td>必須</td><td>同・13路専用</td></tr>
     <tr><th><a href="#ai-enigma-plus">難解＋（9路）</a></th><td><code>ai:enigma9plus</code></td><td>9</td><td>必須</td><td>難解の改良版。高い帯まで罠を探し、E を買わない外しは打たない（未校正）</td></tr>
@@ -1130,6 +1131,43 @@ KaTrain の AI は「戦略」を選ぶことで棋風や強さが変わりま�
   <div class="callout">
     <span class="label">一致率は局面の余裕に比例します</span>
     圧勝している対局では 40% 台まで下がり、接戦では 70% 台に上がります。これは「必ず勝つ」を最優先している設計どおりの挙動です。一致率を対局によらず一定にすることは「必ず勝つ」と両立しません。
+  </div>
+</div>
+
+<div class="card" id="ai-mimic13">
+  <h3>擬態（13路） <code>ai:mimic13</code></h3>
+  <div class="tags"><span class="tag ok">13路専用</span><span class="tag no">9/19路では最善手のみ</span><span class="tag hs">humanSL 必須</span></div>
+  <p>
+    13路盤で、<b>相手より低い最善手一致率を保ったまま勝つ</b>ことを狙います。わざと外しているとバレないよう、外す先は「9段が実際に打ちそうな手」か「相手を騙す罠」に限ります。
+  </p>
+  <ol>
+    <li><b>9段の第一感が最善手に集中している局面</b>（humanPolicy が <code>mimic13_dominant_hp</code> 以上）は最善手。ここで外すと露骨なため、罠も打ちません。</li>
+    <li>それ以外は候補を子局面まで読み、<b>不一致 1 回の値段</b>＝「検証済み損失 −（相手の期待損失 E の上積み）」を出します。値段が負の手は<b>期待値プラスの罠</b>で、相手の悪手を誘って外しの原資を作ります。</li>
+    <li>払える上限はリード連動: 余剰（リード − <code>mimic13_reserve</code>）が無ければ <code>mimic13_free_loss</code> まで、あれば余剰 × <code>mimic13_spend_rate</code>（天井 <code>mimic13_max_loss</code>）。1 目以上負けているときは値段が負の手しか打ちません。</li>
+    <li>上限内で<b>最も安い手</b>を選び、<code>mimic13_cost_slack</code> 以内で並ぶ手があれば最も人間らしい手にします。資格は「人間らしい手」（humanPolicy が下限以上）か「罠」（E の上積みが <code>mimic13_trap_min_delta_e</code> 以上）。</li>
+    <li>ヨセ（<code>mimic13_endgame_move</code> 手以降かつ未確定点が <code>mimic13_unsettled_max</code> 以下）は Human-like 9段へ委譲。リードが確保ラインを割った手番だけ最善手で勝ちを守ります。</li>
+  </ol>
+  <div class="tablewrap"><table class="params">
+    <thead><tr><th>設定項目</th><th>既定</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
+    <tbody>
+      <tr><td>mimic13_max_loss</td><td>2.0</td><td>0.5〜5.0</td><td>1 手の損失上限（目）。</td><td><span class="up">上げる</span>大差のとき外せる手番が増えるが、外しが目立つ</td></tr>
+      <tr><td>mimic13_reserve</td><td>3.0</td><td>0〜10</td><td>確保するリード（目）。これを超えた分だけを外しに使う。ヨセの 9段委譲の条件でもある。</td><td><span class="up">上げる</span>安全だが一致率が下がりにくい</td></tr>
+      <tr><td>mimic13_spend_rate</td><td>0.25</td><td>0.1〜1.0</td><td>1 手で余剰の何割まで払うか。</td><td><span class="up">上げる</span>早く使い切る</td></tr>
+      <tr><td>mimic13_free_loss</td><td>0.3</td><td>0〜0.5</td><td>余剰が無くても払う「タダ同然」の値段（目）。</td><td>0 で接戦の外しは期待値プラスの罠だけに</td></tr>
+      <tr><td>mimic13_min_winrate</td><td>40%</td><td>30〜50%</td><td>着手後の勝率フロア。</td><td><span class="up">上げる</span>互角の局面で罠を打たなくなる</td></tr>
+      <tr><td>mimic13_dominant_hp</td><td>80%</td><td>60〜95%</td><td>最善手の第一感がこれ以上なら外さない。</td><td><span class="down">下げる</span>より慎重（一致率は上がる）</td></tr>
+      <tr><td>mimic13_min_human_policy</td><td>5%</td><td>1〜10%</td><td>人間らしい外しの humanPolicy 下限。</td><td><span class="down">下げる</span>外せる手番が増えるが珍しい手が混ざる</td></tr>
+      <tr><td>mimic13_natural_ratio</td><td>0.2</td><td>0.1〜0.5</td><td>同じ下限を第一感トップとの比でも課す。</td><td><span class="up">上げる</span>第一感の強い局面で外さなくなる</td></tr>
+      <tr><td>mimic13_trap_min_delta_e</td><td>0.5</td><td>0.3〜1.5／OFF</td><td>罠とみなす E の上積み（目）。罠は人間らしさの条件を免除。</td><td>OFF で人間らしい手しか打たない</td></tr>
+      <tr><td>mimic13_cost_slack</td><td>0.3</td><td>0〜1.0</td><td>値段の同値帯。帯の中は最も人間らしい手。</td><td>0 で常に最安</td></tr>
+      <tr><td>mimic13_probe_extra</td><td>4</td><td>0〜6</td><td>罠探索のために損失の高い帯から足すプローブ数。</td><td><span class="down">下げる</span>1 手が速くなる</td></tr>
+      <tr><td>mimic13_endgame_move</td><td>85</td><td>65〜105</td><td>ヨセ判定の手数側の条件。</td><td>85 未満にすると、その間の 9段は候補から確率で選ぶ（ブレが出る）</td></tr>
+      <tr><td>mimic13_unsettled_max</td><td>16</td><td>8〜24</td><td>ヨセ判定の未確定点上限。手数条件との AND。</td><td><span class="up">上げる</span>早くヨセ扱いに</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout">
+    <span class="label">一致率は相手次第です</span>
+    相手が悪手を打つほど余剰ができて外せます。強い相手との接戦では「タダ同然の外し」と「期待値プラスの罠」しか打たないので一致率は高めに残ります（勝ちを優先する設計どおり）。
   </div>
 </div>
 
