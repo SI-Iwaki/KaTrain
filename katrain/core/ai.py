@@ -3545,6 +3545,12 @@ class Enigma9Strategy(AIStrategy):
             # 調べない。窓の中だけ難解＋と同じ spread で高い帯まで見る（難解＋で probe_extra >= 4 なら
             # ここには来ない。pool が小さければ spread も全候補を返すだけ）
             shortlist = enigma9_shortlist_spread(pool, ENIGMA9_SHORTLIST - 1, ENIGMA9_GAMBLE_PROBE_EXTRA)
+            g_added = shortlist[ENIGMA9_SHORTLIST - 1 :]
+            if g_added:
+                self._log(
+                    f"Gamble: probe spread +{len(g_added)} "
+                    f"{[(c['gtp'], round(c['loss'], 2)) for c in g_added]}"
+                )
 
         # ---- 子局面プローブ + 親局面 humanSL（自手の意外さ用）を1バッチで並列発行 ----
         # 親 humanSL を逐次で待ってからプローブを発行する旧形は、humanPolicy が
