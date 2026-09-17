@@ -56,6 +56,7 @@
 | `2026-08-06-parity9-strategy-design.md` | 🟢 一致率追随（9路）`ai:parity9` |
 | `2026-08-10-enigma9-strategy-design.md` | 🟢 難解 `ai:enigma9` / `enigma13` / `enigma19`（追記2=13路・追記4=19路・追記5=持碁狙い・追記12〜12-3=難解＋ `enigma{9,13,19}plus`＝ΔE 床＋罠探索の拡張・13路実対局で E/手 1.37→1.97） |
 | `2026-08-25-enigma-locality-design.md` | 🟢 難解 13/19路の局所性オプション（own_rare の局所化＋同点帯タイブレーク・実装済み・13路実測あり（推奨 σ3・既定 OFF）・19路未校正） |
+| `2026-09-17-enigma-gamble-design.md` | 🟢 難解 / 難解＋の序盤の賭け罠オプション（窓の中で ΔE・応手の見つけにくさ・勝率フロアの資格がある罠を net 比較を飛ばして打つ・既定 OFF）。ログ 18 局の再集計で「応じ損ねたら優勢」の在庫はほぼゼロと確認したうえでの緩和版・**実戦校正は未実施** |
 | `2026-09-17-mimic13-strategy-design.md` | 🟢 擬態（13路）`ai:mimic13`＝相手より低い一致率で勝つ。price = vloss − ΔE をリード連動の λ で買う・自然さ（humanPolicy）か罠（ΔE）の資格・ヨセは 9段委譲・**実戦校正は未実施** |
 | `2026-05-23-maze-strategy-9x9-design.md` | ⛔ **未実装**（`MazeStrategy` はコードに無い） |
 | `2026-05-24-ko-strategy-design.md` | ⛔ **未実装**（`KoStrategy` はコードに無い） |
