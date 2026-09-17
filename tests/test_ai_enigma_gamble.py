@@ -8,9 +8,26 @@ from katrain.core.ai import (
     ENIGMA9_GAMBLE_MAX_FIND,
     ENIGMA9_GAMBLE_PROBE_EXTRA,
     ENIGMA9_HP_BOOK,
+    Enigma9PlusStrategy,
+    Enigma9Strategy,
+    Enigma13PlusStrategy,
+    Enigma13Strategy,
+    Enigma19PlusStrategy,
+    Enigma19Strategy,
+    Mimic13Strategy,
     enigma9_gamble_pick,
     enigma9_gamble_window,
 )
+from katrain.core.constants import AI_OPTION_VALUES
+
+ALL_ENIGMA = [
+    Enigma9Strategy,
+    Enigma9PlusStrategy,
+    Enigma13Strategy,
+    Enigma13PlusStrategy,
+    Enigma19Strategy,
+    Enigma19PlusStrategy,
+]
 
 
 def entry(gtp, e, loss, wr, find=0.05):
@@ -95,3 +112,22 @@ class TestGamblePick:
         trap = entry("G7", 0.90, 1.0, 0.40)
         enigma9_gamble_pick([BEST, trap], "D4", 0.35, 0.5)
         assert "u" not in trap and "d_e" not in trap
+
+
+class TestGambleSettings:
+    @pytest.mark.parametrize("cls", ALL_ENIGMA, ids=lambda c: c.KEY_PREFIX)
+    def test_defaults_are_off_with_35_percent_floor(self, cls):
+        assert cls.SETTING_DEFAULTS["gamble_until_move"] == 0
+        assert cls.SETTING_DEFAULTS["gamble_min_winrate"] == 0.35
+        assert cls.SETTING_DEFAULTS["gamble_min_delta_e"] == 0.5
+
+    @pytest.mark.parametrize("cls", ALL_ENIGMA, ids=lambda c: c.KEY_PREFIX)
+    def test_off_value_and_recommended_window_are_gui_options(self, cls):
+        key = f"{cls.KEY_PREFIX}_gamble_until_move"
+        values = [v[0] if isinstance(v, tuple) else v for v in AI_OPTION_VALUES[key]]
+        assert values[0] == 0
+        recommended = {9: 16, 13: 35, 19: 75}[cls.BOARD_LEN]
+        assert recommended in values
+
+    def test_mimic13_is_untouched(self):
+        assert not any(k.startswith("gamble") for k in Mimic13Strategy.SETTING_DEFAULTS)

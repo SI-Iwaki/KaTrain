@@ -2819,6 +2819,9 @@ class Enigma9Strategy(AIStrategy):
         "opening_humanstyle_moves": 0,   # 序盤 N 手を HumanStyle 9段で打つ（0=OFF）
         "locality_stddev": ENIGMA9_LOCALITY_STDDEV,   # 局所性 σ（0=OFF）。spec 2026-08-25-enigma-locality-design.md
         "locality_slack": ENIGMA9_LOCALITY_SLACK,    # 同点帯の幅（目相当）
+        "gamble_until_move": 0,          # 序盤の賭け罠の窓（手数未満で発動・0=OFF）。spec 2026-09-17-enigma-gamble-design.md
+        "gamble_min_winrate": 0.35,      # 賭け罠: 正しく応じられた場合の勝率の下限
+        "gamble_min_delta_e": 0.5,       # 賭け罠: 罠とみなす E の上積み（目）
     }
 
     def _setting(self, suffix):
@@ -3665,6 +3668,9 @@ class Enigma13Strategy(Enigma9Strategy):
         "opening_humanstyle_moves": 20,   # 序盤 N 手を HumanStyle 9段で打つ（0=OFF）
         "locality_stddev": ENIGMA9_LOCALITY_STDDEV,   # 局所性 σ（0=OFF）。spec 2026-08-25-enigma-locality-design.md
         "locality_slack": ENIGMA9_LOCALITY_SLACK,    # 同点帯の幅（目相当）
+        "gamble_until_move": 0,          # 序盤の賭け罠の窓（手数未満で発動・0=OFF）。spec 2026-09-17-enigma-gamble-design.md
+        "gamble_min_winrate": 0.35,      # 賭け罠: 正しく応じられた場合の勝率の下限
+        "gamble_min_delta_e": 0.5,       # 賭け罠: 罠とみなす E の上積み（目）
     }
 
 
@@ -3794,6 +3800,9 @@ class Enigma19Strategy(Enigma9Strategy):
         "opening_humanstyle_moves": 20,   # 序盤 N 手を HumanStyle 9段で打つ（0=OFF）
         "locality_stddev": ENIGMA9_LOCALITY_STDDEV,   # 局所性 σ（0=OFF）。spec 2026-08-25-enigma-locality-design.md
         "locality_slack": ENIGMA9_LOCALITY_SLACK,    # 同点帯の幅（目相当）
+        "gamble_until_move": 0,          # 序盤の賭け罠の窓（手数未満で発動・0=OFF）。spec 2026-09-17-enigma-gamble-design.md
+        "gamble_min_winrate": 0.35,      # 賭け罠: 正しく応じられた場合の勝率の下限
+        "gamble_min_delta_e": 0.5,       # 賭け罠: 罠とみなす E の上積み（目）
     }
 
 
