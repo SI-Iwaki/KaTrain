@@ -3748,6 +3748,97 @@ class Enigma19PlusStrategy(EnigmaPlusMixin, Enigma19Strategy):
     SETTING_DEFAULTS = {**Enigma19Strategy.SETTING_DEFAULTS, **EnigmaPlusMixin.PLUS_DEFAULTS}
 
 
+# ===== 「擬態」戦略 ai:mimic13（13路）の純関数群 =====
+# 設計: docs/superpowers/specs/2026-09-17-mimic13-strategy-design.md
+#
+# 目的は「相手より低い AI 最善手一致率を保ったまま勝つ」。不一致1回の値段を
+#   price(c) = max(0, vloss(c)) - (E(c) - E(best))
+# （検証済み損失 − 相手の期待損失の上積み。難解の net から rarity 項を外したものと同値）で測り、
+# リード連動の支払い上限 λ（mimic_price_cap）の内側で、人間らしい手（humanPolicy）か罠（ΔE）の
+# 資格を持つ最安の手へ外す。プローブ条件・E の定義は難解（ENIGMA9_* / enigma9_*）を共有する。
+
+MIMIC_BEHIND_LIMIT = -1.0      # lead がこれ未満なら λ=0（期待値プラスの手だけ）。13路 komi 込みの黒の開始時 lead は僅かに負なので 0 にしない
+MIMIC_TRAP_MIN_HP = 0.005      # 罠でも要求する humanPolicy 下限（NN 下限に張り付いた手を除く・jigo の MIN_HP_HARD_FLOOR と同値）
+MIMIC_SHORTLIST_NATURAL = 4    # 子局面プローブに回す「自然な候補」（hp 降順）
+MIMIC_SHORTLIST_CHEAP = 4      # 同「安い順」（これに probe_extra 手の spread が足される）
+
+
+def mimic_price_cap(lead, reserve, spend_rate, free_loss, max_loss, behind_limit=MIMIC_BEHIND_LIMIT):
+    """不一致1回に払ってよい price の上限 λ（目）。lead が取れなければ None（呼び出し側は最善手）。
+
+    lead は打つ側視点の目差。surplus = lead - reserve が「ヨセを 9段に任せても勝ち切るための
+    確保リード」を超えた余剰で、1手に払うのはその spend_rate 倍まで（天井 max_loss）。余剰が無くても
+    free_loss（タダ同然）までは払う。lead < behind_limit では 0＝price <= 0（期待値プラスの罠）しか通らない。
+    """
+    if lead is None:
+        return None
+    if lead < behind_limit:
+        return 0.0
+    surplus = lead - reserve
+    if surplus <= 0:
+        return min(free_loss, max_loss)
+    return min(max_loss, max(free_loss, surplus * spend_rate))
+
+
+def mimic_hp_top(human_policy, board_size):
+    """盤上全点の humanPolicy 最大値（pass 除く・非合法点の -1 は 0 扱い）。"""
+    bx, by = board_size
+    return max([0.0] + [v for v in human_policy[: bx * by] if v is not None])
+
+
+def mimic_natural_floor(hp_top, min_hp, ratio):
+    """「人間らしい外し」に要求する humanPolicy 下限＝絶対値 min_hp と第一感トップ比 ratio の大きいほう。
+
+    第一感が1点に集中した局面（hp_top 0.9）では相対側 0.18 が効いて代替手が消え、分散した局面
+    （hp_top 0.1）では絶対側が効く＝「有力候補が1つしかないのに外す」を構造的に防ぐ。
+    """
+    return max(min_hp, ratio * max(0.0, hp_top))
+
+
+def mimic_shortlist(pool, hp_of, floor, k_natural=MIMIC_SHORTLIST_NATURAL, k_cheap=MIMIC_SHORTLIST_CHEAP, extra=0):
+    """子局面プローブに回す挑戦者: 自然な候補を hp 降順に k_natural 手 ＋ 残りから安い順 k_cheap 手 ＋ spread extra 手。
+
+    難解の shortlist は「安い順」だけなので、9段の第一感だが 1 目前後損な手が漏れる。擬態の主役は
+    その手なので hp 上位を先に確保し、残り枠は難解＋と同じ規則（`enigma9_shortlist_spread`）で罠を探す。
+    pool は `enigma9_admissible` の出力（{"gtp","loss","visits","wr"}）。
+    """
+    naturals = sorted(
+        [c for c in pool if hp_of(c["gtp"]) >= floor],
+        key=lambda c: (-hp_of(c["gtp"]), c["loss"]),
+    )[: max(0, int(k_natural))]
+    taken = {c["gtp"] for c in naturals}
+    rest = [c for c in pool if c["gtp"] not in taken]
+    return naturals + enigma9_shortlist_spread(rest, int(k_cheap), int(extra))
+
+
+def mimic_qualifies(hp, delta_e, floor, trap_min_delta_e, trap_min_hp=MIMIC_TRAP_MIN_HP):
+    """外し候補の資格: "natural"（人間らしい）/ "trap"（相手を騙す手＝人間らしさ免除）/ None。"""
+    if hp >= floor:
+        return "natural"
+    if delta_e >= trap_min_delta_e and hp >= trap_min_hp:
+        return "trap"
+    return None
+
+
+def mimic_choose(scored, best_gtp, lam, slack):
+    """資格あり・price <= λ の非最善手から price 最小を選ぶ。最小から slack 以内の帯は humanPolicy 最大。
+
+    scored: [{"gtp","price","own_hp","kind", ...}]。該当なしは None（呼び出し側は最善手）。
+    帯の全員が price <= λ を満たす（帯は eligible の部分集合）ので、人間らしさのために λ を超えて払うことはない。
+    """
+    eligible = [c for c in scored if c["gtp"] != best_gtp and c.get("kind") and c["price"] <= lam]
+    if not eligible:
+        return None
+    cheapest = min(c["price"] for c in eligible)
+    band = [c for c in eligible if c["price"] <= cheapest + slack]
+    return max(band, key=lambda c: (c["own_hp"], -c["price"]))
+
+
+def mimic_yose_delegates(lead, reserve):
+    """ヨセを HumanStyle 9段へ任せてよいか（確保リードを持っている手番だけ。未満は最善手で勝ちを守る）。"""
+    return lead is not None and lead >= reserve
+
+
 @register_strategy(AI_SCORELOSS)
 class ScoreLossStrategy(AIStrategy):
     """ScoreLoss strategy - weights moves based on point loss"""
