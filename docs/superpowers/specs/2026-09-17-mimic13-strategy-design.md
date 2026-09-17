@@ -68,7 +68,7 @@ hp 閾値の感度は小さい（(0.03, 0.15)〜(0.10, 0.25) で「自然な手�
 - `vloss(c)` = 最善手の子局面 root との scoreLead 差（検証済み損失・`enigma9_verified_metrics`）
 - `E(c)` = humanSL 9d の応手分布で重みづけた相手の期待損失（`enigma9_expected_punish`。
   実戦で較正済み＝実損失 ≈ 1.06×E・enigma spec 追記12）
-- **`price(c) = vloss(c) − (E(c) − E(best))`**
+- **`price(c) = max(0, vloss(c)) − (E(c) − E(best))`**（検証値の負の vloss は ±0.3 のノイズなので 0 にクランプ）
 
 price は「この手で不一致を1つ買うと、最善手を打つより期待値で何目損か」。負なら罠として
 **期待値プラス＝予算を作る手**（要件5）、正なら余剰リードから払う代金（要件1）。
