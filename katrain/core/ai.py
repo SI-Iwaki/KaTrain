@@ -3166,57 +3166,11 @@ class Enigma9Strategy(AIStrategy):
                 f"[{type(self).__name__}] ponder error: {e!r}", OUTPUT_DEBUG
             )
 
-    def generate_move(self) -> Tuple[Move, str]:
-        # per-move 時間の常時ログ（tsumego と同形式）。体感時間はこれに
-        # 直前の通常解析（GUI 側の待ち）が乗る
-        started = time.time()
-        try:
-            return self._generate_move()
-        finally:
-            self.game.katrain.log(
-                f"[{type(self).__name__}] 着手決定に {time.time() - started:.1f} 秒", OUTPUT_INFO
-            )
+    def _terminal_band_move(self, cands, player):
+        """終局帯（ゲート1b）の処理。該当すれば (Move, 理由)、しなければ None（通常の選択へ進む）。
 
-    def _generate_move(self) -> Tuple[Move, str]:
-        self._cancel_ponder()  # 前手番の先読みの残骸を最初に打ち切る
-        self.wait_for_analysis()
-        player = self.cn.next_player
-        sign = 1 if player == "B" else -1
-        opponent = "W" if player == "B" else "B"
-
-        # ---- ゲート1: 対応盤サイズ専用（9路版=9 / 13路版=13） ----
-        side = self.BOARD_LEN
-        if max(self.game.board_size) != side:
-            self.game.katrain.log(
-                f"[{type(self).__name__}] board size {self.game.board_size} is not {side}x{side}; "
-                f"this mode is {side}x{side}-only, playing KataGo best move",
-                OUTPUT_INFO,
-            )
-            return self._best_move(f"{self.LABEL}: not a {side}x{side} board, playing best move.")
-
-        # ---- ゲート1a: 序盤の HumanStyle 9段委譲（`<prefix>_opening_humanstyle_moves`・0=OFF） ----
-        # 対局の手数がスライダー値未満の手番は難解さの選択に入らず、素の 9 段（rank_9d・
-        # modern_style）として打つ＝jigo のヨセ委譲 `jigo_endgame_humanstyle` の鏡像。序盤は
-        # E≈0 の帯で own_rare（自手の珍しさ）だけが順位を決め、hp<0.025 の点へ外しても相手の
-        # 実損失は 0.17 目（実測 2026-09-03・13路 29 局）＝騙せていないのに「珍しい手」だけが
-        # 残るので、13/19 路は既定 20 手まで丸ごと 9 段に任せる（9路は既定 OFF）。
-        # この手番では先読み（ponder）を起動しない＝残骸は冒頭の `_cancel_ponder` が従来どおり
-        # 掃除する。手数以上の手番は解析条件・採用判断ともビット同一
-        opening_moves = self._setting("opening_humanstyle_moves")
-        if enigma9_opening_handoff(self.cn.depth, opening_moves):
-            self._log(f"Opening handoff: move={self.cn.depth} < thr={int(opening_moves)} -> HumanStyle rank_9d")
-            delegate = HumanStyleStrategy(self.game, {"human_kyu_rank": -8, "modern_style": True})
-            move, thoughts = delegate.generate_move()
-            return move, f"[{self.LABEL}→9d opening] {thoughts}"
-
-        cands = self.cn.candidate_moves
-        if not cands:
-            return self._best_move(f"{self.LABEL}: no candidate moves.")
-        best_gtp = cands[0]["move"]
-        if best_gtp == "pass":
-            # パスが最善＝終局処理。ダメ詰め・終局判定はエンジンに委ねる
-            return self._best_move(f"{self.LABEL}: best move is pass, playing it.")
-
+        `_generate_move` から機械的に抽出した（挙動不変）。擬態（13路）`Mimic13Strategy` と共有する。
+        """
         # ---- ゲート1b: 終局帯（pass が margin 未満の損失で候補に居る＝盤上に margin 以上の
         # 手が無い）では難解さの選択をしない ----
         # area scoring では終局後も自陣埋めが 0 目損で候補に並び、KataGo の最善手が pass に
@@ -3298,6 +3252,63 @@ class Enigma9Strategy(AIStrategy):
                 f"KataGo candidate -> best move"
             )
             return self._best_move(f"{self.LABEL}: game is nearly over, playing best move (no deviation).")
+        return None
+
+    def generate_move(self) -> Tuple[Move, str]:
+        # per-move 時間の常時ログ（tsumego と同形式）。体感時間はこれに
+        # 直前の通常解析（GUI 側の待ち）が乗る
+        started = time.time()
+        try:
+            return self._generate_move()
+        finally:
+            self.game.katrain.log(
+                f"[{type(self).__name__}] 着手決定に {time.time() - started:.1f} 秒", OUTPUT_INFO
+            )
+
+    def _generate_move(self) -> Tuple[Move, str]:
+        self._cancel_ponder()  # 前手番の先読みの残骸を最初に打ち切る
+        self.wait_for_analysis()
+        player = self.cn.next_player
+        sign = 1 if player == "B" else -1
+        opponent = "W" if player == "B" else "B"
+
+        # ---- ゲート1: 対応盤サイズ専用（9路版=9 / 13路版=13） ----
+        side = self.BOARD_LEN
+        if max(self.game.board_size) != side:
+            self.game.katrain.log(
+                f"[{type(self).__name__}] board size {self.game.board_size} is not {side}x{side}; "
+                f"this mode is {side}x{side}-only, playing KataGo best move",
+                OUTPUT_INFO,
+            )
+            return self._best_move(f"{self.LABEL}: not a {side}x{side} board, playing best move.")
+
+        # ---- ゲート1a: 序盤の HumanStyle 9段委譲（`<prefix>_opening_humanstyle_moves`・0=OFF） ----
+        # 対局の手数がスライダー値未満の手番は難解さの選択に入らず、素の 9 段（rank_9d・
+        # modern_style）として打つ＝jigo のヨセ委譲 `jigo_endgame_humanstyle` の鏡像。序盤は
+        # E≈0 の帯で own_rare（自手の珍しさ）だけが順位を決め、hp<0.025 の点へ外しても相手の
+        # 実損失は 0.17 目（実測 2026-09-03・13路 29 局）＝騙せていないのに「珍しい手」だけが
+        # 残るので、13/19 路は既定 20 手まで丸ごと 9 段に任せる（9路は既定 OFF）。
+        # この手番では先読み（ponder）を起動しない＝残骸は冒頭の `_cancel_ponder` が従来どおり
+        # 掃除する。手数以上の手番は解析条件・採用判断ともビット同一
+        opening_moves = self._setting("opening_humanstyle_moves")
+        if enigma9_opening_handoff(self.cn.depth, opening_moves):
+            self._log(f"Opening handoff: move={self.cn.depth} < thr={int(opening_moves)} -> HumanStyle rank_9d")
+            delegate = HumanStyleStrategy(self.game, {"human_kyu_rank": -8, "modern_style": True})
+            move, thoughts = delegate.generate_move()
+            return move, f"[{self.LABEL}→9d opening] {thoughts}"
+
+        cands = self.cn.candidate_moves
+        if not cands:
+            return self._best_move(f"{self.LABEL}: no candidate moves.")
+        best_gtp = cands[0]["move"]
+        if best_gtp == "pass":
+            # パスが最善＝終局処理。ダメ詰め・終局判定はエンジンに委ねる
+            return self._best_move(f"{self.LABEL}: best move is pass, playing it.")
+
+        # ---- ゲート1b: 終局帯（`_terminal_band_move`・擬態13路と共有）----
+        terminal = self._terminal_band_move(cands, player)
+        if terminal is not None:
+            return terminal
 
         max_loss = float(self._setting("max_loss"))
         large_cap = float(self._setting("large_lead_max_loss"))
