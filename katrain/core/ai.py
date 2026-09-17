@@ -3497,6 +3497,14 @@ class Enigma9Strategy(AIStrategy):
                         f"{target:.1f}), playing best move."
                     )
 
+        # ---- 序盤の賭け罠（gamble）の窓（spec 2026-09-17-enigma-gamble-design.md）----
+        # ヨセ前 × 消費モードでない（余剰リードが max_loss 以下＝互角〜小差）× 手数が窓の中。
+        # until_move 0（既定）= OFF＝以降の分岐はすべて従来どおり（ビット同一）。cap は動かさない
+        gamble_until = int(self._setting("gamble_until_move") or 0)
+        gamble_on = (
+            not in_yose and cost_weight >= 1.0 and enigma9_gamble_window(self.cn.depth, gamble_until)
+        )
+
         # ヨセでは「自手の意外さ」を net から外す（`enigma9_own_rarity_weight`）
         w_own = enigma9_own_rarity_weight(in_yose)
 
@@ -3532,6 +3540,11 @@ class Enigma9Strategy(AIStrategy):
                 f"{self.LABEL}: no admissible deviation (cap {cap:.2f}), playing best move."
             )
         shortlist = self._shortlist(pool)
+        if gamble_on and len(shortlist) < ENIGMA9_SHORTLIST - 1 + ENIGMA9_GAMBLE_PROBE_EXTRA:
+            # 基底の shortlist は安い順 7 手＝互角の序盤では賭け罠の帯（vloss 0.6〜cap）を一度も
+            # 調べない。窓の中だけ難解＋と同じ spread で高い帯まで見る（難解＋で probe_extra >= 4 なら
+            # ここには来ない。pool が小さければ spread も全候補を返すだけ）
+            shortlist = enigma9_shortlist_spread(pool, ENIGMA9_SHORTLIST - 1, ENIGMA9_GAMBLE_PROBE_EXTRA)
 
         # ---- 子局面プローブ + 親局面 humanSL（自手の意外さ用）を1バッチで並列発行 ----
         # 親 humanSL を逐次で待ってからプローブを発行する旧形は、humanPolicy が
@@ -3604,6 +3617,32 @@ class Enigma9Strategy(AIStrategy):
                 f"E={e_punish:.2f} cov={coverage:.2f} find_hp={findability:.3f} "
                 f"own_hp={own_hp:.3f} (w_own={w_own:.1f}) prox={prox:.2f} reply={best_reply} net={net:.2f}"
             )
+
+        if gamble_on:
+            # 賭け罠: 資格（勝率フロア・ΔE・応手の見つけにくさ）のある挑戦者が居れば、net 比較・
+            # net_margin・局所性の同点帯・難解＋の ΔE 床を通さずに打つ（`enigma9_gamble_pick`）
+            g_floor = float(self._setting("gamble_min_winrate"))
+            g_min_de = float(self._setting("gamble_min_delta_e"))
+            g_pick, g_quals = enigma9_gamble_pick(scored, best_gtp, g_floor, g_min_de)
+            self._log(
+                f"Gamble: window depth={self.cn.depth} < {gamble_until} floor={g_floor:.0%} "
+                f"min_dE={g_min_de:.2f} qualifiers="
+                f"{[(c['gtp'], round(c['d_e'], 2), round(c['loss'], 2), round(c['wr_after'], 3)) for c in g_quals]}"
+            )
+            if g_pick is not None:
+                self._log(
+                    f"Gamble: played {g_pick['gtp']} (dE={g_pick['d_e']:+.2f}, vloss={g_pick['loss']:.2f}, "
+                    f"wr={g_pick['wr_after']:.1%}, find_hp={g_pick['find']:.3f}, u={g_pick['u']:.2f}) "
+                    f"instead of {best_gtp}"
+                )
+                self._start_ponder(g_pick["gtp"], probes.get(g_pick["gtp"]), player)
+                return (
+                    Move.from_gtp(g_pick["gtp"], player=player),
+                    f"{self.LABEL}: gamble trap {g_pick['gtp']} (verified loss {g_pick['loss']:.2f}, "
+                    f"expected punish {g_pick['e']:.2f} = +{g_pick['d_e']:.2f} over best, "
+                    f"reply findability {g_pick['find']:.1%}, "
+                    f"wr if answered correctly {g_pick['wr_after']:.1%}) instead of {best_gtp}.",
+                )
 
         scored, _dropped = self._filter_challengers(scored, best_gtp)
         chosen, band = enigma9_choose_local(scored, best_gtp, margin, loc_slack, loc_stddev)
