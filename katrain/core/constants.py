@@ -97,6 +97,10 @@ AI_ENIGMA_13_PLUS = "ai:enigma13plus"
 # 既定値は 13路の実測を流用・未校正。spec 追記12-3）
 AI_ENIGMA_9_PLUS = "ai:enigma9plus"
 AI_ENIGMA_19_PLUS = "ai:enigma19plus"
+# 13路専用「擬態」戦略。相手より低い AI 最善手一致率を保ったまま勝つ＝リード連動の支払い上限の内側で
+# 人間らしい非最善手か期待値プラスの罠へ外し、ヨセは HumanStyle 9段へ委譲する
+# （ai.py の Mimic13Strategy・spec 2026-09-17-mimic13-strategy-design.md）
+AI_MIMIC_13 = "ai:mimic13"
 
 AI_CONFIG_DEFAULT = AI_RANK
 

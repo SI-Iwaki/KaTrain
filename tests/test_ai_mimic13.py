@@ -8,10 +8,13 @@ import types
 
 import pytest
 
+import katrain.core.ai as ai_module
 from katrain.core.ai import (
     MIMIC_BEHIND_LIMIT,
     MIMIC_TRAP_MIN_HP,
     Enigma9Strategy,
+    Enigma13Strategy,
+    Mimic13Strategy,
     mimic_choose,
     mimic_hp_top,
     mimic_natural_floor,
@@ -20,6 +23,7 @@ from katrain.core.ai import (
     mimic_shortlist,
     mimic_yose_delegates,
 )
+from katrain.core.sgf_parser import Move
 
 
 def _node(**kw):
@@ -176,3 +180,228 @@ class TestYoseDelegates:
         assert mimic_yose_delegates(3.0, 3.0) is True
         assert mimic_yose_delegates(2.99, 3.0) is False
         assert mimic_yose_delegates(None, 3.0) is False
+
+
+def _hp_array(size, values):
+    """{gtp: hp} → KataGo の humanPolicy フラット配列（末尾 pass）"""
+    arr = [0.0] * (size * size + 1)
+    for gtp, v in values.items():
+        if gtp == "pass":
+            arr[-1] = v
+            continue
+        x, y = Move.from_gtp(gtp).coords
+        arr[(size - 1 - y) * size + x] = v
+    return arr
+
+
+def _child(lead_black, replies, reply_hp):
+    """子局面プローブの疑似レスポンス。replies: [(gtp, scoreLead 黒視点, visits)]・reply_hp: {gtp: hp}"""
+    clean = {
+        "rootInfo": {"scoreLead": lead_black, "winrate": 0.6},
+        "moveInfos": [{"move": g, "scoreLead": s, "visits": v} for g, s, v in replies],
+    }
+    return {"clean": clean, "hp": {"humanPolicy": _hp_array(13, reply_hp)}}
+
+
+class TestStrategyClass:
+    def test_registered_as_a_13x13_enigma_subclass(self):
+        from katrain.core.ai import STRATEGY_REGISTRY
+        from katrain.core.constants import AI_MIMIC_13
+
+        assert AI_MIMIC_13 == "ai:mimic13"
+        assert STRATEGY_REGISTRY[AI_MIMIC_13] is Mimic13Strategy
+        assert issubclass(Mimic13Strategy, Enigma13Strategy)
+        assert (Mimic13Strategy.BOARD_LEN, Mimic13Strategy.KEY_PREFIX, Mimic13Strategy.LABEL) == (
+            13,
+            "mimic13",
+            "Mimic13",
+        )
+
+    def test_defaults_match_the_spec(self):
+        assert Mimic13Strategy.SETTING_DEFAULTS == {
+            "max_loss": 2.0,
+            "reserve": 3.0,
+            "spend_rate": 0.25,
+            "free_loss": 0.3,
+            "min_winrate": 0.4,
+            "dominant_hp": 0.8,
+            "min_human_policy": 0.05,
+            "natural_ratio": 0.2,
+            "trap_min_delta_e": 0.5,
+            "cost_slack": 0.3,
+            "probe_extra": 4,
+            "endgame_move": 85,
+            "unsettled_max": 16,
+        }
+
+    def test_base_flow_is_untouched(self):
+        assert Enigma13Strategy._generate_move is not Mimic13Strategy._generate_move
+        assert Mimic13Strategy.generate_move is Enigma13Strategy.generate_move  # 時間ログのラッパーは共有
+
+
+class _Harness:
+    """_generate_move の通しテスト用スタブ（エンジンなし）。黒番・13路・最善手 G7。
+    名前が Test で始まらないので pytest には収集されない（継承した側だけが走る）。"""
+
+    CANDS = [
+        {"move": "G7", "pointsLost": 0.0, "relativePointsLost": 0.0, "visits": 600, "winrate": 0.62},
+        {"move": "D4", "pointsLost": 0.4, "relativePointsLost": 0.4, "visits": 200, "winrate": 0.60},
+        {"move": "K10", "pointsLost": 1.2, "relativePointsLost": 1.2, "visits": 40, "winrate": 0.57},
+        {"move": "A1", "pointsLost": 9.0, "relativePointsLost": 9.0, "visits": 3, "winrate": 0.2},
+    ]
+
+    def _strategy(self, *, lead=8.0, depth=30, hp=None, probes=None, settings=None, ownership=None, **game_attrs):
+        logs = []
+        katrain_ns = types.SimpleNamespace(log=lambda msg, *a, **k: logs.append(str(msg)))
+        node = types.SimpleNamespace(
+            next_player="B",
+            player="W",
+            depth=depth,
+            move=None,
+            analysis_complete=True,
+            analysis={"root": {"scoreLead": lead}},
+            candidate_moves=[dict(c) for c in self.CANDS],
+            nodes_from_root=[],
+        )
+        game = types.SimpleNamespace(katrain=katrain_ns, current_node=node, board_size=(13, 13), **game_attrs)
+        s = Mimic13Strategy(game, settings or {})
+        s.queries, s.probe_calls = [], []
+
+        def run_query(label, **kw):
+            s.queries.append(label)
+            if label == "HumanSL":
+                return None if hp is None else {"humanPolicy": hp}
+            return None if ownership is None else {"ownership": ownership, "rootInfo": {"scoreLead": lead}}
+
+        def probe_children(gtps, player, parent_hp=False):
+            s.probe_calls.append(list(gtps))
+            return {g: (probes or {}).get(g) for g in gtps}, None
+
+        s._run_query = run_query
+        s._probe_children = probe_children
+        s._start_ponder = lambda *a, **k: None
+        return s, logs
+
+    # 応手テーブル: 白の応手 C11（本命）/ L3。scoreLead は黒視点（白は小さいほど良い）
+    def _probes(self, d4_lead=7.8, d4_punish=0.0, k10_lead=7.0, k10_punish=0.0):
+        hp = {"C11": 0.5, "L3": 0.5}
+        return {
+            "G7": _child(8.0, [("C11", 8.0, 300), ("L3", 8.0, 200)], hp),
+            "D4": _child(d4_lead, [("C11", d4_lead, 300), ("L3", d4_lead + 2 * d4_punish, 200)], hp),
+            "K10": _child(k10_lead, [("C11", k10_lead, 300), ("L3", k10_lead + 2 * k10_punish, 200)], hp),
+        }
+
+
+class TestGenerateMove(_Harness):
+    def test_dominant_first_instinct_plays_the_best_move_without_probes(self):
+        s, logs = self._strategy(hp=_hp_array(13, {"G7": 0.91, "D4": 0.05}), probes=self._probes())
+        move, _ = s.generate_move()
+        assert move.gtp() == "G7"
+        assert s.queries == ["HumanSL"] and s.probe_calls == []
+        assert any("Dominant" in m for m in logs)
+
+    def test_natural_cheap_deviation_is_bought_with_surplus(self):
+        # lead 8・reserve 3 → λ=1.25。D4 は hp 0.30（自然）・vloss 0.2・ΔE 0 → price 0.2
+        s, logs = self._strategy(hp=_hp_array(13, {"G7": 0.40, "D4": 0.30, "K10": 0.02}), probes=self._probes())
+        move, reason = s.generate_move()
+        assert move.gtp() == "D4"
+        assert any("Deviate" in m and "natural" in m for m in logs)
+
+    def test_unnatural_move_without_trap_value_is_not_played(self):
+        # D4 の hp を床未満に。K10 も hp 0.02・ΔE 0 → 資格者なし
+        s, logs = self._strategy(hp=_hp_array(13, {"G7": 0.60, "D4": 0.02, "K10": 0.02}), probes=self._probes())
+        move, _ = s.generate_move()
+        assert move.gtp() == "G7"
+
+    def test_trap_is_played_even_when_behind_if_it_pays_for_itself(self):
+        # lead -2 → λ=0。K10 は hp 0.02（不自然）だが vloss 1.0・ΔE 1.5（L3 が 3 目損・hp 0.5）→ price -0.5
+        probes = self._probes(k10_lead=7.0, k10_punish=1.5)
+        s, logs = self._strategy(
+            lead=-2.0,
+            hp=_hp_array(13, {"G7": 0.60, "D4": 0.02, "K10": 0.02}),
+            probes=probes,
+            settings={"mimic13_min_winrate": 0.3},
+        )
+        move, _ = s.generate_move()
+        assert move.gtp() == "K10"
+        assert any("trap" in m for m in logs)
+
+    def test_price_above_lambda_keeps_the_best_move(self):
+        # lead 3（余剰 0）→ λ=0.3。D4 は自然だが vloss 0.8
+        s, logs = self._strategy(
+            lead=3.0, hp=_hp_array(13, {"G7": 0.40, "D4": 0.30}), probes=self._probes(d4_lead=7.2)
+        )
+        move, _ = s.generate_move()
+        assert move.gtp() == "G7"
+
+    def test_verified_loss_above_max_loss_is_dropped(self):
+        s, logs = self._strategy(
+            lead=30.0, hp=_hp_array(13, {"G7": 0.40, "D4": 0.30}), probes=self._probes(d4_lead=5.5)
+        )
+        move, _ = s.generate_move()
+        assert move.gtp() == "G7"
+        assert any("Drop D4" in m for m in logs)
+
+    def test_humansl_failure_is_failsafe(self):
+        s, logs = self._strategy(hp=None, probes=self._probes())
+        move, _ = s.generate_move()
+        assert move.gtp() == "G7" and s.probe_calls == []
+
+    def test_wrong_board_size_is_failsafe(self):
+        s, logs = self._strategy(hp=_hp_array(13, {"G7": 0.4, "D4": 0.3}), probes=self._probes())
+        s.game.board_size = (9, 9)
+        move, _ = s.generate_move()
+        assert move.gtp() == "G7" and s.queries == []
+
+    def test_missing_lead_is_failsafe(self):
+        s, logs = self._strategy(hp=_hp_array(13, {"G7": 0.4, "D4": 0.3}), probes=self._probes())
+        s.cn.analysis = {}
+        move, _ = s.generate_move()
+        assert move.gtp() == "G7" and s.queries == []
+
+
+class _FakeHumanStyle:
+    calls = []
+
+    def __init__(self, game, settings):
+        type(self).calls.append(settings)
+        self.game = game
+
+    def generate_move(self):
+        return Move.from_gtp("D4", player="B"), "fake 9d"
+
+
+class TestYose(_Harness):
+    def test_enters_yose_by_moves_and_unsettled_points_then_delegates(self, monkeypatch):
+        monkeypatch.setattr(ai_module, "HumanStyleStrategy", _FakeHumanStyle)
+        _FakeHumanStyle.calls = []
+        s, logs = self._strategy(depth=90, lead=6.0, ownership=[0.95] * 160 + [0.1] * 9)
+        move, reason = s.generate_move()
+        assert s.queries == ["Probe"]  # ヨセ突入の判定に ownership を1本
+        assert s.game._mimic13_endgame is True  # sticky
+        assert move.gtp() == "D4" and reason.startswith("[Mimic13→9d yose]")
+        assert _FakeHumanStyle.calls == [{"human_kyu_rank": -8, "modern_style": True}]
+
+    def test_sticky_yose_needs_no_probe(self, monkeypatch):
+        monkeypatch.setattr(ai_module, "HumanStyleStrategy", _FakeHumanStyle)
+        s, logs = self._strategy(depth=95, lead=6.0, _mimic13_endgame=True)
+        move, _ = s.generate_move()
+        assert s.queries == [] and move.gtp() == "D4"
+
+    def test_thin_lead_in_yose_plays_the_best_move(self, monkeypatch):
+        monkeypatch.setattr(ai_module, "HumanStyleStrategy", _FakeHumanStyle)
+        _FakeHumanStyle.calls = []
+        s, logs = self._strategy(depth=95, lead=2.0, _mimic13_endgame=True)
+        move, _ = s.generate_move()
+        assert move.gtp() == "G7" and _FakeHumanStyle.calls == []
+
+    def test_unsettled_board_stays_in_the_middle_game(self):
+        s, logs = self._strategy(
+            depth=90,
+            ownership=[0.1] * 169,
+            hp=_hp_array(13, {"G7": 0.40, "D4": 0.30}),
+            probes=self._probes(),
+        )
+        move, _ = s.generate_move()
+        assert getattr(s.game, "_mimic13_endgame", False) is False
+        assert s.queries == ["Probe", "HumanSL"] and move.gtp() == "D4"

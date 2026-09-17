@@ -16,7 +16,7 @@ from katrain.core.constants import (
     AI_FIGHTING, AI_FIGHTING_SCORELOSS_ELO,
     AI_WEIGHTED, AI_WEIGHTED_ELO, CALIBRATED_RANK_ELO, OUTPUT_DEBUG,
     OUTPUT_ERROR, OUTPUT_INFO, PLAYER_AI, PLAYER_HUMAN, PRIORITY_ENIGMA_PONDER,
-    PRIORITY_EXTRA_AI_QUERY, PRIORITY_TSUMEGO_SPECULATION, ADDITIONAL_MOVE_ORDER, AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE, AI_PARITY_9, AI_ENIGMA_9, AI_ENIGMA_13, AI_ENIGMA_19, AI_ENIGMA_13_PLUS, AI_ENIGMA_9_PLUS, AI_ENIGMA_19_PLUS
+    PRIORITY_EXTRA_AI_QUERY, PRIORITY_TSUMEGO_SPECULATION, ADDITIONAL_MOVE_ORDER, AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE, AI_PARITY_9, AI_ENIGMA_9, AI_ENIGMA_13, AI_ENIGMA_19, AI_ENIGMA_13_PLUS, AI_ENIGMA_9_PLUS, AI_ENIGMA_19_PLUS, AI_MIMIC_13
 )
 from katrain.core.engine import KataGoEngine
 from katrain.core.game import (
@@ -3837,6 +3837,249 @@ def mimic_choose(scored, best_gtp, lam, slack):
 def mimic_yose_delegates(lead, reserve):
     """ヨセを HumanStyle 9段へ任せてよいか（確保リードを持っている手番だけ。未満は最善手で勝ちを守る）。"""
     return lead is not None and lead >= reserve
+
+
+@register_strategy(AI_MIMIC_13)
+class Mimic13Strategy(Enigma13Strategy):
+    """13路専用「擬態」戦略＝相手より低い AI 最善手一致率を保ったまま勝つ。
+
+    序盤〜中盤は、リード連動の支払い上限 λ（`mimic_price_cap`）の内側で、不一致1回の値段
+    price = max(0, vloss) − (E − E_best) が最も安い「資格のある」非最善手へ外す。資格は
+    人間らしさ（humanSL 9段の humanPolicy が床以上）か罠（ΔE が trap_min_delta_e 以上＝相手を騙す手は
+    人間らしさを免除）。最善手の humanPolicy が dominant_hp 以上の手番は外さない（外すとバレる）。
+    price が負の手＝期待値プラスの罠は余剰が無くても打てるので、相手の悪手を誘って予算を作る。
+    ヨセ（手数 AND 未確定点・sticky）は HumanStyle 9段へ委譲し、lead < reserve の手番だけ最善手。
+
+    難解（Enigma13Strategy）のヘルパー（子局面プローブ・先読み・終局帯）を再利用し、選択フローだけ
+    上書きする。すべての分岐は「KataGo 最善手を打つ」に倒れる。
+    設計: docs/superpowers/specs/2026-09-17-mimic13-strategy-design.md
+    """
+
+    BOARD_LEN = 13
+    KEY_PREFIX = "mimic13"
+    LABEL = "Mimic13"
+    SETTING_DEFAULTS = {
+        "max_loss": 2.0,            # 1手の損失上限（検証済み・目）＝λ の天井
+        "reserve": 3.0,             # 確保するリード（目）。余剰 = lead − これ。ヨセの 9段委譲の条件にも使う
+        "spend_rate": 0.25,         # 1手で余剰の何割まで払うか
+        "free_loss": 0.3,           # 余剰が無くても払う「タダ同然」の price（目）
+        "min_winrate": 0.4,         # 着手後勝率フロア（打つ側視点）
+        "dominant_hp": 0.8,         # 最善手の humanPolicy がこれ以上なら外さない
+        "min_human_policy": 0.05,   # 自然な外しの humanPolicy 下限（絶対値）
+        "natural_ratio": 0.2,       # 同（第一感トップ比）
+        "trap_min_delta_e": 0.5,    # 罠とみなす E の上積み（目）。99 で罠の免除なし
+        "cost_slack": 0.3,          # price の同値帯（帯の中は humanPolicy 最大）
+        "probe_extra": 4,           # 罠探索で高い帯から足すプローブ数
+        "endgame_move": 85,         # ヨセ切替手数（HumanStyle 自身の終局閾値 ceil(0.5×169) と同じ）
+        "unsettled_max": 16,        # ヨセ判定の未確定点上限
+    }
+
+    def _log_rates(self, player):
+        """自分と相手の AI 最善手一致率をログに出す（判定には使わない。ログ失敗で着手を止めない）。"""
+        try:
+            nodes = [n for n in self.cn.nodes_from_root if n.move and not n.is_root]
+            mine, opp, counted = parity9_match_tally(nodes, player)
+        except Exception:
+            return
+        if counted:
+            self._log(
+                f"Rate: mine={mine}/{counted} ({mine / counted:.0%}) opp={opp}/{counted} ({opp / counted:.0%})"
+            )
+
+    def _expected_punish_of(self, probe, opponent):
+        """子局面プローブ（clean + hp）から E（相手の期待損失）を返す。不完全なら None。"""
+        clean, hp_child = (probe or {}).get("clean"), (probe or {}).get("hp")
+        if not clean or not clean.get("moveInfos") or not hp_child or "humanPolicy" not in hp_child:
+            return None
+        replies, _best_reply = enigma9_reply_table(clean["moveInfos"], opponent)
+        if not replies:
+            return None
+        e_punish, _coverage = enigma9_expected_punish(
+            replies, enigma9_hp_lookup(hp_child["humanPolicy"], self.game.board_size)
+        )
+        return e_punish
+
+    def _yose_move(self, lead, reserve):
+        if not mimic_yose_delegates(lead, reserve):
+            self._log(f"Yose: lead {lead:.2f} < reserve {reserve:.1f} -> best move")
+            return self._best_move(
+                f"{self.LABEL}: endgame, securing the win (lead {lead:.2f} < reserve {reserve:.1f}), playing best move."
+            )
+        self._log(f"Yose: lead {lead:.2f} >= reserve {reserve:.1f} -> HumanStyle rank_9d")
+        delegate = HumanStyleStrategy(self.game, {"human_kyu_rank": -8, "modern_style": True})
+        move, thoughts = delegate.generate_move()
+        return move, f"[{self.LABEL}→9d yose] {thoughts}"
+
+    def _generate_move(self) -> Tuple[Move, str]:
+        self._cancel_ponder()  # 前手番の先読みの残骸を最初に打ち切る
+        self.wait_for_analysis()
+        player = self.cn.next_player
+        sign = 1 if player == "B" else -1
+        opponent = "W" if player == "B" else "B"
+
+        side = self.BOARD_LEN
+        if max(self.game.board_size) != side:
+            self.game.katrain.log(
+                f"[{type(self).__name__}] board size {self.game.board_size} is not {side}x{side}; "
+                f"this mode is {side}x{side}-only, playing KataGo best move",
+                OUTPUT_INFO,
+            )
+            return self._best_move(f"{self.LABEL}: not a {side}x{side} board, playing best move.")
+
+        cands = self.cn.candidate_moves
+        if not cands:
+            return self._best_move(f"{self.LABEL}: no candidate moves.")
+        best_gtp = cands[0]["move"]
+        if best_gtp == "pass":
+            return self._best_move(f"{self.LABEL}: best move is pass, playing it.")
+
+        terminal = self._terminal_band_move(cands, player)
+        if terminal is not None:
+            return terminal
+
+        root_lead = (self.cn.analysis.get("root") or {}).get("scoreLead")
+        if root_lead is None:
+            self._log("Lead unavailable -> best move")
+            return self._best_move(f"{self.LABEL}: lead unavailable, playing best move.")
+        lead = root_lead * sign
+        reserve = float(self._setting("reserve"))
+
+        # ---- ヨセ（手数 AND 未確定点・sticky）→ HumanStyle 9段へ委譲 ----
+        # 突入の判定にだけ ownership Probe を撃つ（sticky 後は追加クエリなし）。ownership が取れなければ
+        # `parity9_is_endgame` が手数だけでヨセ入りに倒す＝「測れない＝外し続ける」にならない
+        endgame_flag = f"_{self.KEY_PREFIX}_endgame"
+        in_yose = bool(getattr(self.game, endgame_flag, False))
+        endgame_move = int(self._setting("endgame_move"))
+        if not in_yose and self.cn.depth >= endgame_move:
+            unsettled_max = int(self._setting("unsettled_max"))
+            probe = self._run_query(
+                "Probe",
+                include_policy=False,
+                ownership=True,
+                extra_settings={"ignorePreRootHistory": False, "wideRootNoise": 0.0},
+            )
+            ownership = probe.get("ownership") if probe else None
+            n_unsettled = (
+                None if ownership is None else sum(1 for o in ownership if abs(o) < PARITY9_UNSETTLED_ABS)
+            )
+            if parity9_is_endgame(self.cn.depth, ownership, endgame_move, unsettled_max):
+                setattr(self.game, endgame_flag, True)  # sticky
+                in_yose = True
+            self._log(
+                f"Endgame check: depth={self.cn.depth} thr={endgame_move} unsettled={n_unsettled} "
+                f"max={unsettled_max} -> {'yose' if in_yose else 'not yet'}"
+            )
+        if in_yose:
+            return self._yose_move(lead, reserve)
+
+        self._log_rates(player)
+
+        # ---- 親局面の humanSL 9段（8visits）→ 支配ガード ----
+        # humanPolicy は root NN の出力で visits に依らない。難解のようにプローブバッチへ統合しないのは、
+        # shortlist に hp が要るのと、支配ガードの手番（実測 約2割）でプローブを丸ごと省けるため
+        stage_hp = self._run_query(
+            "HumanSL",
+            include_policy=True,
+            ownership=False,
+            visits=ENIGMA9_HP_CHILD_VISITS,
+            extra_settings={"humanSLProfile": ENIGMA9_HUMAN_PROFILE, "ignorePreRootHistory": False},
+        )
+        if not stage_hp or "humanPolicy" not in stage_hp:
+            self._log("HumanSL unavailable -> best move")
+            return self._best_move(f"{self.LABEL}: humanSL unavailable, playing best move.")
+        human_policy = stage_hp["humanPolicy"]
+        hp_of = enigma9_hp_lookup(human_policy, self.game.board_size)
+        best_hp = hp_of(best_gtp)
+        dominant = float(self._setting("dominant_hp"))
+        if best_hp >= dominant:
+            self._log(f"Dominant: best {best_gtp} hp={best_hp:.3f} >= {dominant:.2f} -> best move")
+            return self._best_move(
+                f"{self.LABEL}: the best move is the obvious human move (hp {best_hp:.1%}), playing it."
+            )
+
+        # ---- 支払い上限 λ ----
+        max_loss = float(self._setting("max_loss"))
+        min_wr = float(self._setting("min_winrate"))
+        lam = mimic_price_cap(
+            lead, reserve, float(self._setting("spend_rate")), float(self._setting("free_loss")), max_loss
+        )
+        self._log(f"Budget: lead={lead:.2f} reserve={reserve:.1f} surplus={lead - reserve:.2f} lambda={lam:.2f}")
+
+        # ---- プール（難解と同じ二段の漏斗: 生 loss の足切りは安全側・採否は検証値）----
+        candidates, _n_searched = parity9_build_candidates(cands, player=player, min_visits=ENIGMA9_POOL_MIN_VISITS)
+        pool = enigma9_admissible(candidates, best_gtp, max_loss, min_wr)
+        if not pool:
+            self._log(f"Pool: no admissible deviation (cap {max_loss:.2f}, min_wr {min_wr:.0%}) -> best move")
+            return self._best_move(f"{self.LABEL}: no admissible deviation, playing best move.")
+        floor = mimic_natural_floor(
+            mimic_hp_top(human_policy, self.game.board_size),
+            float(self._setting("min_human_policy")),
+            float(self._setting("natural_ratio")),
+        )
+        shortlist = mimic_shortlist(pool, hp_of, floor, extra=int(self._setting("probe_extra") or 0))
+        naturals = [c["gtp"] for c in shortlist if hp_of(c["gtp"]) >= floor]
+        self._log(
+            f"Natural: floor={floor:.3f} best_hp={best_hp:.3f} naturals={naturals} "
+            f"pool={len(pool)} shortlist={len(shortlist)}"
+        )
+
+        # ---- 子局面プローブ（難解と同一条件・1バッチ並列）----
+        probes, _ = self._probe_children([best_gtp] + [c["gtp"] for c in shortlist], player, parent_hp=False)
+        best_probe = probes.get(best_gtp) or {}
+        best_lead_after, _ = enigma9_verified_metrics(best_probe.get("clean"), player)
+        best_e = self._expected_punish_of(best_probe, opponent)
+        if best_lead_after is None or best_e is None:
+            self._log("Best-move probe unavailable -> best move")
+            return self._best_move(f"{self.LABEL}: best-move probe unavailable, playing best move.")
+
+        trap_min = float(self._setting("trap_min_delta_e"))
+        scored = []
+        for c in shortlist:
+            pr = probes.get(c["gtp"]) or {}
+            lead_after, wr_after = enigma9_verified_metrics(pr.get("clean"), player)
+            e_punish = self._expected_punish_of(pr, opponent)
+            if lead_after is None or e_punish is None:
+                self._log(f"Probe incomplete for {c['gtp']} -> dropped")
+                continue
+            vloss = best_lead_after - lead_after
+            if vloss > max_loss:
+                self._log(f"Drop {c['gtp']}: verified loss {vloss:.2f} > max_loss {max_loss:.2f} (raw {c['loss']:.2f})")
+                continue
+            if wr_after is not None and wr_after < min_wr:
+                self._log(f"Drop {c['gtp']}: verified wr {wr_after:.1%} < floor {min_wr:.0%}")
+                continue
+            own_hp = hp_of(c["gtp"])
+            delta_e = e_punish - best_e
+            price = max(0.0, vloss) - delta_e
+            kind = mimic_qualifies(own_hp, delta_e, floor, trap_min)
+            scored.append(
+                {**c, "vloss": vloss, "wr_after": wr_after, "e": e_punish, "delta_e": delta_e,
+                 "price": price, "own_hp": own_hp, "kind": kind}
+            )
+            wr_txt = "n/a" if wr_after is None else f"{wr_after:.1%}"
+            self._log(
+                f"Score {c['gtp']}: vloss={vloss:.2f} (raw {c['loss']:.2f}) wr={wr_txt} E={e_punish:.2f} "
+                f"dE={delta_e:+.2f} price={price:.2f} hp={own_hp:.3f} kind={kind or '-'}"
+            )
+
+        chosen = mimic_choose(scored, best_gtp, lam, float(self._setting("cost_slack")))
+        if chosen is None:
+            self._log(f"No qualifying deviation within lambda {lam:.2f} -> best move")
+            self._start_ponder(best_gtp, probes.get(best_gtp), player)
+            return self._best_move(f"{self.LABEL}: no natural or trap deviation within budget, playing best move.")
+
+        self._log(
+            f"Deviate: played {chosen['gtp']} (price={chosen['price']:.2f}, vloss={chosen['vloss']:.2f}, "
+            f"dE={chosen['delta_e']:+.2f}, hp={chosen['own_hp']:.3f}, kind={chosen['kind']}, lambda={lam:.2f}) "
+            f"instead of {best_gtp}"
+        )
+        self._start_ponder(chosen["gtp"], probes.get(chosen["gtp"]), player)
+        return (
+            Move.from_gtp(chosen["gtp"], player=player),
+            f"{self.LABEL}: deviated to {chosen['gtp']} ({chosen['kind']}, price {chosen['price']:.2f}, "
+            f"verified loss {chosen['vloss']:.2f}, extra expected punish {chosen['delta_e']:+.2f}, "
+            f"hp {chosen['own_hp']:.1%}) instead of {best_gtp}; lead {lead:.2f}, budget per move {lam:.2f}.",
+        )
 
 
 @register_strategy(AI_SCORELOSS)

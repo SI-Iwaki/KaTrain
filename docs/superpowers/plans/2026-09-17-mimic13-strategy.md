@@ -630,13 +630,13 @@ class _Harness:
         s._start_ponder = lambda *a, **k: None
         return s, logs
 
-    # 応手テーブル: 白の応手 R1（本命）/ R2。scoreLead は黒視点（白は小さいほど良い）
+    # 応手テーブル: 白の応手 C11（本命）/ L3。scoreLead は黒視点（白は小さいほど良い）
     def _probes(self, d4_lead=7.8, d4_punish=0.0, k10_lead=7.0, k10_punish=0.0):
-        hp = {"R1": 0.5, "R2": 0.5}
+        hp = {"C11": 0.5, "L3": 0.5}
         return {
-            "G7": _child(8.0, [("R1", 8.0, 300), ("R2", 8.0, 200)], hp),
-            "D4": _child(d4_lead, [("R1", d4_lead, 300), ("R2", d4_lead + 2 * d4_punish, 200)], hp),
-            "K10": _child(k10_lead, [("R1", k10_lead, 300), ("R2", k10_lead + 2 * k10_punish, 200)], hp),
+            "G7": _child(8.0, [("C11", 8.0, 300), ("L3", 8.0, 200)], hp),
+            "D4": _child(d4_lead, [("C11", d4_lead, 300), ("L3", d4_lead + 2 * d4_punish, 200)], hp),
+            "K10": _child(k10_lead, [("C11", k10_lead, 300), ("L3", k10_lead + 2 * k10_punish, 200)], hp),
         }
 
 
@@ -662,7 +662,7 @@ class TestGenerateMove(_Harness):
         assert move.gtp() == "G7"
 
     def test_trap_is_played_even_when_behind_if_it_pays_for_itself(self):
-        # lead -2 → λ=0。K10 は hp 0.02（不自然）だが vloss 1.0・ΔE 1.5（R2 が 3 目損・hp 0.5）→ price -0.5
+        # lead -2 → λ=0。K10 は hp 0.02（不自然）だが vloss 1.0・ΔE 1.5（L3 が 3 目損・hp 0.5）→ price -0.5
         probes = self._probes(k10_lead=7.0, k10_punish=1.5)
         s, logs = self._strategy(
             lead=-2.0, hp=_hp_array(13, {"G7": 0.60, "D4": 0.02, "K10": 0.02}), probes=probes,
@@ -1052,7 +1052,7 @@ Expected: `patched katrain/core/constants.py (CRLF, 1 edit(s))` と `patched kat
 Run: `pytest tests/test_ai_mimic13.py -q`
 Expected: 全 PASS
 
-テストの数値の検算（落ちたときの手がかり）: `_probes()` の最善手 G7 は子局面 lead 8.0・応手 R1/R2 とも損失 0 → `E_best = 0`。D4 は既定で lead 7.8 → `vloss 0.2`・`E 0` → `price 0.2`。`k10_punish=1.5` は R2 の scoreLead を +3.0（黒視点＝白が 3 目損）にするので `E = 0.5×0 + 0.5×3.0 = 1.5`・`vloss 1.0` → `price −0.5`。
+テストの数値の検算（落ちたときの手がかり）: `_probes()` の最善手 G7 は子局面 lead 8.0・応手 C11/L3 とも損失 0 → `E_best = 0`。D4 は既定で lead 7.8 → `vloss 0.2`・`E 0` → `price 0.2`。`k10_punish=1.5` は L3 の scoreLead を +3.0（黒視点＝白が 3 目損）にするので `E = 0.5×0 + 0.5×3.0 = 1.5`・`vloss 1.0` → `price −0.5`。
 
 - [ ] **Step 5: 既存回帰とコミット**
 
