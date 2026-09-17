@@ -2066,6 +2066,14 @@ ENIGMA9_JIGO_TARGET = -1.0
 ENIGMA9_LOCALITY_STDDEV = 0.0      # 近さの σ（盤座標・ユークリッド）。0 で無効
 ENIGMA9_LOCALITY_SLACK = 0.3       # 同点帯の幅（目相当）。stddev > 0 のときだけ効く
 
+# 序盤の賭け罠（gamble）オプション（spec 2026-09-17-enigma-gamble-design.md）。窓（手数 <
+# `<prefix>_gamble_until_move`）× ヨセ前 × 消費モードでない手番で、「E を最善手より明確に多く買い、
+# 十分な応手が見つけにくく、正しく応じられても勝率フロアを割らない」挑戦者を net 比較を飛ばして打つ。
+# until_move 0 = OFF（採用判断・解析条件とも従来とビット同一）
+ENIGMA9_GAMBLE_MAX_FIND = ENIGMA9_HP_BOOK   # 十分な応手の hp 最大値がこれ以下＝正しい応手が「本の手」でない
+ENIGMA9_GAMBLE_COST_WEIGHT = 0.5            # 資格のある罠どうしの順位づけ u = ΔE − これ × max(0, vloss)
+ENIGMA9_GAMBLE_PROBE_EXTRA = 4              # 窓の中で保証する spread プローブ数（基底の安い順 7 手は高い帯を見ない）
+
 # 「二段の漏斗」: 9路の通常解析（1000visits・wRN=0.04）は visits を1〜3手に集中させる
 # ため、visits >= 10 の候補だけでは外し候補が 0〜1 手しか残らない（実測 2026-08-10・
 # 校正局 move 8: moveInfos 74手のうち visits>=10 は 2手・visits>=2 でも 3手）。そこで
@@ -2709,6 +2717,58 @@ def enigma9_delta_e_filter(scored, best_gtp, min_delta_e, cheap_loss):
         else:
             dropped.append(c)
     return kept, dropped
+
+
+def enigma9_gamble_window(depth, until_move):
+    """序盤の賭け罠（`<prefix>_gamble_until_move`）の窓の中か。0 以下で OFF。
+
+    「N 手まで」＝対局の手数 depth が N 未満の手番（序盤の 9段委譲 `enigma9_opening_handoff` と同じ
+    数え方）。スライダー値は float で来ることがあるので int に丸める。
+    """
+    n = int(until_move or 0)
+    return n > 0 and depth < n
+
+
+def enigma9_gamble_pick(scored, best_gtp, min_winrate, min_delta_e,
+                        max_find=ENIGMA9_GAMBLE_MAX_FIND, cost_weight=ENIGMA9_GAMBLE_COST_WEIGHT):
+    """賭け罠の資格がある挑戦者から1手選ぶ。返り値 (pick | None, qualifiers)。
+
+    scored は `_generate_move` のスコアリング済みエントリ（検証済み損失 <= cap と通常の勝率フロアは
+    通過済み）。資格は3条件の AND:
+      - wr_after >= min_winrate（相手が最善で応じた場合の勝率＝子局面 root の検証値。無ければ不可）
+      - E − 最善手の E >= min_delta_e（相手の期待損失を最善手より明確に多く買う＝本物の罠）
+      - find <= max_find（十分な応手のうち最も見つけやすい手が 9 段の「本の手」でない）
+    順位は u = ΔE − cost_weight × max(0, vloss)（同点は E 大 → vloss 小）。rarity 項は使わない
+    ＝実測で reply_rare は E を与件にすると寄与ゼロ、own_rare 単独の外しは序盤では騙せていない
+    （親 spec 追記12・2026-09-03）。最善手のエントリが無ければ比較の基準が無いので (None, [])。
+    入力の dict は書き換えない（返す dict に d_e と u を足したコピー）。境界は inclusive。
+
+    実測（2026-09-17・難解＋13路 18 局・手数<=35 の非消費モード 116 手番）: 既定値で資格ありは
+    16 手番（約 0.9 回/局）、うち 10 手番は資格が 1 手だけ。選ばれる手は平均 vloss 0.89・ΔE 0.71、
+    着手後勝率 35〜69%。現行の net 比較が同じ手を選ぶのは 4/16。「応じ損ねたら優勢（E > vloss）」
+    まで満たす手は互角 59 手番中 1 手＝文字どおりの版は在庫なし、が緩和版にした理由。
+    """
+    best = next((c for c in scored if c["gtp"] == best_gtp), None)
+    if best is None:
+        return None, []
+    eps = 1e-9
+    qualifiers = []
+    for c in scored:
+        if c["gtp"] == best_gtp:
+            continue
+        wr = c.get("wr_after")
+        if wr is None or wr < min_winrate - eps:
+            continue
+        d_e = c["e"] - best["e"]
+        if d_e < min_delta_e - eps:
+            continue
+        find = c.get("find")
+        if find is None or find > max_find + eps:
+            continue
+        qualifiers.append({**c, "d_e": d_e, "u": d_e - cost_weight * max(0.0, c["loss"])})
+    if not qualifiers:
+        return None, []
+    return max(qualifiers, key=lambda c: (c["u"], c["e"], -c["loss"])), qualifiers
 
 
 @register_strategy(AI_ENIGMA_9)
