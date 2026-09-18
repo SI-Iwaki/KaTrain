@@ -55,7 +55,7 @@ def patch(path, replacements):
   - `enigma9_overdraft_probe_picks(candidates, best_gtp, taken, lo, hi, k, trusted_visits=ENIGMA9_TRUSTED_VISITS) -> list`。`candidates` は `parity9_build_candidates` の `[{"gtp","loss","visits","wr"}]`、`taken` は gtp の集合、帯は `(lo, hi]`
   - `enigma9_overdraft_pick(over_scored, deficit, upper, min_fooled_lead, ceiling, max_find=ENIGMA9_OVERDRAFT_MAX_FIND) -> (pick | None, qualifiers)`。`over_scored` の要素は `gtp` / `loss`（検証済み損失）/ `lead_after` / `e` / `e_fooled` / `find`。返す dict には `fooled_lead` と `u` が足される
 
-- [ ] **Step 1: 失敗するテストを書く**（`tests/test_ai_enigma_overdraft.py` を新規作成）
+- [x] **Step 1: 失敗するテストを書く**（`tests/test_ai_enigma_overdraft.py` を新規作成）
 
 ```python
 # tests/test_ai_enigma_overdraft.py
@@ -217,12 +217,12 @@ class TestOverdraftPick:
         assert "fooled_lead" not in entry and "u" not in entry
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `python -m pytest tests/test_ai_enigma_overdraft.py -q`
 Expected: ImportError（`ENIGMA9_OVERDRAFT_CEILING_FACTOR` が無い）
 
-- [ ] **Step 3: 実装**（python パッチスクリプトで `katrain/core/ai.py` に挿入。Global Constraints の `patch` ヘルパーを使う）
+- [x] **Step 3: 実装**（python パッチスクリプトで `katrain/core/ai.py` に挿入。Global Constraints の `patch` ヘルパーを使う）
 
 定数。アンカーは `ENIGMA9_GAMBLE_PROBE_EXTRA = 4              # 窓の中で保証する spread プローブ数（基底の安い順 7 手は高い帯を見ない）\n`（1 ヒット）で、その直後に挿入:
 
@@ -347,7 +347,7 @@ def enigma9_overdraft_pick(over_scored, deficit, upper, min_fooled_lead, ceiling
     return max(qualifiers, key=lambda c: (c["u"], c["lead_after"])), qualifiers
 ```
 
-- [ ] **Step 4: 通過を確認**
+- [x] **Step 4: 通過を確認**
 
 Run: `python -m pytest tests/test_ai_enigma_overdraft.py -q`
 Expected: 全部 PASS
@@ -355,7 +355,7 @@ Expected: 全部 PASS
 Run: `git diff --stat katrain/core/ai.py`
 Expected: 追加行のみ（削除 0 行＝再整形の混入なし）
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```bash
 git add katrain/core/ai.py tests/test_ai_enigma_overdraft.py
@@ -382,7 +382,7 @@ SETTING_DEFAULTS ↔ `AI_OPTION_VALUES` ↔ `AI_OPTION_ORDER` ↔ パッケー�
 - Produces: 設定キー `<prefix>_overdraft_deficit` / `<prefix>_overdraft_answered_max` / `<prefix>_overdraft_min_fooled_lead` / `<prefix>_overdraft_probes`
   （prefix = enigma9 / enigma9plus / enigma13 / enigma13plus / enigma19 / enigma19plus）。`self._setting("overdraft_deficit")` 等で読める
 
-- [ ] **Step 1: 失敗するテストを追記**（`tests/test_ai_enigma_overdraft.py` の末尾）
+- [x] **Step 1: 失敗するテストを追記**（`tests/test_ai_enigma_overdraft.py` の末尾）
 
 ```python
 from katrain.core.ai import (
@@ -429,12 +429,12 @@ class TestOverdraftSettings:
         assert not any(k.startswith("overdraft") for k in Mimic13Strategy.SETTING_DEFAULTS)
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `python -m pytest tests/test_ai_enigma_overdraft.py -q`
 Expected: `KeyError: 'overdraft_deficit'`
 
-- [ ] **Step 3: 実装**（スクラッチの python パッチスクリプト 1 本で 5 ファイルを書き換える。リポジトリのルートで実行）
+- [x] **Step 3: 実装**（スクラッチの python パッチスクリプト 1 本で 5 ファイルを書き換える。リポジトリのルートで実行）
 
 ```python
 # scratch: patch_overdraft_task2.py（Global Constraints の patch ヘルパーを先頭に貼る）
@@ -558,13 +558,13 @@ print("ok")
 
 難解＋の `aihelp:*plus` は「他の項目は難解の同名項目と同じ意味」と基底に委ねているので触らない。
 
-- [ ] **Step 4: `.mo` を再コンパイルしてテスト**
+- [x] **Step 4: `.mo` を再コンパイルしてテスト**
 
 Run: `python tools/compile_mo.py`
 Run: `python -m pytest tests/test_ai_enigma_overdraft.py tests/test_ai_enigma_gamble.py tests/test_ai_enigma9.py tests/test_ai_enigma_plus.py tests/test_ai_enigma_opening.py tests/test_ai_mimic13.py tests/test_ai_options_grid.py -q`
 Expected: 全部 PASS（`TestGuiConfigConsistency` と難解＋の i18n テストが新キーを検査する）
 
-- [ ] **Step 5: 差分の健全性を確認してコミット**
+- [x] **Step 5: 差分の健全性を確認してコミット**
 
 Run: `git diff --stat`
 Expected: 削除行は「config.json の 6 行（カンマ追加）＋ .po の help 6 行」だけ（再整形の混入なし）。`.mo` 2 本が更新されている
@@ -587,7 +587,7 @@ git commit -m "feat(enigma): 捨て身の罠の設定キーを GUI・config・i1
   `in_yose` / `cost_weight` / `lead_now`（`not in_yose` のときだけ定義される）/ `cap` / `large_cap` / `target` / `candidates` / `shortlist` / `probes`
 - Produces: ログ `Overdraft: window …` / `Over <gtp>: …` / `Overdraft: band=… qualifiers=…` / `Overdraft: played <gtp> …`、ai_thoughts `<LABEL>: overdraft trap <gtp> (…)`
 
-- [ ] **Step 1: 失敗する接続テストを追記**（`tests/test_ai_enigma_overdraft.py` の末尾）
+- [x] **Step 1: 失敗する接続テストを追記**（`tests/test_ai_enigma_overdraft.py` の末尾）
 
 ```python
 import types
@@ -748,13 +748,13 @@ class TestOverdraftEndToEnd:
         assert any("Overdraft: band=[-2.5, -1.0)" in m and "qualifiers=[]" in m for m in logs)
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `python -m pytest tests/test_ai_enigma_overdraft.py::TestOverdraftEndToEnd -q`
 Expected: `test_off_*` / `test_outside_*` / `test_yose_*` / `test_deficit_*`（K10 は合うがログの assert で FAIL）などが混在。
 ON で G7 / H8 を期待するテスト（`test_on_*` / `test_answered_max_*` / `test_shortlist_*` / `test_plus_*` / `test_aim_jigo_*`）は FAIL（K10 のまま）
 
-- [ ] **Step 3: 実装**（スクラッチの python パッチスクリプト・`patch` ヘルパーで `katrain/core/ai.py` の 5 箇所。全部 1 ヒット）
+- [x] **Step 3: 実装**（スクラッチの python パッチスクリプト・`patch` ヘルパーで `katrain/core/ai.py` の 5 箇所。全部 1 ヒット）
 
 (a) 窓の判定。賭け罠の窓の直後に足す:
 
@@ -905,7 +905,7 @@ NEW_E = (
 
 スクリプトの最後で `patch("katrain/core/ai.py", [(OLD_A, NEW_A, 1), (OLD_B, NEW_B, 1), (OLD_C, NEW_C, 1), (OLD_D1, NEW_D1, 1), (OLD_D2, NEW_D2, 1), (OLD_D3, NEW_D3, 1), (OLD_E, NEW_E, 1)])`。
 
-- [ ] **Step 4: 通過を確認**
+- [x] **Step 4: 通過を確認**
 
 Run: `python -m pytest tests/test_ai_enigma_overdraft.py tests/test_ai_enigma_gamble.py tests/test_ai_enigma9.py tests/test_ai_enigma_plus.py tests/test_ai_enigma_opening.py tests/test_ai_mimic13.py -q`
 Expected: 全部 PASS
@@ -913,7 +913,7 @@ Expected: 全部 PASS
 Run: `python -c "import ast,io; ast.parse(io.open('katrain/core/ai.py', encoding='utf-8').read())"` → 無出力（構文 OK）
 Run: `git diff --stat katrain/core/ai.py` → 削除は `Drop` ブロックの字下げ変更ぶん（約 8 行）と `probe_items` の 1 行だけ
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```bash
 git add katrain/core/ai.py tests/test_ai_enigma_overdraft.py
@@ -927,12 +927,12 @@ git commit -m "feat(enigma): 捨て身の罠を難解の選択フローに接続
 **Files:**
 - Modify: `C:\Users\iwaki\.katrain\config.json`（git 管理外）
 
-- [ ] **Step 1: KaTrain が起動していないことを確認**
+- [x] **Step 1: KaTrain が起動していないことを確認**
 
 Run: `tasklist | grep -a -i "python\|katago"`
 Expected: `katago.exe` が居ない（居たら KaTrain が起動中＝ユーザーに閉じてもらうまで書かない。起動中に書くと終了時に上書きされて消える）
 
-- [ ] **Step 2: バックアップを取り、6 セクションに 4 キーを既定値で足す**
+- [x] **Step 2: バックアップを取り、6 セクションに 4 キーを既定値で足す**
 
 ```python
 # scratch: patch_local_config_overdraft.py
@@ -976,7 +976,7 @@ print("ok: 24 keys")
 - Modify: `CLAUDE.md`（spec の本数 `全53本` → `全55本`）
 - Modify: `C:\Users\iwaki\.claude\projects\C--Users-iwaki-Documents-katrain-1-17-1-1-katrain-1-17-1-1\memory\project_enigma_overdraft_trap.md` と `MEMORY.md` の該当行（「設計提示まで」→「2026-09-18 実装・既定 OFF・実戦校正は未実施」。メインセッションが Write/Edit で直接）
 
-- [ ] **Step 1: パッチスクリプトで追記**（`patch` ヘルパー。`.claude/rules/` の Edit が拒否されることがあるのでスクリプト経由で書く）
+- [x] **Step 1: パッチスクリプトで追記**（`patch` ヘルパー。`.claude/rules/` の Edit が拒否されることがあるのでスクリプト経由で書く）
 
 `ai-parameters.md` の Enigma13 の表。アンカーは `| \`enigma13_gamble_min_delta_e\` | ` で始まる行（1 ヒット・行末まで正規表現で取って直後に挿入）:
 
@@ -1026,17 +1026,17 @@ Enigma19 の表（アンカーは `| \`enigma19_gamble_min_delta_e\` | 同上 | 
 
 `CLAUDE.md`: `に全53本。` → `に全55本。`（1 ヒット）。
 
-- [ ] **Step 2: マニュアルを再ビルドして確認**
+- [x] **Step 2: マニュアルを再ビルドして確認**
 
 Run: `python tools/build_manual.py`
 Run: `grep -c "enigma\*_overdraft_deficit" docs/manual/index.html` → `1`
 
-- [ ] **Step 3: メモリを更新**（メインセッション）
+- [x] **Step 3: メモリを更新**（メインセッション）
 
 `project_enigma_overdraft_trap.md` の description と本文冒頭を「2026-09-18 実装・既定 OFF・実戦校正は未実施」に直し、
 設定キー 4 本と純関数名、`calibration-data/enigma-overdraft/` の場所を書く。`MEMORY.md` の該当行の「設計提示まで」も直す。
 
-- [ ] **Step 4: コミット**
+- [x] **Step 4: コミット**
 
 ```bash
 git add .claude/rules/ai-parameters.md .claude/rules/ai-strategies.md docs/manual docs/superpowers/specs/INDEX.md CLAUDE.md
@@ -1054,7 +1054,7 @@ git commit -m "docs(enigma): 捨て身の罠の rules・マニュアル・INDEX 
 局面は `docs/superpowers/specs/calibration-data/enigma-overdraft/recon/` の復元 SGF（AI は黒／白は `games.json` の `ai`）。
 `katrain_debug --move N` は N 手打った後の局面で次の手を選ぶ＝反実仮想の `d=N` と同じ局面。
 
-- [ ] **Step 1: 資格があった局面を ON で 3 run ずつ**
+- [x] **Step 1: 資格があった局面を ON で 3 run ずつ**
 
 ```bash
 python -m katrain_debug --sgf docs/superpowers/specs/calibration-data/enigma-overdraft/recon/game_20260918_004112.sgf --move 50 --strategy enigma13plus --settings enigma13plus_overdraft_deficit=2.5 enigma13plus_overdraft_probes=12 2>&1 | grep -a "Overdraft\|Over \|Spend:\|Deviate\|Best move wins\|着手決定"
@@ -1069,7 +1069,7 @@ Expected: `Spend:` → `Overdraft: window lead=… probes +N […]` → `Over <g
 プローブの標本（shortlist の除外・spread）と E・hp は run 間で揺れるので、3 run の資格の出入りと選択手をそのまま記録する
 （資格の手がプローブに入らなかった run は `qualifiers=[]` のあと従来の選択になる＝正常）。
 
-- [ ] **Step 2: OFF で従来どおり・消費モード外とヨセで発動しないことを 1 run ずつ**
+- [x] **Step 2: OFF で従来どおり・消費モード外とヨセで発動しないことを 1 run ずつ**
 
 ```bash
 python -m katrain_debug --sgf docs/superpowers/specs/calibration-data/enigma-overdraft/recon/game_20260918_004112.sgf --move 50 --strategy enigma13plus 2>&1 | grep -a -c "Overdraft\|Over "
@@ -1081,11 +1081,11 @@ python -m katrain_debug --sgf docs/superpowers/specs/calibration-data/enigma-ove
 ```
 Expected: `0`（リードが小さく消費モードでない。`Spend:` 行も出ない）
 
-- [ ] **Step 3: 着手時間の増分を確認**
+- [x] **Step 3: 着手時間の増分を確認**
 
 Step 1 の `着手決定に X 秒` と、同じ局面の OFF の秒数を並べる（コールド同士。目安は 12 プローブで +2〜2.5 秒・6 プローブで +1.2 秒）。
 
-- [ ] **Step 4: 結果を spec §9 に追記してコミット**
+- [x] **Step 4: 結果を spec §9 に追記してコミット**
 
 spec の末尾に `## 9. 実局面での検証（2026-09-18・katrain_debug・ユーザーのローカル設定＋ overdraft_deficit=2.5）` を足し、
 局面ごとに run 別の `qualifiers` と選択手・OFF の手・着手時間を表で書く（賭け罠 spec §9 と同じ体裁）。
@@ -1095,12 +1095,12 @@ git add docs/superpowers/specs/2026-09-18-enigma-overdraft-design.md
 git commit -m "docs(enigma): 捨て身の罠の実局面検証を spec に追記"
 ```
 
-- [ ] **Step 5: 回帰（KataGo と並走させない）**
+- [x] **Step 5: 回帰（KataGo と並走させない）**
 
 Run: `python -m pytest tests/test_ai_enigma_overdraft.py tests/test_ai_enigma_gamble.py tests/test_ai_enigma9.py tests/test_ai_enigma_plus.py tests/test_ai_enigma_opening.py tests/test_ai_mimic13.py tests/test_ai_options_grid.py tests/test_board_watch_prefetch.py -q`
 Expected: 全部 PASS
 
-- [ ] **Step 6: 計画を完了済みに更新してコミット**
+- [x] **Step 6: 計画を完了済みに更新してコミット**
 
 このファイルのチェックボックスを `- [x]` にして
 
@@ -1108,3 +1108,14 @@ Expected: 全部 PASS
 git add docs/superpowers/plans/2026-09-18-enigma-overdraft.md
 git commit -m "docs(enigma): 捨て身の罠の実装計画を完了済みに更新"
 ```
+
+---
+
+## 実行記録（2026-09-18）
+
+- タスク 1〜6 を `feature/enigma-overdraft` で実行。テストは enigma 系＋options_grid＋board_watch_prefetch で 396 件 PASS。
+- **計画からの逸脱 1 件**: Task 6 の実局面検証で、`pool` が空（最善手以外が全部 cap の外）の早期 return が追加プローブより先に効き、
+  反実仮想で資格のあった罠（`game_20260918_004112` d=50 の G10）を一度も調べないことが判明。窓が開いている手番は `pool` が空でも
+  先へ進むよう修正し（commit `fix(enigma): 捨て身の罠を通常の候補プールが空の局面でも探す`）、回帰テスト 2 本を追加。spec §4.2・§9 に反映。
+- テストのスタブ盤は 13 路なので応手の座標 `Q1` は盤外（`_hp` が IndexError）→ `N1` に修正。
+- 挿入した純関数ブロックの先頭の空行が二重になっていた（計画のコードブロック自体が空行 2 つで始まる）→ 2 行に修正。
