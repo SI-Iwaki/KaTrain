@@ -900,26 +900,80 @@
         thumb_color: (0.6, 0.7, 0.9, 1) if root.key_option else (0.3, 0.4, 0.6, 1)
     LabelledFloatInput:
         id: textbox
+        size_hint: root.value_box_width, None
+        font_size: sp(root.value_font_size)
         # 高さ固定(size_hint_y: None)なので既定では行の下端に置かれ、行が縮むほど
         # 上へはみ出してスライダーとの縦位置がずれる。中央固定で行の高さから独立させる。
         pos_hint: {"center_y": 0.5}
 
+<AIOptionNameLabel>:
+    font_size: sp(16)
+    color: Theme.TEXT_COLOR
+
+<AIHelpLabel>:
+    lang_change_tracking: i18n._('')  # 日本語フォントを当てるため（text は build_ai_options が入れる）
+    markup: True
+    font_size: sp(Theme.DESC_FONT_SIZE) * 0.72
+    halign: 'left'
+    valign: 'top'
+    text_size: self.width - dp(6), None
+    size_hint_y: None
+    height: max(self.texture_size[1], 1)
+
+<AIHelpPopupContent>:
+    orientation: 'vertical'
+    padding: dp(6), dp(4), dp(6), dp(4)
+    spacing: dp(6)
+    ScrollView:
+        id: help_scroll
+        bar_width: dp(12)
+        bar_inactive_color: 0.7, 0.7, 0.7, 0.45
+        scroll_type: ['bars', 'content']
+        scroll_wheel_distance: dp(90)
+        effect_cls: 'ScrollEffect'
+        Label:
+            text: root.text
+            markup: True
+            font_name: root.body_font_name
+            font_size: sp(17)
+            line_height: 1.15
+            halign: 'left'
+            valign: 'top'
+            text_size: self.width - dp(20), None
+            size_hint_y: None
+            height: self.texture_size[1] + dp(10)
+    AnchorLayout:
+        size_hint_y: None
+        height: dp(46)
+        AutoSizedRoundedRectangleButton:
+            padding_x: 24
+            size_hint: None, None
+            height: dp(36)
+            _font_size: sp(15)
+            text: i18n._("close help")
+            on_press: root.close()
+
 <ConfigAIPopup>:
     options_grid: options_grid
+    options_scroll: options_scroll
     help_label: help_label
+    help_scroll: help_scroll
     estimated_rank_label: estimated_rank_label
     ai_select: ai_select
     BoxLayout:
-        size_hint: 1,1
+        size_hint: 1, None
+        height: dp(50)
         DescriptionLabel:
             font_size: sp(Theme.DESC_FONT_SIZE)
             text: i18n._('Select AI')
         AnchorLayout:
             I18NSpinner:
-                size_hint: 0.8, 0.5
+                size_hint: 0.8, None
+                height: dp(42)
                 id: ai_select
     BoxLayout:
-        size_hint: 1,1
+        size_hint: 1, None
+        height: dp(30)
         DescriptionLabel:
             font_size: sp(Theme.DESC_FONT_SIZE)
             size_hint: 1, 1
@@ -928,20 +982,56 @@
             size_hint: 0.8, 1
             font_size: sp(Theme.DESC_FONT_SIZE)
             id: estimated_rank_label
-            text: '?' + i18n._('strength:kyu')
-    ScrollView:
-        size_hint: 1, 1.25
-        bar_width: dp(4)
-        SmallDescriptionLabel:
-            id: help_label
+            lang_change_tracking: i18n._('')  # 日本語フォントを当てる（「11級」の級が豆腐になる）
+            text: '?'
+    BoxLayout:
+        # 説明欄。本文をクリックすると大きな画面で開く（ConfigAIPopup.open_help_popup）
+        orientation: 'vertical'
+        size_hint: 1, None
+        height: dp(158)
+        canvas.before:
+            Color:
+                rgba: Theme.BOX_BACKGROUND_COLOR
+            Rectangle:
+                pos: self.pos
+                size: self.size
+        Label:
             size_hint_y: None
-            height: max(self.texture_size[1], 1)
-            text: i18n._('')
-    GridLayout:
-        size_hint: 1, 4
-        id: options_grid
-        rows: root.max_options
-        cols: 2
+            height: dp(18)
+            font_size: sp(12)
+            color: 0.7, 0.8, 0.95, 1
+            halign: 'right'
+            text_size: self.width - dp(10), None
+            text: i18n._('ai help hint')
+        ScrollView:
+            id: help_scroll
+            bar_width: dp(6)
+            bar_inactive_color: 0.7, 0.7, 0.7, 0.35
+            scroll_type: ['bars', 'content']
+            scroll_wheel_distance: dp(40)
+            effect_cls: 'ScrollEffect'
+            AIHelpLabel:
+                id: help_label
+                on_release: root.open_help_popup()
+    ScrollView:
+        # 項目欄。行の高さを固定してスクロールさせる（20 項目超の戦略でも文字が重ならない）。
+        # 本文ドラッグでのスクロールを切る（'bars' のみ）のはスライダー操作を即座に効かせるため＝
+        # ホイールとスクロールバーでスクロールする
+        id: options_scroll
+        size_hint: 1, 1
+        bar_width: dp(10)
+        bar_inactive_color: 0.7, 0.7, 0.7, 0.45
+        scroll_type: ['bars']
+        scroll_wheel_distance: dp(60)
+        effect_cls: 'ScrollEffect'
+        GridLayout:
+            id: options_grid
+            cols: 2
+            size_hint_y: None
+            height: self.minimum_height
+            row_default_height: dp(34)
+            row_force_default: True
+            padding: 0, 0, dp(12), 0
     AnchorLayout:
         size_hint: 1, None
         height: dp(50)

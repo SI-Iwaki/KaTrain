@@ -704,5 +704,75 @@
    1500,
    1000
   ]
+ },
+ {
+  "name": "ai_enigma9plus",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 enigma9plus",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_enigma13plus",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 enigma13plus",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_enigma19plus",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 enigma19plus",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_mimic13",
+  "crop": [
+   367,
+   77,
+   1133,
+   923
+  ],
+  "desc": "AI設定 mimic13",
+  "size": [
+   1500,
+   1000
+  ]
+ },
+ {
+  "name": "ai_help_popup",
+  "crop": [
+   192,
+   32,
+   1308,
+   968
+  ],
+  "desc": "AI設定 説明欄の拡大表示",
+  "size": [
+   1500,
+   1000
+  ]
  }
 ]

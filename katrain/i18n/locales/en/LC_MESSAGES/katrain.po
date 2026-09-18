@@ -1833,3 +1833,29 @@ msgstr "Answer book problem (recorded solution finished)"
 #. banner: moves deviated from every recorded line, back to the normal pipeline
 msgid "tsumego:book-off"
 msgstr "Answer book problem (off the recorded line - normal analysis)"
+
+# ---- AI settings popup: description panel (katrain/gui/ai_help.py) ----
+
+msgid "ai option help header"
+msgstr "Settings (top to bottom)"
+
+msgid "ai option item"
+msgstr "- {key} ({name}) [default {default}]: {body}"
+
+msgid "ai option item nodefault"
+msgstr "- {key} ({name}): {body}"
+
+msgid "ai help hint"
+msgstr "Description (click to enlarge)"
+
+msgid "ai help title"
+msgstr "{name}: description"
+
+msgid "close help"
+msgstr "Close"
+
+msgid "ai:diverge_move"
+msgstr "Match-Rate Reduction"
+
+msgid "aihelp:diverge_move"
+msgstr "Human-like play that lowers the AI best-move match rate in the game report. Each candidate's humanPolicy is multiplied by (KataGo rank + 1) to the power of divergence_power, so moves ranked lower by KataGo are boosted. Moves losing more than diverge_score_filter points are excluded. human_kyu_rank sets the human profile. Requires the human-like model."

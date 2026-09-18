@@ -458,11 +458,13 @@ class TestGuiConfigConsistency:
         for msgid in ["ai:mimic13", "aihelp:mimic13"] + [f"mimic13_{s}" for s in Mimic13Strategy.SETTING_DEFAULTS]:
             assert f'msgid "{msgid}"' in po, msgid
 
-    @pytest.mark.parametrize("lang,bullet", [("jp", "■ "), ("en", "* ")])
+    @pytest.mark.parametrize("lang,bullet", [("jp", None), ("en", "* ")])
     def test_help_explains_every_slider(self, lang, bullet):
-        """GUI のヘルプ（aihelp:mimic13）はスライダー1本につき1行ずつ「上げると／下げると」を説明している。
+        """GUI の説明欄はスライダー1本につき1つずつ「上げると／下げると」を説明している。
 
         スライダーを足したのにヘルプを足し忘れる、を検出するための本数チェック（.po を直接読む＝.mo 非依存）。
+        jp は項目ごとの訳文 aiopt:mimic13_*（説明欄の【各項目】に英語キー付きで画面の順に自動で並ぶ・
+        katrain/gui/ai_help.py）、en は aihelp:mimic13 本文の「* 」の行。
         """
         import re
         from pathlib import Path
@@ -472,6 +474,10 @@ class TestGuiConfigConsistency:
         po = (Path(katrain.__file__).parent / "i18n" / "locales" / lang / "LC_MESSAGES" / "katrain.po").read_text(
             encoding="utf-8"
         )
+        if bullet is None:
+            for suffix in Mimic13Strategy.SETTING_DEFAULTS:
+                assert f'msgid "aiopt:mimic13_{suffix}"' in po, suffix
+            return
         m = re.search(r'msgid "aihelp:mimic13"\s*\nmsgstr "(.*)"', po)
         assert m, "aihelp:mimic13 not found"
         lines = m.group(1).split("\\n")  # .po の中では改行は 2 文字のエスケープ \n

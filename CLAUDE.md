@@ -81,6 +81,7 @@ katrain/
     ...               -- utils.py, lang.py, contribute_engine.py, tsumego_frame.py 等
   gui/                -- Kivy GUIウィジェット
     theme_manager.py  -- 盤面テーマ（盤・碁石）の一覧と切り替え（設定 general/board_theme）
+    ai_help.py        -- AI設定画面の説明欄（概要＋「■ 英語キー（日本語名）［既定］: 解説」の一覧。訳文は .po の aiopt:<key>）
   themes/             -- 同梱の盤面テーマ（koast / lizzie / milos。1テーマ=1ディレクトリ）
 native/tsumego/       -- 死活ソルバの Rust カーネル（DFS+df-pn。ビルド: cargo build --release --target x86_64-pc-windows-gnu → katrain/core/tsumego_solver/katrain_tsumego.dll へコピー）
   config.json         -- パッケージ同梱のデフォルト設定

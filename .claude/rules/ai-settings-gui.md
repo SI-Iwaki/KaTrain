@@ -60,7 +60,9 @@ if not star_moves:
 
 ## GUI設定画面の制約
 
-- **GridLayout行数**: `katrain/gui/popups.py` の `ConfigAIPopup.max_options = 17` は「基準行数」で、上限ではない。`build_ai_options` が `ai_options_grid_rows(len(mode_settings), max_options)` で実際の項目数まで行数を自動拡張するため、17を超えても `GridLayoutException: Too many children in GridLayout` は発生しない（回帰テスト: `tests/test_ai_options_grid.py`）。ただし項目が増えるほど1行が縦に潰れるため、20項目を大きく超える場合は独立した戦略（`ai:新名前`）への分離を検討すること
+- **項目欄は行の高さ固定のスクロールリスト**（2026-09-18）: `popups.kv` の `<ConfigAIPopup>` で `ScrollView` に `GridLayout(cols=2, row_default_height=34dp, row_force_default)` を入れてある＝**行数の上限は無い**（旧 `max_options`/`ai_options_grid_rows` は撤去）。固定枠に行を詰め込む方式は 20 項目超で 1 行が 16px まで潰れ、長いキー名が 2 行に折り返して上下の行に重なった。項目名（英語キー）は `AIOptionNameLabel` が列幅に 1 行で収まるまで文字を縮める。スクロールは**ホイールとスクロールバーだけ**（`scroll_type: ['bars']`＝本文ドラッグでスクロールさせるとスライダー操作が 250ms 遅れる）。スクロールが要る戦略では、項目欄の上のホイールはスライダーの値ではなくリストのスクロールになる。回帰テスト: `tests/test_ai_options_grid.py`
+- **説明欄＝概要＋【各項目】を自動で組み立てる**（`katrain/gui/ai_help.py`）: `aihelp:<strategy>` は**戦略の概要だけ**を書き、各項目の解説は `aiopt:` の訳文から画面と同じ順（`ai_option_display_order`）で「■ 英語キー（日本語名）［既定 X］: 解説」と並ぶ（既定は同梱 config.json から自動）。画面の項目名が英語キーのままなので、**解説側に英語キーを必ず出す**のが目的（ユーザー要望 2026-09-18）。調整の目安などを一覧の後ろに置きたいときは `aihelptips:<strategy>`。説明欄はクリックで拡大表示（`open_help_popup`）
+- **日本語の説明文は `cjk_wrap_friendly` を通す**: Kivy は半角スペースでしか改行できず、スペースの後ろの長い日本語を丸ごと次の行へ送って行が幅の途中で切れる（実測 500px 幅で 125px・96px の行）。英単語どうしの間以外の半角スペースを NBSP にして文字単位で折り返させる
 - **i18nコンパイル必須**: `.po` ファイル編集後は `python tools/compile_mo.py` で `.mo` を再コンパイルしないと翻訳が反映されない（戦略名が `ai:xxx` のまま表示される）
 
 ## チェックリスト（新機能追加時）
@@ -69,7 +71,7 @@ if not star_moves:
 - [ ] `katrain/core/ai.py` — 対象Strategyクラスにロジック追加
 - [ ] `katrain/config.json` — 対象戦略セクションにデフォルト値追加
 - [ ] `C:\Users\iwaki\.katrain\config.json` — 同じキー追加（GUIに表示するため）
-- [ ] `katrain/i18n/locales/{en,jp}/katrain.po` — `msgid "<param_name>"` 短ラベルに加え、既存 `aihelp:<strategy>` 本文にも動作説明を追記（短ラベルだけでは意図が伝わらない）
+- [ ] `katrain/i18n/locales/jp/LC_MESSAGES/katrain.po` — `msgid "aiopt:<param_name>"` に「1 行目＝日本語名、2 行目以降＝解説（意味と上げる／下げるとどうなるか）」を足す（**無いと `tests/test_ai_help_text.py` が落ちる**）。同じキーでも戦略で意味が違うときは `aiopt:<strategy>/<key>`、難解系（enigma9/13/19 と＋版）は共通文面 `aiopt:enigma*_<suffix>`（文中の `{p}` が `enigma13plus` 等の接頭辞に置き換わる）。`aihelp:<strategy>` には項目の解説を書かない（概要だけ・二重になる）。※旧来の短ラベル `msgid "<param_name>"` は画面に出ていない
 - [ ] `python tools/compile_mo.py` で `.mo` 再コンパイル
 - [ ] CLAUDE.md を更新（新機能の説明、パラメータ等）
 - [ ] 起動時リセットが必要な場合は `base_katrain.py` の `_load_config` 末尾に追加
@@ -82,4 +84,4 @@ if not star_moves:
 - [ ] `katrain/i18n/locales/en/LC_MESSAGES/katrain.po` — `ai:xxx` / `aihelp:xxx` 追加
 - [ ] `katrain/i18n/locales/jp/LC_MESSAGES/katrain.po` — 同上（日本語）
 - [ ] `python tools/compile_mo.py` で `.mo` を再コンパイル
-- [ ] 設定項目数が `max_options`（現在15）を超えないか確認
+- [ ] `aihelp:xxx`（概要）は項目の解説を含めず短く書く（項目は `aiopt:` から自動で並ぶ）

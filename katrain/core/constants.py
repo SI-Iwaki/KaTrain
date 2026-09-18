@@ -489,6 +489,11 @@ AI_OPTION_VALUES = {
     # 85 = HumanStyle 自身の終局閾値 ceil(0.5×169)。それ未満だと委譲先が hp 重みのランダム選択になる
     "mimic13_endgame_move": [65, 75, 85, 95, 105],
     "mimic13_unsettled_max": [8, 12, 16, 20, 24],
+    # ===== TsumegoOwnershipStrategy（ai:tsumego）の ON/OFF 項目: チェックボックスで出す =====
+    "gain_verify": "bool",
+    "ko_win_assumption": "bool",
+    "promotion_dominant_requires_success": "bool",
+    "tie_ko_screen": "bool",
 }
 
 # AI設定画面の表示順（関連オプションをグループ化）

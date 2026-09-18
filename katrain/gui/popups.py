@@ -1,5 +1,6 @@
 import glob
 import json
+import math
 import os
 import re
 import stat
@@ -10,9 +11,10 @@ from zipfile import ZipFile
 
 import urllib3
 from kivy.clock import Clock
-from kivy.metrics import dp
+from kivy.metrics import dp, sp
 from kivy.properties import BooleanProperty, ListProperty, NumericProperty, ObjectProperty, StringProperty
 from kivy.uix.anchorlayout import AnchorLayout
+from kivy.uix.behaviors import ButtonBehavior
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.label import Label
@@ -28,7 +30,6 @@ from katrain.core.constants import (
     AI_CONFIG_DEFAULT,
     AI_DEFAULT,
     AI_KEY_PROPERTIES,
-    AI_OPTION_ORDER,
     AI_OPTION_VALUES,
     AI_STRATEGIES_RECOMMENDED_ORDER,
     DATA_FOLDER,
@@ -56,6 +57,7 @@ from katrain.gui.kivyutils import (
     AutoSizedRectangleButton,
 )
 from katrain.gui import theme_manager
+from katrain.gui.ai_help import ai_option_display_order, compose_ai_help
 from katrain.gui.theme import Theme
 from katrain.gui.widgets.progress_loader import ProgressLoader
 
@@ -153,6 +155,10 @@ class LabelledSelectionSlider(BoxLayout):
     input_property = StringProperty("")
     values = ListProperty([(0, "")])  # (value:numeric,label:string) pairs
     key_option = BooleanProperty(False)
+    # 数値ボックスの幅（スライダー 2.25 に対する比）と文字サイズ（sp）。AI設定画面は complex / maintain /
+    # rank_9d 等の文字列値が切れないよう広く・小さくする。既定は従来のまま（新規対局の局面生成など）
+    value_box_width = NumericProperty(0.5)
+    value_font_size = NumericProperty(Theme.INPUT_FONT_SIZE)
 
     def set_value(self, v):
         self.slider.set_value(v)
@@ -397,20 +403,55 @@ class DescriptionLabel(Label):
     pass
 
 
-def ai_options_grid_rows(num_settings, min_rows):
-    """AI設定グリッドに必要な行数。
+class AIOptionNameLabel(Label):
+    """AI設定の項目名（英語の設定キー）。列の幅に 1 行で収まるまで文字を小さくする。
 
-    GridLayout は rows*cols を超える子ウィジェットで GridLayoutException を投げるため、
-    設定項目数が基準行数(min_rows)を超える戦略でも不足しないよう行数を拡張する。
+    項目欄は行の高さが固定なので、折り返して 2 行になると上下の行に重なる
+    （実測: 列幅 350px・18sp で enigma13plus_opening_humanstyle_moves が 2 行になり上の行に重なった）。
     """
-    return max(min_rows, num_settings)
+
+    max_font_sp = NumericProperty(16)
+    min_font_sp = NumericProperty(10)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._fit_trigger = Clock.create_trigger(self._fit_font)
+        self.bind(width=self._fit_trigger, text=self._fit_trigger)
+        self._fit_trigger()
+
+    def _fit_font(self, *_args):
+        available = self.width - dp(8)
+        if available <= 0:
+            return
+        self.font_size = sp(self.max_font_sp)
+        self.texture_update()
+        natural = self.texture_size[0]
+        if natural > available:
+            self.font_size = max(sp(self.min_font_sp), self.font_size * available / natural)
+
+
+class AIHelpLabel(ButtonBehavior, Label):
+    """AI設定の説明欄の本文。クリックで拡大表示する（ConfigAIPopup.open_help_popup）"""
+
+
+class AIHelpPopupContent(BoxLayout):
+    """説明欄の拡大表示（大きめの文字・太いスクロールバー・閉じるボタン）"""
+
+    text = StringProperty("")
+    body_font_name = StringProperty(Theme.DEFAULT_FONT)
+    popup = ObjectProperty(None, allownone=True)
+
+    def close(self, *_args):
+        if self.popup:
+            self.popup.dismiss()
 
 
 class ConfigAIPopup(QuickConfigGui):
-    max_options = NumericProperty(17)
+    _package_ai_config = None  # 同梱 config.json の ai セクション（説明欄の［既定］の表示用・1 回だけ読む）
 
     def __init__(self, katrain):
         super().__init__(katrain)
+        self.help_popup = None
         self.ai_select.value_refs = AI_STRATEGIES_RECOMMENDED_ORDER
         selected_strategies = {p.strategy for p in katrain.players_info.values()}
         config_strategy = list((selected_strategies - {AI_DEFAULT}) or {AI_CONFIG_DEFAULT})[0]
@@ -428,17 +469,34 @@ class ConfigAIPopup(QuickConfigGui):
         prefix = f"ai/{strategy}/"
         options = {k[len(prefix) :]: v for k, v in options.items() if k.startswith(prefix)}
         dan_rank = ai_rank_estimation(strategy, options)
-        self.estimated_rank_label.text = rank_label(dan_rank)
+        # humanSL 系など段級位を推定しない戦略は NaN が返る（そのまま rank_label に渡すと「nan級」）
+        if dan_rank is None or (isinstance(dan_rank, float) and math.isnan(dan_rank)):
+            self.estimated_rank_label.text = "?"
+        else:
+            self.estimated_rank_label.text = rank_label(dan_rank)
+
+    @classmethod
+    def package_ai_defaults(cls, strategy):
+        """同梱 config.json の既定値（「デフォルトに戻す」で入る値）"""
+        if cls._package_ai_config is None:
+            try:
+                with open(find_package_resource("katrain/config.json"), encoding="utf-8") as f:
+                    cls._package_ai_config = json.load(f).get("ai", {})
+            except (OSError, ValueError):
+                cls._package_ai_config = {}
+        return cls._package_ai_config.get(strategy, {})
 
     def build_ai_options(self, *_args):
         strategy = self.ai_select.selected[1]
         mode_settings = self.katrain.config(f"ai/{strategy}")
         self.options_grid.clear_widgets()
-        num_rows = ai_options_grid_rows(len(mode_settings), self.max_options)
-        self.options_grid.rows = num_rows
-        self.help_label.text = i18n._(strategy.replace("ai:", "aihelp:"))
-        for k, v in sorted(mode_settings.items(), key=lambda kv: (kv[0] not in AI_KEY_PROPERTIES, AI_OPTION_ORDER.get(kv[0], 99), kv[0])):
-            self.options_grid.add_widget(DescriptionLabel(text=k, size_hint_x=1.0))
+        # 説明欄＝概要＋「■ 英語キー（日本語名）［既定］: 解説」を項目欄と同じ順で（katrain/gui/ai_help.py。
+        # 日本語の折り返し調整も済んだ markup が返る）
+        self.help_label.text = compose_ai_help(strategy, mode_settings, i18n._, self.package_ai_defaults(strategy))
+        # 項目欄は行の高さ固定のスクロールリスト（行数を固定枠に詰め込むと 20 項目超で文字が重なる）
+        for k in ai_option_display_order(mode_settings):
+            v = mode_settings[k]
+            self.options_grid.add_widget(AIOptionNameLabel(text=k))
             if k in AI_OPTION_VALUES:
                 values = AI_OPTION_VALUES[k]
                 if values == "bool":
@@ -451,7 +509,11 @@ class ConfigAIPopup(QuickConfigGui):
                     else:  # just numbers
                         fixed_values = [(v, str(v)) for v in values]
                     widget = LabelledSelectionSlider(
-                        values=fixed_values, input_property=f"ai/{strategy}/{k}", key_option=(k in AI_KEY_PROPERTIES)
+                        values=fixed_values,
+                        input_property=f"ai/{strategy}/{k}",
+                        key_option=(k in AI_KEY_PROPERTIES),
+                        value_box_width=0.8,
+                        value_font_size=16,
                     )
                     widget.set_value(v)
                     widget.textbox.bind(text=self.estimate_rank_from_options)
@@ -460,9 +522,27 @@ class ConfigAIPopup(QuickConfigGui):
                 self.options_grid.add_widget(
                     wrap_anchor(LabelledFloatInput(text=str(v), input_property=f"ai/{strategy}/{k}"))
                 )
-        for _ in range((num_rows - len(mode_settings)) * 2):
-            self.options_grid.add_widget(Label(size_hint_x=None))
+        self.options_scroll.scroll_y = 1
+        self.help_scroll.scroll_y = 1
         Clock.schedule_once(self.estimate_rank_from_options)
+
+    def open_help_popup(self, *_args):
+        """説明欄をクリックしたら、大きな画面で開き直す（小さい説明欄はスクロールしても読みにくい）"""
+        strategy = self.ai_select.selected[1]
+        gui = MDApp.get_running_app().gui
+        size = [min(dp(1100), gui.width * 0.94), gui.height * 0.92]
+        if self.help_popup is None:
+            content = AIHelpPopupContent()
+            self.help_popup = I18NPopup(title_key=strategy, size=size, content=content).__self__
+            content.popup = self.help_popup
+        popup = self.help_popup
+        popup.title_key = strategy
+        popup.title = i18n._("ai help title").format(name=i18n._(strategy))
+        popup.size = size
+        popup.content.body_font_name = i18n.font_name
+        popup.content.text = self.help_label.text
+        popup.content.ids.help_scroll.scroll_y = 1
+        popup.open()
 
     def reset_to_defaults(self):
         """Reset current AI strategy settings to package defaults"""

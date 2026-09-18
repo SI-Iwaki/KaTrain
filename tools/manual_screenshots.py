@@ -241,6 +241,18 @@ def build_tour(app):
 
             t.add(f"_ai_sel_{key}", _sel, delay=1.2)
             t.add(f"ai_{key}", (lambda k=key: shoot(f"ai_{k}", gui.ai_settings_popup, desc=f"AI設定 {k}")), delay=0.4)
+
+        # 説明欄をクリックしたときの拡大表示（項目の多い擬態で撮る）
+        def _help_select():
+            gui.ai_settings_popup.content.ai_select.select_key("ai:mimic13")
+
+        def _help_popup():
+            return gui.ai_settings_popup.content.help_popup
+
+        t.add("_ai_help_sel", _help_select, delay=1.2)
+        t.add("_ai_help_open", lambda: gui.ai_settings_popup.content.open_help_popup(), delay=1.2)
+        t.add("ai_help_popup", lambda: shoot("ai_help_popup", _help_popup(), desc="AI設定 説明欄の拡大表示"), delay=0.4)
+        t.add("_ai_help_close", lambda: _help_popup().dismiss(), delay=0.8)
         t.add("_ai_close", lambda: gui.ai_settings_popup.dismiss(), delay=0.8)
 
     # ---- 一般・エンジン設定 / 時間 / 指導 ----
