@@ -81,7 +81,9 @@
 - 消費モード（`enigma9_spending_plan` の `cost_weight < 1.0`＝余剰リード `lead − target > max_loss`）
 - `over_cap = min(lead + D, ceiling) > cap`（`ceiling = max(cap, 1.5 × large_lead_max_loss)`）
 
-返り値は `(over_cap, ceiling)` か None。序盤委譲・終局帯・`pool` が空・humanSL 不在などの早期 return は従来どおり先に効く。
+返り値は `(over_cap, ceiling)` か None。序盤委譲・終局帯・humanSL 不在などの早期 return は従来どおり先に効く。
+**`pool` が空（最善手以外が全部 cap の外）の早期 return だけは、窓が開いていれば飛ばす**（追加プローブの帯にも候補が
+無ければ従来どおり最善手）＝§9 の実局面がこの形で、初版の設計（pool が空なら return）は罠を一度も調べなかった。
 
 ### 4.3 資格と選択（純関数 `enigma9_overdraft_pick`）
 
@@ -174,3 +176,25 @@ humanSL 9 段重みつき平均損失（1 応手 `ENIGMA9_PUNISH_CAP` 目で cap
 - 発動回数はプローブ数に比例＝時間とのトレードオフ（k=12 で対象手番に約 +2.4 秒）。先読みでは温まらない。
 - 実戦校正は未実施。成功基準は「発動回数/局・応じられた割合・発動後の lead 推移（ログの lead 差分）・勝敗」を
   OFF の対局と並べて読むこと。
+
+## 9. 実局面での検証（2026-09-18・katrain_debug・ユーザーのローカル設定＋ `enigma13plus_overdraft_deficit=2.5`）
+
+局面は `calibration-data/enigma-overdraft/recon/` の復元 SGF（どちらも反実仮想で資格のあった手番）。config visits 2500・
+コールド（1 run ごとに KataGo を起動）。
+
+| 局面 | 設定 | 結果 |
+|---|---|---|
+| `game_20260917_233314` d=41（白番・lead +3.0〜3.9・cap 2.0〜2.9） | OFF | B6（最善手。D5 は検証 vloss 4.3〜5.2 > cap で Drop）・着手決定 0.2 秒 |
+| 同上 | ON・probes 12（帯の候補は 8 手）×3 run | **3/3 で D5**: 応じられたら −2.09 / −1.41 / −2.06（勝率 40〜43%）・引っかかれば +5.74 / +6.40 / +5.82・find_hp 0.18 / 0.12 / 0.08。D5 は生 loss 1.5〜2.3 で通常の shortlist に入り、検証で上限超え → 破棄せず `over_scored` へ回った手。資格は 3 run とも D5 の 1 手だけ・着手決定 1.4 秒 |
+| `game_20260918_004112` d=50（黒番・lead +5.3〜6.8・cap 4.3〜5.8） | OFF | D8（最善手）。**最善手以外の 120 候補が全部 cap の外＝`admissible=0`** で「no admissible deviation」の早期 return・0.0 秒 |
+| 同上 | ON・probes 12（帯の候補は 7〜8 手）×3 run | **3/3 で G10**: 応じられたら −2.21 / −2.42 / −1.98（勝率 29〜32%）・引っかかれば +3.23 / +3.30 / +3.42・find_hp 0.03〜0.04・vloss 8.6〜9.3。着手決定 1.2〜1.3 秒 |
+| 同上 | ON・probes 6（既定） | G10（−2.31 / +3.00・find_hp 0.06）・1.0 秒 |
+| `game_20260918_004112` d=12（消費モード外） | ON | `Overdraft` 行なし＝従来どおり（H4） |
+
+**検証で見つけて直した設計の穴**: 当初の設計（§4.2 の初版）は「`pool` が空なら従来どおり早期 return」としていたが、`004112` d=50 が
+まさにその形（一本道の局面で最善手以外が全部 cap の外）で、追加プローブより先に return して罠 G10 を一度も調べなかった
+（修正前は ON の 4 run 全部が D8・0.0 秒）。**窓が開いている手番は `pool` が空でも先へ進む**ように直した（帯にも候補が無ければ
+従来どおり最善手）。「一本道の局面に罠は無い」という想定は誤りで、反実仮想の資格手 23 手番にはこの形が含まれる。回帰は
+`test_trap_is_found_even_when_the_normal_pool_is_empty` / `test_empty_pool_and_no_overdraft_candidates_still_returns_early`。
+
+着手時間の増分は 追加プローブ 6〜8 手で +1.0〜1.3 秒（コールド）。OFF の手番は従来と同じログ・同じ手。
