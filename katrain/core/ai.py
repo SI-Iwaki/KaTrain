@@ -2936,6 +2936,10 @@ class Enigma9Strategy(AIStrategy):
         "gamble_until_move": 0,          # 序盤の賭け罠の窓（手数未満で発動・0=OFF）。spec 2026-09-17-enigma-gamble-design.md
         "gamble_min_winrate": 0.35,      # 賭け罠: 正しく応じられた場合の勝率の下限
         "gamble_min_delta_e": 0.5,       # 賭け罠: 罠とみなす E の上積み（目）
+        "overdraft_deficit": 0.0,            # 捨て身の罠: 最大ビハインド（目・0=OFF）。spec 2026-09-18-enigma-overdraft-design.md
+        "overdraft_answered_max": 0.0,       # 捨て身の罠: 応じられた後のリードの上限（0=必ずマイナス・99=目標差未満）
+        "overdraft_min_fooled_lead": 2.0,    # 捨て身の罠: 引っかかった場合に残るリードの下限（目）
+        "overdraft_probes": 6,               # 捨て身の罠: 追加プローブ数
     }
 
     def _setting(self, suffix):
@@ -3830,6 +3834,10 @@ class Enigma13Strategy(Enigma9Strategy):
         "gamble_until_move": 0,          # 序盤の賭け罠の窓（手数未満で発動・0=OFF）。spec 2026-09-17-enigma-gamble-design.md
         "gamble_min_winrate": 0.35,      # 賭け罠: 正しく応じられた場合の勝率の下限
         "gamble_min_delta_e": 0.5,       # 賭け罠: 罠とみなす E の上積み（目）
+        "overdraft_deficit": 0.0,            # 捨て身の罠: 最大ビハインド（目・0=OFF）。spec 2026-09-18-enigma-overdraft-design.md
+        "overdraft_answered_max": 0.0,       # 捨て身の罠: 応じられた後のリードの上限（0=必ずマイナス・99=目標差未満）
+        "overdraft_min_fooled_lead": 2.0,    # 捨て身の罠: 引っかかった場合に残るリードの下限（目）
+        "overdraft_probes": 6,               # 捨て身の罠: 追加プローブ数
     }
 
 
@@ -3962,6 +3970,10 @@ class Enigma19Strategy(Enigma9Strategy):
         "gamble_until_move": 0,          # 序盤の賭け罠の窓（手数未満で発動・0=OFF）。spec 2026-09-17-enigma-gamble-design.md
         "gamble_min_winrate": 0.35,      # 賭け罠: 正しく応じられた場合の勝率の下限
         "gamble_min_delta_e": 0.5,       # 賭け罠: 罠とみなす E の上積み（目）
+        "overdraft_deficit": 0.0,            # 捨て身の罠: 最大ビハインド（目・0=OFF）。spec 2026-09-18-enigma-overdraft-design.md
+        "overdraft_answered_max": 0.0,       # 捨て身の罠: 応じられた後のリードの上限（0=必ずマイナス・99=目標差未満）
+        "overdraft_min_fooled_lead": 2.0,    # 捨て身の罠: 引っかかった場合に残るリードの下限（目）
+        "overdraft_probes": 6,               # 捨て身の罠: 追加プローブ数
     }
 
 

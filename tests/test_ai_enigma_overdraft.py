@@ -171,3 +171,47 @@ class TestOverdraftPick:
         entry = over("G7", -1.5, 5.3, 6.0)
         pick([entry])
         assert "fooled_lead" not in entry and "u" not in entry
+
+
+from katrain.core.ai import (
+    Enigma9PlusStrategy,
+    Enigma9Strategy,
+    Enigma13PlusStrategy,
+    Enigma13Strategy,
+    Enigma19PlusStrategy,
+    Enigma19Strategy,
+    Mimic13Strategy,
+)
+from katrain.core.constants import AI_OPTION_VALUES
+
+ALL_ENIGMA = [
+    Enigma9Strategy, Enigma9PlusStrategy, Enigma13Strategy, Enigma13PlusStrategy,
+    Enigma19Strategy, Enigma19PlusStrategy,
+]
+
+
+def _plain(key):
+    return [v[0] if isinstance(v, tuple) else v for v in AI_OPTION_VALUES[key]]
+
+
+class TestOverdraftSettings:
+    @pytest.mark.parametrize("cls", ALL_ENIGMA, ids=lambda c: c.KEY_PREFIX)
+    def test_defaults_are_off_negative_only_two_points_six_probes(self, cls):
+        d = cls.SETTING_DEFAULTS
+        assert d["overdraft_deficit"] == 0
+        assert d["overdraft_answered_max"] == 0
+        assert d["overdraft_min_fooled_lead"] == 2.0
+        assert d["overdraft_probes"] == 6
+
+    @pytest.mark.parametrize("cls", ALL_ENIGMA, ids=lambda c: c.KEY_PREFIX)
+    def test_gui_options(self, cls):
+        p = cls.KEY_PREFIX
+        deficit = _plain(f"{p}_overdraft_deficit")
+        assert deficit[0] == 0 and 2.5 in deficit
+        assert AI_OPTION_VALUES[f"{p}_overdraft_deficit"][0] == (0.0, "OFF")
+        assert _plain(f"{p}_overdraft_answered_max") == [-1.0, 0.0, 99.0]
+        assert _plain(f"{p}_overdraft_min_fooled_lead") == [1.0, 2.0, 3.0, 5.0, 8.0]
+        assert _plain(f"{p}_overdraft_probes") == [4, 6, 8, 12]
+
+    def test_mimic13_is_untouched(self):
+        assert not any(k.startswith("overdraft") for k in Mimic13Strategy.SETTING_DEFAULTS)

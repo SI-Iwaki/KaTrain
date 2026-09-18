@@ -200,6 +200,13 @@ _ENIGMA_GAMBLE_UNTIL_MOVE = {
 _ENIGMA_GAMBLE_MIN_WINRATE = [(0.25, "25%"), (0.3, "30%"), (0.35, "35%"), (0.4, "40%"), (0.45, "45%")]
 _ENIGMA_GAMBLE_MIN_DELTA_E = [0.3, 0.5, 0.7, 1.0, 1.5]
 
+# 難解の捨て身の罠（enigma*_overdraft_*・spec 2026-09-18-enigma-overdraft-design.md）。全盤サイズ共通。
+# deficit 0=OFF、answered_max は「応じられた後のリードの上限」（99=MAX＝目標差未満まで）
+_ENIGMA_OVERDRAFT_DEFICIT = [(0.0, "OFF"), (1.0, "1.0"), (1.5, "1.5"), (2.0, "2.0"), (2.5, "2.5"), (3.0, "3.0"), (4.0, "4.0"), (5.0, "5.0")]
+_ENIGMA_OVERDRAFT_ANSWERED_MAX = [(-1.0, "-1"), (0.0, "0"), (99.0, "MAX")]
+_ENIGMA_OVERDRAFT_MIN_FOOLED_LEAD = [1.0, 2.0, 3.0, 5.0, 8.0]
+_ENIGMA_OVERDRAFT_PROBES = [4, 6, 8, 12]
+
 AI_OPTION_VALUES = {
     "kyu_rank": [(k, f"{k}[strength:kyu]") for k in range(15, 0, -1)]
     + [(k, f"{1-k}[strength:dan]") for k in range(0, -3, -1)],
@@ -345,6 +352,10 @@ AI_OPTION_VALUES = {
     "enigma9_gamble_until_move": _ENIGMA_GAMBLE_UNTIL_MOVE[9],
     "enigma9_gamble_min_winrate": _ENIGMA_GAMBLE_MIN_WINRATE,
     "enigma9_gamble_min_delta_e": _ENIGMA_GAMBLE_MIN_DELTA_E,
+    "enigma9_overdraft_deficit": _ENIGMA_OVERDRAFT_DEFICIT,
+    "enigma9_overdraft_answered_max": _ENIGMA_OVERDRAFT_ANSWERED_MAX,
+    "enigma9_overdraft_min_fooled_lead": _ENIGMA_OVERDRAFT_MIN_FOOLED_LEAD,
+    "enigma9_overdraft_probes": _ENIGMA_OVERDRAFT_PROBES,
     # ===== Enigma9PlusStrategy（9路専用・難解＋）: enigma9 の候補値をそのまま＋ΔE 床・罠探索の3項目 =====
     "enigma9plus_max_loss": [0.3, 0.5, 0.8, 1.0, 1.2, 1.5, 1.8],
     "enigma9plus_large_lead_max_loss": [2.0, 3.0, 4.0, 5.0, 6.0, 8.0],
@@ -363,6 +374,10 @@ AI_OPTION_VALUES = {
     "enigma9plus_gamble_until_move": _ENIGMA_GAMBLE_UNTIL_MOVE[9],
     "enigma9plus_gamble_min_winrate": _ENIGMA_GAMBLE_MIN_WINRATE,
     "enigma9plus_gamble_min_delta_e": _ENIGMA_GAMBLE_MIN_DELTA_E,
+    "enigma9plus_overdraft_deficit": _ENIGMA_OVERDRAFT_DEFICIT,
+    "enigma9plus_overdraft_answered_max": _ENIGMA_OVERDRAFT_ANSWERED_MAX,
+    "enigma9plus_overdraft_min_fooled_lead": _ENIGMA_OVERDRAFT_MIN_FOOLED_LEAD,
+    "enigma9plus_overdraft_probes": _ENIGMA_OVERDRAFT_PROBES,
     # ===== Enigma13Strategy（13路専用・難解） =====
     # 9路の「2目以上の損失手は打たない」は挽回が難しい9路向けの締め方。13路は
     # 悪手フィルタの盤サイズ比（NORMAL 3.3→5.6 ≒ ×1.7）に合わせて天井 3.0 まで開ける
@@ -383,6 +398,10 @@ AI_OPTION_VALUES = {
     "enigma13_gamble_until_move": _ENIGMA_GAMBLE_UNTIL_MOVE[13],
     "enigma13_gamble_min_winrate": _ENIGMA_GAMBLE_MIN_WINRATE,
     "enigma13_gamble_min_delta_e": _ENIGMA_GAMBLE_MIN_DELTA_E,
+    "enigma13_overdraft_deficit": _ENIGMA_OVERDRAFT_DEFICIT,
+    "enigma13_overdraft_answered_max": _ENIGMA_OVERDRAFT_ANSWERED_MAX,
+    "enigma13_overdraft_min_fooled_lead": _ENIGMA_OVERDRAFT_MIN_FOOLED_LEAD,
+    "enigma13_overdraft_probes": _ENIGMA_OVERDRAFT_PROBES,
     # ===== Enigma13PlusStrategy（13路専用・難解＋） =====
     # 難解（13路）の10項目をそのまま引き継ぎ（既定値も同じ）、ΔE 床の2項目を足す。
     # min_delta_e 0 = OFF（難解（13路）とビット同一）。既定 0.2/0.3 は 13路7局の実測から
@@ -405,6 +424,10 @@ AI_OPTION_VALUES = {
     "enigma13plus_gamble_until_move": _ENIGMA_GAMBLE_UNTIL_MOVE[13],
     "enigma13plus_gamble_min_winrate": _ENIGMA_GAMBLE_MIN_WINRATE,
     "enigma13plus_gamble_min_delta_e": _ENIGMA_GAMBLE_MIN_DELTA_E,
+    "enigma13plus_overdraft_deficit": _ENIGMA_OVERDRAFT_DEFICIT,
+    "enigma13plus_overdraft_answered_max": _ENIGMA_OVERDRAFT_ANSWERED_MAX,
+    "enigma13plus_overdraft_min_fooled_lead": _ENIGMA_OVERDRAFT_MIN_FOOLED_LEAD,
+    "enigma13plus_overdraft_probes": _ENIGMA_OVERDRAFT_PROBES,
     # ===== Enigma19Strategy（19路専用・難解） =====
     # 悪手フィルタは13路と同じ NORMAL=5.6 だが、19路は挽回機会が多いぶん天井 4.0 まで開ける
     # （5.6=悪手フィルタまでは開けない＝「難解だが悪手ではない」帯に留める）
@@ -423,6 +446,10 @@ AI_OPTION_VALUES = {
     "enigma19_gamble_until_move": _ENIGMA_GAMBLE_UNTIL_MOVE[19],
     "enigma19_gamble_min_winrate": _ENIGMA_GAMBLE_MIN_WINRATE,
     "enigma19_gamble_min_delta_e": _ENIGMA_GAMBLE_MIN_DELTA_E,
+    "enigma19_overdraft_deficit": _ENIGMA_OVERDRAFT_DEFICIT,
+    "enigma19_overdraft_answered_max": _ENIGMA_OVERDRAFT_ANSWERED_MAX,
+    "enigma19_overdraft_min_fooled_lead": _ENIGMA_OVERDRAFT_MIN_FOOLED_LEAD,
+    "enigma19_overdraft_probes": _ENIGMA_OVERDRAFT_PROBES,
     # ===== Enigma19PlusStrategy（19路専用・難解＋）: enigma19 の候補値をそのまま＋ΔE 床・罠探索の3項目 =====
     "enigma19plus_max_loss": [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0],
     "enigma19plus_large_lead_max_loss": [3.0, 4.0, 5.0, 6.0, 8.0, 10.0],
@@ -441,6 +468,10 @@ AI_OPTION_VALUES = {
     "enigma19plus_gamble_until_move": _ENIGMA_GAMBLE_UNTIL_MOVE[19],
     "enigma19plus_gamble_min_winrate": _ENIGMA_GAMBLE_MIN_WINRATE,
     "enigma19plus_gamble_min_delta_e": _ENIGMA_GAMBLE_MIN_DELTA_E,
+    "enigma19plus_overdraft_deficit": _ENIGMA_OVERDRAFT_DEFICIT,
+    "enigma19plus_overdraft_answered_max": _ENIGMA_OVERDRAFT_ANSWERED_MAX,
+    "enigma19plus_overdraft_min_fooled_lead": _ENIGMA_OVERDRAFT_MIN_FOOLED_LEAD,
+    "enigma19plus_overdraft_probes": _ENIGMA_OVERDRAFT_PROBES,
     # ===== Mimic13Strategy（13路専用・擬態）spec 2026-09-17-mimic13-strategy-design.md =====
     # 相手より低い一致率で勝つ。price = vloss − ΔE をリード連動の λ で買う
     "mimic13_max_loss": [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0],
@@ -564,6 +595,10 @@ AI_OPTION_ORDER = {
     "enigma9_gamble_until_move": 14,
     "enigma9_gamble_min_winrate": 15,
     "enigma9_gamble_min_delta_e": 16,
+    "enigma9_overdraft_deficit": 17,
+    "enigma9_overdraft_answered_max": 18,
+    "enigma9_overdraft_min_fooled_lead": 19,
+    "enigma9_overdraft_probes": 20,
     "enigma9plus_max_loss": 0,
     "enigma9plus_large_lead_max_loss": 1,
     "enigma9plus_min_winrate": 2,
@@ -581,6 +616,10 @@ AI_OPTION_ORDER = {
     "enigma9plus_gamble_until_move": 14,
     "enigma9plus_gamble_min_winrate": 15,
     "enigma9plus_gamble_min_delta_e": 16,
+    "enigma9plus_overdraft_deficit": 17,
+    "enigma9plus_overdraft_answered_max": 18,
+    "enigma9plus_overdraft_min_fooled_lead": 19,
+    "enigma9plus_overdraft_probes": 20,
     "enigma13_max_loss": 0,
     "enigma13_large_lead_max_loss": 1,
     "enigma13_min_winrate": 2,
@@ -595,6 +634,10 @@ AI_OPTION_ORDER = {
     "enigma13_gamble_until_move": 14,
     "enigma13_gamble_min_winrate": 15,
     "enigma13_gamble_min_delta_e": 16,
+    "enigma13_overdraft_deficit": 17,
+    "enigma13_overdraft_answered_max": 18,
+    "enigma13_overdraft_min_fooled_lead": 19,
+    "enigma13_overdraft_probes": 20,
     "enigma13plus_max_loss": 0,
     "enigma13plus_large_lead_max_loss": 1,
     "enigma13plus_min_winrate": 2,
@@ -612,6 +655,10 @@ AI_OPTION_ORDER = {
     "enigma13plus_gamble_until_move": 14,
     "enigma13plus_gamble_min_winrate": 15,
     "enigma13plus_gamble_min_delta_e": 16,
+    "enigma13plus_overdraft_deficit": 17,
+    "enigma13plus_overdraft_answered_max": 18,
+    "enigma13plus_overdraft_min_fooled_lead": 19,
+    "enigma13plus_overdraft_probes": 20,
     "enigma19_max_loss": 0,
     "enigma19_large_lead_max_loss": 1,
     "enigma19_min_winrate": 2,
@@ -626,6 +673,10 @@ AI_OPTION_ORDER = {
     "enigma19_gamble_until_move": 14,
     "enigma19_gamble_min_winrate": 15,
     "enigma19_gamble_min_delta_e": 16,
+    "enigma19_overdraft_deficit": 17,
+    "enigma19_overdraft_answered_max": 18,
+    "enigma19_overdraft_min_fooled_lead": 19,
+    "enigma19_overdraft_probes": 20,
     "enigma19plus_max_loss": 0,
     "enigma19plus_large_lead_max_loss": 1,
     "enigma19plus_min_winrate": 2,
@@ -643,6 +694,10 @@ AI_OPTION_ORDER = {
     "enigma19plus_gamble_until_move": 14,
     "enigma19plus_gamble_min_winrate": 15,
     "enigma19plus_gamble_min_delta_e": 16,
+    "enigma19plus_overdraft_deficit": 17,
+    "enigma19plus_overdraft_answered_max": 18,
+    "enigma19plus_overdraft_min_fooled_lead": 19,
+    "enigma19plus_overdraft_probes": 20,
     "mimic13_max_loss": 0,
     "mimic13_reserve": 1,
     "mimic13_spend_rate": 2,
