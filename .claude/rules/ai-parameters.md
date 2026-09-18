@@ -112,25 +112,27 @@ human/complex モードの悪手フィルタ閾値は **GUI 調整可能**（`fi
 
 **ターゲット検出**: 石グループは `find_targets()`（SiegeStrategyと共有）で毎手再評価。侵入対象はownershipグリッドから毎手抽出（`hunt_invasion_min` 〜 `hunt_invasion_max` の範囲）。
 
-| パラメータ | デフォルト(19路) | デフォルト(13路) | 備考 |
-|---|---|---|---|
-| hunt_max_loss | 6.0 | 4.0 | 石群攻撃時の許容最大損失（目） |
-| hunt_min_group_size | 5 | 4 | ターゲット最小グループサイズ |
-| hunt_proximity_stddev | 3.0 | 2.5 | 石群攻撃の近接重みの標準偏差 |
-| hunt_instability_min | 0.3 | 0.3 | ターゲット判定の最小不安定度 |
-| hunt_invasion_max_loss | 8.0 | 6.0 | 侵入時の許容最大損失（目） |
-| hunt_invasion_min | 0.2 | 0.2 | 侵入対象ownership強度の下限 |
-| hunt_invasion_max | 0.7 | 0.7 | 侵入対象ownership強度の上限 |
-| hunt_invasion_proximity_stddev | 3.0 | 3.0 | 侵入用の近接重みの標準偏差 |
-| hunt_invasion_temperature | 1.5 | 1.5 | 侵入フェーズの選択温度（1.0/1.5/2.0、高い＝分散） |
-| hunt_focus_stddev | 7.0 | 5.0 | 注意フォーカスの広がり（Gaussian標準偏差）。直前手と最も不安定なターゲットの重心を中心に、遠い手をペナルティする。小さい＝集中、大きい＝緩やか。floor=0.05 |
-| hunt_endgame_move | 200 | — | 19路盤でヨセモードに切り替える手数（19路盤のみ。13路以下は `ceil(0.5×盤面マス数)` 固定） |
-| hunt_pursue_enabled | true | true | 攻め合い追撃。相手が勝負手を打った場合、手抜きせず詰め手を継続する（GUI: チェックボックス） |
-| hunt_pursue_proximity | 2 | 2 | 勝負手判定の近接距離（Chebyshev距離、路）。config.json手動編集のみ |
-| hunt_pursue_min_liberties | 3 | 3 | この数以上のリバティなら無条件追撃。config.json手動編集のみ |
-| hunt_pursue_ownership_threshold | 0.85 | 0.85 | ownership確信度の閾値（石群サイズ≥10で+0.05、≥15で+0.10）。config.json手動編集のみ |
-| hunt_winning_suppress_enabled | false | false | 勝勢時の最善手weight抑制。15目以上リードでKataGo最善手のweight×0.3（GUI: チェックボックス） |
-| hunt_dead_stone_avoid_enabled | true | true | 死石周辺の無駄手抑制。ownership × player_sign < -0.85 の自石または4近傍で loss > 0.5 の候補手を weight × 0.05 に減衰（GUI: チェックボックス） |
+既定値は**全盤共通**（＝同梱 config.json の値）。2026-09-18 まではこの表に「デフォルト(13路)」列（4.0 / 4 / 2.5 / 6.0 / 5.0）があったが、`self.settings` は config の `ai/ai:hunt` セクションそのもので、config が全キーを19路の値で持つため**コード側の13路既定は実装当初（2026-04-10）から一度も効いていなかった**（`katrain_debug` の13路局面で `max_loss=6.0, min_group=5, prox_stddev=3.0, inv_max_loss=8.0, focus_stddev=7.0` を確認）。ユーザー判断で文書を実際の挙動に合わせ、コードからも削除した（挙動不変）。例外は hunt_diverge の注意フォーカス（`hunt_focus_stddev` の行と次節）。盤ごとに値を変えるなら盤別キーにする（`ai-settings-gui.md`「ai.py での設定読み取り」）。
+
+| パラメータ | デフォルト | 備考 |
+|---|---|---|
+| hunt_max_loss | 6.0 | 石群攻撃時の許容最大損失（目） |
+| hunt_min_group_size | 5 | ターゲット最小グループサイズ |
+| hunt_proximity_stddev | 3.0 | 石群攻撃の近接重みの標準偏差 |
+| hunt_instability_min | 0.3 | ターゲット判定の最小不安定度 |
+| hunt_invasion_max_loss | 8.0 | 侵入時の許容最大損失（目） |
+| hunt_invasion_min | 0.2 | 侵入対象ownership強度の下限 |
+| hunt_invasion_max | 0.7 | 侵入対象ownership強度の上限 |
+| hunt_invasion_proximity_stddev | 3.0 | 侵入用の近接重みの標準偏差 |
+| hunt_invasion_temperature | 1.5 | 侵入フェーズの選択温度（1.0/1.5/2.0、高い＝分散） |
+| hunt_focus_stddev | 7.0 | 注意フォーカスの広がり（Gaussian標準偏差）。直前手と最も不安定なターゲットの重心を中心に、遠い手をペナルティする。小さい＝集中、大きい＝緩やか。floor=0.05。**hunt_diverge は config にこのキーが無く、コード既定（13路以下 5.0 / 19路 7.0＝`hunt_default_focus_stddev`）で固定**＝コード側の盤別既定で唯一効いているもの |
+| hunt_endgame_move | 200 | 19路盤でヨセモードに切り替える手数（19路盤のみ。13路以下は `ceil(0.5×盤面マス数)` 固定） |
+| hunt_pursue_enabled | true | 攻め合い追撃。相手が勝負手を打った場合、手抜きせず詰め手を継続する（GUI: チェックボックス） |
+| hunt_pursue_proximity | 2 | 勝負手判定の近接距離（Chebyshev距離、路）。config.json手動編集のみ |
+| hunt_pursue_min_liberties | 3 | この数以上のリバティなら無条件追撃。config.json手動編集のみ |
+| hunt_pursue_ownership_threshold | 0.85 | ownership確信度の閾値（石群サイズ≥10で+0.05、≥15で+0.10）。config.json手動編集のみ |
+| hunt_winning_suppress_enabled | false | 勝勢時の最善手weight抑制。15目以上リードでKataGo最善手のweight×0.3（GUI: チェックボックス） |
+| hunt_dead_stone_avoid_enabled | true | 死石周辺の無駄手抑制。ownership × player_sign < -0.85 の自石または4近傍で loss > 0.5 の候補手を weight × 0.05 に減衰（GUI: チェックボックス） |
 
 **スコア適応型損失制御（ハードコード）**: 劣勢時（`score_lead < -6.0`）は `hunt_max_loss` と `hunt_invasion_max_loss` を `min(設定値, 4.0)` にキャップ。段階的緩和も4.0でキャップされ、候補がなければ即failsafe（最善手選択）。
 
@@ -139,9 +141,12 @@ human/complex モードの悪手フィルタ閾値は **GUI 調整可能**（`fi
 `HuntStrategy` のサブクラスで、パラメータは狩猟戦略と共通（`hunt_max_loss` /
 `hunt_min_group_size` / `hunt_proximity_stddev` / `hunt_instability_min` /
 `hunt_invasion_*` / `hunt_endgame_move` / `hunt_pursue_enabled` /
-`hunt_winning_suppress_enabled`）。**狩猟戦略にあって hunt_diverge に無いキー**は
-`hunt_invasion_temperature` / `hunt_focus_stddev` / `hunt_dead_stone_avoid_enabled`
-＝ `_select_final_move` を丸ごと上書きし、温度サンプリングを使わないため。
+`hunt_winning_suppress_enabled`）。**狩猟戦略にあって hunt_diverge の config に無いキー**は
+`hunt_invasion_temperature` / `hunt_focus_stddev` / `hunt_dead_stone_avoid_enabled`。
+温度は `_select_final_move` を丸ごと上書きして温度サンプリングを使わないので無関係だが、
+**注意フォーカスと死石回避は継承した `generate_move` でそのまま動く**（キーが無いのでコード既定で
+固定＝フォーカスの σ は 13路以下 5.0 / 19路 7.0〈`hunt_default_focus_stddev`〉、死石回避は ON。
+GUI に項目は無い）。2026-09-18 までは「温度を使わないので3つとも無い」と書いていたが誤り。
 
 固有パラメータは Best-move dodge の2つだけ:
 
@@ -189,14 +194,16 @@ spec は `docs/superpowers/specs/2026-04-11-hunt-divergence-strategy-design.md`�
 
 **フェーズ**: 序盤（Concede）→ 攻撃（Attack）。手数条件 + ターゲット存在で切替。60%経過で強制移行。
 
-| パラメータ | デフォルト値(19路) | デフォルト値(13路) | 備考 |
-|---|---|---|---|
-| siege_transition_move | 40 | 25 | 攻撃フェーズ移行の最小手数 |
-| siege_min_group_size | 5 | 4 | ターゲット最小グループサイズ |
-| concede_max_loss | 4.5 | 3.0 | 序盤の許容最大損失（目） |
-| siege_max_loss | 6.0 | 4.0 | 攻撃時の許容最大損失（目） |
-| siege_proximity_stddev | 3.0 | 2.5 | ターゲット近接重みの標準偏差 |
-| siege_instability_min | 0.3 | 0.3 | ターゲット判定の最小不安定度 |
+既定値は**全盤共通**（＝同梱 config.json の値）。2026-09-18 まではこの表に「デフォルト(13路)」列（25 / 4 / 3.0 / 4.0 / 2.5）があったが、`self.settings` は config の `ai/ai:siege` セクションそのもので、config が全キーを19路の値で持つため**コード側の13路既定は実装当初（2026-04-09）から一度も効いていなかった**（`katrain_debug` の13路局面で `transition=40, min_group=5, concede_loss=4.0, max_loss=5.0, prox_std=3.0` を確認）。ユーザー判断で文書を実際の挙動に合わせ、コードからも削除した（挙動不変）。同じ日に、19路の concede_max_loss / siege_max_loss の誤記（4.5 / 6.0。コード・config・spec・マニュアルは 4.0 / 5.0）も直した。盤ごとに値を変えるなら盤別キーにする（`ai-settings-gui.md`「ai.py での設定読み取り」）。
+
+| パラメータ | デフォルト値 | 備考 |
+|---|---|---|
+| siege_transition_move | 40 | 攻撃フェーズ移行の最小手数 |
+| siege_min_group_size | 5 | ターゲット最小グループサイズ |
+| concede_max_loss | 4.0 | 序盤の許容最大損失（目） |
+| siege_max_loss | 5.0 | 攻撃時の許容最大損失（目） |
+| siege_proximity_stddev | 3.0 | ターゲット近接重みの標準偏差 |
+| siege_instability_min | 0.3 | ターゲット判定の最小不安定度 |
 
 ## 持碁戦略（JigoStrategy）
 

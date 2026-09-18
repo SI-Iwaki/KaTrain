@@ -31,6 +31,15 @@ paths:
 self.settings.get("your_new_setting", default_value)
 ```
 
+**盤サイズ別の既定をこの `default_value` に書かない**: `self.settings` は config.json の `ai/<戦略>` セクション
+そのもので、同梱 config.json（とそれを写したユーザー設定）は全キーを持つ＝**config にあるキーのコード既定は
+決して使われない**。攻城・狩猟は `BOARD_PARAMS[13]` / `if bx <= 13:` に13路の既定を持ち、マニュアルと rules に
+「既定（19路 / 13路）」と載せていたが、実装（2026-04-09）から 2026-09-18 まで一度も効いていなかった
+（config の19路の値が常に勝つ）。盤ごとに値を変えたいなら**盤別キー**（`jigo_endgame_move_13` /
+`fighting_human_max_loss_9` のような接尾辞。解決は `_fighting_loss_thresholds` のような純関数）を
+両方の config.json に足す。逆に config に**無い**キーはコード既定がそのまま実効値になる
+（例: `ai:hunt_diverge` の `hunt_focus_stddev`＝`hunt_default_focus_stddev`）。
+
 ## humanPolicyの罠（重要）
 
 `modern_style=true` の高段者プロファイルは現代布石（3-3等）を好むため、星点（4-4）などの手に `humanPolicy=0` を返すことがある。

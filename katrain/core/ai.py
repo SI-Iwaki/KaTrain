@@ -10112,11 +10112,6 @@ class DivergenceStrategy(AIStrategy):
 class SiegeStrategy(AIStrategy):
     """攻城戦略 — 序盤は地を譲り、中盤以降に大石を攻めて逆転を狙う"""
 
-    BOARD_PARAMS = {
-        19: {"transition_move": 40, "min_group_size": 5, "concede_max_loss": 4.0, "max_loss": 5.0, "proximity_stddev": 3.0},
-        13: {"transition_move": 25, "min_group_size": 4, "concede_max_loss": 3.0, "max_loss": 4.0, "proximity_stddev": 2.5},
-    }
-
     def generate_move(self) -> Tuple[Move, str]:
         self.game.katrain.log(f"[SiegeStrategy] Starting move generation", OUTPUT_DEBUG)
 
@@ -10124,13 +10119,15 @@ class SiegeStrategy(AIStrategy):
 
         board_size = self.game.board_size
         bx = board_size[0]
-        params = self.BOARD_PARAMS.get(bx, self.BOARD_PARAMS[19])
 
-        transition_move = self.settings.get("siege_transition_move", params["transition_move"])
-        min_group_size = self.settings.get("siege_min_group_size", params["min_group_size"])
-        concede_max_loss = self.settings.get("concede_max_loss", params["concede_max_loss"])
-        max_loss = self.settings.get("siege_max_loss", params["max_loss"])
-        proximity_stddev = self.settings.get("siege_proximity_stddev", params["proximity_stddev"])
+        # 既定値は盤サイズ共通（＝同梱 config.json の値）。config には全キーがあるので、ここに盤別の既定を
+        # 書いても使われない（2026-09-18 まで 13路用 25/4/3.0/4.0/2.5 を持っていたが一度も効いていなかった）。
+        # 盤ごとに値を変えるなら盤別キー（jigo_endgame_move_13 のような `_13` 接尾辞）を config に足す
+        transition_move = self.settings.get("siege_transition_move", 40)
+        min_group_size = self.settings.get("siege_min_group_size", 5)
+        concede_max_loss = self.settings.get("concede_max_loss", 4.0)
+        max_loss = self.settings.get("siege_max_loss", 5.0)
+        proximity_stddev = self.settings.get("siege_proximity_stddev", 3.0)
         instability_min = self.settings.get("siege_instability_min", 0.3)
 
         self.game.katrain.log(
@@ -10806,6 +10803,16 @@ class SiegeStrategy(AIStrategy):
         return aimove, ai_thoughts
 
 
+def hunt_default_focus_stddev(board_x: int) -> float:
+    """hunt_focus_stddev のコード既定値（盤サイズ別）。
+
+    ai:hunt は config.json に常にキーがあるので使われないが、ai:hunt_diverge のセクションにはキーが
+    無い＝一致率低減版の注意フォーカスはこの値で動く（13路以下 5.0 / 19路 7.0・GUI に項目なし）。
+    コード側の盤別既定で実際に効いているのはこれだけ。
+    """
+    return 5.0 if board_x <= 13 else 7.0
+
+
 @register_strategy(AI_HUNT)
 class HuntStrategy(AIStrategy):
     """狩猟戦略 — 弱い石群を見つけて集中攻撃する"""
@@ -10892,32 +10899,19 @@ class HuntStrategy(AIStrategy):
             )
             return Move(None, player=self.cn.next_player), "Hunt not supported on 9x9."
 
-        # 盤面サイズ別デフォルト
-        if bx <= 13:
-            default_max_loss = 4.0
-            default_min_group = 4
-            default_prox_stddev = 2.5
-            default_invasion_max_loss = 6.0
-            default_invasion_prox_stddev = 3.0
-            default_focus_stddev = 5.0
-        else:
-            default_max_loss = 6.0
-            default_min_group = 5
-            default_prox_stddev = 3.0
-            default_invasion_max_loss = 8.0
-            default_invasion_prox_stddev = 3.0
-            default_focus_stddev = 7.0
-
-        hunt_max_loss = self.settings.get("hunt_max_loss", default_max_loss)
-        hunt_min_group_size = self.settings.get("hunt_min_group_size", default_min_group)
-        hunt_proximity_stddev = self.settings.get("hunt_proximity_stddev", default_prox_stddev)
+        # 既定値は盤サイズ共通（＝同梱 config.json の値）。ai:hunt の config には全キーがあるので、ここに盤別の
+        # 既定を書いても使われない（2026-09-18 まで 13路用 4.0/4/2.5/6.0/5.0 を持っていたが一度も効いていなかった）。
+        # 例外は注意フォーカス: ai:hunt_diverge にはキーが無く、盤別の既定がそのまま実効値（hunt_default_focus_stddev）
+        hunt_max_loss = self.settings.get("hunt_max_loss", 6.0)
+        hunt_min_group_size = self.settings.get("hunt_min_group_size", 5)
+        hunt_proximity_stddev = self.settings.get("hunt_proximity_stddev", 3.0)
         hunt_instability_min = self.settings.get("hunt_instability_min", 0.3)
-        hunt_invasion_max_loss = self.settings.get("hunt_invasion_max_loss", default_invasion_max_loss)
+        hunt_invasion_max_loss = self.settings.get("hunt_invasion_max_loss", 8.0)
         hunt_invasion_min = self.settings.get("hunt_invasion_min", 0.2)
         hunt_invasion_max = self.settings.get("hunt_invasion_max", 0.7)
-        hunt_invasion_prox_stddev = self.settings.get("hunt_invasion_proximity_stddev", default_invasion_prox_stddev)
+        hunt_invasion_prox_stddev = self.settings.get("hunt_invasion_proximity_stddev", 3.0)
         hunt_invasion_temperature = self.settings.get("hunt_invasion_temperature", 1.5)
-        hunt_focus_stddev = self.settings.get("hunt_focus_stddev", default_focus_stddev)
+        hunt_focus_stddev = self.settings.get("hunt_focus_stddev", hunt_default_focus_stddev(bx))
         hunt_pursue_enabled = self.settings.get("hunt_pursue_enabled", True)
         hunt_pursue_proximity = self.settings.get("hunt_pursue_proximity", 2)
         hunt_pursue_min_liberties = self.settings.get("hunt_pursue_min_liberties", 3)

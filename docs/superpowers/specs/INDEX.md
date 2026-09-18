@@ -19,6 +19,9 @@
 | `2026-08-06-fighting-loss-threshold-gui-design.md` | 🟢 悪手フィルタ閾値の GUI 化（盤面サイズ別・フェーズ別） |
 
 ### 攻城（SiegeStrategy）・狩猟（HuntStrategy）・一致率低減（Divergence）
+
+注: 攻城・狩猟の spec にある「13路」既定値の列は**一度も効いていない**（config.json が全キーを19路の値で持つため。2026-09-18 に確認し、コードから削除＝挙動不変）。現在値は `.claude/rules/ai-parameters.md`。
+
 | spec | |
 |---|---|
 | `2026-04-06-ai-diverge-mode-design.md` | 🟢 AI一致率低減モード |

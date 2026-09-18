@@ -1640,7 +1640,7 @@ msgid "ai:hunt_diverge"
 msgstr "狩猟戦略（一致率低減）"
 
 msgid "aihelp:hunt_diverge"
-msgstr "狩猟戦略と同じ侵入・石群攻撃の棋風を保ちながら、評価レポートの「AI の最善手との一致率」を下げます。抽選で KataGo の最善手が選ばれたときだけ、「損失が hunt_dodge_max_loss 以下」かつ「重み上位 hunt_dodge_top_n 位以内」の別の手のうち損失が最小の手に差し替えます（該当が無ければ最善手のまま）。温度抽選は使わないので、狩猟戦略の hunt_invasion_temperature・hunt_focus_stddev・hunt_dead_stone_avoid_enabled はありません。humanSL モデル（一般・エンジン設定の human-like model）が必要です。"
+msgstr "狩猟戦略と同じ侵入・石群攻撃の棋風を保ちながら、評価レポートの「AI の最善手との一致率」を下げます。抽選で KataGo の最善手が選ばれたときだけ、「損失が hunt_dodge_max_loss 以下」かつ「重み上位 hunt_dodge_top_n 位以内」の別の手のうち損失が最小の手に差し替えます（該当が無ければ最善手のまま）。温度抽選は使わないので hunt_invasion_temperature はありません。注意フォーカスと死石回避は狩猟戦略と同じく働きますが、設定項目が無く固定です（フォーカスの広がりは 13路 5.0・19路 7.0、死石回避は ON）。humanSL モデル（一般・エンジン設定の human-like model）が必要です。"
 
 #. TODO
 msgid "ai:human"
