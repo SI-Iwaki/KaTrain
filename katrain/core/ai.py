@@ -2799,12 +2799,15 @@ def enigma9_fooled_punish(replies, hp_of, adequate_loss=ENIGMA9_ADEQUATE_LOSS, p
     return sum(h * min(loss, punish_cap) for h, loss in bad) / bad_mass, bad_mass / total
 
 
-def enigma9_overdraft_window(deficit, in_yose, cost_weight, lead, cap, large_cap,
+def enigma9_overdraft_window(deficit, in_yose, cost_weight, lead, cap, large_cap, upper=None,
                              factor=ENIGMA9_OVERDRAFT_CEILING_FACTOR):
     """捨て身の罠の窓。開いていれば (over_cap, ceiling)、閉じていれば None。
 
     条件（全部 AND）: deficit > 0 ／ ヨセ前 ／ 消費モード（cost_weight < 1＝余剰リード > max_loss）／
-    lead が取れている ／ over_cap = min(lead + deficit, ceiling) が通常上限 cap を超える。
+    lead が取れている ／ over_cap = min(lead + deficit, ceiling) が通常上限 cap を超える ／
+    upper（資格の帯の上端）が渡されたら lead − ceiling < upper＝天井まで払えば帯に届く。
+    最後の条件が無いと大差の手番（実戦ログ 2026-09-18: リード 12 目以上の 55 手番）でも窓が開き、
+    資格が原理的に出ない候補を 115 手プローブしていた（判定は変わらないが 1 手番 +0.3〜0.5 秒の無駄）。
     ceiling = max(cap, factor × large_cap) は 1 手の損失の天井。消費モードに限るのは実測
     （2026-09-18・13路 18 局）でリード 3.5 目以下の 126 手番に資格のある罠が 0 件だったため。
     """
@@ -2814,6 +2817,8 @@ def enigma9_overdraft_window(deficit, in_yose, cost_weight, lead, cap, large_cap
     ceiling = max(cap, factor * large_cap)
     over_cap = min(lead + d, ceiling)
     if over_cap <= cap + 1e-9:
+        return None
+    if upper is not None and lead - ceiling >= upper:
         return None
     return over_cap, ceiling
 
@@ -3628,9 +3633,11 @@ class Enigma9Strategy(AIStrategy):
         # すべて従来どおり（ビット同一）。賭け罠（cost_weight >= 1 の手番）とは排他。lead_now は
         # `not in_yose` の分岐でしか定義されないので、その内側でだけ参照する
         over_win = None
+        over_upper = min(target, float(self._setting("overdraft_answered_max")))  # 資格の帯の上端（exclusive）
         if not in_yose and cost_weight < 1.0:
             over_win = enigma9_overdraft_window(
-                self._setting("overdraft_deficit"), in_yose, cost_weight, lead_now, cap, large_cap
+                self._setting("overdraft_deficit"), in_yose, cost_weight, lead_now, cap, large_cap,
+                upper=over_upper,
             )
 
         # ヨセでは「自手の意外さ」を net から外す（`enigma9_own_rarity_weight`）
@@ -3798,7 +3805,7 @@ class Enigma9Strategy(AIStrategy):
             # 捨て身の罠: 資格（応じられた後のリードの帯・応手の見つけにくさ・引っかかった後のリード）の
             # ある候補が居れば、net 比較・net_margin・局所性・ΔE 床・勝率フロアを通さずに打つ
             o_deficit = float(self._setting("overdraft_deficit"))
-            o_upper = min(target, float(self._setting("overdraft_answered_max")))
+            o_upper = over_upper
             o_floor = float(self._setting("overdraft_min_fooled_lead"))
             o_pick, o_quals = enigma9_overdraft_pick(over_scored, o_deficit, o_upper, o_floor, over_win[1])
             self._log(

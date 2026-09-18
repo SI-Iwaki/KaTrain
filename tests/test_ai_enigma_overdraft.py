@@ -71,6 +71,16 @@ class TestOverdraftWindow:
         # lead 11: cap は large(8) で頭打ち、over_cap = min(13.5, 1.5×8=12)
         assert enigma9_overdraft_window(2.5, False, 0.2, 11.0, 8.0, 8.0) == (12.0, 12.0)
 
+    def test_window_closes_when_no_move_within_the_ceiling_can_land_in_the_band(self):
+        # 実戦ログ 2026-09-18: リード 12 目以上の 55 手番で窓が開き 115 手を無駄にプローブした。天井（12 目）まで
+        # 払っても着手後リードが帯の上端 upper を下回らない（lead − ceiling >= upper）なら資格は原理的に出ない
+        assert enigma9_overdraft_window(2.5, False, 0.2, 11.0, 8.0, 8.0, upper=0.0) == (12.0, 12.0)
+        assert enigma9_overdraft_window(2.5, False, 0.2, 12.0, 8.0, 8.0, upper=0.0) is None  # ちょうど 0 は帯の外
+        assert enigma9_overdraft_window(2.5, False, 0.1, 23.0, 8.0, 8.0, upper=0.0) is None
+        assert enigma9_overdraft_window(2.5, False, 0.2, 12.5, 8.0, 8.0, upper=1.0) == (12.0, 12.0)  # MAX=目標差未満
+        assert enigma9_overdraft_window(2.5, False, 0.2, 11.5, 8.0, 8.0, upper=-1.0) is None
+        assert enigma9_overdraft_window(2.5, False, 0.1, 23.0, 8.0, 8.0) == (12.0, 12.0)  # upper 省略＝従来どおり
+
     def test_window_closes_when_the_ceiling_is_not_above_the_cap(self):
         # large が小さく ceiling = max(cap, 6) = cap → 上限の外に帯が無い
         assert enigma9_overdraft_window(2.5, False, 0.2, 11.0, 8.0, 4.0) is None
@@ -367,6 +377,14 @@ class TestOverdraftEndToEnd:
         move, thoughts = s.generate_move()
         assert move.gtp() == "D4" and "no admissible deviation" in thoughts
         assert s.probed == []
+
+    def test_far_ahead_the_window_stays_closed_and_nothing_extra_is_probed(self):
+        # +20 目（cap 8・天井 12）: 12 目払っても +8 目＝帯 [−2.5, 0) に届かない → OFF と同じ手番になる
+        off, _ = _overdraft_strategy(Enigma13Strategy, "enigma13", root_lead=20.0, d4_lead=20.0)
+        on, logs = _overdraft_strategy(Enigma13Strategy, "enigma13", ON, root_lead=20.0, d4_lead=20.0)
+        assert on.generate_move()[0].gtp() == off.generate_move()[0].gtp()
+        assert on.probed == off.probed
+        assert not any("Over" in m for m in logs)
 
     def test_outside_the_spending_mode_nothing_changes(self):
         s, logs = _overdraft_strategy(Enigma13Strategy, "enigma13", ON, root_lead=0.2)
