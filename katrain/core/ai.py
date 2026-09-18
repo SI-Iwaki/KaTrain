@@ -2074,6 +2074,15 @@ ENIGMA9_GAMBLE_MAX_FIND = ENIGMA9_HP_BOOK   # 十分な応手の hp 最大値が
 ENIGMA9_GAMBLE_COST_WEIGHT = 0.5            # 資格のある罠どうしの順位づけ u = ΔE − これ × max(0, vloss)
 ENIGMA9_GAMBLE_PROBE_EXTRA = 4              # 窓の中で保証する spread プローブ数（基底の安い順 7 手は高い帯を見ない）
 
+
+# 捨て身の罠（overdraft）オプション（spec 2026-09-18-enigma-overdraft-design.md）。ヨセ前 × 勝勢の消費モード
+# （cost_weight < 1）の手番で、リードの予算（lead − target）を超えて「正しく応じられたら最大
+# `<prefix>_overdraft_deficit` 目の劣勢・引っかかれば勝勢のまま」の罠を net 比較を飛ばして打つ。
+# deficit 0 = OFF（採用判断・解析条件とも従来とビット同一）。賭け罠（cost_weight >= 1 の手番）とは排他
+ENIGMA9_OVERDRAFT_MAX_FIND = ENIGMA9_HP_BOOK   # 十分な応手の hp 最大値がこれ以下＝正しい応手が「本の手」でない
+ENIGMA9_OVERDRAFT_CEILING_FACTOR = 1.5         # 1 手の損失の天井 = これ × large_lead_max_loss（+20 から 22 目捨てる手を塞ぐ）
+ENIGMA9_OVERDRAFT_RAW_MARGIN = 1.5             # プローブ候補を選ぶ生 loss の帯の余裕（目）。生 loss は両側に外れる
+
 # 「二段の漏斗」: 9路の通常解析（1000visits・wRN=0.04）は visits を1〜3手に集中させる
 # ため、visits >= 10 の候補だけでは外し候補が 0〜1 手しか残らない（実測 2026-08-10・
 # 校正局 move 8: moveInfos 74手のうち visits>=10 は 2手・visits>=2 でも 3手）。そこで
@@ -2769,6 +2778,111 @@ def enigma9_gamble_pick(scored, best_gtp, min_winrate, min_delta_e,
     if not qualifiers:
         return None, []
     return max(qualifiers, key=lambda c: (c["u"], c["e"], -c["loss"])), qualifiers
+
+
+def enigma9_fooled_punish(replies, hp_of, adequate_loss=ENIGMA9_ADEQUATE_LOSS, punish_cap=ENIGMA9_PUNISH_CAP):
+    """相手が罠に引っかかった場合の期待損失 (e_fooled, p_fooled) を返す。
+
+    e_fooled = 「十分でない応手（損失 > adequate_loss）」だけの humanSL 重みつき平均損失（1 応手
+    punish_cap 目で cap）。E（`enigma9_expected_punish`）は正しく応じた場合（損失 0）も平均に含むので、
+    「引っかかったらどこまで戻るか」を測るには薄まる。p_fooled はその応手の hp 質量の割合（ログ用。
+    find_hp < 0.2 帯のモデル値は過大＝予測 0.94 → 実現 0.60〜0.72・2026-09-03）。
+    十分でない応手が無い・hp 質量が 0 なら (0.0, 0.0)。
+    """
+    total = sum(hp_of(r["gtp"]) for r in replies)
+    if total <= 0.0:
+        return 0.0, 0.0
+    bad = [(hp_of(r["gtp"]), r["loss"]) for r in replies if r["loss"] > adequate_loss]
+    bad_mass = sum(h for h, _ in bad)
+    if bad_mass <= 0.0:
+        return 0.0, 0.0
+    return sum(h * min(loss, punish_cap) for h, loss in bad) / bad_mass, bad_mass / total
+
+
+def enigma9_overdraft_window(deficit, in_yose, cost_weight, lead, cap, large_cap,
+                             factor=ENIGMA9_OVERDRAFT_CEILING_FACTOR):
+    """捨て身の罠の窓。開いていれば (over_cap, ceiling)、閉じていれば None。
+
+    条件（全部 AND）: deficit > 0 ／ ヨセ前 ／ 消費モード（cost_weight < 1＝余剰リード > max_loss）／
+    lead が取れている ／ over_cap = min(lead + deficit, ceiling) が通常上限 cap を超える。
+    ceiling = max(cap, factor × large_cap) は 1 手の損失の天井。消費モードに限るのは実測
+    （2026-09-18・13路 18 局）でリード 3.5 目以下の 126 手番に資格のある罠が 0 件だったため。
+    """
+    d = float(deficit or 0.0)
+    if d <= 0.0 or in_yose or cost_weight >= 1.0 or lead is None:
+        return None
+    ceiling = max(cap, factor * large_cap)
+    over_cap = min(lead + d, ceiling)
+    if over_cap <= cap + 1e-9:
+        return None
+    return over_cap, ceiling
+
+
+def enigma9_overdraft_probe_picks(candidates, best_gtp, taken, lo, hi, k,
+                                  trusted_visits=ENIGMA9_TRUSTED_VISITS):
+    """捨て身の罠の追加プローブ対象を k 手まで返す。
+
+    生 loss が (lo, hi] の候補（最善手・pass・taken＝通常の shortlist を除く）から、信頼できる候補
+    （visits >= trusted_visits）を loss 昇順で等間隔に k 手、足りなければ浅い候補を visits 多い順で
+    埋める（`enigma9_shortlist_spread` の追加分と同じ規則）。プローブ前に罠を見分ける特徴は無い
+    （実測: own_hp・visits・生 loss のどれも資格を予測しない）ので等間隔に撒く。
+    """
+    k = int(k or 0)
+    if k <= 0:
+        return []
+    band = [
+        c for c in candidates
+        if c["gtp"] != best_gtp and c["gtp"] != "pass" and c["gtp"] not in taken and lo < c["loss"] <= hi
+    ]
+    trusted = sorted(
+        [c for c in band if c.get("visits", 0) >= trusted_visits],
+        key=lambda c: (c["loss"], -c.get("visits", 0)),
+    )
+    shallow = sorted(
+        [c for c in band if c.get("visits", 0) < trusted_visits],
+        key=lambda c: (-c.get("visits", 0), c["loss"]),
+    )
+    picks = _enigma9_spread_picks(trusted, k)
+    if len(picks) < k:
+        picks += shallow[: k - len(picks)]
+    return picks
+
+
+def enigma9_overdraft_pick(over_scored, deficit, upper, min_fooled_lead, ceiling,
+                           max_find=ENIGMA9_OVERDRAFT_MAX_FIND):
+    """捨て身の罠の資格がある候補から1手選ぶ。返り値 (pick | None, qualifiers)。
+
+    over_scored は「検証済み損失が通常上限 cap を超えた」候補のスコアリング済みエントリ。資格は全部 AND:
+      - loss <= ceiling（1 手の損失の天井）
+      - −deficit <= lead_after < upper（正しく応じられた後のリード。上端だけ exclusive）
+      - find <= max_find（十分な応手のうち最も見つけやすい手が 9 段の「本の手」でない）
+      - lead_after + e_fooled >= min_fooled_lead（引っかかった場合に残るリード）
+    順位は u = lead_after + E（相手の応手分布で見た期待リード）最大、同点は lead_after 大。
+    入力の dict は書き換えない（返す dict に fooled_lead と u を足したコピー）。
+
+    実測（2026-09-18・13路 18 局・消費モード 182 手番・12 プローブ）: 既定（必ずマイナス・下限 2 目）で
+    資格ありは 23 手番＝1.28 回/局（6 プローブ換算 0.82 回/局）、うち 17 手番は資格が 1 手だけ。
+    選ばれる手は中央値 vloss 8.4・応じられたら −0.48・引っかかれば +3.3、E − vloss は −4.25
+    ＝期待値では毎回損をする演出用のオプション。
+    """
+    eps = 1e-9
+    qualifiers = []
+    for c in over_scored:
+        la = c.get("lead_after")
+        if la is None or la < -deficit - eps or la >= upper:
+            continue
+        if c["loss"] > ceiling + eps:
+            continue
+        find = c.get("find")
+        if find is None or find > max_find + eps:
+            continue
+        fooled_lead = la + c.get("e_fooled", 0.0)
+        if fooled_lead < min_fooled_lead - eps:
+            continue
+        qualifiers.append({**c, "fooled_lead": fooled_lead, "u": la + c["e"]})
+    if not qualifiers:
+        return None, []
+    return max(qualifiers, key=lambda c: (c["u"], c["lead_after"])), qualifiers
 
 
 @register_strategy(AI_ENIGMA_9)
