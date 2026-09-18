@@ -95,7 +95,7 @@ katrain_debug/        -- 戦略デバッグCLIツール（KaTrain本体と独立
 
 **利用者向けマニュアル**: `docs/manual/index.html`（ブラウザで開く。本文は `docs/manual/src/*.html`、`python tools/build_manual.py` で連結、スクショは `python tools/manual_screenshots.py` で KaTrain を起動して自動撮影＝spec `2026-08-29-user-manual-design.md`）。戦略・設定を変えたらここも更新する
 
-**設計・実測の一次記録**: `docs/superpowers/specs/` に全53本。索引は `docs/superpowers/specs/INDEX.md`（実装済み／REJECT／未実装の別つき）。**大きい spec は全読みせず Grep で該当節だけ引く**（最大は詰碁の ownership 199KB / solver 150KB）
+**設計・実測の一次記録**: `docs/superpowers/specs/` に全55本。索引は `docs/superpowers/specs/INDEX.md`（実装済み／REJECT／未実装の別つき）。**大きい spec は全読みせず Grep で該当節だけ引く**（最大は詰碁の ownership 199KB / solver 150KB）
 
 **校正・ベースラインデータ**: `docs/superpowers/specs/calibration-data/<機能名>/` のサブディレクトリに機能別で格納。命名規則: `<モード>-vs-<相手>-<YYYYMMDD>[-<色>].sgf`、結果は `<機能>-results-<YYYYMMDD>.md`。既存 SGF は `clean_sgf_main_line.py` で main-line 化してから使う
 

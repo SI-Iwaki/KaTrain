@@ -57,7 +57,7 @@
 | `2026-08-10-enigma9-strategy-design.md` | 🟢 難解 `ai:enigma9` / `enigma13` / `enigma19`（追記2=13路・追記4=19路・追記5=持碁狙い・追記12〜12-3=難解＋ `enigma{9,13,19}plus`＝ΔE 床＋罠探索の拡張・13路実対局で E/手 1.37→1.97） |
 | `2026-08-25-enigma-locality-design.md` | 🟢 難解 13/19路の局所性オプション（own_rare の局所化＋同点帯タイブレーク・実装済み・13路実測あり（推奨 σ3・既定 OFF）・19路未校正） |
 | `2026-09-17-enigma-gamble-design.md` | 🟢 難解 / 難解＋の序盤の賭け罠オプション（窓の中で ΔE・応手の見つけにくさ・勝率フロアの資格がある罠を net 比較を飛ばして打つ・既定 OFF）。ログ 18 局の再集計で「応じ損ねたら優勢」の在庫はほぼゼロと確認したうえでの緩和版・**実戦校正は未実施** |
-| `2026-09-18-enigma-overdraft-design.md` | ⛔ **未実装（設計のみ）** 難解 / 難解＋の「捨て身の罠」オプション（勝勢の消費モードでリードの予算を超え、応じられたら最大 D 目の劣勢・引っかかれば勝勢のままの罠を net 比較を飛ばして打つ・既定 OFF）。13路 18 局の反実仮想で在庫あり（必ずマイナス・6 プローブで 0.8 回/局）と確認・期待値は毎回 −3〜4 目＝演出用 |
+| `2026-09-18-enigma-overdraft-design.md` | 🟢 難解 / 難解＋の「捨て身の罠」オプション（勝勢の消費モードでリードの予算を超え、応じられたら最大 D 目の劣勢・引っかかれば勝勢のままの罠を net 比較を飛ばして打つ・既定 OFF）。13路 18 局の反実仮想で在庫あり（必ずマイナス・6 プローブで 0.8 回/局）と確認・期待値は毎回 −3〜4 目＝演出用・**実戦校正は未実施** |
 | `2026-09-17-mimic13-strategy-design.md` | 🟢 擬態（13路）`ai:mimic13`＝相手より低い一致率で勝つ。price = vloss − ΔE をリード連動の λ で買う・自然さ（humanPolicy）か罠（ΔE）の資格・ヨセは 9段委譲・**実戦校正は未実施** |
 | `2026-05-23-maze-strategy-9x9-design.md` | ⛔ **未実装**（`MazeStrategy` はコードに無い） |
 | `2026-05-24-ko-strategy-design.md` | ⛔ **未実装**（`KoStrategy` はコードに無い） |
@@ -143,7 +143,7 @@
 
 ## 実装プラン（`docs/superpowers/plans/`）
 
-46本。上の各 spec と**1対1で対応する実装チェックリスト**（ファイル名は spec から `-design` を
+51本。上の各 spec と**1対1で対応する実装チェックリスト**（ファイル名は spec から `-design` を
 除いたもの、例 `2026-08-18-board-watch.md` ↔ `2026-08-18-board-watch-design.md`）。
 実装済みの機能では履歴的な資料で、**現在の挙動を知りたいなら spec か rules を見ること**
 （プランは着手前に書かれるので、実装中に変わった判断が反映されていない）。
@@ -158,3 +158,4 @@
 - `tsumego/` — E2E スイート（`e2e_suite.py` / `generate_move_e2e.py` / `solver_p1_suite.py`）とケース表
 - `tsumego-web/` — Web キャプチャの実スクショ回帰（`validate_web_capture.py`）
 - `jigo-speedup/` `jigo-endgame/` `parity9/` `enigma9/` `board-watch/` `runs/` — 各機能の校正結果
+- `enigma-overdraft/` — 難解「捨て身の罠」の在庫の反実仮想（ハーネス `overdraft_cf.py`・集計 `overdraft_cf_report.py`・復元 SGF 18 局）
