@@ -3623,6 +3623,16 @@ class Enigma9Strategy(AIStrategy):
             not in_yose and cost_weight >= 1.0 and enigma9_gamble_window(self.cn.depth, gamble_until)
         )
 
+        # ---- 捨て身の罠（overdraft）の窓（spec 2026-09-18-enigma-overdraft-design.md）----
+        # ヨセ前 × 勝勢の消費モード（cost_weight < 1）× deficit > 0。OFF（既定）なら None＝以降の分岐は
+        # すべて従来どおり（ビット同一）。賭け罠（cost_weight >= 1 の手番）とは排他。lead_now は
+        # `not in_yose` の分岐でしか定義されないので、その内側でだけ参照する
+        over_win = None
+        if not in_yose and cost_weight < 1.0:
+            over_win = enigma9_overdraft_window(
+                self._setting("overdraft_deficit"), in_yose, cost_weight, lead_now, cap, large_cap
+            )
+
         # ヨセでは「自手の意外さ」を net から外す（`enigma9_own_rarity_weight`）
         w_own = enigma9_own_rarity_weight(in_yose)
 
@@ -3670,12 +3680,29 @@ class Enigma9Strategy(AIStrategy):
                     f"{[(c['gtp'], round(c['loss'], 2)) for c in g_added]}"
                 )
 
+        # ---- 捨て身の罠の追加プローブ（窓が開いている手番だけ）----
+        # 通常上限の外側〜over_cap の候補を生 loss で等間隔に選ぶ（生 loss は両側に外れるので帯を
+        # RAW_MARGIN ぶん広げる）。勝率フロアは見ない。採否は子局面プローブの検証値で決める
+        over_picks = []
+        if over_win is not None:
+            over_cap, over_ceiling = over_win
+            over_picks = enigma9_overdraft_probe_picks(
+                candidates, best_gtp, {c["gtp"] for c in shortlist},
+                cap - ENIGMA9_OVERDRAFT_RAW_MARGIN, over_cap + ENIGMA9_OVERDRAFT_RAW_MARGIN,
+                int(self._setting("overdraft_probes")),
+            )
+            self._log(
+                f"Overdraft: window lead={lead_now:.2f} cap={cap:.2f} over_cap={over_cap:.2f} "
+                f"ceiling={over_ceiling:.2f} probes +{len(over_picks)} "
+                f"{[(c['gtp'], round(c['loss'], 2)) for c in over_picks]}"
+            )
+
         # ---- 子局面プローブ + 親局面 humanSL（自手の意外さ用）を1バッチで並列発行 ----
         # 親 humanSL を逐次で待ってからプローブを発行する旧形は、humanPolicy が
         # root NN の出力で visits に依存しない以上まるごと無駄（詳細は
         # _probe_children の docstring）。判定に使う値は不変
         best_cand = next((c for c in candidates if c["gtp"] == best_gtp), None)
-        probe_items = ([best_cand] if best_cand else []) + shortlist
+        probe_items = ([best_cand] if best_cand else []) + shortlist + over_picks
         probes, stage_hp = self._probe_children(
             [c["gtp"] for c in probe_items], player, parent_hp=True
         )
@@ -3694,6 +3721,7 @@ class Enigma9Strategy(AIStrategy):
             return self._best_move(f"{self.LABEL}: best-move probe unavailable, playing best move.")
 
         scored = []
+        over_scored = []  # 捨て身の罠: 検証済み損失が cap を超えた候補（窓が開いている手番だけ）
         for c in probe_items:
             pr = probes.get(c["gtp"]) or {}
             clean, hp_child = pr.get("clean"), pr.get("hp")
@@ -3705,14 +3733,17 @@ class Enigma9Strategy(AIStrategy):
                 self._log(f"No verified lead for {c['gtp']} -> dropped")
                 continue
             vloss = best_lead_after - lead_after
+            over_route = False
             if c["gtp"] != best_gtp:
                 if vloss > cap:
-                    self._log(
-                        f"Drop {c['gtp']}: verified loss {vloss:.2f} > cap {cap:.2f} "
-                        f"(raw {c['loss']:.2f}, v{c.get('visits', 0)})"
-                    )
-                    continue
-                if wr_after is not None and wr_after < min_wr:
+                    if over_win is None or vloss > over_win[1]:
+                        self._log(
+                            f"Drop {c['gtp']}: verified loss {vloss:.2f} > cap {cap:.2f} "
+                            f"(raw {c['loss']:.2f}, v{c.get('visits', 0)})"
+                        )
+                        continue
+                    over_route = True  # 捨て身の罠の候補。勝率フロアは見ない（意図して 50% を割る手）
+                elif wr_after is not None and wr_after < min_wr:
                     self._log(
                         f"Drop {c['gtp']}: verified wr {wr_after:.1%} < floor {min_wr:.0%}"
                     )
@@ -3724,6 +3755,20 @@ class Enigma9Strategy(AIStrategy):
             hp_of = enigma9_hp_lookup(hp_child["humanPolicy"], self.game.board_size)
             e_punish, coverage = enigma9_expected_punish(replies, hp_of)
             findability = enigma9_reply_findability(replies, hp_of)
+            if over_route:
+                e_fooled, p_fooled = enigma9_fooled_punish(replies, hp_of)
+                over_scored.append(
+                    {**c, "loss": vloss, "raw_loss": c["loss"], "lead_after": lead_after, "wr_after": wr_after,
+                     "e": e_punish, "e_fooled": e_fooled, "p_fooled": p_fooled, "find": findability,
+                     "reply": best_reply}
+                )
+                wr_txt = "n/a" if wr_after is None else f"{wr_after:.1%}"
+                self._log(
+                    f"Over {c['gtp']}: vloss={vloss:.2f} (raw {c['loss']:.2f}) la={lead_after:+.2f} wr={wr_txt} "
+                    f"E={e_punish:.2f} Ef={e_fooled:.2f} p_fooled={p_fooled:.0%} find_hp={findability:.3f} "
+                    f"reply={best_reply}"
+                )
+                continue
             own_hp = own_hp_of(c["gtp"])
             prox = enigma9_locality(Move.from_gtp(c["gtp"]).coords, anchors, loc_stddev)
             net = enigma9_net_score(
@@ -3741,6 +3786,32 @@ class Enigma9Strategy(AIStrategy):
                 f"E={e_punish:.2f} cov={coverage:.2f} find_hp={findability:.3f} "
                 f"own_hp={own_hp:.3f} (w_own={w_own:.1f}) prox={prox:.2f} reply={best_reply} net={net:.2f}"
             )
+
+        if over_win is not None:
+            # 捨て身の罠: 資格（応じられた後のリードの帯・応手の見つけにくさ・引っかかった後のリード）の
+            # ある候補が居れば、net 比較・net_margin・局所性・ΔE 床・勝率フロアを通さずに打つ
+            o_deficit = float(self._setting("overdraft_deficit"))
+            o_upper = min(target, float(self._setting("overdraft_answered_max")))
+            o_floor = float(self._setting("overdraft_min_fooled_lead"))
+            o_pick, o_quals = enigma9_overdraft_pick(over_scored, o_deficit, o_upper, o_floor, over_win[1])
+            self._log(
+                f"Overdraft: band=[{-o_deficit:.1f}, {o_upper:.1f}) fooled>={o_floor:.1f} "
+                f"scored={len(over_scored)} qualifiers="
+                f"{[(c['gtp'], round(c['lead_after'], 2), round(c['fooled_lead'], 2)) for c in o_quals]}"
+            )
+            if o_pick is not None:
+                self._log(
+                    f"Overdraft: played {o_pick['gtp']} (answered {o_pick['lead_after']:+.2f}, "
+                    f"fooled {o_pick['fooled_lead']:+.2f}, vloss={o_pick['loss']:.2f}, E={o_pick['e']:.2f}, "
+                    f"find_hp={o_pick['find']:.3f}, p_fooled={o_pick['p_fooled']:.0%}) instead of {best_gtp}"
+                )
+                self._start_ponder(o_pick["gtp"], probes.get(o_pick["gtp"]), player)
+                return (
+                    Move.from_gtp(o_pick["gtp"], player=player),
+                    f"{self.LABEL}: overdraft trap {o_pick['gtp']} (verified loss {o_pick['loss']:.2f}, "
+                    f"lead {o_pick['lead_after']:+.2f} if answered correctly, {o_pick['fooled_lead']:+.2f} if the "
+                    f"opponent falls for it, reply findability {o_pick['find']:.1%}) instead of {best_gtp}.",
+                )
 
         if gamble_on:
             # 賭け罠: 資格（勝率フロア・ΔE・応手の見つけにくさ）のある挑戦者が居れば、net 比較・

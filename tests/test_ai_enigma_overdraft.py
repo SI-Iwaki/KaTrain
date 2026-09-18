@@ -215,3 +215,161 @@ class TestOverdraftSettings:
 
     def test_mimic13_is_untouched(self):
         assert not any(k.startswith("overdraft") for k in Mimic13Strategy.SETTING_DEFAULTS)
+
+
+import types
+
+
+def _hp(size, values):
+    """humanPolicy のフラット配列（size×size＋pass）。values は {gtp: hp}。"""
+    from katrain.core.sgf_parser import Move
+
+    arr = [0.0] * (size * size + 1)
+    for gtp, v in values.items():
+        x, y = Move.from_gtp(gtp).coords
+        arr[(size - 1 - y) * size + x] = v
+    return arr
+
+
+def _child(lead_after, wr_after, replies, reply_hp, size=13):
+    """黒番が打った後の子局面プローブ（clean + hp）。replies は [(gtp, 白視点の損失, visits)]。
+
+    KataGo の scoreLead / winrate は常に黒視点。白の最善応手後の黒リードが lead_after、
+    白が loss 目損する応手の後は lead_after + loss。
+    """
+    move_infos = [
+        {"move": g, "scoreLead": lead_after + loss, "visits": v, "order": i}
+        for i, (g, loss, v) in enumerate(replies)
+    ]
+    return {
+        "clean": {"rootInfo": {"scoreLead": lead_after, "winrate": wr_after}, "moveInfos": move_infos},
+        "hp": {"humanPolicy": _hp(size, reply_hp)},
+    }
+
+
+EASY = ([("C3", 0.0, 300), ("N1", 0.4, 20)], {"C3": 0.9, "N1": 0.05})  # 応手が自明＝E≈0
+TRAP = ([("C3", 0.0, 300), ("M12", 6.0, 40)], {"C3": 0.10, "M12": 0.80})  # 正解 C3 は hp 10%・自然な M12 は 6 目損
+
+
+def _overdraft_strategy(cls, prefix, settings=None, *, root_lead=6.0, d4_lead=6.0, g7_lead=-1.5, h8_lead=3.2,
+                        endgame=False):
+    """黒 +6 目（target 2・max_loss 1.6 → 消費モード cap 4.0）の13路・黒番。
+
+    D4=最善（子局面 root のリード d4_lead＝検証済み損失の基準）/ K10=安い外し（従来の net 比較はこれを選ぶ）/
+    H8=生 loss 3.0（通常の shortlist に入る）/ G7=生 loss 7.5（通常上限の外＝捨て身の罠の追加プローブでしか
+    調べない）。G7 は応じられたら g7_lead（既定 −1.5・勝率 20%＝勝率フロア 30% 未満）、引っかかれば +6 目戻る本物の罠。
+    """
+    logs = []
+    katrain_ns = types.SimpleNamespace(log=lambda msg, *a, **k: logs.append(str(msg)))
+    cands = [
+        {"move": "D4", "pointsLost": 0.0, "relativePointsLost": 0.0, "visits": 900, "winrate": 0.95},
+        {"move": "K10", "pointsLost": 0.1, "relativePointsLost": 0.1, "visits": 60, "winrate": 0.94},
+        {"move": "H8", "pointsLost": 3.0, "relativePointsLost": 3.0, "visits": 30, "winrate": 0.80},
+        {"move": "G7", "pointsLost": 7.5, "relativePointsLost": 7.5, "visits": 1, "winrate": 0.20},
+    ]
+    node = types.SimpleNamespace(
+        next_player="B", player="W", depth=40, move=None, analysis_complete=True,
+        analysis={"root": {"scoreLead": root_lead}}, candidate_moves=cands,
+    )
+    game = types.SimpleNamespace(katrain=katrain_ns, current_node=node, board_size=(13, 13))
+    if endgame:
+        setattr(game, f"_{prefix}_endgame", True)
+    base = {f"{prefix}_opening_humanstyle_moves": 0, f"{prefix}_max_loss": 1.6, f"{prefix}_locality_stddev": 0.0}
+    s = cls(game, {**base, **(settings or {})})
+    s.probed = []
+
+    def probe(gtps, player, parent_hp=False):
+        s.probed.append(list(gtps))
+        h8 = TRAP if h8_lead < 0 else EASY
+        table = {
+            "D4": _child(d4_lead, 0.95, *EASY),
+            "K10": _child(5.9, 0.94, *EASY),
+            "H8": _child(h8_lead, 0.80 if h8_lead >= 0 else 0.25, *h8),
+            "G7": _child(g7_lead, 0.20, *TRAP),
+        }
+        parent = {"humanPolicy": _hp(13, {"D4": 0.6, "H8": 0.1, "G7": 0.05})} if parent_hp else None
+        return {g: table[g] for g in gtps}, parent
+
+    s._probe_children = probe
+    s._run_query = lambda label, **kw: None
+    return s, logs
+
+
+ON = {"enigma13_overdraft_deficit": 2.5}
+
+
+class TestOverdraftEndToEnd:
+    def test_off_plays_the_classic_choice_and_never_probes_beyond_the_cap(self):
+        s, logs = _overdraft_strategy(Enigma13Strategy, "enigma13")
+        move, _ = s.generate_move()
+        assert move.gtp() == "K10"
+        assert "G7" not in s.probed[0]
+        assert not any("Over" in m for m in logs)
+
+    def test_on_plays_the_trap_beyond_the_cap_ignoring_the_winrate_floor(self):
+        s, logs = _overdraft_strategy(Enigma13Strategy, "enigma13", ON)
+        move, thoughts = s.generate_move()
+        assert move.gtp() == "G7"
+        assert "overdraft trap G7" in thoughts
+        assert "G7" in s.probed[0]
+        assert any("Overdraft: window" in m and "G7" in m for m in logs)
+        assert any("Overdraft: played G7" in m for m in logs)
+
+    def test_deficit_setting_blocks_a_deeper_fall(self):
+        s, logs = _overdraft_strategy(Enigma13Strategy, "enigma13", {"enigma13_overdraft_deficit": 1.0})
+        assert s.generate_move()[0].gtp() == "K10"  # 応じられたら −1.5 < −1.0
+        assert any("Overdraft: band" in m and "qualifiers=[]" in m for m in logs)
+
+    def test_fooled_lead_setting_blocks_the_trap(self):
+        s, _ = _overdraft_strategy(
+            Enigma13Strategy, "enigma13", {**ON, "enigma13_overdraft_min_fooled_lead": 5.0}
+        )
+        assert s.generate_move()[0].gtp() == "K10"  # 引っかかっても −1.5 + 6.0 = 4.5 < 5.0
+
+    def test_negative_only_default_skips_a_mild_trap(self):
+        s, _ = _overdraft_strategy(Enigma13Strategy, "enigma13", ON, g7_lead=0.5)
+        assert s.generate_move()[0].gtp() == "K10"
+
+    def test_answered_max_setting_admits_a_mild_trap_below_the_target(self):
+        s, _ = _overdraft_strategy(
+            Enigma13Strategy, "enigma13", {**ON, "enigma13_overdraft_answered_max": 99.0}, g7_lead=0.5
+        )
+        assert s.generate_move()[0].gtp() == "G7"
+
+    def test_shortlist_candidate_verified_beyond_the_cap_is_routed_instead_of_dropped(self):
+        # H8 は生 loss 3.0 で通常の shortlist に入るが、検証すると −1.0（vloss 7.0 > cap 4.0）
+        off, off_logs = _overdraft_strategy(Enigma13Strategy, "enigma13", h8_lead=-1.0)
+        assert off.generate_move()[0].gtp() == "K10"
+        assert any("Drop H8" in m for m in off_logs)
+        on, on_logs = _overdraft_strategy(Enigma13Strategy, "enigma13", ON, h8_lead=-1.0)
+        # H8（u = −1.0 + E）と G7（u = −1.5 + E）の両方が資格あり → 期待リードの大きい H8
+        assert on.generate_move()[0].gtp() == "H8"
+        assert not any("Drop H8" in m for m in on_logs)
+
+    def test_outside_the_spending_mode_nothing_changes(self):
+        s, logs = _overdraft_strategy(Enigma13Strategy, "enigma13", ON, root_lead=0.2)
+        move, _ = s.generate_move()
+        assert move.gtp() == "K10"
+        assert "G7" not in s.probed[0]
+        assert not any("Over" in m for m in logs)
+
+    def test_yose_is_left_alone(self):
+        s, logs = _overdraft_strategy(Enigma13Strategy, "enigma13", ON, endgame=True)
+        move, _ = s.generate_move()
+        assert move.gtp() == "D4"  # スタブの Probe は None → lead unavailable → 最善手
+        assert not any("Over" in m for m in logs)
+
+    def test_plus_inherits_the_overdraft(self):
+        s, _ = _overdraft_strategy(Enigma13PlusStrategy, "enigma13plus", {"enigma13plus_overdraft_deficit": 2.5})
+        assert s.generate_move()[0].gtp() == "G7"
+
+    def test_aim_jigo_band_ends_at_minus_one(self):
+        # aim_jigo: target = −1 → cap = min(8, lead + 1) = 7.0、帯は [−2.5, min(−1, 0)) ＝ [−2.5, −1)
+        jigo = {**ON, "enigma13_aim_jigo": True}
+        deep, _ = _overdraft_strategy(Enigma13Strategy, "enigma13", jigo)  # vloss 7.5 > 7.0・応じられたら −1.5
+        assert deep.generate_move()[0].gtp() == "G7"
+        # 最善手の子局面が +7（root の +6 より上）だと、応じられたら −0.5 の G7 も vloss 7.5 で上限の外に
+        # 回るが、帯の上端（target = −1）の外なので資格なし → 従来の選択（G7 は scored に居ない）
+        mild, logs = _overdraft_strategy(Enigma13Strategy, "enigma13", jigo, d4_lead=7.0, g7_lead=-0.5)
+        assert mild.generate_move()[0].gtp() == "K10"
+        assert any("Overdraft: band=[-2.5, -1.0)" in m and "qualifiers=[]" in m for m in logs)
