@@ -3663,10 +3663,12 @@ class Enigma9Strategy(AIStrategy):
             f"Pool: cap={cap:.2f} min_wr={min_wr:.0%} admissible={len(pool)} "
             f"(trusted={n_trusted}, of {len(candidates)}, searched>={ENIGMA9_POOL_MIN_VISITS}: {n_searched})"
         )
-        if not pool:
+        if not pool and over_win is None:
             return self._best_move(
                 f"{self.LABEL}: no admissible deviation (cap {cap:.2f}), playing best move."
             )
+        # 捨て身の罠の窓が開いている手番は pool が空でも先へ進む（最善手以外が全部 cap の外にある一本道の
+        # 局面にも罠は居る＝実局面 game_20260918_004112 d=50・spec §9）。帯にも候補が無ければ下で return する
         shortlist = self._shortlist(pool)
         if gamble_on and len(shortlist) < ENIGMA9_SHORTLIST - 1 + ENIGMA9_GAMBLE_PROBE_EXTRA:
             # 基底の shortlist は安い順 7 手＝互角の序盤では賭け罠の帯（vloss 0.6〜cap）を一度も
@@ -3695,6 +3697,11 @@ class Enigma9Strategy(AIStrategy):
                 f"Overdraft: window lead={lead_now:.2f} cap={cap:.2f} over_cap={over_cap:.2f} "
                 f"ceiling={over_ceiling:.2f} probes +{len(over_picks)} "
                 f"{[(c['gtp'], round(c['loss'], 2)) for c in over_picks]}"
+            )
+
+        if not pool and not over_picks:
+            return self._best_move(
+                f"{self.LABEL}: no admissible deviation (cap {cap:.2f}), playing best move."
             )
 
         # ---- 子局面プローブ + 親局面 humanSL（自手の意外さ用）を1バッチで並列発行 ----

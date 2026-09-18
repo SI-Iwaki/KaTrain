@@ -252,7 +252,7 @@ TRAP = ([("C3", 0.0, 300), ("M12", 6.0, 40)], {"C3": 0.10, "M12": 0.80})  # 正�
 
 
 def _overdraft_strategy(cls, prefix, settings=None, *, root_lead=6.0, d4_lead=6.0, g7_lead=-1.5, h8_lead=3.2,
-                        endgame=False):
+                        endgame=False, forced=False):
     """黒 +6 目（target 2・max_loss 1.6 → 消費モード cap 4.0）の13路・黒番。
 
     D4=最善（子局面 root のリード d4_lead＝検証済み損失の基準）/ K10=安い外し（従来の net 比較はこれを選ぶ）/
@@ -267,6 +267,8 @@ def _overdraft_strategy(cls, prefix, settings=None, *, root_lead=6.0, d4_lead=6.
         {"move": "H8", "pointsLost": 3.0, "relativePointsLost": 3.0, "visits": 30, "winrate": 0.80},
         {"move": "G7", "pointsLost": 7.5, "relativePointsLost": 7.5, "visits": 1, "winrate": 0.20},
     ]
+    if forced:  # 最善手以外は全部 通常上限（cap 4.0）の外＝通常の候補プールが空になる一本道の局面
+        cands = [c for c in cands if c["move"] in ("D4", "G7")]
     node = types.SimpleNamespace(
         next_player="B", player="W", depth=40, move=None, analysis_complete=True,
         analysis={"root": {"scoreLead": root_lead}}, candidate_moves=cands,
@@ -345,6 +347,26 @@ class TestOverdraftEndToEnd:
         # H8（u = −1.0 + E）と G7（u = −1.5 + E）の両方が資格あり → 期待リードの大きい H8
         assert on.generate_move()[0].gtp() == "H8"
         assert not any("Drop H8" in m for m in on_logs)
+
+    def test_trap_is_found_even_when_the_normal_pool_is_empty(self):
+        # 実局面 game_20260918_004112 d=50: 最善手以外が全部 cap の外で「no admissible deviation」の早期 return に
+        # 倒れ、反実仮想で資格のあった罠（G10）を一度もプローブしなかった。窓が開いていれば先へ進む
+        off, off_logs = _overdraft_strategy(Enigma13Strategy, "enigma13", forced=True)
+        move, thoughts = off.generate_move()
+        assert move.gtp() == "D4" and "no admissible deviation" in thoughts
+        assert off.probed == []
+        on, _ = _overdraft_strategy(Enigma13Strategy, "enigma13", ON, forced=True)
+        assert on.generate_move()[0].gtp() == "G7"
+
+    def test_empty_pool_and_no_overdraft_candidates_still_returns_early(self):
+        # 窓は開いているが帯に候補が無い（deficit 0.5 → 生 loss の帯 (2.5, 8.0] に G7 の 7.5 は入るので、
+        # G7 を帯の外へ出すために probes=0 相当＝帯が空になる設定を使う）
+        s, _ = _overdraft_strategy(
+            Enigma13Strategy, "enigma13", {**ON, "enigma13_overdraft_probes": 0}, forced=True
+        )
+        move, thoughts = s.generate_move()
+        assert move.gtp() == "D4" and "no admissible deviation" in thoughts
+        assert s.probed == []
 
     def test_outside_the_spending_mode_nothing_changes(self):
         s, logs = _overdraft_strategy(Enigma13Strategy, "enigma13", ON, root_lead=0.2)
