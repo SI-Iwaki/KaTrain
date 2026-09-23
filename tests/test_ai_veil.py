@@ -43,7 +43,7 @@ from katrain.core.ai import (
     veil_trap_price,
     veil_urgency,
 )
-from katrain.core.constants import AI_VEIL_9, AI_VEIL_13, AI_VEIL_19
+from katrain.core.constants import AI_VEIL_9, AI_VEIL_13, AI_VEIL_19, OUTPUT_ERROR
 from katrain.core.game_node import GameNode
 from katrain.core.sgf_parser import Move
 
@@ -1003,34 +1003,84 @@ class TestTerminal(_Harness):
 
     def test_swap_needs_an_open_gate_for_an_obvious_move(self):
         hp = {**self.END_HP, "E5": 0.85, "G7": 0.05}
-        s, _ = self._end(lead=10.0, hist=_hist("B", 3, 9), hp=hp)
+        s, logs = self._end(lead=10.0, hist=_hist("B", 3, 9), hp=hp)
         move, _ = s.generate_move()
         assert move.gtp() == "E5"  # 9段の最上位 E5＝最善手（(d)）
-        assert s.last_decision_info["kind"] == "best"
+        info = s.last_decision_info
+        # S12 の dominant_closed（tier "ii"）ではなく S8 の (d) で決まった
+        assert (info["tier"], info["kind"], info["why"]) == ("terminal", "best", "terminal")
+        assert any("Terminal: humanSL top E5" in m for m in logs)
 
-    def test_finishing_move_respects_the_same_loss_limit(self):
+    # 盤上の第一感 G7 0.04 < 床 0.05 → (c) の候補は無く、(d) の 9段の最上位 G7（最善手ではない）だけが残る
+    FLAT_HP = {"E5": 0.03, "D4": 0.01, "C3": 0.01, "F6": 0.02, "G7": 0.04}
+
+    def _finish(self, g7_loss=0.02, g7_visits=50, **kw):
+        """(d) の手 G7 の生の loss と visits を差し替えた終局帯（pass 0.2 目・hp は FLAT_HP）。"""
+        cands = [dict(c) for c in self.END]
+        cands[4].update(pointsLost=g7_loss, relativePointsLost=g7_loss, visits=g7_visits)
+        kw.setdefault("hp", self.FLAT_HP)
+        return self._strategy(cands=cands, **kw)
+
+    def test_finishing_move_needs_the_swap_visits_and_loss_limit(self):
         hp = {"E5": 0.30, "D4": 0.01, "C3": 0.01, "F6": 0.02, "G7": 0.45}
-        cheap, _ = self._end(lead=1.0, hp=hp)
-        assert cheap.generate_move()[0].gtp() == "G7"  # 0.02 目 <= 0.05
-        assert cheap.last_decision_info["kind"] == "finish"
-        dear_cands = [dict(c) for c in self.END]
-        dear_cands[4]["relativePointsLost"] = 0.3
-        dear, _ = self._strategy(cands=dear_cands, lead=1.0, hp=hp)
+        shallow, _ = self._end(lead=1.0, hp=hp)
+        assert shallow.generate_move()[0].gtp() == "E5"  # G7 は 0.02 目でも visits 5 < 10
+        info = shallow.last_decision_info
+        assert (info["tier"], info["kind"], info["why"]) == ("terminal", "best", "terminal")
+        dear, _ = self._finish(g7_loss=0.3, lead=1.0)
         assert dear.generate_move()[0].gtp() == "E5"  # 0.3 目 > 0.05（margin 0.5 未満でも打たない）
+        assert dear.last_decision_info["kind"] == "best"
 
-    @pytest.mark.parametrize("cap,kind,drift_after", [(0.0, "swap", 0.08), (0.2, "swap", 0.12), (0.1, "finish", 0.08)])
-    def test_close_drift_cap_limits_the_swap(self, cap, kind, drift_after):
+    def test_finishing_move_within_the_swap_conditions_is_played(self):
+        s, _ = self._finish(lead=1.0)
+        assert s.generate_move()[0].gtp() == "G7"  # visits 50 >= 10・0.02 目 <= 0.05・累計上限なし
+        info = s.last_decision_info
+        assert (info["tier"], info["kind"], info["raw"]) == ("terminal", "finish", pytest.approx(0.02))
+        assert s.probe_calls == [] and s.queries == ["parent hp"]
+        assert s.game._veil_state["veil9"]["close_drift"] == 0.0  # 上限 0（既定）なら累計に足さない
+
+    @pytest.mark.parametrize(
+        "cap,move,kind,drift_after", [(0.0, "D4", "swap", 0.08), (0.2, "D4", "swap", 0.12), (0.1, "E5", "best", 0.08)]
+    )
+    def test_close_drift_cap_limits_the_swap_and_the_finishing_move(self, cap, move, kind, drift_after):
+        # 上限 0.1 では 0.08 + 0.04 > 0.1 で (c) の D4 も (d) の D4（9段の最上位）も打てない → 最善手
         hp = {"E5": 0.20, "D4": 0.30, "C3": 0.25, "F6": 0.0, "G7": 0.0}
         state = {"veil9": {"endgame": False, "close_drift": 0.08, "ledger": []}}
         s, _ = self._end(lead=1.0, hp=hp, settings={"veil9_close_drift_cap": cap}, _veil_state=state)
-        assert s.generate_move()[0].gtp() == "D4"
+        assert s.generate_move()[0].gtp() == move
         assert s.last_decision_info["kind"] == kind
         assert state["veil9"]["close_drift"] == pytest.approx(drift_after)
 
-    def test_terminal_humansl_failure_plays_the_best_move(self):
-        s, _ = self._end(hp_ok=False)
+    def test_finishing_move_in_a_close_game_adds_to_the_close_drift(self):
+        state = {"veil9": {"endgame": False, "close_drift": 0.05, "ledger": []}}
+        s, _ = self._finish(lead=1.0, settings={"veil9_close_drift_cap": 0.1}, _veil_state=state)
+        assert s.generate_move()[0].gtp() == "G7"  # 0.05 + 0.02 <= 0.1
+        assert s.last_decision_info["kind"] == "finish"
+        assert state["veil9"]["close_drift"] == pytest.approx(0.07)
+
+    def test_finishing_move_failing_the_invariant_plays_the_best_move(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(ai_module, "veil_invariant_ok", lambda *a: calls.append(a) or False)
+        state = {"veil9": {"endgame": False, "close_drift": 0.05, "ledger": []}}
+        s, _ = self._finish(lead=1.0, settings={"veil9_close_drift_cap": 0.1}, _veil_state=state)
+        records = []
+        s.game.katrain.log = lambda msg, level=None, *a, **k: records.append((str(msg), level))
         assert s.generate_move()[0].gtp() == "E5"
-        assert s.last_decision_info["why"] == "no_hp"
+        gtps = {c["move"] for c in self.END}
+        assert calls == [("G7", "E5", gtps, "terminal", {"raw": 0.02, "limit": 0.05})]
+        assert any(lv == OUTPUT_ERROR and "Invariant violated: chosen=G7 kind=terminal" in m for m, lv in records)
+        info = s.last_decision_info
+        assert (info["tier"], info["kind"], info["why"]) == ("failsafe", "best", "invariant")
+        assert state["veil9"]["close_drift"] == pytest.approx(0.05)  # 打たなかった手は累計に足さない
+
+    def test_terminal_humansl_failure_plays_the_best_move(self):
+        s, logs = self._end(hp_ok=False)
+        assert s.generate_move()[0].gtp() == "E5"
+        info = s.last_decision_info
+        # S11 の humanSL 失敗ではなく S8 (a) で決まった（pass_loss が載り、S9 の予算は出していない）
+        assert (info["tier"], info["kind"], info["why"]) == ("failsafe", "best", "no_hp")
+        assert info["pass_loss"] == pytest.approx(0.2) and "A_t" not in info
+        assert any("Terminal: pass loses 0.20 but humanSL unavailable" in m for m in logs)
 
 
 # (クラス, 盤, 設定接頭辞, ai キー, 定数)
