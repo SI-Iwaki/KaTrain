@@ -102,7 +102,7 @@ def opponent_plan(args, size):
         "ranks": ranks,
         "tau": tau,
         "max_loss": args.opp_max_loss,
-        "pool_file": pool_file,
+        "pool_file": R.repo_relpath(pool_file),
         "pool": pool,
     }
 
@@ -230,6 +230,7 @@ def cmd_run(args):
         engine_factory=start_engine,
         hooks_builder=make_hooks_factory,
         retry_aborted=args.retry_aborted,
+        allow_mixed=args.allow_mixed,
         log=safe_print,
     )
     names = [a["name"] for a in plan["arms"]]
@@ -273,7 +274,15 @@ def cmd_calibrate(args):
             stub, plan = _plan_calibrate(args)
         _warn_if_unbalanced(plan)
         out = _new_output(args, stub, plan, args.label or f"calib-{args.strategy}")
-    R.execute_plan(plan, out, stub, engine_factory=start_engine, retry_aborted=args.retry_aborted, log=safe_print)
+    R.execute_plan(
+        plan,
+        out,
+        stub,
+        engine_factory=start_engine,
+        retry_aborted=args.retry_aborted,
+        allow_mixed=args.allow_mixed,
+        log=safe_print,
+    )
     summary, _ = R.summarize_dir(out, args.boot)
     for line in R.integrity_warnings(summary):  # review finding on Task 6fix: calibrate must warn too, not just run
         safe_print(line)
@@ -310,7 +319,9 @@ def cmd_summarize(args):
     outs = [R.OutputDir(d) for d in args.dirs]
     dest = R.OutputDir(args.out) if args.out else None
     compare = tuple(args.compare) if args.compare else None
-    _, text = R.summarize_dir(outs, args.boot, compare, args.conf, dest=dest)
+    _, text = R.summarize_dir(
+        outs, args.boot, compare, args.conf, dest=dest, allow_mixed=args.allow_mixed, log=safe_print
+    )
     safe_print(text)
 
 
@@ -373,6 +384,12 @@ def _add_common(p):
     p.add_argument(
         "--retry-aborted", action="store_true", help="--resume で aborted の局も打ち直す（行は aborted.jsonl へ移す）"
     )
+    p.add_argument(
+        "--allow-mixed",
+        action="store_true",
+        help="--resume でエンジン設定（katago・model・humanlike_model・max_visits・max_time・wide_root_noise）や"
+        "コードの版（git HEAD・ai.py の場所）が run.json と違っても続ける（既定は止まる）",
+    )
     p.add_argument("--boot", type=int, default=10000, help="bootstrap の回数")
     p.add_argument("--allow-concurrent", action="store_true", help="他の KataGo が動いていても走らせる（非推奨）")
 
@@ -405,6 +422,11 @@ def build_parser():
     summ.add_argument("--compare", nargs=2, metavar=("A", "B"), help="同じ seed の対の差 A - B")
     summ.add_argument("--boot", type=int, default=10000)
     summ.add_argument("--conf", type=float, default=0.975, help="対の差の区間の信頼度（2回見る停止規則で 0.975）")
+    summ.add_argument(
+        "--allow-mixed",
+        action="store_true",
+        help="エンジン設定やコードの版（git HEAD・ai.py の場所）が違う実行も合わせる（既定は止まる）",
+    )
     rep = sub.add_parser("report-sgf", help="保存 SGF から両者のレポート一致率を出す")
     rep.add_argument("file")
     rep.add_argument("--timeout", type=float, default=1200.0)

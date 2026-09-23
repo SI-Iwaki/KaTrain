@@ -248,6 +248,44 @@ class TestSummarize:
             CLI.main(["summarize", dirs[0], dirs[0], "--boot", "100"])
 
 
+def _edit_run_json(run_dir, change):
+    path = os.path.join(run_dir, "run.json")
+    plan = json.load(open(path, encoding="utf-8"))
+    change(plan)
+    open(path, "w", encoding="utf-8").write(json.dumps(plan))
+
+
+class TestMeasurementBaseline:
+    def test_resume_refuses_a_changed_engine_unless_allow_mixed(self, env, capsys):
+        CLI.main(_run_args(env, "--arm", "A=default"))
+        run_dir = _only_dir(env["out"])
+        # 止めた後に config のモデルを替えた（run.json の記録と今の config がずれる）
+        _edit_run_json(run_dir, lambda p: p["engine"].update(model="older.bin.gz"))
+        with pytest.raises(SystemExit, match="engine[.]model: 'older.bin.gz' vs None"):
+            CLI.main(["run", "--resume", run_dir, "--boot", "100"])
+        capsys.readouterr()
+        CLI.main(["run", "--resume", run_dir, "--boot", "100", "--allow-mixed"])
+        assert "WARN measurement baseline differs" in capsys.readouterr().out
+
+    def test_summarize_refuses_mixed_code_versions_unless_allow_mixed(self, env, capsys):
+        CLI.main(_run_args(env, "--arm", "A=default"))
+        CLI.main(_run_args(env, "--arm", "A=default", "--seed-base", "1002", "--label", "ext"))
+        dirs = [os.path.join(env["out"], d) for d in sorted(os.listdir(env["out"]), key=lambda d: d.endswith("_ext"))]
+        _edit_run_json(dirs[1], lambda p: p["git"].update(head="0" * 40))  # 別のコミットで打った延長
+        with pytest.raises(SystemExit, match="git[.]head"):
+            CLI.main(["summarize", *dirs, "--boot", "100"])
+        capsys.readouterr()
+        CLI.main(["summarize", *dirs, "--boot", "100", "--allow-mixed"])
+        out = capsys.readouterr().out
+        assert "WARN measurement baseline differs" in out and "git.head" in out
+
+    def test_run_json_paths_are_relative_to_the_repo(self, env):
+        CLI.main(_resign_args(env))
+        plan, _ = _run_files(_only_dir(env["out"]))
+        assert plan["ai_file"] == "katrain/core/ai.py"
+        assert plan["resign"]["source"] == "docs/superpowers/specs/calibration-data/selfplay/recon"
+
+
 class TestReportSgf:
     def test_report_of_a_saved_game_equals_the_game_record(self, env, capsys, monkeypatch):
         CLI.main(_run_args(env, "--arm", "A=default"))

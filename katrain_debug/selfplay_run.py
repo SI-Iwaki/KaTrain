@@ -79,19 +79,50 @@ def git_info(path):
             return None
         return r.stdout.strip() if r.returncode == 0 else None
 
-    status = git("status", "--porcelain")
+    status = git("status", "--porcelain", "--untracked-files=no")  # 追跡外のファイル（計画のメモ等）は dirty にしない
     return {"head": git("rev-parse", "HEAD"), "dirty": None if status is None else bool(status)}
 
 
 def run_meta(stub):
-    """run.json の実行環境: エンジン設定・ai.py の場所・git HEAD と dirty（worktree の取り違え対策）。"""
+    """run.json の実行環境: エンジン設定・ai.py の場所（リポジトリ相対）・git HEAD と dirty（worktree の取り違え対策）。"""
     ai_dir = os.path.dirname(os.path.abspath(ai_module.__file__))
     return {
         "engine": dict(stub.config("engine") or {}),
-        "ai_file": os.path.abspath(ai_module.__file__),
+        "ai_file": repo_relpath(ai_module.__file__),
         "git": git_info(ai_dir),
         "python": sys.version.split()[0],
     }
+
+
+# 計測の基準（spec §5・§11 設定の取り違え）: 再開と複数の実行の要約で run.json どうし・run.json と今の環境を突き合わせる
+BASELINE_ENGINE_KEYS = ("katago", "model", "humanlike_model", "max_visits", "max_time", "wide_root_noise")
+
+
+def measurement_baseline(meta):
+    """run.json（か run_meta）の計測の基準: エンジン設定の6項目・git HEAD・ai.py の場所（数値は 6 == 6.0 に正規化）。"""
+    engine = meta.get("engine") or {}
+    return {
+        **{f"engine.{k}": S.normalize_setting(engine.get(k)) for k in BASELINE_ENGINE_KEYS},
+        "git.head": (meta.get("git") or {}).get("head"),
+        "ai_file": repo_relpath(meta["ai_file"]) if meta.get("ai_file") else None,
+    }
+
+
+def baseline_differences(recorded, current):
+    """違う項目を `key: 記録 vs 今` の文字列のリストで返す（同じなら空）。"""
+    a, b = measurement_baseline(recorded), measurement_baseline(current)
+    return [f"{k}: {a[k]!r} vs {b[k]!r}" for k in a if a[k] != b[k]]
+
+
+def check_baseline(recorded, current, where, allow_mixed=False, log=print):
+    """計測の基準が違えば止まる（allow_mixed なら WARN を出して続ける）。違いの中身をそのまま出す。"""
+    diffs = baseline_differences(recorded, current)
+    if not diffs:
+        return
+    text = f"measurement baseline differs ({where}): " + "; ".join(diffs)
+    if not allow_mixed:
+        raise SystemExit(f"{text}. Start a new run, or pass --allow-mixed to mix them anyway.")
+    log(f"WARN {text} (--allow-mixed)")
 
 
 def make_plan(
@@ -115,7 +146,7 @@ def make_plan(
     return {
         "subcommand": subcommand,
         "created": datetime.datetime.now().isoformat(timespec="seconds"),
-        "command": list(sys.argv),
+        "command": [repo_relpath(sys.argv[0])] + sys.argv[1:] if sys.argv and sys.argv[0] else list(sys.argv),
         "size": size,
         "komi": komi,
         "rules": rules,
@@ -237,14 +268,19 @@ def execute_plan(
     watchdog_interval=2.0,
     hooks_builder=None,
     retry_aborted=False,
+    allow_mixed=False,
     log=print,
 ):
     """計画の未完了の局を順に打つ。アームの解決済み設定が計画時と違えば中止（config を途中で変えた）。
 
+    plan が run.json（再開: 実行環境の engine / git / ai_file を含む）なら、計測の基準（エンジン設定・コードの版）を
+    今の config とコードと突き合わせ、違えば1局も打たずに止まる（allow_mixed なら WARN を出して続ける）。
     各局の前にエンジンの死活を見て、落ちていれば再起動する（spec §2: 落ちた局だけ aborted にして続行）。
     hooks_builder(plan, arms) -> factory(arm_name) -> [hook]（hp 監査・影判定。selfplay_hooks.make_hooks_factory）。
     retry_aborted: 再開のとき aborted の局も打ち直す（OutputDir.drop_aborted）。
     """
+    if "engine" in plan:
+        check_baseline(plan, run_meta(stub), f"resume {repo_relpath(out.path)}", allow_mixed, log)
     arms = {}
     for entry in plan["arms"]:
         arm = resolve_arm(stub, entry["name"], entry["strategy"], entry["override_items"])
@@ -385,13 +421,14 @@ def plan_conditions(plan):
     }
 
 
-def load_records(outs):
+def load_records(outs, allow_mixed=False, log=print):
     """複数の実行の games.jsonl を合わせる（spec §6 停止規則の延長: 20 ペアの後の --seed-base 1020 の実行など）。
 
-    同じ (arm, seed) が2回現れる・同じ名前のアームの設定の指紋が違う・対局条件が違うときは止まる（run.json の無い
-    ディレクトリは指紋と条件の突き合わせを飛ばす）。
+    同じ (arm, seed) が2回現れる・同じ名前のアームの設定の指紋が違う・対局条件が違うときは止まる。計測の基準
+    （エンジン設定・コードの版）が最初の実行と違うときも止まる（allow_mixed なら WARN を出して合わせる）。
+    run.json の無いディレクトリは突き合わせを飛ばす。
     """
-    records, seen, prints, conditions = [], {}, {}, None
+    records, seen, prints, conditions, first = [], {}, {}, None, None
     for out in outs:
         if os.path.exists(out.file("run.json")):
             plan = out.read_json("run.json")
@@ -402,6 +439,11 @@ def load_records(outs):
             if conditions is not None and cond != conditions:
                 raise SystemExit(f"game conditions differ between the run directories ({out.path})")
             conditions = cond
+            if first is None:
+                first = (out, plan)
+            else:
+                where = f"{repo_relpath(first[0].path)} vs {repo_relpath(out.path)}"
+                check_baseline(first[1], plan, where, allow_mixed, log)
         for r in out.records():
             key = (r["arm"], r["seed"])
             if key in seen:
@@ -411,17 +453,17 @@ def load_records(outs):
     return records
 
 
-def summarize_dir(outs, n_boot=10000, compare=None, conf=0.975, dest=None):
+def summarize_dir(outs, n_boot=10000, compare=None, conf=0.975, dest=None, allow_mixed=False, log=print):
     """summary.txt（ASCII）/ summary.json を dest（既定: 最初の実行）に書く。
 
-    outs は OutputDir かそのリスト（複数なら load_records で合わせる）。compare は (A, B) か [(A, B), ...]
-    （同じ seed の対の差 A - B。既定の区間 97.5%＝2回見る停止規則）。
+    outs は OutputDir かそのリスト（複数なら load_records で合わせる。allow_mixed は計測の基準の違いを許す）。
+    compare は (A, B) か [(A, B), ...]（同じ seed の対の差 A - B。既定の区間 97.5%＝2回見る停止規則）。
     """
     outs = list(outs) if isinstance(outs, (list, tuple)) else [outs]
     dest = dest or outs[0]
-    records = load_records(outs)
+    records = load_records(outs, allow_mixed, log)
     summary = S.selfplay_summarize(records, n_boot)
-    summary["sources"] = [o.path for o in outs]
+    summary["sources"] = [repo_relpath(o.path) for o in outs]
     pairs = [tuple(compare)] if compare and isinstance(compare[0], str) else [tuple(c) for c in compare or []]
     if pairs:
         summary["compare"] = []
@@ -448,7 +490,7 @@ def calibration_result(out, plan):
     integrity = S.integrity_totals(records)
     arm_name = plan["arms"][0].get("name", "calib")
     return {
-        "run_dir": out.path,
+        "run_dir": repo_relpath(out.path),  # プールの source_run と md に入る＝作業ツリーの絶対パスを埋め込まない
         "strategy": plan["arms"][0]["strategy"],
         "size": plan["size"],
         "tau": plan["opponent"]["tau"],

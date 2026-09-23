@@ -904,7 +904,7 @@ def settings_fingerprint(mode, settings):
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
 
-def _normalize_setting(value):
+def normalize_setting(value):
     """数値の型の違いを消す（6 == 6.0）。bool は数値にしない（True と 1.0 は別の設定として残す）。"""
     if isinstance(value, bool):
         return value
@@ -919,7 +919,7 @@ def effective_settings(settings, key_prefix=None, setting_defaults=None):
     （ai.py の _setting）ので、既定値と同じ値の上書きは違いにならない。持たない戦略は settings だけを正規化する。
     """
     base = {f"{key_prefix}_{k}": v for k, v in (setting_defaults or {}).items()} if key_prefix else {}
-    return {k: _normalize_setting(v) for k, v in {**base, **(settings or {})}.items()}
+    return {k: normalize_setting(v) for k, v in {**base, **(settings or {})}.items()}
 
 
 def arms_null_guard(arms):

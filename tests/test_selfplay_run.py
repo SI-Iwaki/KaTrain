@@ -15,9 +15,9 @@ from katrain_debug.selfplay_game import resolve_arm
 from tests.selfplay_fakes import FakeEngine, make_stub
 
 
-def _plan(stub, n_seeds=2, max_moves=6):
+def _plan(stub, n_seeds=2, max_moves=6, seed_base=1000):
     arm = resolve_arm(stub, "A", "default", [])
-    schedule = S.selfplay_schedule(n_seeds, ["rank_3k"], 1000)
+    schedule = S.selfplay_schedule(n_seeds, ["rank_3k"], seed_base)
     return R.make_plan("run", [arm], schedule, size=9, komi=7.0, max_moves=max_moves, timeout=5)
 
 
@@ -143,6 +143,172 @@ class TestExecutePlan:
         assert plan["target"] == 0.30 and plan["arms"][1]["fingerprint"]
 
 
+def _cal_record(**overrides):
+    """calibrate の games.jsonl の1行（相手の一致率と区間の形だけ）。"""
+    block = {"top1": 0.2, "top5": 0.5, "mean_ptloss": 1.8, "n": 30}
+    reports = {"WATCH": {n: {"ai": {}, "opp": block} for n, _ in S.REPORT_BINS}}
+    rec = {
+        "arm": "calib",
+        "seed": 0,
+        "rank": "rank_3k",
+        "ai_color": "B",
+        "result": "win",
+        "opp_top1": 0.2,
+        "opp_n": 30,
+        "own_top1": 0.55,
+        "opp_mean_ptloss": 1.8,
+        "opp_tail": {"n": 30, "ge2": 9, "ge5": 3},
+        "n_moves": 80,
+        "reports": reports,
+    }
+    rec.update(overrides)
+    return rec
+
+
+def _run_json(stub, n_seeds=2):
+    """CLI が書く run.json と同じ形（計画 + 実行環境）＝再開のときの plan。"""
+    return json.loads(json.dumps({**_plan(stub, n_seeds), **R.run_meta(stub)}, default=str))
+
+
+class TestMeasurementBaseline:
+    """再開と複数の実行の要約は、エンジン設定とコードの版が run.json と違えば止まる（--allow-mixed で続行）。"""
+
+    def test_resume_with_the_same_baseline_continues(self, tmp_path):
+        stub = make_stub(tmp_path)
+        out = R.OutputDir(tmp_path / "run")
+        plan = _run_json(stub)
+        _run(plan, out, stub, FakeEngine())
+        assert _run(plan, out, make_stub(tmp_path), FakeEngine()) == []
+
+    @pytest.mark.parametrize(
+        "key, change",
+        [
+            ("engine.max_visits", lambda p: p["engine"].update(max_visits=200)),
+            ("engine.model", lambda p: p["engine"].update(model="other.bin.gz")),
+            ("engine.humanlike_model", lambda p: p["engine"].update(humanlike_model="h.bin.gz")),
+            ("engine.wide_root_noise", lambda p: p["engine"].update(wide_root_noise=0.0)),
+            ("git.head", lambda p: p["git"].update(head="0" * 40)),
+            ("ai_file", lambda p: p.update(ai_file="D:/elsewhere/katrain/core/ai.py")),
+        ],
+    )
+    def test_resume_refuses_a_changed_baseline(self, tmp_path, key, change):
+        stub = make_stub(tmp_path)
+        out = R.OutputDir(tmp_path / "run")
+        plan = _run_json(stub, n_seeds=4)
+        change(plan)  # 記録した run.json と今の config・コードがずれた状態
+        engine = FakeEngine()
+        with pytest.raises(SystemExit, match=f"measurement baseline differs.*{key.replace('.', '[.]')}"):
+            _run(plan, out, stub, engine)
+        assert engine.requests == [] and engine.new_games == 0 and out.records() == []
+
+    def test_allow_mixed_continues_with_a_warning(self, tmp_path):
+        stub = make_stub(tmp_path)
+        out = R.OutputDir(tmp_path / "run")
+        plan = _run_json(stub)
+        plan["engine"]["max_time"] = 30.0
+        lines = []
+        R.execute_plan(
+            plan,
+            out,
+            stub,
+            engine_factory=lambda s: FakeEngine(),
+            watchdog_interval=None,
+            allow_mixed=True,
+            log=lines.append,
+        )
+        assert lines[0].startswith("WARN measurement baseline differs") and "engine.max_time: 30.0 vs 8.0" in lines[0]
+        assert len(out.records()) == 2
+
+    def test_numbers_are_compared_by_value(self):
+        meta = {"engine": {"max_visits": 2500, "max_time": 8}, "git": {"head": "a"}, "ai_file": "katrain/core/ai.py"}
+        same = {
+            "engine": {"max_visits": 2500.0, "max_time": 8.0},
+            "git": {"head": "a"},
+            "ai_file": "katrain/core/ai.py",
+        }
+        assert R.baseline_differences(meta, same) == []
+
+    def test_ai_file_recorded_as_an_absolute_path_matches_the_repo_relative_one(self):
+        old = {"engine": {}, "git": {}, "ai_file": R.os.path.join(R.REPO_ROOT, "katrain", "core", "ai.py")}
+        new = {"engine": {}, "git": {}, "ai_file": "katrain/core/ai.py"}
+        assert R.baseline_differences(old, new) == []
+
+    def test_summarize_refuses_runs_with_different_baselines(self, tmp_path):
+        stub = make_stub(tmp_path)
+        outs = []
+        for label, seed_base in (("a", 1000), ("b", 1002)):
+            out = R.OutputDir(tmp_path / label)
+            plan = _plan(stub, seed_base=seed_base)
+            _run(plan, out, stub, FakeEngine())
+            meta = json.loads(json.dumps(R.run_meta(stub)))
+            if label == "b":
+                meta["engine"]["model"] = "other.bin.gz"  # 別のモデルで打った延長
+            out.write_json("run.json", {**plan, **meta})
+            outs.append(out)
+        with pytest.raises(SystemExit, match="measurement baseline differs.*engine[.]model"):
+            R.load_records(outs)
+        lines = []
+        assert len(R.load_records(outs, allow_mixed=True, log=lines.append)) == 4
+        assert len(lines) == 1 and lines[0].startswith("WARN measurement baseline differs")
+
+
+class TestGitInfo:
+    def test_untracked_files_do_not_make_the_tree_dirty(self, tmp_path):
+        def git(*args):
+            R.subprocess.run(
+                ["git", "-C", str(tmp_path), "-c", "user.name=t", "-c", "user.email=t@example.com", *args],
+                check=True,
+                capture_output=True,
+            )
+
+        git("init", "-q")
+        (tmp_path / "a.txt").write_text("a\n", encoding="utf-8")
+        git("add", "a.txt")
+        git("commit", "-q", "-m", "init")
+        (tmp_path / "untracked.md").write_text("x\n", encoding="utf-8")
+        info = R.git_info(str(tmp_path))
+        assert len(info["head"]) == 40 and info["dirty"] is False
+        (tmp_path / "a.txt").write_text("b\n", encoding="utf-8")
+        assert R.git_info(str(tmp_path))["dirty"] is True
+
+
+class TestProvenancePaths:
+    """記録に残すパスはリポジトリ相対（コミットする成果物に作業ツリーの絶対パスを埋め込まない）。"""
+
+    def test_run_meta_records_ai_file_relative_to_the_repo(self, tmp_path):
+        assert R.run_meta(make_stub(tmp_path))["ai_file"] == "katrain/core/ai.py"
+
+    def test_calibration_outputs_record_the_run_dir_relative_to_the_repo(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(R, "REPO_ROOT", str(tmp_path))
+        out = R.OutputDir(tmp_path / "experiments" / "selfplay" / "20260924_0202_calib13")
+        with open(out.file("games.jsonl"), "w", encoding="utf-8") as f:
+            f.write(json.dumps(_cal_record()) + "\n")
+        plan = {"size": 13, "arms": [{"name": "calib", "strategy": "enigma13plus"}], "opponent": {"tau": 1.0}}
+        cal = R.calibration_result(out, plan)
+        assert cal["run_dir"] == "experiments/selfplay/20260924_0202_calib13"
+        assert "実行: `experiments/selfplay/20260924_0202_calib13`" in R.format_calibration_md(cal)
+
+    def test_pool_file_source_run_is_relative_to_the_repo(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(R, "REPO_ROOT", str(tmp_path))
+        out = R.OutputDir(tmp_path / "experiments" / "cal")
+        recs = [
+            _cal_record(rank=rank, seed=i, opp_top1=0.1 + 0.05 * i)
+            for i, rank in enumerate(("rank_8k", "rank_3k", "rank_1d"))
+        ]
+        with open(out.file("games.jsonl"), "w", encoding="utf-8") as f:
+            f.writelines(json.dumps(r) + "\n" for r in recs)
+        plan = {"size": 13, "arms": [{"name": "calib", "strategy": "enigma13plus"}], "opponent": {"tau": 1.0}}
+        assert R.pool_file_content(R.calibration_result(out, plan))["source_run"] == "experiments/cal"
+
+    def test_summary_sources_are_relative_to_the_repo(self, tmp_path, monkeypatch):
+        stub = make_stub(tmp_path)
+        out = R.OutputDir(tmp_path / "run")
+        _run(_plan(stub), out, stub, FakeEngine())
+        monkeypatch.setattr(R, "REPO_ROOT", str(tmp_path))
+        summary, _ = R.summarize_dir(out, n_boot=50)
+        assert summary["sources"] == ["run"]
+
+
 class TestSummaries:
     def test_summary_files_are_ascii(self, tmp_path):
         stub = make_stub(tmp_path)
@@ -248,32 +414,12 @@ class TestSummaries:
         assert pool["ranks"] == ["rank_8k", "rank_3k", "rank_1d"] and pool["tau"] == 1.0
         assert pool["resign_model"] == "length"
 
-    def _cal_record(self, **overrides):
-        block = {"top1": 0.2, "top5": 0.5, "mean_ptloss": 1.8, "n": 30}
-        reports = {"WATCH": {n: {"ai": {}, "opp": block} for n, _ in S.REPORT_BINS}}
-        rec = {
-            "arm": "calib",
-            "seed": 0,
-            "rank": "rank_3k",
-            "ai_color": "B",
-            "result": "win",
-            "opp_top1": 0.2,
-            "opp_n": 30,
-            "own_top1": 0.55,
-            "opp_mean_ptloss": 1.8,
-            "opp_tail": {"n": 30, "ge2": 9, "ge5": 3},
-            "n_moves": 80,
-            "reports": reports,
-        }
-        rec.update(overrides)
-        return rec
-
     def test_calibration_result_and_markdown_carry_integrity_totals(self, tmp_path):
         """review finding on Task 6fix (outside its file list): calibrate must surface integrity problems too."""
         out = R.OutputDir(tmp_path / "cal")
         plan = {"size": 13, "arms": [{"name": "calib", "strategy": "enigma13plus"}], "opponent": {"tau": 1.0}}
         with open(out.file("games.jsonl"), "w", encoding="utf-8") as f:
-            f.write(json.dumps(self._cal_record()) + "\n")
+            f.write(json.dumps(_cal_record()) + "\n")
         cal = R.calibration_result(out, plan)
         assert cal["integrity"] == {
             "fallbacks": 0,
@@ -284,7 +430,7 @@ class TestSummaries:
         assert "WARN integrity" not in R.format_calibration_md(cal)
 
         with open(out.file("games.jsonl"), "w", encoding="utf-8") as f:
-            f.write(json.dumps(self._cal_record(opponent_stats={"humansl_errors": 2})) + "\n")
+            f.write(json.dumps(_cal_record(opponent_stats={"humansl_errors": 2})) + "\n")
         cal = R.calibration_result(out, plan)
         assert cal["integrity"]["humansl_errors"] == 2
         assert "WARN integrity: arm calib: humansl_errors=2" in R.format_calibration_md(cal)
