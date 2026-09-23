@@ -4407,6 +4407,62 @@ class Mimic13Strategy(Enigma13Strategy):
         )
 
 
+# ===== 「韜晦」戦略 ai:veil9 / ai:veil13 / ai:veil19 の定数と純関数群 =====
+# 設計: docs/superpowers/specs/2026-09-23-veil-strategy-design.md
+#
+# 勝ちを最優先にしたまま、自分の AI 最善手一致率（KaTrain の終局レポートの値）を絶対目標
+# `<prefix>_target_rate` まで下げる。ほぼ損失ゼロの外し（free＝同値外し）は一致率に関係なく常に行い、
+# 損をする外し（paid）は一致率が目標を超えている間（緊急度 u > 0）だけリードの余剰
+# S = lead − reserve から払う。外しはすべて子局面プローブで検証し、最安帯の中で humanPolicy 最大の手を
+# 選ぶ。罠（ΔE）は `<prefix>_trap_mode` で足す A/B 用の上乗せ層。ponder（先読み）は使わない。
+
+VEIL_TARGET_FLOOR = 0.15         # この一致率以下へは払わない（理想帯 15〜35% の下端）
+VEIL_URGENCY_WIDTH = 0.10        # 緊急度 u = (p_match − T) / これ を 0〜1 にクランプ
+VEIL_STRICT_FREE = 0.1           # 劣勢（lead < VEIL_BEHIND_LIMIT）か p_match <= VEIL_TARGET_FLOOR のときの同値の閾値（目）
+VEIL_BEHIND_LIMIT = -1.0         # これ未満のリードは劣勢扱い
+VEIL_YOSE_FREE_WR_DROP = 0.01    # ヨセで着手後リードが reserve 未満のとき、同値外しに許す勝率低下
+VEIL_CLOSE_WR = 0.9              # 最善手の着手後勝率がこれ未満なら「接戦」
+VEIL_DECIDED_WR = 0.97           # 決着局面の勝率（即決経路・同値外しの勝率条件の免除）
+VEIL_DECIDED_MARGIN = 3.0        # 決着局面の即決に要る reserve 超過分（目）
+VEIL_TERMINAL_MAX = 0.10         # 終局帯の入れ替えに許す生の loss（目）
+VEIL_TERMINAL_CLOSE_MAX = 0.05   # 同・|lead| < VEIL_TERMINAL_CLOSE_LEAD のとき（持碁の落とし穴を避ける）
+VEIL_TERMINAL_CLOSE_LEAD = 3.0   # 終局帯の「接戦」の境（目）
+VEIL_TERMINAL_MIN_VISITS = 10    # 終局帯の入れ替えに要る visits
+VEIL_RAW_MARGIN = 0.3            # 生の loss の足切りに持たせる余裕（目）。生の loss はノイズが大きく検証で救える手がある
+VEIL_TRAP_CREDIT = 0.5           # 罠の値段で ΔE を信用する割合（実損 ≈ 1.06×E・R²=0.18 なので半分だけ）
+VEIL_TRAP_MIN_HP = 0.02          # 罠に要る humanPolicy（自然さの床は免除）
+VEIL_TRAP_PROBES = 3             # 罠枠のプローブ数
+VEIL_TRAP_RAW_EXTRA = 1.0        # 罠用プールの生の loss の上乗せ（目）
+VEIL_TRAP_SWAP_MARGIN = 0.3      # 素の外し P を罠 Q に替えるのに要る値段の差（目）
+VEIL_HP_TIE = 0.02               # hp の同点幅（この差以内なら余剰がある手番は着手後勝率を優先）
+_VEIL_EPS = 1e-9                 # 上限比較の浮動小数の許容誤差
+
+
+def veil_tally(nodes, ai_player):
+    """終局レポート（`game_report`）と同じ定義で両者の AI 最善手一致数と分母を返す: (mine, n_mine, opp, n_opp)。
+
+    nodes は `cn.nodes_from_root`（root 込みでよい）。着手があり root でないノードのうち `points_lost` が
+    None でないものが分母、そのうち親局面の解析が完了していて `candidate_moves[0]` と着手の gtp が
+    一致するものが分子（`game_report` の ai_top_move_count と同一式）。パスも数え、相手は切り揃えない
+    （切り揃えるのは比較用の `parity9_match_tally` だけ）。
+    """
+    counts = {"B": [0, 0], "W": [0, 0]}
+    for n in nodes:
+        if not n.move or n.is_root:
+            continue
+        if n.points_lost is None:
+            continue
+        row = counts[n.player]
+        row[1] += 1
+        parent = n.parent
+        if parent.analysis_complete:
+            cands = parent.candidate_moves
+            if cands and cands[0]["move"] == n.move.gtp():
+                row[0] += 1
+    opp = "W" if ai_player == "B" else "B"
+    return counts[ai_player][0], counts[ai_player][1], counts[opp][0], counts[opp][1]
+
+
 @register_strategy(AI_SCORELOSS)
 class ScoreLossStrategy(AIStrategy):
     """ScoreLoss strategy - weights moves based on point loss"""
