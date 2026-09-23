@@ -771,3 +771,124 @@ class TestFailSafes(_Harness):
         s, _ = self._strategy()
         with pytest.raises(AnalysisDiscardedException):
             s.generate_move()
+
+
+class TestTiersDeviating(_Harness):
+    """段(ii) 開と決着局面の即決（S13 以降を通る手番）。"""
+
+    def test_tier_ii_open_pays_only_up_to_dominant_max_loss(self):
+        hp = {"E5": 0.85, "D4": 0.01, "F6": 0.06, "C7": 0.03, "G3": 0.04}  # 明らかな一手 → 床は 0.05 だけ
+        ok, _ = self._strategy(hp=hp, probes={"E5": _child(10.0, 0.95), "F6": _child(8.8, 0.93)})
+        move, _ = ok.generate_move()
+        assert move.gtp() == "F6"
+        assert ok.probe_calls == [["E5", "F6"]]  # C7（生 2.0）は絞った足切り 1.5 + 0.3 の外
+        assert (ok.last_decision_info["tier"], ok.last_decision_info["kind"]) == ("ii", "paid")
+        dear, _ = self._strategy(hp=hp, probes={"E5": _child(10.0, 0.95), "F6": _child(8.2, 0.93)})
+        assert dear.generate_move()[0].gtp() == "E5"  # vloss 1.8 > dominant_max_loss 1.5
+
+    def test_decided_position_deviates_without_probes(self):
+        s, logs = self._strategy(lead=7.0, wr=0.98)
+        move, _ = s.generate_move()
+        assert move.gtp() == "D4"
+        assert s.queries == ["parent hp"] and s.probe_calls == []
+        assert s.last_decision_info["kind"] == "decided"
+
+
+class TestFreeAndPaid(_Harness):
+    def test_near_free_deviation_even_at_target(self):
+        probes = {"E5": _child(0.5, 0.55), "D4": _child(0.45, 0.545)}
+        s, logs = self._strategy(**EVEN, hist=_hist("B", 3, 9), probes=probes, board_watch_probe_warm=True)
+        move, reason = s.generate_move()
+        assert move.gtp() == "D4"
+        assert s.probe_calls == [["E5", "D4"]]
+        info = s.last_decision_info
+        assert (info["tier"], info["kind"], info["best"], info["chosen"]) == ("iii", "free", "E5", "D4")
+        assert (info["mine"], info["n"], info["u"], info["queries"]) == (3, 9, 0.0, 5)
+        assert s.game._veil_state["veil9"]["ledger"] == [(12, "E5", "D4", "free")]
+        assert any(m.startswith("[Veil9Strategy] Decision: {") for m in logs)
+        assert any(m.startswith("[Veil9Strategy] Rate: mine=3/9") for m in logs)
+        assert s.game.board_watch_probe_warm is False
+        assert s.ponders == []
+
+    def test_near_free_needs_a_small_winrate_drop(self):
+        probes = {"E5": _child(0.5, 0.55), "D4": _child(0.45, 0.50)}
+        s, _ = self._strategy(**EVEN, hist=_hist("B", 3, 9), probes=probes)
+        assert s.generate_move()[0].gtp() == "E5"
+        assert s.last_decision_info["why"] == "none_qualified"
+
+    def test_paid_deviation_from_surplus_when_above_target(self):
+        hp = {**self.HP, "D4": 0.01, "F6": 0.30}
+        s, _ = self._strategy(hp=hp, probes={"E5": _child(10.0, 0.95), "F6": _child(9.0, 0.93)})
+        move, _ = s.generate_move()
+        assert move.gtp() == "F6"
+        assert s.last_decision_info["kind"] == "paid"
+        assert s.last_decision_info["cost"] == pytest.approx(1.0)
+
+    def test_winrate_floor_rejects_a_paid_deviation(self):
+        hp = {**self.HP, "D4": 0.01, "F6": 0.30}
+        s, _ = self._strategy(hp=hp, probes={"E5": _child(10.0, 0.95), "F6": _child(9.0, 0.80)})
+        assert s.generate_move()[0].gtp() == "E5"
+
+    def test_small_surplus_cannot_pay_below_the_reserve(self):
+        cands = [dict(c) for c in self.CANDS]
+        cands[2]["relativePointsLost"] = 0.3  # F6 を足切りの内側へ
+        hp = {**self.HP, "D4": 0.01, "F6": 0.30}
+        s, _ = self._strategy(
+            lead=3.5, wr=0.9, cands=cands, hp=hp, probes={"E5": _child(3.5, 0.9), "F6": _child(2.5, 0.88)}
+        )
+        assert s.generate_move()[0].gtp() == "E5"
+        assert s.last_decision_info["A_t"] == pytest.approx(0.25)
+
+    def test_the_rate_line_counts_the_opponent_like_the_report(self):
+        s, logs = self._strategy(**EVEN, hist=_hist("B", 3, 9, opp=2, n_opp=10), probes={})
+        s.generate_move()
+        assert (s.last_decision_info["opp"], s.last_decision_info["n_opp"]) == (2, 10)
+
+
+class TestYoseAndCloseGames(_Harness):
+    def test_yose_guard_needs_a_one_percent_drop_below_the_reserve(self):
+        strict, _ = self._strategy(
+            lead=2.5, wr=0.9, depth=32, probes={"E5": _child(2.5, 0.90), "D4": _child(2.45, 0.88)}
+        )
+        assert strict.generate_move()[0].gtp() == "E5"
+        assert strict.game._veil_state["veil9"]["endgame"] is True  # 手数だけでヨセ（ownership なし）
+        ok, _ = self._strategy(lead=2.5, wr=0.9, depth=32, probes={"E5": _child(2.5, 0.90), "D4": _child(2.45, 0.895)})
+        assert ok.generate_move()[0].gtp() == "D4"
+
+    def test_yose_is_sticky(self):
+        state = {"veil9": {"endgame": True, "close_drift": 0.0, "ledger": []}}
+        s, _ = self._strategy(depth=20, probes={}, _veil_state=state)
+        s.generate_move()
+        assert s.last_decision_info["in_yose"] is True
+        assert s.last_decision_info["cap"] == pytest.approx(1.0)  # yose_max_loss
+
+    @pytest.mark.parametrize(
+        "cap,drift,expected,drift_after", [(0.0, 0.08, "D4", 0.08), (0.1, 0.08, "E5", 0.08), (0.2, 0.08, "D4", 0.13)]
+    )
+    def test_close_drift_cap(self, cap, drift, expected, drift_after):
+        state = {"veil9": {"endgame": False, "close_drift": drift, "ledger": []}}
+        probes = {"E5": _child(0.5, 0.55), "D4": _child(0.45, 0.545)}
+        s, _ = self._strategy(
+            **EVEN, hist=_hist("B", 3, 9), probes=probes, settings={"veil9_close_drift_cap": cap}, _veil_state=state
+        )
+        assert s.generate_move()[0].gtp() == expected
+        assert state["veil9"]["close_drift"] == pytest.approx(drift_after)
+
+
+class TestFailSafesDeviating(_Harness):
+    """best プローブの欠落と不変条件違反（S15〜S19）。"""
+
+    def test_missing_best_probe(self):
+        s, _ = self._strategy(probes={"D4": _child(9.95, 0.948)})
+        assert s.generate_move()[0].gtp() == "E5"
+        assert s.last_decision_info["why"] == "no_best_probe"
+
+    def test_invariant_violation_plays_the_best_move(self, monkeypatch):
+        bogus = {"gtp": "J9", "kind": "free", "cost": 0.0, "vloss": 0.0, "hp": 0.5, "raw": 0.0, "cons": 0.0}
+        monkeypatch.setattr(ai_module, "veil_choose", lambda *a, **k: dict(bogus))
+        probes = {"E5": _child(0.5, 0.55), "D4": _child(0.45, 0.545)}
+        s, logs = self._strategy(**EVEN, hist=_hist("B", 3, 9), probes=probes)
+        assert s.generate_move()[0].gtp() == "E5"
+        assert any("Invariant violated: chosen=J9" in m for m in logs)
+        assert s.last_decision_info["why"] == "invariant"
+        assert s.ponders == []

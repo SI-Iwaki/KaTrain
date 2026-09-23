@@ -5040,9 +5040,146 @@ class Veil9Strategy(Enigma9Strategy):
                 self._best_move(f"{self.LABEL}: no natural alternative, playing best move."), "i", "best", why="no_natural"
             )
 
-        # ---- S13〜S20 は Task 9b で置き換える（仮: 最善手）----
+        # ---- S13 決着局面の即決（プローブ0本）----
+        slack = float(self._setting("cost_slack"))
+        if root_wr is not None and root_wr >= VEIL_DECIDED_WR and lead >= reserve + VEIL_DECIDED_MARGIN and not dominant:
+            quick = [
+                {**c, "kind": "decided", "cost": max(0.0, c["loss"]), "hp": hp_of(c["gtp"]), "wr_after": c.get("wr")}
+                for c in naturals
+                if c["loss"] <= f_eff + _VEIL_EPS and c.get("visits", 0) >= board["trusted_visits"]
+            ]
+            pick = veil_choose(quick, slack, prefer_safe=False)
+            if pick is not None:
+                bounds = {"cost": pick["cost"], "f_eff": f_eff}
+                if not veil_invariant_ok(pick["gtp"], best_gtp, cand_gtps, "decided", bounds):
+                    return finish(
+                        self._veil_violation(pick["gtp"], "decided", bounds), "failsafe", "best", why="invariant"
+                    )
+                self._log(f"Decided: played {pick['gtp']} (raw {pick['loss']:.2f}, hp {pick['hp']:.3f}) without probes")
+                return finish(
+                    (
+                        Move.from_gtp(pick["gtp"], player=player),
+                        f"{self.LABEL}: decided position, near-free deviation to {pick['gtp']} "
+                        f"(raw loss {pick['loss']:.2f}, hp {pick['hp']:.1%}) instead of {best_gtp}.",
+                    ),
+                    tier, "decided", raw=pick["loss"], cost=pick["cost"], hp=pick["hp"],
+                )
+
+        # ---- S14 検証する候補 ----
+        band_cap = raw_cap if (u > 0 and surplus > 0) else f_eff + VEIL_RAW_MARGIN
+        nat_short, trap_short = veil_shortlist(
+            naturals, trap_cands, hp_of, band_cap, board["probe_hp"], board["probe_cheap"],
+            VEIL_TRAP_PROBES if trap_on else 0,
+        )
+        shortlist = nat_short + trap_short
+        if not shortlist:
+            return finish(
+                self._best_move(f"{self.LABEL}: no alternative in the passable band, playing best move."),
+                tier, "best", why="no_shortlist",
+            )
+
+        # ---- S15 プローブ（best + 候補を1バッチ）----
+        probes, _unused = self._probe_children([best_gtp] + [c["gtp"] for c in shortlist], player, parent_hp=False)
+        info["queries"] += 2 * (1 + len(shortlist))
+        best_probe = probes.get(best_gtp) or {}
+        best_lead_after, best_wr_after = enigma9_verified_metrics(best_probe.get("clean"), player)
+        if best_lead_after is None:
+            self._log("Best-move probe unavailable -> best move")
+            return finish(
+                self._best_move(f"{self.LABEL}: best-move probe unavailable, playing best move."),
+                "failsafe", "best", why="no_best_probe",
+            )
+        best_e, _best_find = self._veil_punish(best_probe, opponent)
+        close = lead < reserve or best_wr_after is None or best_wr_after < VEIL_CLOSE_WR
+        info["close"] = close
+        drift_cap = float(self._setting("close_drift_cap"))
+        ctx = VeilCtx(
+            lead=lead,
+            reserve=reserve,
+            surplus=surplus,
+            urgency=u,
+            p_match=p_match,
+            f_eff=f_eff,
+            allowance=allowance2,
+            trap_cap=trap_cap,
+            min_winrate=float(self._setting("min_winrate")),
+            free_wr_drop=float(self._setting("free_wr_drop")),
+            in_yose=in_yose,
+            close=close,
+            close_drift=state["close_drift"],
+            close_drift_cap=drift_cap,
+            trap_min_delta_e=float(self._setting("trap_min_delta_e")),
+        )
+
+        # ---- S16 分類（自然枠は free / paid、罠は §7）----
+        nat_gtps = {c["gtp"] for c in nat_short}
+        plain = []
+        for c in shortlist:
+            pr = probes.get(c["gtp"]) or {}
+            lead_after, wr_after = enigma9_verified_metrics(pr.get("clean"), player)
+            if lead_after is None:
+                self._log(f"Probe incomplete for {c['gtp']} -> dropped")
+                continue
+            vloss = best_lead_after - lead_after
+            wr_drop = None if (wr_after is None or best_wr_after is None) else best_wr_after - wr_after
+            cons = veil_cons_loss(vloss, c["loss"], c.get("visits", 0), board["trusted_visits"])
+            e_punish, find = self._veil_punish(pr, opponent)
+            d_e = None if (e_punish is None or best_e is None) else e_punish - best_e
+            row = {
+                **c, "raw": c["loss"], "vloss": vloss, "cons": cons, "wr_after": wr_after, "wr_drop": wr_drop,
+                "lead_after": lead_after, "hp": hp_of(c["gtp"]), "e": e_punish, "d_e": d_e, "find": find,
+            }
+            kind, cost = (None, max(0.0, cons))
+            if c["gtp"] in nat_gtps:
+                kind, cost = veil_classify(row, ctx)
+                if kind:
+                    plain.append({**row, "kind": kind, "cost": cost})
+            wr_txt = "n/a" if wr_after is None else f"{wr_after:.1%}"
+            de_txt = "n/a" if d_e is None else f"{d_e:+.2f}"
+            self._log(
+                f"Score {c['gtp']}: raw={c['loss']:.2f} vloss={vloss:.2f} cons={cons:.2f} wr={wr_txt} "
+                f"hp={row['hp']:.3f} dE={de_txt} kind={kind or '-'}"
+            )
+
+        # ---- S17 / S18 選択と罠の合流 ----
+        plain_pick = veil_choose(plain, slack, prefer_safe=surplus > 0)
+        chosen = plain_pick
+        if chosen is None:
+            self._log("No qualifying deviation -> best move")
+            return finish(
+                self._best_move(f"{self.LABEL}: no safe deviation, playing best move."), tier, "best", why="none_qualified"
+            )
+
+        # ---- S19 不変条件 ----
+        kind = chosen["kind"]
+        if kind == "free":
+            bounds = {"cost": chosen["cost"], "f_eff": f_eff}
+        elif kind == "paid":
+            bounds = {"cost": chosen["cost"], "allowance": allowance2, "lead": lead, "reserve": reserve}
+        else:
+            bounds = {
+                "price": chosen.get("price"), "allow": allowance2 if u > 0 else 0.0, "vloss": chosen.get("vloss"),
+                "trap_cap": trap_cap, "lead": lead, "reserve": reserve,
+            }
+        if not veil_invariant_ok(chosen.get("gtp"), best_gtp, cand_gtps, kind, bounds):
+            return finish(self._veil_violation(chosen.get("gtp"), kind, bounds), "failsafe", "best", why="invariant")
+
+        # ---- S20 記録 ----
+        if kind == "free" and close and drift_cap > 0:
+            state["close_drift"] += max(0.0, chosen["vloss"])
+        self._log(
+            f"Deviate: played {chosen['gtp']} ({kind}, cost={chosen['cost']:.2f}, vloss={chosen['vloss']:.2f}, "
+            f"hp={chosen['hp']:.3f}) instead of {best_gtp}"
+        )
         return finish(
-            self._best_move(f"{self.LABEL}: no safe deviation, playing best move."), tier, "best", why="none_qualified"
+            (
+                Move.from_gtp(chosen["gtp"], player=player),
+                f"{self.LABEL}: deviated to {chosen['gtp']} ({kind}, verified loss {chosen['vloss']:.2f}, "
+                f"hp {chosen['hp']:.1%}) instead of {best_gtp}; match rate {mine}/{n_mine}, target {target:.0%}.",
+            ),
+            tier, kind, raw=chosen["raw"], vloss=chosen["vloss"], cons=chosen["cons"], cost=chosen["cost"],
+            hp=chosen["hp"], d_e=chosen.get("d_e"), E=chosen.get("e"), find_hp=chosen.get("find"),
+            price=chosen.get("price"),
         )
 
 
