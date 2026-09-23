@@ -4698,20 +4698,25 @@ def veil_terminal_limit(lead):
     return VEIL_TERMINAL_CLOSE_MAX if abs(lead) < VEIL_TERMINAL_CLOSE_LEAD else VEIL_TERMINAL_MAX
 
 
+def veil_terminal_capped(lead, close_drift_cap):
+    """終局帯の外しに接戦の累計上限が効くか（close_drift_cap > 0 かつ |lead| < VEIL_TERMINAL_CLOSE_LEAD）。"""
+    return close_drift_cap > 0 and abs(lead) < VEIL_TERMINAL_CLOSE_LEAD
+
+
 def veil_terminal_swap(candidates, best_gtp, hp_of, floor, lead, dominant, urgency, close_drift=0.0,
                        close_drift_cap=0.0):
     """終局帯の入れ替え（ダメ詰めの順番入れ替え＝レポート上の不一致）。候補が無ければ None。
 
     candidates は `parity9_build_candidates` の {"gtp", "loss", "visits", "wr"}。最善手でも pass でもなく、
     visits >= VEIL_TERMINAL_MIN_VISITS、生の loss <= `veil_terminal_limit(lead)`、hp >= floor の手のうち hp 最大
-    （同点は loss → gtp）。明らかな一手（dominant）でゲートが閉じていれば不可。close_drift_cap > 0 かつ
-    |lead| < VEIL_TERMINAL_CLOSE_LEAD なら、累計 close_drift + max(0, loss) が上限を超える手は除く。
+    （同点は loss → gtp）。明らかな一手（dominant）でゲートが閉じていれば不可。`veil_terminal_capped` が真
+    （close_drift_cap > 0 かつ |lead| < VEIL_TERMINAL_CLOSE_LEAD）なら、累計 close_drift + max(0, loss) が上限を超える手は除く。
     返り値は候補 dict に "hp" を足したもの。
     """
     if dominant and urgency <= 0:
         return None
     limit = veil_terminal_limit(lead)
-    capped = close_drift_cap > 0 and abs(lead) < VEIL_TERMINAL_CLOSE_LEAD
+    capped = veil_terminal_capped(lead, close_drift_cap)
     pool = []
     for c in candidates:
         if c["gtp"] in (best_gtp, "pass") or c.get("visits", 0) < VEIL_TERMINAL_MIN_VISITS:
@@ -4888,6 +4893,23 @@ class Veil9Strategy(Enigma9Strategy):
             dominant,
         )
 
+    def _veil_terminal_commit(self, pick, best_gtp, cands, lead, drift_cap, fields):
+        """終局帯で最善手以外を打つ前の確定（S8 の (c) 入れ替え・(d) 締めの手で共通）。
+
+        pick は `veil_terminal_swap` の返り値。不変条件（生の loss <= 終局帯の上限）に違反すれば ERROR ログ＋最善手の
+        (result, "failsafe", "best", fields) を返す。通れば、接戦の累計上限が効くとき（`veil_terminal_capped`）だけ
+        max(0, 生の loss) を close_drift に足して None。
+        """
+        bounds = {"raw": pick["loss"], "limit": veil_terminal_limit(lead)}
+        if not veil_invariant_ok(pick["gtp"], best_gtp, {d["move"] for d in cands}, "terminal", bounds):
+            return (
+                self._veil_violation(pick["gtp"], "terminal", bounds),
+                "failsafe", "best", {**fields, "why": "invariant"},
+            )
+        if veil_terminal_capped(lead, drift_cap):
+            self._veil_state()["close_drift"] += max(0.0, pick["loss"])
+        return None
+
     def _veil_terminal(self, cands, player, best_gtp, lead, u, info):
         """S7（相手の直前パス）と S8（終局帯）。該当すれば (result, tier, kind, fields)、しなければ None。"""
         pass_loss = enigma9_pass_loss(cands)
@@ -4935,11 +4957,9 @@ class Veil9Strategy(Enigma9Strategy):
         limit = veil_terminal_limit(lead)
         swap = veil_terminal_swap(candidates, best_gtp, hp_of, floor, lead, dominant, u, state["close_drift"], drift_cap)
         if swap is not None:
-            bounds = {"raw": swap["loss"], "limit": limit}
-            if not veil_invariant_ok(swap["gtp"], best_gtp, {d["move"] for d in cands}, "terminal", bounds):
-                return self._veil_violation(swap["gtp"], "terminal", bounds), "failsafe", "best", {**fields, "why": "invariant"}
-            if drift_cap > 0 and abs(lead) < VEIL_TERMINAL_CLOSE_LEAD:
-                state["close_drift"] += max(0.0, swap["loss"])
+            violation = self._veil_terminal_commit(swap, best_gtp, cands, lead, drift_cap, fields)
+            if violation is not None:
+                return violation
             self._log(f"Terminal swap: played {swap['gtp']} (raw {swap['loss']:.2f} <= {limit:.2f}, hp {swap['hp']:.3f})")
             return (
                 (
@@ -4949,31 +4969,26 @@ class Veil9Strategy(Enigma9Strategy):
                 ),
                 "terminal", "swap", {**fields, "raw": swap["loss"], "hp": swap["hp"]},
             )
-        # (d) 9段の終局処理の手。最善手でなければ (c) と同じ安全条件（visits 下限・生の loss 上限・
-        # 接戦の累計上限 close_drift_cap・不変条件）を満たすときだけ打ち、接戦なら生の loss を累計に足す
+        # (d) 9段の終局処理の手。最善手でなければ、その1手だけを (c) と同じ veil_terminal_swap に通す（明らかな一手の
+        # ゲート・visits 下限・生の loss 上限・接戦の累計上限。自然さの床は 0＝9段の最上位は定義上自然）。
+        # 通れば (c) と同じ確定（不変条件・累計）をして打ち、通らなければ why を terminal_finish_rejected にして (e)
         finish_loss = enigma9_terminal_move(top_gtp, cands)
         if finish_loss is not None and top_gtp != best_gtp:
-            finish_visits = next((d.get("visits", 0) for d in cands if d["move"] == top_gtp), 0)
-            capped = drift_cap > 0 and abs(lead) < VEIL_TERMINAL_CLOSE_LEAD
-            if (
-                finish_visits < VEIL_TERMINAL_MIN_VISITS
-                or finish_loss > limit + _VEIL_EPS
-                or (capped and state["close_drift"] + max(0.0, finish_loss) > drift_cap + _VEIL_EPS)
-            ):
+            entry = [c for c in candidates if c["gtp"] == top_gtp]
+            drift = state["close_drift"]
+            finishing = veil_terminal_swap(entry, best_gtp, hp_of, 0.0, lead, dominant, u, drift, drift_cap)
+            if finishing is None:
                 self._log(
-                    f"Terminal: humanSL top {top_gtp} fails the swap conditions (visits {finish_visits}, "
-                    f"loss {finish_loss:.2f}, limit {limit:.2f}, drift {state['close_drift']:.2f}/{drift_cap:.2f})"
+                    f"Terminal: finishing move {top_gtp} rejected by the swap conditions "
+                    f"(visits {entry[0]['visits'] if entry else 0}, loss {finish_loss:.2f}, limit {limit:.2f}, "
+                    f"hp {top_hp:.3f}, dominant {dominant}, u {u:.2f}, drift {drift:.2f}/{drift_cap:.2f})"
                 )
+                fields["why"] = "terminal_finish_rejected"
                 finish_loss = None
             else:
-                bounds = {"raw": finish_loss, "limit": limit}
-                if not veil_invariant_ok(top_gtp, best_gtp, {d["move"] for d in cands}, "terminal", bounds):
-                    return (
-                        self._veil_violation(top_gtp, "terminal", bounds),
-                        "failsafe", "best", {**fields, "why": "invariant"},
-                    )
-                if capped:
-                    state["close_drift"] += max(0.0, finish_loss)
+                violation = self._veil_terminal_commit(finishing, best_gtp, cands, lead, drift_cap, fields)
+                if violation is not None:
+                    return violation
         if finish_loss is not None:
             kind = "best" if top_gtp == best_gtp else "finish"
             self._log(f"Terminal: humanSL top {top_gtp} {top_hp:.1%} (loss {finish_loss:.2f}) -> play it")

@@ -15,6 +15,7 @@ import katrain
 import katrain.core.ai as ai_module
 from katrain.core.ai import (
     STRATEGY_REGISTRY,
+    VEIL_TERMINAL_MIN_VISITS,
     AnalysisDiscardedException,
     Enigma9Strategy,
     Veil9Strategy,
@@ -37,6 +38,7 @@ from katrain.core.ai import (
     veil_prefilter,
     veil_shortlist,
     veil_tally,
+    veil_terminal_capped,
     veil_terminal_limit,
     veil_terminal_swap,
     veil_trap_ok,
@@ -447,6 +449,11 @@ class TestTerminalSwap:
         assert veil_terminal_limit(2.9) == pytest.approx(0.05)
         assert veil_terminal_limit(-2.9) == pytest.approx(0.05)
         assert veil_terminal_limit(3.0) == pytest.approx(0.10)
+
+    def test_close_drift_cap_applies_only_when_set_and_the_game_is_close(self):
+        assert veil_terminal_capped(2.9, 0.1) and veil_terminal_capped(-2.9, 0.1)
+        assert not veil_terminal_capped(3.0, 0.1) and not veil_terminal_capped(-3.0, 0.1)
+        assert not veil_terminal_capped(1.0, 0.0)  # 上限 0 は「上限なし」
 
     def test_clear_lead_allows_up_to_0_10_and_picks_the_most_human(self):
         swap = veil_terminal_swap(self.CANDS, "E5", self.HP, 0.05, lead=10.0, dominant=False, urgency=0.0)
@@ -1001,6 +1008,16 @@ class TestTerminal(_Harness):
         close, _ = self._end(lead=1.0)
         assert close.generate_move()[0].gtp() == "D4"  # 0.05 目以内は D4 だけ
 
+    def test_swap_failing_the_invariant_plays_the_best_move(self, monkeypatch):
+        calls = []
+        monkeypatch.setattr(ai_module, "veil_invariant_ok", lambda *a: calls.append(a) or False)
+        s, logs = self._end(lead=10.0)
+        assert s.generate_move()[0].gtp() == "E5"
+        assert calls == [("C3", "E5", {c["move"] for c in self.END}, "terminal", {"raw": 0.08, "limit": 0.10})]
+        assert any("Invariant violated: chosen=C3 kind=terminal" in m for m in logs)
+        info = s.last_decision_info
+        assert (info["tier"], info["kind"], info["why"]) == ("failsafe", "best", "invariant")
+
     def test_swap_needs_an_open_gate_for_an_obvious_move(self):
         hp = {**self.END_HP, "E5": 0.85, "G7": 0.05}
         s, logs = self._end(lead=10.0, hist=_hist("B", 3, 9), hp=hp)
@@ -1021,15 +1038,59 @@ class TestTerminal(_Harness):
         kw.setdefault("hp", self.FLAT_HP)
         return self._strategy(cands=cands, **kw)
 
+    REJECTED = "Terminal: finishing move G7 rejected by the swap conditions"
+
     def test_finishing_move_needs_the_swap_visits_and_loss_limit(self):
         hp = {"E5": 0.30, "D4": 0.01, "C3": 0.01, "F6": 0.02, "G7": 0.45}
-        shallow, _ = self._end(lead=1.0, hp=hp)
+        shallow, logs = self._end(lead=1.0, hp=hp)
         assert shallow.generate_move()[0].gtp() == "E5"  # G7 は 0.02 目でも visits 5 < 10
         info = shallow.last_decision_info
-        assert (info["tier"], info["kind"], info["why"]) == ("terminal", "best", "terminal")
-        dear, _ = self._finish(g7_loss=0.3, lead=1.0)
+        assert (info["tier"], info["kind"], info["why"]) == ("terminal", "best", "terminal_finish_rejected")
+        assert any(self.REJECTED + " (visits 5," in m for m in logs)
+        assert any("Terminal: no cheap natural finishing move" in m for m in logs)  # (e) の行も残る
+        dear, logs = self._finish(g7_loss=0.3, lead=1.0)
         assert dear.generate_move()[0].gtp() == "E5"  # 0.3 目 > 0.05（margin 0.5 未満でも打たない）
-        assert dear.last_decision_info["kind"] == "best"
+        info = dear.last_decision_info
+        assert (info["tier"], info["kind"], info["why"]) == ("terminal", "best", "terminal_finish_rejected")
+        assert any(self.REJECTED in m and "loss 0.30, limit 0.05" in m for m in logs)
+
+    def test_no_finishing_move_keeps_why_terminal(self):
+        # 9段の最上位 A9 は KataGo の候補に無い＝(d) の手そのものが無い（却下とは区別する）
+        s, logs = self._finish(lead=1.0, hp={**self.FLAT_HP, "A9": 0.045})
+        assert s.generate_move()[0].gtp() == "E5"
+        info = s.last_decision_info
+        assert (info["tier"], info["kind"], info["why"]) == ("terminal", "best", "terminal")
+        assert not any("rejected by the swap conditions" in m for m in logs)
+
+    def test_finishing_move_needs_an_open_gate_when_the_best_move_is_obvious(self):
+        # dominant_hp を 0.03 に下げる → 最善手 E5（hp 0.03）が明らかな一手。9段の最上位 G7（0.04）は最善手ではない
+        settings = {"veil9_dominant_hp": 0.03}
+        closed, logs = self._finish(lead=1.0, hist=_hist("B", 3, 9), settings=settings)  # p_match 0.40 = T → u 0
+        assert closed.generate_move()[0].gtp() == "E5"
+        info = closed.last_decision_info
+        assert (info["tier"], info["kind"], info["why"]) == ("terminal", "best", "terminal_finish_rejected")
+        assert info["dominant"] is True and info["u"] == 0.0
+        assert any(self.REJECTED in m and "dominant True, u 0.00" in m for m in logs)
+        opened, _ = self._finish(lead=1.0, settings=settings)  # 履歴なし → u 1＝ゲートが開く
+        assert opened.generate_move()[0].gtp() == "G7"
+        assert opened.last_decision_info["kind"] == "finish"
+
+    def test_finishing_move_with_a_clear_lead_ignores_the_close_drift_cap(self):
+        state = {"veil9": {"endgame": False, "close_drift": 0.5, "ledger": []}}
+        s, _ = self._finish(lead=10.0, settings={"veil9_close_drift_cap": 0.1}, _veil_state=state)
+        assert s.generate_move()[0].gtp() == "G7"  # |lead| >= 3 では累計（0.5 > 上限 0.1）を見ない
+        assert s.last_decision_info["kind"] == "finish"
+        assert state["veil9"]["close_drift"] == pytest.approx(0.5)  # 累計にも足さない
+
+    @pytest.mark.parametrize("visits,move", [(VEIL_TERMINAL_MIN_VISITS - 1, "E5"), (VEIL_TERMINAL_MIN_VISITS, "G7")])
+    def test_finishing_move_visits_floor_is_inclusive(self, visits, move):
+        s, _ = self._finish(g7_visits=visits, lead=1.0)
+        assert s.generate_move()[0].gtp() == move
+
+    @pytest.mark.parametrize("lead,move", [(1.0, "E5"), (10.0, "G7")])
+    def test_finishing_move_loss_limit_depends_on_the_lead(self, lead, move):
+        s, _ = self._finish(g7_loss=0.08, lead=lead)
+        assert s.generate_move()[0].gtp() == move  # 0.08 目は接戦の上限 0.05 を超え、明確なリードの上限 0.10 以内
 
     def test_finishing_move_within_the_swap_conditions_is_played(self):
         s, _ = self._finish(lead=1.0)
