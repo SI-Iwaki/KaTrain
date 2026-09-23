@@ -166,7 +166,8 @@ def _schedule(n_seeds, ranks, args, resign):
     )
 
 
-def _warn_if_unbalanced(plan):
+def _plan_warnings(plan):
+    """新しい計画の注意: 段位 × 色の層の偏りと、コードの既定値で走るアーム（エンジンを起こす前に出す）。"""
     warning = S.schedule_balance_warning(plan["schedule"], plan["opponent"]["ranks"])
     if warning:
         safe_print(warning)
@@ -237,7 +238,7 @@ def cmd_run(args):
     else:
         with setup_errors():
             stub, plan = _plan_run(args)
-        _warn_if_unbalanced(plan)
+        _plan_warnings(plan)
         out = _new_output(args, stub, plan, args.label or "run")
     R.execute_plan(
         plan,
@@ -311,7 +312,7 @@ def cmd_calibrate(args):
     else:
         with setup_errors():
             stub, plan = _plan_calibrate(args)
-        _warn_if_unbalanced(plan)
+        _plan_warnings(plan)
         out = _new_output(args, stub, plan, args.label or f"calib-{args.strategy}")
     R.execute_plan(
         plan,
