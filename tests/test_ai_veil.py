@@ -5,10 +5,13 @@ KataGo / Kivy 不要。設計: docs/superpowers/specs/2026-09-23-veil-strategy-d
 
 import json
 import random
+import re
 import types
+from pathlib import Path
 
 import pytest
 
+import katrain
 import katrain.core.ai as ai_module
 from katrain.core.ai import (
     STRATEGY_REGISTRY,
@@ -1115,3 +1118,91 @@ class TestVeil13Flow(_Harness13):
         s, logs = self._strategy(size=9, cands=[dict(c) for c in _Harness.CANDS])
         assert s.generate_move()[0].gtp() == "E5"
         assert any("is not 13x13" in m for m in logs)
+
+
+class TestRegistration:
+    """戦略リスト・AI_OPTION_VALUES / AI_OPTION_ORDER・パッケージ config.json・i18n・デバッグ CLI の整合。"""
+
+    @pytest.mark.parametrize("cls,size,prefix,ai_key,const", VEILS, ids=VEIL_IDS)
+    def test_listed_everywhere(self, cls, size, prefix, ai_key, const):
+        from katrain.core.constants import (
+            AI_STRATEGIES,
+            AI_STRATEGIES_ENGINE,
+            AI_STRATEGIES_RECOMMENDED_ORDER,
+            AI_STRENGTH,
+        )
+
+        assert const in AI_STRATEGIES_ENGINE and const in AI_STRATEGIES
+        assert const in AI_STRATEGIES_RECOMMENDED_ORDER and const in AI_STRENGTH
+
+    def test_recommended_order_puts_the_family_right_after_mimic(self):
+        from katrain.core.constants import AI_MIMIC_13, AI_STRATEGIES_RECOMMENDED_ORDER
+
+        i = AI_STRATEGIES_RECOMMENDED_ORDER.index(AI_MIMIC_13)
+        assert AI_STRATEGIES_RECOMMENDED_ORDER[i + 1 : i + 4] == [AI_VEIL_9, AI_VEIL_13, AI_VEIL_19]
+
+    @pytest.mark.parametrize("cls,size,prefix,ai_key,const", VEILS, ids=VEIL_IDS)
+    def test_defaults_in_gui_options_and_package_config(self, cls, size, prefix, ai_key, const):
+        from katrain.core.constants import AI_OPTION_ORDER, AI_OPTION_VALUES
+
+        with open(Path(katrain.__file__).parent / "config.json", encoding="utf-8") as f:
+            package_ai_conf = json.load(f)["ai"][ai_key]
+        assert set(package_ai_conf) == {f"{prefix}_{suffix}" for suffix in cls.SETTING_DEFAULTS}
+        for order, (suffix, default) in enumerate(cls.SETTING_DEFAULTS.items()):
+            key = f"{prefix}_{suffix}"
+            assert package_ai_conf[key] == default, key
+            assert AI_OPTION_ORDER[key] == order, key  # SETTING_DEFAULTS の並び＝画面の並び
+            if AI_OPTION_VALUES[key] == "bool":
+                assert isinstance(default, bool), key
+                continue
+            plain = [v[0] if isinstance(v, tuple) else v for v in AI_OPTION_VALUES[key]]
+            assert default in plain, key
+
+    @pytest.mark.parametrize("size", [9, 13, 19])
+    def test_target_rate_range_and_off_values(self, size):
+        from katrain.core.constants import AI_OPTION_VALUES
+
+        rates = [v for v, _label in AI_OPTION_VALUES[f"veil{size}_target_rate"]]
+        assert min(rates) == pytest.approx(0.15) and max(rates) == pytest.approx(0.50)
+        assert (0.0, "OFF") in AI_OPTION_VALUES[f"veil{size}_close_drift_cap"]
+        assert (1.01, "OFF") in AI_OPTION_VALUES[f"veil{size}_dominant_hp"]
+
+    def test_attack_preset_is_selectable_on_13x13(self):
+        from katrain.core.constants import AI_OPTION_VALUES
+
+        preset = {"reserve": 3.0, "min_winrate": 0.75, "max_loss": 6.0, "spend_rate": 1.0}
+        preset.update({"dominant_max_loss": 3.0, "yose_max_loss": 2.0})
+        for suffix, value in preset.items():
+            plain = [v[0] if isinstance(v, tuple) else v for v in AI_OPTION_VALUES[f"veil13_{suffix}"]]
+            assert value in plain, suffix
+
+    def test_debug_cli_names(self):
+        from katrain_debug.runner import STRATEGY_NAME_MAP
+
+        for cls, size, prefix, ai_key, const in VEILS:
+            assert STRATEGY_NAME_MAP[prefix] == const
+
+    @pytest.mark.parametrize("lang", ["jp", "en"])
+    def test_i18n_has_names_and_overviews(self, lang):
+        po = (Path(katrain.__file__).parent / "i18n" / "locales" / lang / "LC_MESSAGES" / "katrain.po").read_text(
+            encoding="utf-8"
+        )
+        for cls, size, prefix, ai_key, const in VEILS:
+            assert f'msgid "{ai_key}"' in po and f'msgid "aihelp:{prefix}"' in po, (lang, prefix)
+
+    def test_jp_explains_every_slider_once_for_the_family(self):
+        po = (Path(katrain.__file__).parent / "i18n" / "locales" / "jp" / "LC_MESSAGES" / "katrain.po").read_text(
+            encoding="utf-8"
+        )
+        for suffix in Veil9Strategy.SETTING_DEFAULTS:
+            assert po.count(f'msgid "aiopt:veil*_{suffix}"') == 1, suffix
+
+    def test_en_overview_has_one_bullet_per_slider(self):
+        po = (Path(katrain.__file__).parent / "i18n" / "locales" / "en" / "LC_MESSAGES" / "katrain.po").read_text(
+            encoding="utf-8"
+        )
+        for cls, size, prefix, ai_key, const in VEILS:
+            m = re.search(rf'msgid "aihelp:{prefix}"\s*\nmsgstr "(.*)"', po)
+            assert m, prefix
+            bullets = [line for line in m.group(1).split("\\n") if line.startswith("* ")]
+            assert len(bullets) == len(cls.SETTING_DEFAULTS), prefix

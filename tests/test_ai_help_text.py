@@ -100,6 +100,15 @@ class TestHelpEntry:
         assert ai_help.ai_option_help_entry("ai:enigma9", "enigma9_max_loss", t) == ("9路", "B")
         assert ai_help.ai_option_help_entry("ai:enigma13", "enigma13_max_loss", t) == ("共通", "A")
 
+    def test_veil_family_text_gets_the_real_key_prefix(self):
+        t = _translator({"aiopt:veil*_spend_rate": "1回に使う余剰の割合\n天井は {p}_max_loss"})
+        assert ai_help.ai_option_help_entry("ai:veil13", "veil13_spend_rate", t) == (
+            "1回に使う余剰の割合",
+            "天井は veil13_max_loss",
+        )
+        assert ai_help.ai_option_help_entry("ai:veil9", "veil9_spend_rate", t)[1] == "天井は veil9_max_loss"
+        assert ai_help.ai_option_help_entry("ai:enigma13", "enigma13_spend_rate", t) is None
+
     def test_missing_translation_returns_none(self):
         assert ai_help.ai_option_help_entry("ai:human", "modern_style", _translator({})) is None
 
@@ -204,7 +213,9 @@ class TestJapaneseCoverage:
         ＋版だけの項目を無印に書いてしまう等の取り違えを捕まえる"""
         t = _jp()
         settings = _package_ai_config()[strategy]
-        ref_pattern = re.compile(r"\b(?:enigma(?:9|13|19)(?:plus)?|mimic13|parity9|jigo9)_[a-z0-9_]*[a-z0-9]")
+        ref_pattern = re.compile(
+            r"\b(?:enigma(?:9|13|19)(?:plus)?|mimic13|parity9|jigo9|veil(?:9|13|19))_[a-z0-9_]*[a-z0-9]"
+        )
         for k in settings:
             entry = ai_help.ai_option_help_entry(strategy, k, t)
             if entry is None:

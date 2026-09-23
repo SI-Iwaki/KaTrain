@@ -110,7 +110,7 @@ AI_VEIL_19 = "ai:veil19"
 
 AI_CONFIG_DEFAULT = AI_RANK
 
-AI_STRATEGIES_ENGINE = [AI_DEFAULT, AI_HANDICAP, AI_SCORELOSS, AI_SIMPLE_OWNERSHIP, AI_JIGO, AI_JIGO_9, AI_PARITY_9, AI_ENIGMA_9, AI_ENIGMA_9_PLUS, AI_ENIGMA_13, AI_ENIGMA_13_PLUS, AI_ENIGMA_19, AI_ENIGMA_19_PLUS, AI_MIMIC_13, AI_ANTIMIRROR]
+AI_STRATEGIES_ENGINE = [AI_DEFAULT, AI_HANDICAP, AI_SCORELOSS, AI_SIMPLE_OWNERSHIP, AI_JIGO, AI_JIGO_9, AI_PARITY_9, AI_ENIGMA_9, AI_ENIGMA_9_PLUS, AI_ENIGMA_13, AI_ENIGMA_13_PLUS, AI_ENIGMA_19, AI_ENIGMA_19_PLUS, AI_MIMIC_13, AI_VEIL_9, AI_VEIL_13, AI_VEIL_19, AI_ANTIMIRROR]
 AI_STRATEGIES_PICK = [AI_PICK, AI_LOCAL, AI_TENUKI, AI_INFLUENCE, AI_TERRITORY, AI_FIGHTING, AI_RANK]
 AI_STRATEGIES_POLICY = [AI_WEIGHTED, AI_POLICY] + AI_STRATEGIES_PICK
 AI_STRATEGIES = AI_STRATEGIES_ENGINE + AI_STRATEGIES_POLICY + [AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE, AI_TSUMEGO, AI_TSUMEGO_SOLVER]
@@ -135,6 +135,9 @@ AI_STRATEGIES_RECOMMENDED_ORDER = [
     AI_ENIGMA_19,
     AI_ENIGMA_19_PLUS,
     AI_MIMIC_13,
+    AI_VEIL_9,
+    AI_VEIL_13,
+    AI_VEIL_19,
     AI_ANTIMIRROR,
     AI_PICK,
     AI_LOCAL,
@@ -163,6 +166,9 @@ AI_STRENGTH = {  # dan ranks, backup if model is missing. TODO: remove some?
     AI_ENIGMA_19_PLUS: float("nan"),
     AI_ENIGMA_19: float("nan"),
     AI_MIMIC_13: float("nan"),
+    AI_VEIL_9: float("nan"),
+    AI_VEIL_13: float("nan"),
+    AI_VEIL_19: float("nan"),
     AI_SCORELOSS: -4,
     AI_WEIGHTED: -4,
     AI_PICK: -7,
@@ -212,6 +218,30 @@ _ENIGMA_OVERDRAFT_DEFICIT = [(0.0, "OFF"), (1.0, "1.0"), (1.5, "1.5"), (2.0, "2.
 _ENIGMA_OVERDRAFT_ANSWERED_MAX = [(-1.0, "-1"), (0.0, "0"), (99.0, "MAX")]
 _ENIGMA_OVERDRAFT_MIN_FOOLED_LEAD = [1.0, 2.0, 3.0, 5.0, 8.0]
 _ENIGMA_OVERDRAFT_PROBES = [4, 6, 8, 12]
+
+# 韜晦（veil*_・spec 2026-09-23-veil-strategy-design.md）の候補値。支払い上限だけ盤サイズ別、他は3盤共通。
+# 目標一致率は 15〜50%（15% 未満へは払わない設計）。勝ちの安全条件（reserve・min_winrate）の既定は
+# 9/13/19路 3/5/7 目・85%。「攻め」プリセット（測定専用: reserve 3・min_winrate 75%・max_loss 6・
+# spend_rate 1.0・dominant_max_loss 3・yose_max_loss 2）も候補値に含める
+_VEIL_TARGET_RATE = [(0.15, "15%"), (0.2, "20%"), (0.25, "25%"), (0.3, "30%"), (0.35, "35%"), (0.4, "40%"), (0.45, "45%"), (0.5, "50%")]
+_VEIL_RESERVE = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0]
+_VEIL_MIN_WINRATE = [(0.5, "50%"), (0.6, "60%"), (0.7, "70%"), (0.75, "75%"), (0.8, "80%"), (0.85, "85%"), (0.9, "90%"), (0.95, "95%")]
+_VEIL_FREE_LOSS = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
+_VEIL_FREE_WR_DROP = [(0.0, "0%"), (0.01, "1%"), (0.02, "2%"), (0.03, "3%"), (0.05, "5%")]
+_VEIL_CLOSE_DRIFT_CAP = [(0.0, "OFF"), (0.5, "0.5"), (1.0, "1.0"), (1.5, "1.5"), (2.0, "2.0"), (3.0, "3.0")]
+_VEIL_SPEND_RATE = [0.25, 0.5, 0.75, 1.0]
+_VEIL_MAX_LOSS = {
+    9: [1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0],
+    13: [2.0, 3.0, 3.5, 4.0, 4.5, 5.0, 6.0],
+    19: [3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+}
+_VEIL_YOSE_MAX_LOSS = [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
+_VEIL_DOMINANT_HP = [(0.6, "60%"), (0.7, "70%"), (0.8, "80%"), (0.9, "90%"), (0.95, "95%"), (1.01, "OFF")]
+_VEIL_DOMINANT_MAX_LOSS = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0]
+_VEIL_MIN_HUMAN_POLICY = [(0.01, "1%"), (0.02, "2%"), (0.03, "3%"), (0.05, "5%"), (0.1, "10%")]
+_VEIL_NATURAL_RATIO = [0.1, 0.2, 0.3, 0.5]
+_VEIL_COST_SLACK = [0.0, 0.2, 0.3, 0.5, 1.0]
+_VEIL_TRAP_MIN_DELTA_E = [0.3, 0.5, 0.7, 1.0, 1.5]
 
 AI_OPTION_VALUES = {
     "kyu_rank": [(k, f"{k}[strength:kyu]") for k in range(15, 0, -1)]
@@ -495,6 +525,55 @@ AI_OPTION_VALUES = {
     # 85 = HumanStyle 自身の終局閾値 ceil(0.5×169)。それ未満だと委譲先が hp 重みのランダム選択になる
     "mimic13_endgame_move": [65, 75, 85, 95, 105],
     "mimic13_unsettled_max": [8, 12, 16, 20, 24],
+    # ===== Veil9/13/19Strategy（韜晦）spec 2026-09-23-veil-strategy-design.md =====
+    "veil9_target_rate": _VEIL_TARGET_RATE,
+    "veil9_reserve": _VEIL_RESERVE,
+    "veil9_min_winrate": _VEIL_MIN_WINRATE,
+    "veil9_free_loss": _VEIL_FREE_LOSS,
+    "veil9_free_wr_drop": _VEIL_FREE_WR_DROP,
+    "veil9_close_drift_cap": _VEIL_CLOSE_DRIFT_CAP,
+    "veil9_spend_rate": _VEIL_SPEND_RATE,
+    "veil9_max_loss": _VEIL_MAX_LOSS[9],
+    "veil9_yose_max_loss": _VEIL_YOSE_MAX_LOSS,
+    "veil9_dominant_hp": _VEIL_DOMINANT_HP,
+    "veil9_dominant_max_loss": _VEIL_DOMINANT_MAX_LOSS,
+    "veil9_min_human_policy": _VEIL_MIN_HUMAN_POLICY,
+    "veil9_natural_ratio": _VEIL_NATURAL_RATIO,
+    "veil9_cost_slack": _VEIL_COST_SLACK,
+    "veil9_trap_mode": "bool",
+    "veil9_trap_min_delta_e": _VEIL_TRAP_MIN_DELTA_E,
+    "veil13_target_rate": _VEIL_TARGET_RATE,
+    "veil13_reserve": _VEIL_RESERVE,
+    "veil13_min_winrate": _VEIL_MIN_WINRATE,
+    "veil13_free_loss": _VEIL_FREE_LOSS,
+    "veil13_free_wr_drop": _VEIL_FREE_WR_DROP,
+    "veil13_close_drift_cap": _VEIL_CLOSE_DRIFT_CAP,
+    "veil13_spend_rate": _VEIL_SPEND_RATE,
+    "veil13_max_loss": _VEIL_MAX_LOSS[13],
+    "veil13_yose_max_loss": _VEIL_YOSE_MAX_LOSS,
+    "veil13_dominant_hp": _VEIL_DOMINANT_HP,
+    "veil13_dominant_max_loss": _VEIL_DOMINANT_MAX_LOSS,
+    "veil13_min_human_policy": _VEIL_MIN_HUMAN_POLICY,
+    "veil13_natural_ratio": _VEIL_NATURAL_RATIO,
+    "veil13_cost_slack": _VEIL_COST_SLACK,
+    "veil13_trap_mode": "bool",
+    "veil13_trap_min_delta_e": _VEIL_TRAP_MIN_DELTA_E,
+    "veil19_target_rate": _VEIL_TARGET_RATE,
+    "veil19_reserve": _VEIL_RESERVE,
+    "veil19_min_winrate": _VEIL_MIN_WINRATE,
+    "veil19_free_loss": _VEIL_FREE_LOSS,
+    "veil19_free_wr_drop": _VEIL_FREE_WR_DROP,
+    "veil19_close_drift_cap": _VEIL_CLOSE_DRIFT_CAP,
+    "veil19_spend_rate": _VEIL_SPEND_RATE,
+    "veil19_max_loss": _VEIL_MAX_LOSS[19],
+    "veil19_yose_max_loss": _VEIL_YOSE_MAX_LOSS,
+    "veil19_dominant_hp": _VEIL_DOMINANT_HP,
+    "veil19_dominant_max_loss": _VEIL_DOMINANT_MAX_LOSS,
+    "veil19_min_human_policy": _VEIL_MIN_HUMAN_POLICY,
+    "veil19_natural_ratio": _VEIL_NATURAL_RATIO,
+    "veil19_cost_slack": _VEIL_COST_SLACK,
+    "veil19_trap_mode": "bool",
+    "veil19_trap_min_delta_e": _VEIL_TRAP_MIN_DELTA_E,
     # ===== TsumegoOwnershipStrategy（ai:tsumego）の ON/OFF 項目: チェックボックスで出す =====
     "gain_verify": "bool",
     "ko_win_assumption": "bool",
@@ -722,6 +801,54 @@ AI_OPTION_ORDER = {
     "mimic13_probe_extra": 10,
     "mimic13_endgame_move": 11,
     "mimic13_unsettled_max": 12,
+    "veil9_target_rate": 0,
+    "veil9_reserve": 1,
+    "veil9_min_winrate": 2,
+    "veil9_free_loss": 3,
+    "veil9_free_wr_drop": 4,
+    "veil9_close_drift_cap": 5,
+    "veil9_spend_rate": 6,
+    "veil9_max_loss": 7,
+    "veil9_yose_max_loss": 8,
+    "veil9_dominant_hp": 9,
+    "veil9_dominant_max_loss": 10,
+    "veil9_min_human_policy": 11,
+    "veil9_natural_ratio": 12,
+    "veil9_cost_slack": 13,
+    "veil9_trap_mode": 14,
+    "veil9_trap_min_delta_e": 15,
+    "veil13_target_rate": 0,
+    "veil13_reserve": 1,
+    "veil13_min_winrate": 2,
+    "veil13_free_loss": 3,
+    "veil13_free_wr_drop": 4,
+    "veil13_close_drift_cap": 5,
+    "veil13_spend_rate": 6,
+    "veil13_max_loss": 7,
+    "veil13_yose_max_loss": 8,
+    "veil13_dominant_hp": 9,
+    "veil13_dominant_max_loss": 10,
+    "veil13_min_human_policy": 11,
+    "veil13_natural_ratio": 12,
+    "veil13_cost_slack": 13,
+    "veil13_trap_mode": 14,
+    "veil13_trap_min_delta_e": 15,
+    "veil19_target_rate": 0,
+    "veil19_reserve": 1,
+    "veil19_min_winrate": 2,
+    "veil19_free_loss": 3,
+    "veil19_free_wr_drop": 4,
+    "veil19_close_drift_cap": 5,
+    "veil19_spend_rate": 6,
+    "veil19_max_loss": 7,
+    "veil19_yose_max_loss": 8,
+    "veil19_dominant_hp": 9,
+    "veil19_dominant_max_loss": 10,
+    "veil19_min_human_policy": 11,
+    "veil19_natural_ratio": 12,
+    "veil19_cost_slack": 13,
+    "veil19_trap_mode": 14,
+    "veil19_trap_min_delta_e": 15,
 }
 
 AI_KEY_PROPERTIES = {

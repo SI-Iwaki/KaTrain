@@ -6,8 +6,9 @@
 
 項目の訳文は `aiopt:` 名前空間に置き、1 行目を日本語名・2 行目以降を解説とする。引く順は
 戦略別 `aiopt:<strategy>/<key>`（同じキーでも戦略で意味が違う場合）→ キー共通 `aiopt:<key>` →
-難解系の共通文面 `aiopt:enigma*_<suffix>`。難解系（enigma9/13/19 と＋版）は同じ項目がキー接頭辞
-違いで 6 つずつ並ぶので、共通文面の `{p}` を実際の接頭辞（例 enigma13plus）へ置き換えて 1 本で書く。
+難解系・韜晦系の共通文面 `aiopt:enigma*_<suffix>` / `aiopt:veil*_<suffix>`。難解系（enigma9/13/19 と＋版）は
+同じ項目がキー接頭辞違いで 6 つずつ、韜晦系（veil9/13/19）は 3 つずつ並ぶので、共通文面の `{p}` を実際の
+接頭辞（例 enigma13plus / veil13）へ置き換えて 1 本で書く。
 一覧のあとに `aihelptips:<strategy>`（「こんなときは」等の調整の目安）があれば続ける。
 項目の訳文が 1 つも無い言語（現状は日本語以外）では概要だけを返す＝従来どおりの表示。
 """
@@ -25,6 +26,9 @@ Translate = Callable[[str], str]
 KEY_COLOR = "ffd27a"
 
 _ENIGMA_FAMILY = re.compile(r"^(enigma(?:9|13|19)(?:plus)?)_(.+)$")
+_VEIL_FAMILY = re.compile(r"^(veil(?:9|13|19))_(.+)$")
+# （キーの正規表現, 共通文面の msgid 接頭辞）。共通文面の {p} は一致したキー接頭辞（例 enigma13plus / veil13）になる
+_FAMILIES = ((_ENIGMA_FAMILY, "enigma*"), (_VEIL_FAMILY, "veil*"))
 # 日本語の文字（全角記号・かな / CJK 統合漢字拡張A / CJK 統合漢字 / 全角英数・半角カナ）
 _CJK_RANGES = ((0x3000, 0x30FF), (0x3400, 0x4DBF), (0x4E00, 0x9FFF), (0xFF00, 0xFFEF))
 _CJK = re.compile("[" + "".join(chr(lo) + "-" + chr(hi) for lo, hi in _CJK_RANGES) + "]")
@@ -80,9 +84,12 @@ def _translated(translate: Translate, msgid: str) -> Optional[str]:
 def ai_option_help_entry(strategy: str, key: str, translate: Translate) -> Optional[Tuple[str, str]]:
     """設定項目の（日本語名, 解説）。この言語に訳文が無ければ None"""
     candidates = [f"aiopt:{strategy}/{key}", f"aiopt:{key}"]
-    family = _ENIGMA_FAMILY.match(key)
-    if family:
-        candidates.append(f"aiopt:enigma*_{family.group(2)}")
+    family = None
+    for pattern, wildcard in _FAMILIES:
+        family = pattern.match(key)
+        if family:
+            candidates.append(f"aiopt:{wildcard}_{family.group(2)}")
+            break
     for msgid in candidates:
         text = _translated(translate, msgid)
         if text is None:
