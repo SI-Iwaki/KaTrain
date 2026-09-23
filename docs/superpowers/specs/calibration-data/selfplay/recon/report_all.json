@@ -1,0 +1,138 @@
+[
+ {
+  "game": "game_20260915_004532",
+  "ai": "W",
+  "n_moves": 123,
+  "final_score": -20.4164627,
+  "mine": {
+   "n": 62,
+   "match": 0.5483870967741935,
+   "mean_loss": 1.1502676292419356
+  },
+  "opp": {
+   "n": 61,
+   "match": 0.21311475409836064,
+   "mean_loss": 1.4613765613442622
+  },
+  "mine_pre85": {
+   "n": 42,
+   "match": 0.47619047619047616,
+   "mean_loss": 1.2785857203095237
+  },
+  "mine_post85": {
+   "n": 20,
+   "match": 0.7,
+   "mean_loss": 0.8807996380000003
+  },
+  "opp_pre85": {
+   "n": 42,
+   "match": 0.19047619047619047,
+   "mean_loss": 1.402011428142857
+  },
+  "opp_post85": {
+   "n": 19,
+   "match": 0.2631578947368421,
+   "mean_loss": 1.5926047505263157
+  },
+  "strategy": "Enigma13PlusStrategy",
+  "secs": 68.16263961791992
+ },
+ {
+  "game": "game_20260915_003117",
+  "ai": "W",
+  "n_moves": 31,
+  "final_score": -2.69917235,
+  "mine": {
+   "n": 16,
+   "match": 0.5,
+   "mean_loss": 0.56513659625
+  },
+  "opp": {
+   "n": 15,
+   "match": 0.2,
+   "mean_loss": 0.6811834287333334
+  },
+  "mine_pre85": {
+   "n": 16,
+   "match": 0.5,
+   "mean_loss": 0.56513659625
+  },
+  "mine_post85": null,
+  "opp_pre85": {
+   "n": 15,
+   "match": 0.2,
+   "mean_loss": 0.6811834287333334
+  },
+  "opp_post85": null,
+  "strategy": "Enigma13PlusStrategy",
+  "secs": 18.835674047470093
+ },
+ {
+  "game": "game_20260914_213601",
+  "ai": "W",
+  "n_moves": 79,
+  "final_score": -9.57226834,
+  "mine": {
+   "n": 40,
+   "match": 0.575,
+   "mean_loss": 1.1019098708750001
+  },
+  "opp": {
+   "n": 39,
+   "match": 0.15384615384615385,
+   "mean_loss": 1.3756646249487179
+  },
+  "mine_pre85": {
+   "n": 40,
+   "match": 0.575,
+   "mean_loss": 1.1019098708750001
+  },
+  "mine_post85": null,
+  "opp_pre85": {
+   "n": 39,
+   "match": 0.15384615384615385,
+   "mean_loss": 1.3756646249487179
+  },
+  "opp_post85": null,
+  "strategy": "Enigma13PlusStrategy",
+  "secs": 45.13364624977112
+ },
+ {
+  "game": "game_20260914_211800",
+  "ai": "W",
+  "n_moves": 123,
+  "final_score": -3.87135504,
+  "mine": {
+   "n": 62,
+   "match": 0.6129032258064516,
+   "mean_loss": 0.5975870172403226
+  },
+  "opp": {
+   "n": 61,
+   "match": 0.2459016393442623,
+   "mean_loss": 0.6754545502278688
+  },
+  "mine_pre85": {
+   "n": 42,
+   "match": 0.5,
+   "mean_loss": 0.8677170023547619
+  },
+  "mine_post85": {
+   "n": 20,
+   "match": 0.85,
+   "mean_loss": 0.030314048500000013
+  },
+  "opp_pre85": {
+   "n": 42,
+   "match": 0.21428571428571427,
+   "mean_loss": 0.9251565803309523
+  },
+  "opp_post85": {
+   "n": 19,
+   "match": 0.3157894736842105,
+   "mean_loss": 0.12348164157894735
+  },
+  "strategy": "Enigma13PlusStrategy",
+  "secs": 58.88438844680786
+ }
+]
