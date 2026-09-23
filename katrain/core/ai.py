@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 import copy
 import heapq
 import math
@@ -4538,6 +4539,87 @@ def veil_shortlist(naturals, trap_cands, hp_of, band_cap, probe_hp, probe_cheap,
         return nat, []
     trap_rest = [c for c in trap_cands if c["gtp"] not in taken]
     return nat, enigma9_shortlist_spread(trap_rest, 0, int(trap_probes), trusted_visits)
+
+
+@dataclass
+class VeilCtx:
+    """1手番の判定に使う値（`veil_classify` / `veil_trap_ok` 共通）。lead は打つ側視点の root lead。"""
+
+    lead: float
+    reserve: float
+    surplus: float            # S = lead − reserve
+    urgency: float            # u（0 = ゲート閉）
+    p_match: float            # この手も一致させた場合の一致率
+    f_eff: float              # 同値外しの閾値
+    allowance: float          # 支払う外しの許容損失 A_t'（明らかな一手なら dominant_max_loss で絞った後）
+    trap_cap: float           # 罠の vloss 上限（ヨセ前 max_loss・ヨセ中 yose_max_loss。明らかな一手は dominant_max_loss でも頭打ち）
+    min_winrate: float
+    free_wr_drop: float
+    in_yose: bool
+    close: bool               # 接戦（lead < reserve または最善手の着手後勝率 < VEIL_CLOSE_WR）
+    close_drift: float        # この局の接戦中の同値外しの vloss 累計
+    close_drift_cap: float    # 0 で上限なし
+    trap_min_delta_e: float
+
+
+def veil_cons_loss(vloss, raw, visits, trusted):
+    """保守的な損失 cons。十分に読まれた候補（visits >= trusted）は生の loss も見て大きいほう、それ以外は検証値。"""
+    if raw is not None and visits >= trusted:
+        return max(vloss, raw)
+    return vloss
+
+
+def veil_near_free_ok(cost, wr_drop, wr_after, lead_after, ctx):
+    """同値外し（free）の安全条件（自然さと接戦の累計は呼び出し側）。
+
+    cost <= F_eff かつ（1手の勝率低下 <= free_wr_drop または着手後勝率 >= VEIL_DECIDED_WR）かつ
+    ヨセでは（着手後リード >= reserve または勝率低下 <= VEIL_YOSE_FREE_WR_DROP）。勝率が取れなければ不可。
+    """
+    if cost > ctx.f_eff + _VEIL_EPS or wr_drop is None or wr_after is None:
+        return False
+    if not (wr_drop <= ctx.free_wr_drop + _VEIL_EPS or wr_after >= VEIL_DECIDED_WR):
+        return False
+    if ctx.in_yose:
+        holds_reserve = lead_after is not None and lead_after >= ctx.reserve
+        if not (holds_reserve or wr_drop <= VEIL_YOSE_FREE_WR_DROP + _VEIL_EPS):
+            return False
+    return True
+
+
+def veil_paid_ok(cost, wr_after, ctx):
+    """支払う外し（paid）の条件: ゲートが開いていて余剰があり、cost <= A_t'、lead − cost >= reserve、
+    着手後勝率 >= min_winrate。"""
+    return (
+        ctx.urgency > 0
+        and ctx.surplus > 0
+        and cost <= ctx.allowance + _VEIL_EPS
+        and ctx.lead - cost >= ctx.reserve - _VEIL_EPS
+        and wr_after is not None
+        and wr_after >= ctx.min_winrate
+    )
+
+
+def veil_close_drift_ok(close, drift, vloss, cap):
+    """接戦中の同値外しの累計上限（cap <= 0 なら上限なし）。drift + max(0, vloss) <= cap なら可。"""
+    if cap <= 0 or not close:
+        return True
+    return drift + max(0.0, vloss) <= cap + _VEIL_EPS
+
+
+def veil_classify(c, ctx):
+    """素の外し（自然な候補）の種類と値段を返す: (kind, cost)。kind は "free" / "paid" / None。
+
+    c は {"cons", "vloss", "wr_drop", "wr_after", "lead_after"}。cost = max(0, cons)（500v のノイズで負になりうる）。
+    同値の条件を満たせば一致率に関係なく free、満たさなければゲートと余剰の範囲で paid。
+    """
+    cost = max(0.0, c["cons"])
+    if veil_near_free_ok(cost, c.get("wr_drop"), c.get("wr_after"), c.get("lead_after"), ctx) and veil_close_drift_ok(
+        ctx.close, ctx.close_drift, c["vloss"], ctx.close_drift_cap
+    ):
+        return "free", cost
+    if veil_paid_ok(cost, c.get("wr_after"), ctx):
+        return "paid", cost
+    return None, cost
 
 
 @register_strategy(AI_SCORELOSS)

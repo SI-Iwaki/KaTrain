@@ -11,10 +11,16 @@ import pytest
 
 import katrain.core.ai as ai_module
 from katrain.core.ai import (
+    VeilCtx,
     game_report,
     veil_allowance,
+    veil_classify,
+    veil_close_drift_ok,
+    veil_cons_loss,
     veil_free_limit,
     veil_natural_floor,
+    veil_near_free_ok,
+    veil_paid_ok,
     veil_prefilter,
     veil_shortlist,
     veil_tally,
@@ -227,3 +233,105 @@ class TestShortlist:
         assert traps_off == []
         # 自然枠に入った A は罠枠に出ない。残り5手から loss の範囲に等間隔（両端込み）
         assert [c["gtp"] for c in traps_on] == ["T1", "T3", "T5"]
+
+
+def ctx(**kw):
+    """13路の既定に近い判定コンテキスト（lead 12・u 1・A_t' 3.5・ヨセ前・接戦でない）。"""
+    base = dict(
+        lead=12.0,
+        reserve=5.0,
+        surplus=7.0,
+        urgency=1.0,
+        p_match=0.5,
+        f_eff=0.3,
+        allowance=3.5,
+        trap_cap=4.5,
+        min_winrate=0.85,
+        free_wr_drop=0.03,
+        in_yose=False,
+        close=False,
+        close_drift=0.0,
+        close_drift_cap=0.0,
+        trap_min_delta_e=0.5,
+    )
+    base.update(kw)
+    return VeilCtx(**base)
+
+
+def row(cons, vloss=None, wr_drop=0.01, wr_after=0.93, lead_after=11.0):
+    vloss = cons if vloss is None else vloss
+    return {"cons": cons, "vloss": vloss, "wr_drop": wr_drop, "wr_after": wr_after, "lead_after": lead_after}
+
+
+class TestConsLoss:
+    def test_trusted_candidate_also_counts_the_raw_loss(self):
+        assert veil_cons_loss(0.1, 0.25, visits=200, trusted=50) == 0.25
+        assert veil_cons_loss(0.4, 0.25, visits=200, trusted=50) == 0.4
+
+    def test_shallow_candidate_uses_only_the_verified_loss(self):
+        assert veil_cons_loss(0.1, 0.9, visits=12, trusted=50) == 0.1
+
+
+class TestNearFree:
+    def test_cheap_with_small_winrate_drop_is_free(self):
+        assert veil_near_free_ok(0.3, 0.03, 0.60, 0.2, ctx())
+
+    def test_too_expensive_or_too_large_a_drop_is_not(self):
+        assert not veil_near_free_ok(0.31, 0.0, 0.60, 0.2, ctx())
+        assert not veil_near_free_ok(0.1, 0.05, 0.60, 0.2, ctx())
+
+    def test_decided_winrate_waives_the_drop(self):
+        assert veil_near_free_ok(0.1, 0.05, 0.975, 20.0, ctx())
+
+    def test_missing_winrate_is_not_free(self):
+        assert not veil_near_free_ok(0.1, None, None, 0.2, ctx())
+
+    def test_yose_guard_below_reserve_needs_a_one_percent_drop(self):
+        yose = ctx(in_yose=True)
+        assert not veil_near_free_ok(0.1, 0.02, 0.88, 4.9, yose)
+        assert veil_near_free_ok(0.1, 0.01, 0.88, 4.9, yose)
+        assert veil_near_free_ok(0.1, 0.02, 0.88, 5.0, yose)  # reserve を保つなら通常の条件
+
+
+class TestPaid:
+    def test_within_allowance_reserve_and_winrate_floor(self):
+        assert veil_paid_ok(3.5, 0.85, ctx())
+
+    def test_rejections(self):
+        assert not veil_paid_ok(3.6, 0.95, ctx())  # A_t' 超
+        assert not veil_paid_ok(1.0, 0.84, ctx())  # 勝率フロア
+        assert not veil_paid_ok(1.0, None, ctx())
+        assert not veil_paid_ok(1.0, 0.95, ctx(urgency=0.0))  # ゲート閉
+        assert not veil_paid_ok(0.2, 0.95, ctx(lead=5.0, surplus=0.0, allowance=0.0))  # 余剰なし
+        assert not veil_paid_ok(2.0, 0.95, ctx(lead=6.0, surplus=1.0, allowance=3.0))  # reserve を割る
+
+
+class TestCloseDrift:
+    def test_off_or_not_close_is_unlimited(self):
+        assert veil_close_drift_ok(True, 5.0, 1.0, 0.0)
+        assert veil_close_drift_ok(False, 5.0, 1.0, 1.0)
+
+    def test_cap_counts_only_positive_losses(self):
+        assert veil_close_drift_ok(True, 0.9, 0.1, 1.0)
+        assert not veil_close_drift_ok(True, 0.95, 0.1, 1.0)
+        assert veil_close_drift_ok(True, 1.0, -0.2, 1.0)
+
+
+class TestClassify:
+    def test_free_beats_paid_and_cost_is_clamped_at_zero(self):
+        assert veil_classify(row(-0.2), ctx()) == ("free", 0.0)
+        assert veil_classify(row(0.25), ctx()) == ("free", 0.25)
+
+    def test_paid_when_not_free_but_within_budget(self):
+        assert veil_classify(row(1.5), ctx()) == ("paid", 1.5)
+
+    def test_free_is_independent_of_the_gate(self):
+        closed = ctx(urgency=0.0, allowance=0.0, lead=0.5, surplus=-4.5, close=True)
+        assert veil_classify(row(0.2, wr_after=0.55, lead_after=0.4), closed) == ("free", 0.2)
+        assert veil_classify(row(1.0, wr_after=0.55, lead_after=0.4), closed) == (None, 1.0)
+
+    def test_close_drift_cap_turns_free_into_paid_or_nothing(self):
+        capped = ctx(close=True, close_drift=0.25, close_drift_cap=0.3)
+        assert veil_classify(row(0.1), capped) == ("paid", 0.1)
+        closed = ctx(close=True, close_drift=0.25, close_drift_cap=0.3, urgency=0.0, allowance=0.0)
+        assert veil_classify(row(0.1), closed) == (None, 0.1)
