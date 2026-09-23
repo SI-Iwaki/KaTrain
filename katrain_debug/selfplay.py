@@ -1,8 +1,8 @@
 """自己対局ハーネスの CLI（戦略 vs humanSL ボットを無人で N 局打たせ、両者の終局レポートの一致率を集計する）。
 
     python -m katrain_debug.selfplay run --arm A=enigma13plus --arm B=enigma13plus:enigma13plus_max_loss=2.0
-        --size 13 --pairs 20 [--opp-pool FILE | --ranks rank_3k,rank_1k,rank_1d] [--komi-shift 4] [--no-resign]
-        [--label NAME] [--resume DIR]
+        --size 13 --pairs 20 [--opp-pool FILE | --ranks rank_3k,rank_1k,rank_1d] [--komi-shift 4]
+        [--resign-model length|lead | --no-resign] [--label NAME] [--resume DIR]
     python -m katrain_debug.selfplay calibrate --size 13 --strategy enigma13plus
         --ranks rank_8k,rank_5k,rank_3k,rank_1k,rank_1d,rank_3d --games 8 [--write-pool FILE]
     python -m katrain_debug.selfplay summarize DIR [DIR ...] [--compare A B]
@@ -108,22 +108,37 @@ def opponent_plan(args, size):
 
 
 def resign_plan(args, size):
-    """投了モデル: --no-resign / --resign-lead LO:HI / 実戦 13路の投了局の最終リード（既定）。"""
+    """投了モデル（--resign-model）:
+    - length（既定）: 局ごとに目標の手数 L を実戦 13路 18局の手数から引き、L 以降に AI が明らかに勝っていれば投了。
+    - lead: 局ごとに閾値 R を実戦の投了局の最終リード（または --resign-lead LO:HI の一様）から引く。
+    --no-resign ならどちらでもなく投了しない（model "none"）。
+    """
     start = S.resign_start_move(size)
+    common = {"no_resign": False, "range": None, "pool": [], "lengths": [], "start_move": None, "source": None}
     if args.no_resign:
-        return {"no_resign": True, "range": None, "pool": [], "start_move": start, "source": None}
+        return {**common, "model": "none", "no_resign": True, "start_move": start}
+    if args.resign_lead and args.resign_model != "lead":
+        raise SystemExit("--resign-lead LO:HI applies only to --resign-model lead")
+    source = R.repo_relpath(R.RECON_DIR)
+    if args.resign_model == "length":
+        lengths = R.load_resign_lengths(size)
+        if not lengths:
+            raise SystemExit(
+                f"no game lengths in {source}: pass --resign-model lead --resign-lead LO:HI or --no-resign"
+            )
+        return {**common, "model": "length", "lengths": lengths, "source": source}
     if args.resign_lead:
         return {
-            "no_resign": False,
+            **common,
+            "model": "lead",
             "range": list(S.parse_range(args.resign_lead)),
-            "pool": [],
             "start_move": start,
             "source": "--resign-lead",
         }
     pool = R.load_resign_pool(size)
     if not pool:
-        raise SystemExit(f"no resign data in {R.RECON_DIR}: pass --resign-lead LO:HI or --no-resign")
-    return {"no_resign": False, "range": None, "pool": pool, "start_move": start, "source": R.RECON_DIR}
+        raise SystemExit(f"no resign data in {source}: pass --resign-lead LO:HI or --no-resign")
+    return {**common, "model": "lead", "pool": pool, "start_move": start, "source": source}
 
 
 def _schedule(n_seeds, ranks, args, resign):
@@ -134,6 +149,7 @@ def _schedule(n_seeds, ranks, args, resign):
         resign_leads=resign["pool"],
         resign_range=resign["range"],
         no_resign=resign["no_resign"],
+        resign_lens=resign["lengths"],
     )
 
 
@@ -331,7 +347,17 @@ def _add_common(p):
     p.add_argument("--rules", default=None, help="ルール（既定: config の game/rules）")
     p.add_argument("--no-resign", action="store_true", help="相手は投了しない（必須の感度アーム）")
     p.add_argument(
-        "--resign-lead", default=None, metavar="LO:HI", help="投了閾値 R を一様分布で引く（既定: 実戦の分布）"
+        "--resign-model",
+        choices=("length", "lead"),
+        default="length",
+        help="相手の投了モデル。length（既定）: 実戦の手数 L 以降に AI が明らかに勝っていれば投了"
+        "（勝率 >= 0.90・リード >= 2.5目が AI の2手番続く）/ lead: 実戦の最終リード R 以上で投了",
+    )
+    p.add_argument(
+        "--resign-lead",
+        default=None,
+        metavar="LO:HI",
+        help="lead モデルの閾値 R を一様分布で引く（--resign-model lead のときだけ。既定: 実戦の分布）",
     )
     p.add_argument("--tau", type=float, default=None, help="相手の温度 τ（hp^(1/τ)。既定: プールの値か 1.0）")
     p.add_argument("--opp-max-loss", type=float, default=None, help="相手の悪手フィルタ（目。既定 OFF）")

@@ -36,12 +36,39 @@ def default_pool_path(size):
     return os.path.join(SELFPLAY_DATA, f"opponent_pool_{size}.json")
 
 
-def load_resign_pool(size, recon_dir=RECON_DIR):
+def repo_relpath(path):
+    """記録に残すパス: リポジトリの中ならリポジトリ相対（スラッシュ区切り）、外なら絶対パス（スラッシュ区切り）。
+
+    コミットする成果物（プールの source_run・校正の md）に作業ツリーやマシンの絶対パスを埋め込まないため。
+    """
+    if path is None:
+        return None
+    full = os.path.abspath(path)
+    try:
+        rel = os.path.relpath(full, REPO_ROOT)
+    except ValueError:  # Windows で別ドライブ
+        rel = None
+    if rel is None or rel == os.pardir or rel.startswith(os.pardir + os.sep):
+        return full.replace(os.sep, "/")
+    return rel.replace(os.sep, "/")
+
+
+def _recon_summaries(recon_dir):
     summaries = []
     for path in sorted(glob.glob(os.path.join(recon_dir, "report_game_*.json"))):
         with open(path, encoding="utf-8") as f:
             summaries.append(json.load(f)["summary"])
-    return S.resign_pool_from_summaries(summaries, size)
+    return summaries
+
+
+def load_resign_pool(size, recon_dir=RECON_DIR):
+    """lead モデルの投了閾値 R の標本（実戦の投了局の最終リード）。"""
+    return S.resign_pool_from_summaries(_recon_summaries(recon_dir), size)
+
+
+def load_resign_lengths(size, recon_dir=RECON_DIR):
+    """length モデルの目標の手数 L の標本（実戦 13路 18局の手数を盤面積で比例）。"""
+    return S.resign_lengths_from_summaries(_recon_summaries(recon_dir), size)
 
 
 def git_info(path):
@@ -340,6 +367,13 @@ def format_summary_text(summary):
     return text.encode("ascii", "replace").decode("ascii")
 
 
+def resign_model_of_plan(resign):
+    """計画の投了モデル（length / lead / none）。model の無い古い run.json は lead か none（--no-resign）。"""
+    if resign.get("model"):
+        return resign["model"]
+    return "none" if resign.get("no_resign") else "lead"
+
+
 def plan_conditions(plan):
     """対局条件（別々の実行の games.jsonl を合わせて集計してよいかの判定）。アームの設定は指紋で別に見る。"""
     opp = plan.get("opponent") or {}
@@ -347,7 +381,7 @@ def plan_conditions(plan):
     return {
         **{k: plan.get(k) for k in ("size", "komi", "komi_shift", "rules", "max_moves", "watch_flags", "target")},
         "opponent": {k: opp.get(k) for k in ("kind", "ranks", "tau", "max_loss", "strategy", "override_items")},
-        "resign": {k: resign.get(k) for k in ("no_resign", "range")},
+        "resign": {"model": resign_model_of_plan(resign), **{k: resign.get(k) for k in ("no_resign", "range")}},
     }
 
 
@@ -418,6 +452,7 @@ def calibration_result(out, plan):
         "strategy": plan["arms"][0]["strategy"],
         "size": plan["size"],
         "tau": plan["opponent"]["tau"],
+        "resign_model": resign_model_of_plan(plan.get("resign") or {}),
         "targets": S.CALIB_TARGETS_13,
         "per_rank": per_rank,
         "choices": choices[:5],
@@ -440,6 +475,7 @@ def pool_file_content(cal):
         "strategy": cal["strategy"],
         "ranks": best["ranks"],
         "tau": cal["tau"],
+        "resign_model": cal.get("resign_model"),
         "fit": best,
         "targets": cal["targets"],
         "per_rank": cal["per_rank"],
@@ -456,7 +492,7 @@ def format_calibration_md(cal):
     if cal.get("integrity_warning"):
         lines += [cal["integrity_warning"], ""]
     lines += [
-        f"実行: `{cal['run_dir']}`",
+        f"実行: `{cal['run_dir']}`（投了モデル: {cal.get('resign_model') or '-'}）",
         "",
         "## 段位ごと（相手＝humanSL・WATCH 木・局単位）",
         "",

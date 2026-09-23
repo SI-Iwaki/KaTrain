@@ -304,7 +304,7 @@ def play_game(h, arm, spec, opponent, *, komi_shift=0.0, max_moves=None, hooks=(
                 waiter.nodes(cn.nodes_from_root, "path analysis before the AI move")
                 wait_s = time.time() - t0
                 lead, wr = S.ai_view_lead(cn.score, ai), S.ai_view_winrate(cn.winrate, ai)
-                resign, streak = S.selfplay_should_resign(cn.depth, lead, wr, streak, spec["resign_lead"], size)
+                resign, streak = S.selfplay_resign_check(spec, cn.depth, lead, wr, streak, size)
                 if resign:
                     end_reason = "opp_resign"
                     break
@@ -369,7 +369,9 @@ def play_game(h, arm, spec, opponent, *, komi_shift=0.0, max_moves=None, hooks=(
         **hook_errors,
         "komi": komi,
         "size": size,
-        "resign_lead": spec["resign_lead"],
+        "resign_model": S.resign_model_of(spec),
+        "resign_lead": spec.get("resign_lead"),
+        "resign_len": spec.get("resign_len"),
         "end_reason": end_reason,
         "error": error,
     }

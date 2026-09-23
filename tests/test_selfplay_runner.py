@@ -112,7 +112,7 @@ class TestResolveArm:
         assert arm.settings == {} and arm.settings_source.startswith("code defaults")
 
 
-def _spec(ai_color="B", resign_lead=None, seed=1000):
+def _spec(ai_color="B", resign_lead=None, seed=1000, resign_len=None):
     return {
         "index": 0,
         "seed": seed,
@@ -121,6 +121,7 @@ def _spec(ai_color="B", resign_lead=None, seed=1000):
         "opp_seed": 7,
         "strategy_seed": 11,
         "resign_lead": resign_lead,
+        "resign_len": resign_len,
     }
 
 
@@ -169,6 +170,23 @@ class TestPlayGame:
         assert rec["end_reason"] == "opp_resign" and rec["result"] == "win"
         assert rec["n_moves"] == 22  # 9路の開始 19 手以降の AI 手番（20・22 手目の局面）で2回続いた
         assert res.game.end_result == "B+R"
+        assert rec["resign_model"] == "lead" and rec["resign_lead"] == 10.0 and rec["resign_len"] is None
+
+    def test_length_model_resigns_two_ai_turns_after_the_target_length(self, tmp_path):
+        h = self._harness(tmp_path, FakeEngine(lead=30.0, winrate=0.99))
+        arm = G.resolve_arm(h.stub, "A", "default", [])
+        res = G.play_game(h, arm, _spec("B", resign_len=30), HumanSLOpponent("rank_3k", seed=7), max_moves=60)
+        rec = res.record
+        assert rec["end_reason"] == "opp_resign" and rec["result"] == "win"
+        assert rec["n_moves"] == 32  # L=30 以降の AI 手番（30・32 手目）で2回続いた（開始 19 手は使わない）
+        assert rec["resign_model"] == "length" and rec["resign_len"] == 30 and rec["resign_lead"] is None
+
+    @pytest.mark.parametrize("lead, winrate", [(2.0, 0.99), (30.0, 0.85)])
+    def test_length_model_needs_a_clear_win(self, tmp_path, lead, winrate):
+        h = self._harness(tmp_path, FakeEngine(lead=lead, winrate=winrate))  # リード 2.5 未満・勝率 0.90 未満
+        arm = G.resolve_arm(h.stub, "A", "default", [])
+        res = G.play_game(h, arm, _spec("B", resign_len=10), HumanSLOpponent("rank_3k", seed=7), max_moves=40)
+        assert res.record["end_reason"] == "move_cap" and res.record["n_moves"] == 40
 
     def test_engine_death_aborts_the_game(self, tmp_path):
         engine = FakeEngine()

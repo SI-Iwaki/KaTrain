@@ -107,6 +107,51 @@ class TestRun:
         assert all(r["opponent"] == "strategy:default" and r["opp_top1"] == 1.0 for r in recs)
 
 
+def _resign_args(env, *extra):
+    return [a for a in _run_args(env, "--arm", "A=default") if a != "--no-resign"] + list(extra)
+
+
+def _run_files(run_dir):
+    plan = json.load(open(os.path.join(run_dir, "run.json"), encoding="utf-8"))
+    recs = [json.loads(x) for x in open(os.path.join(run_dir, "games.jsonl"), encoding="utf-8")]
+    return plan, recs
+
+
+class TestResignModel:
+    def test_length_model_is_the_default(self, env):
+        CLI.main(_resign_args(env))
+        plan, recs = _run_files(_only_dir(env["out"]))
+        lens = CLI.R.load_resign_lengths(9)  # 実戦 13路 18局の手数を 9路の盤面積に縮めたもの
+        assert plan["resign"]["model"] == "length" and plan["resign"]["lengths"] == lens
+        assert all(s["resign_len"] in lens and s["resign_lead"] is None for s in plan["schedule"])
+        assert [(r["resign_model"], r["resign_len"]) for r in recs] == [
+            ("length", s["resign_len"]) for s in plan["schedule"]
+        ]
+
+    def test_lead_model_is_selectable(self, env):
+        CLI.main(_resign_args(env, "--resign-model", "lead", "--resign-lead", "8:40"))
+        plan, recs = _run_files(_only_dir(env["out"]))
+        assert plan["resign"]["model"] == "lead" and plan["resign"]["range"] == [8.0, 40.0]
+        assert all(8 <= s["resign_lead"] <= 40 and s["resign_len"] is None for s in plan["schedule"])
+        assert all(r["resign_model"] == "lead" and r["resign_len"] is None for r in recs)
+
+    def test_resign_lead_applies_only_to_the_lead_model(self, env):
+        with pytest.raises(SystemExit, match="--resign-model lead"):
+            CLI.main(_resign_args(env, "--resign-lead", "8:40"))
+
+    def test_no_resign_records_no_model(self, env):
+        CLI.main(_run_args(env, "--arm", "A=default"))
+        plan, recs = _run_files(_only_dir(env["out"]))
+        assert plan["resign"]["model"] == "none" and all(r["resign_model"] == "none" for r in recs)
+
+    def test_runs_with_different_resign_models_are_not_merged(self, env):
+        CLI.main(_resign_args(env))
+        CLI.main(_resign_args(env, "--resign-model", "lead", "--seed-base", "1002", "--label", "ext"))
+        dirs = [os.path.join(env["out"], d) for d in sorted(os.listdir(env["out"]), key=lambda d: d.endswith("_ext"))]
+        with pytest.raises(SystemExit, match="game conditions differ"):
+            CLI.main(["summarize", *dirs, "--boot", "100"])
+
+
 def _calibrate_args(env, pool=None, ranks="rank_8k,rank_3k,rank_1d", games="2"):
     args = [
         "calibrate",

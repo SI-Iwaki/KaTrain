@@ -19,8 +19,10 @@ TARGET_RATE = {9: 0.40, 13: 0.30, 19: 0.30}  # 韜晦の一致率目標 T（own_
 RATE_FLOOR = 0.15  # own_lt_floor の床
 TARGET_SLACK = 0.05  # own_le_target_plus5 の +0.05
 RESIGN_START_13 = 40  # 投了判定の開始手数（13路。他の盤は盤面積で比例）
-RESIGN_MIN_WINRATE = 0.95  # 投了の AI 勝率条件
+RESIGN_MIN_WINRATE = 0.95  # 投了の AI 勝率条件（lead モデル）
 RESIGN_STREAK = 2  # AI の手番で何回続いたら投了するか
+RESIGN_LEN_MIN_WINRATE = 0.90  # length モデル: 目標の手数 L 以降に「AI の明らかな勝ち」とみなす AI 勝率
+RESIGN_LEN_MIN_LEAD = 2.5  # length モデル: 同じく AI 視点のリード（目）
 VISITS_CHECK_RATIO = 0.9  # root visits が max_visits のこの倍率未満なら visits_low
 BLUNDER_TAILS = (1.0, 2.0, 3.0, 6.0)  # AI の失着の尾（目）
 HP_AUDIT_LOW = 0.05  # 外した手の 9段 hp がこれ未満の割合を出す
@@ -61,9 +63,14 @@ def move_cap(size):
     return MOVE_CAP.get(size, round(250 * size * size / 169))
 
 
+def scale_moves_13(moves, size):
+    """13路の手数を盤面積で比例させる（9路 ×81/169・19路 ×361/169）。"""
+    return round(moves * size * size / 169)
+
+
 def resign_start_move(size):
     """13路 40 を盤面積で比例（9路 19・19路 85）。"""
-    return round(RESIGN_START_13 * size * size / 169)
+    return scale_moves_13(RESIGN_START_13, size)
 
 
 def depth_bin(depth, size, bins=CALIB_BINS):
@@ -128,11 +135,16 @@ def hp_audit_values(human_policy, size, played_gtp, best_gtp):
 
 
 # ---- 日程（seed → 色・段位・投了閾値・乱数の種）----
-def selfplay_schedule(n_seeds, ranks, seed_base=1000, resign_leads=None, resign_range=None, no_resign=False):
+def selfplay_schedule(
+    n_seeds, ranks, seed_base=1000, resign_leads=None, resign_range=None, no_resign=False, resign_lens=None
+):
     """局ごとの開始条件。seed が同じなら全アームで同じ条件（A/B の対）。
 
     色は seed の偶奇で交互、段位は2局（黒白1局ずつ）ごとに ranks を巡回＝段位と色が交絡しない。
-    投了閾値 R は `resign_range` (lo, hi) の一様か、`resign_leads`（実戦の投了局の最終リード）の復元抽出。
+    投了は2つのモデルのどちらか（no_resign ならどちらも None）:
+    - length（`resign_lens` を渡したとき）: 目標の手数 L を実戦の手数（`resign_lens`）から復元抽出（resign_len）。
+    - lead: 閾値 R を `resign_range` (lo, hi) の一様か、`resign_leads`（実戦の投了局の最終リード）の復元抽出（resign_lead）。
+    相手の乱数列と戦略の乱数の種は投了のモデルによらず seed だけで決まる（モデルを変えても局の対は同じ）。
     """
     if not ranks:
         raise ValueError("ranks is empty")
@@ -142,14 +154,15 @@ def selfplay_schedule(n_seeds, ranks, seed_base=1000, resign_leads=None, resign_
         rng = random.Random(seed)
         opp_seed = rng.randrange(2**31)
         strategy_seed = rng.randrange(2**31)
+        resign_lead = resign_len = None
         if no_resign:
-            resign_lead = None
+            pass
+        elif resign_lens:
+            resign_len = rng.choice(list(resign_lens))
         elif resign_range is not None:
             resign_lead = rng.uniform(resign_range[0], resign_range[1])
         elif resign_leads:
             resign_lead = rng.choice(list(resign_leads))
-        else:
-            resign_lead = None
         out.append(
             {
                 "index": i,
@@ -159,6 +172,7 @@ def selfplay_schedule(n_seeds, ranks, seed_base=1000, resign_leads=None, resign_
                 "opp_seed": opp_seed,
                 "strategy_seed": strategy_seed,
                 "resign_lead": resign_lead,
+                "resign_len": resign_len,
             }
         )
     return out
@@ -236,20 +250,53 @@ def ai_view_winrate(wr_black, ai_color):
     return None if wr_black is None else (wr_black if ai_color == "B" else 1.0 - wr_black)
 
 
+def _confirm_resign(qualifies, streak):
+    """2手番の確認: 条件を満たす AI の手番が RESIGN_STREAK 回続いたら投了。返り値 (投了するか, 新しい連続回数)。"""
+    streak = streak + 1 if qualifies else 0
+    return streak >= RESIGN_STREAK, streak
+
+
 def selfplay_should_resign(depth, lead_ai, wr_ai, streak, threshold, size):
-    """相手の投了判定（AI の手番ごとに呼ぶ）。返り値 (投了するか, 新しい連続回数)。
+    """相手の投了判定・lead モデル（AI の手番ごとに呼ぶ）。返り値 (投了するか, 新しい連続回数)。
 
     開始手数以降に AI 視点で lead >= threshold かつ AI 勝率 >= 0.95 が AI の2手番続いたら投了。
     threshold None（--no-resign）なら投了しない。
     """
     if threshold is None or lead_ai is None or wr_ai is None or depth < resign_start_move(size):
         return False, 0
-    streak = streak + 1 if (lead_ai >= threshold and wr_ai >= RESIGN_MIN_WINRATE) else 0
-    return streak >= RESIGN_STREAK, streak
+    return _confirm_resign(lead_ai >= threshold and wr_ai >= RESIGN_MIN_WINRATE, streak)
+
+
+def selfplay_should_resign_at_length(depth, lead_ai, wr_ai, streak, target_len):
+    """相手の投了判定・length モデル（AI の手番ごとに呼ぶ）。返り値 (投了するか, 新しい連続回数)。
+
+    手数 depth >= 目標の手数 L（target_len）の AI の手番で、AI が明らかに勝っている（AI 勝率 >= 0.90 かつ
+    AI 視点のリード >= 2.5 目）状態が AI の2手番続いたら投了する。L の時点で明らかな勝ちでなければ、その後の
+    AI の手番でも見続ける（2連続パスか手数上限で終わることもある）。target_len None なら投了しない。
+    """
+    if target_len is None or lead_ai is None or wr_ai is None or depth < target_len:
+        return False, 0
+    return _confirm_resign(wr_ai >= RESIGN_LEN_MIN_WINRATE and lead_ai >= RESIGN_LEN_MIN_LEAD, streak)
+
+
+def resign_model_of(spec):
+    """日程の1局（または games.jsonl の1行）の投了モデル: length / lead / none。"""
+    if spec.get("resign_len") is not None:
+        return "length"
+    if spec.get("resign_lead") is not None:
+        return "lead"
+    return "none"
+
+
+def selfplay_resign_check(spec, depth, lead_ai, wr_ai, streak, size):
+    """日程の1局のモデル（resign_len があれば length・無ければ resign_lead の lead）で投了を判定する。"""
+    if spec.get("resign_len") is not None:
+        return selfplay_should_resign_at_length(depth, lead_ai, wr_ai, streak, spec["resign_len"])
+    return selfplay_should_resign(depth, lead_ai, wr_ai, streak, spec.get("resign_lead"), size)
 
 
 def resign_pool_from_summaries(summaries, size):
-    """実戦の report_game_*.json の summary 群 → 投了局の最終リード（AI 視点）の標本。
+    """実戦の report_game_*.json の summary 群 → 投了局の最終リード（AI 視点）の標本（lead モデル）。
 
     実戦の監視対局はパスで終わらない（相手の投了で終わる）ので全局を投了局とみなす。投了判定の開始手数
     （13路 40）未満で終わった局は除く。13路以外の盤は盤面積で比例させる（9路 ×81/169・19路 ×361/169）。
@@ -262,6 +309,15 @@ def resign_pool_from_summaries(summaries, size):
         lead = s["final_score"] * (1 if s["ai"] == "B" else -1)
         out.append(round(lead * scale, 2))
     return out
+
+
+def resign_lengths_from_summaries(summaries, size):
+    """実戦の report_game_*.json の summary 群 → 局の手数（summary.n_moves）の標本（length モデル）。
+
+    実戦の手数の分布そのもの（13路 18局・中央値 78.5）なので短い局も除かない。13路以外の盤は開始手数と同じく
+    盤面積で比例させる（scale_moves_13）。
+    """
+    return [scale_moves_13(s["n_moves"], size) for s in summaries if s.get("n_moves")]
 
 
 def selfplay_outcome(end_reason, final_lead_ai):

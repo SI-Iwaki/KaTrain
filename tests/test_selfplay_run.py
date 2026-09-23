@@ -5,6 +5,7 @@
 """
 
 import json
+import statistics
 
 import pytest
 
@@ -180,6 +181,32 @@ class TestSummaries:
             summary = {"ai": ai, "n_moves": n, "final_score": fs}
             (tmp_path / f"report_game_{i}.json").write_text(json.dumps({"summary": summary}), encoding="utf-8")
         assert R.load_resign_pool(13, str(tmp_path)) == [28.9]
+        assert R.load_resign_lengths(13, str(tmp_path)) == [59, 31]
+
+    def test_resign_lengths_are_the_real_game_lengths(self):
+        lens = R.load_resign_lengths(13)  # 実戦 13路 18局（recon/report_game_*.json の summary.n_moves）
+        assert len(lens) == 18 and statistics.median(lens) == 78.5 and (min(lens), max(lens)) == (31, 128)
+        assert R.load_resign_lengths(9) == [round(n * 81 / 169) for n in lens]
+        assert R.load_resign_lengths(19) == [round(n * 361 / 169) for n in lens]
+
+    def test_repo_relpath(self, tmp_path):
+        inside = R.os.path.join(R.REPO_ROOT, "experiments", "selfplay", "20260924_0202_calib13")
+        assert R.repo_relpath(inside) == "experiments/selfplay/20260924_0202_calib13"
+        assert R.repo_relpath(R.RECON_DIR) == "docs/superpowers/specs/calibration-data/selfplay/recon"
+        outside = str(tmp_path / "run")  # リポジトリの外は絶対パスのまま（スラッシュ区切り）
+        assert R.repo_relpath(outside) == R.os.path.abspath(outside).replace("\\", "/")
+        assert R.repo_relpath(None) is None
+
+    def test_resign_model_is_a_game_condition(self):
+        def plan(resign):
+            return {"size": 13, "komi": 7.0, "opponent": {"kind": "humansl"}, "resign": resign}
+
+        length = plan({"model": "length", "no_resign": False, "range": None})
+        lead = plan({"model": "lead", "no_resign": False, "range": None})
+        old = plan({"no_resign": False, "range": None})  # 長さのモデルより前の run.json＝lead
+        assert R.plan_conditions(length) != R.plan_conditions(lead)
+        assert R.plan_conditions(old) == R.plan_conditions(lead)
+        assert R.plan_conditions(plan({"no_resign": True, "range": None}))["resign"]["model"] == "none"
 
     def test_calibration_markdown_and_pool_file(self, tmp_path):
         out = R.OutputDir(tmp_path / "cal")
@@ -206,14 +233,20 @@ class TestSummaries:
                 )
         with open(out.file("games.jsonl"), "w", encoding="utf-8") as f:
             f.writelines(json.dumps(r) + "\n" for r in recs)
-        plan = {"size": 13, "arms": [{"strategy": "enigma13plus"}], "opponent": {"tau": 1.0}}
+        plan = {
+            "size": 13,
+            "arms": [{"strategy": "enigma13plus"}],
+            "opponent": {"tau": 1.0},
+            "resign": {"model": "length"},
+        }
         cal = R.calibration_result(out, plan)
         assert cal["best"]["ranks"] == ["rank_8k", "rank_3k", "rank_1d"]
         assert abs(cal["harness_drift_ai"] - (0.55 - 0.533)) < 1e-9
         md = R.format_calibration_md(cal)
-        assert "| rank_3k | 2 |" in md and "実戦（目標）" in md
+        assert "| rank_3k | 2 |" in md and "実戦（目標）" in md and "投了モデル: length" in md
         pool = R.pool_file_content(cal)
         assert pool["ranks"] == ["rank_8k", "rank_3k", "rank_1d"] and pool["tau"] == 1.0
+        assert pool["resign_model"] == "length"
 
     def _cal_record(self, **overrides):
         block = {"top1": 0.2, "top5": 0.5, "mean_ptloss": 1.8, "n": 30}
