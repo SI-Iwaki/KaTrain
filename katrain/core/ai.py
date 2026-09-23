@@ -5282,6 +5282,70 @@ class Veil9Strategy(Enigma9Strategy):
         )
 
 
+@register_strategy(AI_VEIL_13)
+class Veil13Strategy(Veil9Strategy):
+    """13路専用「韜晦」戦略（Veil9Strategy の盤サイズ・設定キー・既定値差し替え版）。
+
+    既定値は SETTING_DEFAULTS（13路は自己対局ハーネスで測って選ぶ・値と校正状況は
+    .claude/rules/ai-parameters.md）。sticky 状態は `game._veil_state["veil13"]`。
+    """
+
+    BOARD_LEN = 13
+    KEY_PREFIX = "veil13"
+    LABEL = "Veil13"
+    SETTING_DEFAULTS = {
+        "target_rate": 0.30,
+        "reserve": 5.0,
+        "min_winrate": 0.85,
+        "free_loss": 0.3,
+        "free_wr_drop": 0.03,
+        "close_drift_cap": 0.0,
+        "spend_rate": 0.5,
+        "max_loss": 4.5,
+        "yose_max_loss": 1.5,
+        "dominant_hp": 0.8,
+        "dominant_max_loss": 2.0,
+        "min_human_policy": 0.05,
+        "natural_ratio": 0.2,
+        "cost_slack": 0.3,
+        "trap_mode": False,
+        "trap_min_delta_e": 0.5,
+    }
+    VEIL_BOARD = {"endgame_move": 85, "unsettled_max": 16, "trusted_visits": 50, "probe_hp": 3, "probe_cheap": 2}
+
+
+@register_strategy(AI_VEIL_19)
+class Veil19Strategy(Veil9Strategy):
+    """19路専用「韜晦」戦略（Veil9Strategy の盤サイズ・設定キー・既定値差し替え版・未校正）。
+
+    1手の解析が重いので自然枠の安い順は 1 手（probe_hp 3 + probe_cheap 1）。sticky 状態は
+    `game._veil_state["veil19"]`。
+    """
+
+    BOARD_LEN = 19
+    KEY_PREFIX = "veil19"
+    LABEL = "Veil19"
+    SETTING_DEFAULTS = {
+        "target_rate": 0.30,
+        "reserve": 7.0,
+        "min_winrate": 0.85,
+        "free_loss": 0.3,
+        "free_wr_drop": 0.03,
+        "close_drift_cap": 0.0,
+        "spend_rate": 0.5,
+        "max_loss": 6.0,
+        "yose_max_loss": 2.0,
+        "dominant_hp": 0.8,
+        "dominant_max_loss": 3.0,
+        "min_human_policy": 0.05,
+        "natural_ratio": 0.2,
+        "cost_slack": 0.3,
+        "trap_mode": False,
+        "trap_min_delta_e": 0.7,
+    }
+    VEIL_BOARD = {"endgame_move": 150, "unsettled_max": 36, "trusted_visits": 50, "probe_hp": 3, "probe_cheap": 1}
+
+
 @register_strategy(AI_SCORELOSS)
 class ScoreLossStrategy(AIStrategy):
     """ScoreLoss strategy - weights moves based on point loss"""

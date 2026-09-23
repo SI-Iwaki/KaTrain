@@ -15,6 +15,8 @@ from katrain.core.ai import (
     AnalysisDiscardedException,
     Enigma9Strategy,
     Veil9Strategy,
+    Veil13Strategy,
+    Veil19Strategy,
     VeilCtx,
     game_report,
     veil_allowance,
@@ -38,7 +40,7 @@ from katrain.core.ai import (
     veil_trap_price,
     veil_urgency,
 )
-from katrain.core.constants import AI_VEIL_9
+from katrain.core.constants import AI_VEIL_9, AI_VEIL_13, AI_VEIL_19
 from katrain.core.game_node import GameNode
 from katrain.core.sgf_parser import Move
 
@@ -1026,3 +1028,90 @@ class TestTerminal(_Harness):
         s, _ = self._end(hp_ok=False)
         assert s.generate_move()[0].gtp() == "E5"
         assert s.last_decision_info["why"] == "no_hp"
+
+
+# (クラス, 盤, 設定接頭辞, ai キー, 定数)
+VEILS = [
+    (Veil9Strategy, 9, "veil9", "ai:veil9", AI_VEIL_9),
+    (Veil13Strategy, 13, "veil13", "ai:veil13", AI_VEIL_13),
+    (Veil19Strategy, 19, "veil19", "ai:veil19", AI_VEIL_19),
+]
+VEIL_IDS = [v[2] for v in VEILS]
+
+
+class TestBoardFamily:
+    @pytest.mark.parametrize("cls,size,prefix,ai_key,const", VEILS, ids=VEIL_IDS)
+    def test_registered_with_board_prefix_and_label(self, cls, size, prefix, ai_key, const):
+        assert const == ai_key
+        assert STRATEGY_REGISTRY[const] is cls
+        assert issubclass(cls, Veil9Strategy)
+        assert (cls.BOARD_LEN, cls.KEY_PREFIX, cls.LABEL) == (size, prefix, f"Veil{size}")
+
+    @pytest.mark.parametrize("cls,size,prefix,ai_key,const", VEILS, ids=VEIL_IDS)
+    def test_defaults_match_the_spec_table(self, cls, size, prefix, ai_key, const):
+        assert cls.SETTING_DEFAULTS == EXPECTED_DEFAULTS[size]
+        for key, value in SAFETY_DEFAULTS[size].items():
+            assert cls.SETTING_DEFAULTS[key] == value, key
+
+    def test_board_constants(self):
+        assert Veil13Strategy.VEIL_BOARD == {
+            "endgame_move": 85,
+            "unsettled_max": 16,
+            "trusted_visits": 50,
+            "probe_hp": 3,
+            "probe_cheap": 2,
+        }
+        assert Veil19Strategy.VEIL_BOARD == {
+            "endgame_move": 150,
+            "unsettled_max": 36,
+            "trusted_visits": 50,
+            "probe_hp": 3,
+            "probe_cheap": 1,
+        }
+
+    @pytest.mark.parametrize("cls,size,prefix,ai_key,const", VEILS[1:], ids=VEIL_IDS[1:])
+    def test_the_flow_is_shared(self, cls, size, prefix, ai_key, const):
+        assert cls._generate_move is Veil9Strategy._generate_move
+        assert cls.generate_move is Enigma9Strategy.generate_move
+
+
+class _Harness13(_Harness):
+    CLS = Veil13Strategy
+    SIZE = 13
+    CANDS = [
+        {"move": "G7", "pointsLost": 0.0, "relativePointsLost": 0.0, "visits": 600, "winrate": 0.62},
+        {"move": "D4", "pointsLost": 0.2, "relativePointsLost": 0.2, "visits": 80, "winrate": 0.61},
+        {"move": "K10", "pointsLost": 1.0, "relativePointsLost": 1.0, "visits": 120, "winrate": 0.58},
+        {"move": "A1", "pointsLost": 9.0, "relativePointsLost": 9.0, "visits": 3, "winrate": 0.20},
+    ]
+    HP = {"G7": 0.40, "D4": 0.30, "K10": 0.15}
+
+
+class TestVeil13Flow(_Harness13):
+    def test_budget_follows_the_spec_example(self):
+        # 13路・u = 1・lead +7 → S = 2・A_t = 1.0（spec §6 の目安）
+        s, logs = self._strategy(lead=7.0, wr=0.9, probes={})
+        s.generate_move()
+        assert s.last_decision_info["A_t"] == pytest.approx(1.0)
+        assert any("Budget: lead=7.00 reserve=5.0 S=2.00 F=0.30 cap=4.50 A_t=1.00" in m for m in logs)
+
+    def test_state_is_kept_per_board_prefix(self):
+        probes = {"G7": _child(0.5, 0.55, size=13), "D4": _child(0.45, 0.545, size=13)}
+        s, _ = self._strategy(lead=0.5, wr=0.55, hist=_hist("B", 2, 9), probes=probes)
+        move, _ = s.generate_move()
+        # u = 0（p_match 0.30 = 目標）・D4 は visits 80 >= trusted 50 → cons = max(0.05, 0.2) = 0.2 <= 0.3
+        assert move.gtp() == "D4" and s.last_decision_info["kind"] == "free"
+        assert list(s.game._veil_state) == ["veil13"]
+
+    def test_endgame_threshold_is_85_moves(self):
+        s, _ = self._strategy(depth=84, probes={})
+        s.generate_move()
+        assert s.last_decision_info["in_yose"] is False
+        s, _ = self._strategy(depth=85, probes={})
+        s.generate_move()
+        assert s.last_decision_info["in_yose"] is True
+
+    def test_wrong_board_plays_the_best_move(self):
+        s, logs = self._strategy(size=9, cands=[dict(c) for c in _Harness.CANDS])
+        assert s.generate_move()[0].gtp() == "E5"
+        assert any("is not 13x13" in m for m in logs)
