@@ -4645,6 +4645,53 @@ def veil_choose(scored, slack, prefer_safe, hp_tie=VEIL_HP_TIE):
     return min(band, key=lambda c: (-c["hp"], c["cost"], c["gtp"]))
 
 
+def veil_trap_price(vloss, delta_e, credit=VEIL_TRAP_CREDIT):
+    """罠の値段 = max(0, vloss) − credit × ΔE（E は集計でしか較正されていないので半分だけ信用する）。"""
+    return max(0.0, vloss) - credit * delta_e
+
+
+def veil_trap_ok(t, ctx):
+    """罠（`<prefix>_trap_mode` の上乗せ層）の判定。返り値 (ok, price)（ΔE か find_hp が無ければ (False, None)）。
+
+    t は {"vloss", "d_e", "find", "hp", "wr_after"}。
+    1. 資格: ΔE >= trap_min_delta_e、find_hp <= ENIGMA9_GAMBLE_MAX_FIND、hp >= VEIL_TRAP_MIN_HP（自然さの床は免除）。
+    2. 安全（vloss で判定・値段では割り引かない）: max(0, vloss) <= trap_cap、lead − max(0, vloss) >= reserve、
+       着手後勝率 >= min_winrate。
+    3. 値段: ゲートが開いていれば price <= A_t'、閉じていれば price <= 0 かつ max(0, vloss) <= F_eff かつ
+       p_match > VEIL_TARGET_FLOOR。
+    """
+    d_e, find = t.get("d_e"), t.get("find")
+    if d_e is None or find is None:
+        return False, None
+    price = veil_trap_price(t["vloss"], d_e)
+    paid = max(0.0, t["vloss"])
+    if d_e < ctx.trap_min_delta_e or find > ENIGMA9_GAMBLE_MAX_FIND or t.get("hp", 0.0) < VEIL_TRAP_MIN_HP:
+        return False, price
+    wr_after = t.get("wr_after")
+    if paid > ctx.trap_cap + _VEIL_EPS or ctx.lead - paid < ctx.reserve - _VEIL_EPS:
+        return False, price
+    if wr_after is None or wr_after < ctx.min_winrate:
+        return False, price
+    if ctx.urgency > 0:
+        return price <= ctx.allowance + _VEIL_EPS, price
+    ok = price <= _VEIL_EPS and paid <= ctx.f_eff + _VEIL_EPS and ctx.p_match > VEIL_TARGET_FLOOR
+    return ok, price
+
+
+def veil_merge_trap(plain, traps, swap_margin=VEIL_TRAP_SWAP_MARGIN):
+    """素の外し P（`veil_choose` の結果・None 可）と合格した罠の列から最終の1手を返す。
+
+    罠 Q は値段最小（同点は hp 降順 → gtp）。P があれば P、ただし Q の値段が P の cost より swap_margin 以上
+    安ければ Q。P が無ければ Q（外しが1回増える）。P があれば戻り値は必ず非 None。
+    """
+    best_trap = min(traps, key=lambda t: (t["price"], -t.get("hp", 0.0), t["gtp"])) if traps else None
+    if plain is None:
+        return best_trap
+    if best_trap is not None and best_trap["price"] <= plain["cost"] - swap_margin + _VEIL_EPS:
+        return best_trap
+    return plain
+
+
 @register_strategy(AI_SCORELOSS)
 class ScoreLossStrategy(AIStrategy):
     """ScoreLoss strategy - weights moves based on point loss"""

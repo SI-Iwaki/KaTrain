@@ -19,12 +19,15 @@ from katrain.core.ai import (
     veil_close_drift_ok,
     veil_cons_loss,
     veil_free_limit,
+    veil_merge_trap,
     veil_natural_floor,
     veil_near_free_ok,
     veil_paid_ok,
     veil_prefilter,
     veil_shortlist,
     veil_tally,
+    veil_trap_ok,
+    veil_trap_price,
     veil_urgency,
 )
 from katrain.core.game_node import GameNode
@@ -369,3 +372,53 @@ class TestChoose:
     def test_with_surplus_a_clearly_more_human_move_still_wins(self):
         scored = [pick("A", 0.1, 0.30, wr_after=0.90), pick("B", 0.2, 0.27, wr_after=0.99)]
         assert veil_choose(scored, 0.3, prefer_safe=True)["gtp"] == "A"
+
+
+def trap(vloss=1.0, d_e=2.0, find=0.1, hp=0.03, wr_after=0.93, gtp="T"):
+    return {"gtp": gtp, "vloss": vloss, "d_e": d_e, "find": find, "hp": hp, "wr_after": wr_after}
+
+
+class TestTrap:
+    def test_price_discounts_half_of_delta_e_and_clamps_the_loss(self):
+        assert veil_trap_price(1.0, 2.0) == pytest.approx(0.0)
+        assert veil_trap_price(-0.4, 1.0) == pytest.approx(-0.5)
+
+    def test_open_gate_accepts_within_the_allowance(self):
+        assert veil_trap_ok(trap(vloss=3.0, d_e=1.0), ctx()) == (True, pytest.approx(2.5))
+        assert veil_trap_ok(trap(vloss=4.2, d_e=1.0), ctx())[0] is False  # price 3.7 > A_t' 3.5
+
+    def test_qualification(self):
+        assert veil_trap_ok(trap(d_e=0.4), ctx())[0] is False  # ΔE 不足
+        assert veil_trap_ok(trap(find=0.3), ctx())[0] is False  # 正しい応手が本の手
+        assert veil_trap_ok(trap(hp=0.019), ctx())[0] is False  # NN の床に張り付いた手
+        assert veil_trap_ok(trap(d_e=None), ctx()) == (False, None)
+
+    def test_safety_is_judged_on_the_raw_verified_loss(self):
+        # 値段は負でも、vloss が罠の上限（ヨセなら yose_max_loss）を超えたら不可
+        assert veil_trap_ok(trap(vloss=1.6, d_e=6.0), ctx(trap_cap=1.5))[0] is False
+        assert veil_trap_ok(trap(vloss=1.5, d_e=6.0), ctx(trap_cap=1.5))[0] is True
+        assert veil_trap_ok(trap(vloss=2.0, d_e=6.0), ctx(lead=6.5, surplus=1.5))[0] is False  # reserve を割る
+        assert veil_trap_ok(trap(wr_after=0.80), ctx())[0] is False
+
+    def test_closed_gate_needs_a_non_positive_price_within_free_and_a_rate_above_the_floor(self):
+        closed = ctx(urgency=0.0, allowance=0.0)
+        assert veil_trap_ok(trap(vloss=0.3, d_e=0.6), closed) == (True, pytest.approx(0.0))
+        assert veil_trap_ok(trap(vloss=0.3, d_e=0.5), closed)[0] is False  # price 0.05 > 0
+        assert veil_trap_ok(trap(vloss=0.4, d_e=2.0), closed)[0] is False  # vloss > F_eff
+        assert veil_trap_ok(trap(vloss=0.3, d_e=0.6), ctx(urgency=0.0, allowance=0.0, p_match=0.15))[0] is False
+
+    def test_merge_keeps_the_plain_move_unless_the_trap_is_clearly_cheaper(self):
+        plain = {"gtp": "D4", "kind": "free", "cost": 0.2}
+        dear = {"gtp": "C3", "kind": "trap", "price": -0.05, "hp": 0.03}
+        cheap = {"gtp": "F2", "kind": "trap", "price": -0.1, "hp": 0.03}
+        assert veil_merge_trap(plain, [dear])["gtp"] == "D4"
+        assert veil_merge_trap(plain, [dear, cheap])["gtp"] == "F2"
+        assert veil_merge_trap(plain, [])["gtp"] == "D4"
+        assert veil_merge_trap(None, [dear, cheap])["gtp"] == "F2"
+        assert veil_merge_trap(None, []) is None
+
+    def test_merge_breaks_price_ties_on_hp_then_gtp(self):
+        a = {"gtp": "B2", "kind": "trap", "price": -1.0, "hp": 0.03}
+        b = {"gtp": "A1", "kind": "trap", "price": -1.0, "hp": 0.05}
+        c = {"gtp": "A2", "kind": "trap", "price": -1.0, "hp": 0.05}
+        assert veil_merge_trap(None, [a, b, c])["gtp"] == "A1"
