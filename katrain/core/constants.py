@@ -101,6 +101,12 @@ AI_ENIGMA_19_PLUS = "ai:enigma19plus"
 # 人間らしい非最善手か期待値プラスの罠へ外し、ヨセは HumanStyle 9段へ委譲する
 # （ai.py の Mimic13Strategy・spec 2026-09-17-mimic13-strategy-design.md）
 AI_MIMIC_13 = "ai:mimic13"
+# 9/13/19路「韜晦」戦略。勝ちを最優先にしたまま、自分の AI 最善手一致率（終局レポートの値）を絶対目標まで
+# 下げる＝ほぼ損失ゼロの外しは常に、損をする外しは一致率が目標超のときだけリードの余剰から払う
+# （ai.py の Veil9Strategy / Veil13Strategy / Veil19Strategy・spec 2026-09-23-veil-strategy-design.md）
+AI_VEIL_9 = "ai:veil9"
+AI_VEIL_13 = "ai:veil13"
+AI_VEIL_19 = "ai:veil19"
 
 AI_CONFIG_DEFAULT = AI_RANK
 

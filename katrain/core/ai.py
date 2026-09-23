@@ -18,7 +18,7 @@ from katrain.core.constants import (
     AI_FIGHTING, AI_FIGHTING_SCORELOSS_ELO,
     AI_WEIGHTED, AI_WEIGHTED_ELO, CALIBRATED_RANK_ELO, OUTPUT_DEBUG,
     OUTPUT_ERROR, OUTPUT_INFO, PLAYER_AI, PLAYER_HUMAN, PRIORITY_ENIGMA_PONDER,
-    PRIORITY_EXTRA_AI_QUERY, PRIORITY_TSUMEGO_SPECULATION, ADDITIONAL_MOVE_ORDER, AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE, AI_PARITY_9, AI_ENIGMA_9, AI_ENIGMA_13, AI_ENIGMA_19, AI_ENIGMA_13_PLUS, AI_ENIGMA_9_PLUS, AI_ENIGMA_19_PLUS, AI_MIMIC_13
+    PRIORITY_EXTRA_AI_QUERY, PRIORITY_TSUMEGO_SPECULATION, ADDITIONAL_MOVE_ORDER, AI_HUMAN, AI_PRO, AI_DIVERGE, AI_SIEGE, AI_HUNT, AI_HUNT_DIVERGE, AI_PARITY_9, AI_ENIGMA_9, AI_ENIGMA_13, AI_ENIGMA_19, AI_ENIGMA_13_PLUS, AI_ENIGMA_9_PLUS, AI_ENIGMA_19_PLUS, AI_MIMIC_13, AI_VEIL_9, AI_VEIL_13, AI_VEIL_19
 )
 from katrain.core.engine import KataGoEngine
 from katrain.core.game import (
@@ -4776,6 +4776,274 @@ def veil_decision_record(**fields):
         return str(v)
 
     return json.dumps({k: clean(v) for k, v in fields.items()}, ensure_ascii=True, sort_keys=True)
+
+
+@register_strategy(AI_VEIL_9)
+class Veil9Strategy(Enigma9Strategy):
+    """9路専用「韜晦」戦略＝勝ちを最優先にしたまま、自分の AI 最善手一致率を絶対目標まで下げる。
+
+    一致率は KaTrain の終局レポートの値（`veil_tally`＝`game_report` と同一定義）。手番は3段:
+    (i) 候補が最善手しか無い → 最善手、(ii) 最善手の humanPolicy が dominant_hp 以上（明らかな一手）→
+    一致率が目標を超えているとき（u > 0）だけ dominant_max_loss までで外す、(iii) それ以外 → ほぼ損失ゼロの
+    外し（free）は常に、損をする外し（paid）は u > 0 のときだけ余剰 S = lead − reserve の範囲で払う。
+    外しはすべて子局面プローブ（clean 500v + humanSL 8v）で検証し、最安帯の中で humanPolicy 最大を選ぶ。
+    罠（trap_mode）は ΔE の上乗せ層。ヨセは委譲しない・ponder は起動しない。全分岐のフェイルセーフは最善手。
+
+    難解（Enigma9Strategy）からは generate_move（時間ログ）・_setting・_log・_best_move・_run_query・
+    _probe_children・_cancel_ponder・_terminal_band_move を継承して使う。13/19路は属性だけ差し替えたサブクラス。
+    sticky な状態は `game._veil_state[KEY_PREFIX]`（endgame・close_drift・ledger）。
+    設計: docs/superpowers/specs/2026-09-23-veil-strategy-design.md
+    """
+
+    BOARD_LEN = 9
+    KEY_PREFIX = "veil9"
+    LABEL = "Veil9"
+    SETTING_DEFAULTS = {
+        "target_rate": 0.40,        # 目標一致率（9路は下限 35〜45% が実測済み）
+        "reserve": 3.0,             # 支払う外し・罠の後にも残すリード（目）＝勝ちの安全条件
+        "min_winrate": 0.85,        # 支払う外しと罠の着手後勝率フロア＝勝ちの安全条件
+        "free_loss": 0.2,           # 同値外しの閾値（目）
+        "free_wr_drop": 0.03,       # 同値外しで許す1手の勝率低下
+        "close_drift_cap": 0.0,     # 接戦中の同値外し vloss の1局あたり累計上限（0 = 上限なし）
+        "spend_rate": 0.5,          # 余剰のうち1回に使う割合
+        "max_loss": 3.0,            # 支払い上限（ヨセ前・目）。罠の vloss のハード上限も兼ねる
+        "yose_max_loss": 1.0,       # ヨセ中の支払い上限（目・罠も同じ）。0 で同値のみ
+        "dominant_hp": 0.8,         # 「明らかな一手」の閾値（1.01 で OFF）
+        "dominant_max_loss": 1.5,   # 明らかな一手で許す損失（目・上限を絞るだけ）
+        "min_human_policy": 0.05,   # 自然さの絶対床
+        "natural_ratio": 0.2,       # 自然さの相対床（第一感比）
+        "cost_slack": 0.3,          # 最安帯の幅（目）
+        "trap_mode": False,         # 罠の上乗せ層（A/B 用）
+        "trap_min_delta_e": 0.5,    # 罠とみなす ΔE（目）
+    }
+    # スライダーにしない盤サイズ別の値（spec §6.1）
+    VEIL_BOARD = {"endgame_move": 30, "unsettled_max": 8, "trusted_visits": 100, "probe_hp": 3, "probe_cheap": 2}
+
+    def _veil_state(self):
+        """この局の sticky 状態（Game に載るので対局ごとに作り直される）。"""
+        state = getattr(self.game, "_veil_state", None)
+        if not isinstance(state, dict):
+            state = {}
+            setattr(self.game, "_veil_state", state)
+        return state.setdefault(self.KEY_PREFIX, {"endgame": False, "close_drift": 0.0, "ledger": []})
+
+    def _veil_punish(self, probe, opponent):
+        """子局面プローブから (E, find_hp) を返す（不完全なら (None, None)）。"""
+        clean, hp_child = (probe or {}).get("clean"), (probe or {}).get("hp")
+        if not clean or not clean.get("moveInfos") or not hp_child or "humanPolicy" not in hp_child:
+            return None, None
+        replies, _best_reply = enigma9_reply_table(clean["moveInfos"], opponent)
+        if not replies:
+            return None, None
+        hp_of = enigma9_hp_lookup(hp_child["humanPolicy"], self.game.board_size)
+        e_punish, _coverage = enigma9_expected_punish(replies, hp_of)
+        return e_punish, enigma9_reply_findability(replies, hp_of)
+
+    def _veil_finish(self, result, info, tier, kind, **fields):
+        """1手の結論を記録して返す（last_decision_info・`Decision:` 行・ledger）。result は (Move, 理由)。"""
+        move = result[0]
+        record = {k: v for k, v in info.items() if k != "t0"}
+        record.update(fields)
+        record.update(tier=tier, kind=kind, chosen=None if move is None else move.gtp(), secs=time.time() - info["t0"])
+        self.last_decision_info = record
+        self._veil_state()["ledger"].append((record.get("depth"), record.get("best"), record["chosen"], kind))
+        self._log("Decision: " + veil_decision_record(**record))
+        return result
+
+    def _veil_violation(self, chosen, kind, bounds):
+        """不変条件違反（S19）。ERROR ログを出して最善手。"""
+        self.game.katrain.log(
+            f"[{type(self).__name__}] Invariant violated: chosen={chosen} kind={kind} bounds={bounds} -> best move",
+            OUTPUT_ERROR,
+        )
+        return self._best_move(f"{self.LABEL}: invariant check failed, playing best move.")
+
+    def _veil_terminal(self, cands, player, best_gtp, lead, u, info):
+        """S7（相手の直前パス）と S8（終局帯）。該当すれば (result, tier, kind, fields)、しなければ None。"""
+        return None
+
+    def _generate_move(self) -> Tuple[Move, str]:
+        # ---- S0 ラッパー: 解析の破棄は上へ、それ以外の例外は最善手 ----
+        try:
+            return self._veil_move()
+        except AnalysisDiscardedException:
+            raise
+        except Exception as e:  # noqa: BLE001 フェイルセーフ＝どんな例外でも最善手
+            self.game.katrain.log(
+                f"[{type(self).__name__}] error {type(e).__name__}: {e} -> best move", OUTPUT_ERROR
+            )
+            self.last_decision_info = {"tier": "failsafe", "kind": "best", "why": "error", "error": repr(e)}
+            return self._best_move(f"{self.LABEL}: internal error, playing best move.")
+
+    def _veil_move(self) -> Tuple[Move, str]:
+        # ---- S1 前処理（クエリ0本）----
+        t0 = time.time()
+        self._cancel_ponder()  # 前に動いていた難解の ponder の後始末（走っていなければ何もしない）
+        self.game.board_watch_probe_warm = False  # 難解が立てたままだと監視の先読みが Probe の温めを続ける
+        self.wait_for_analysis()
+        self.last_decision_info = {}
+        state = self._veil_state()
+        cn = self.cn
+        player = cn.next_player
+        sign = 1 if player == "B" else -1
+        opponent = "W" if player == "B" else "B"
+        info = {"depth": cn.depth, "player": player, "queries": 0, "t0": t0}
+
+        def finish(result, tier, kind, **fields):
+            return self._veil_finish(result, info, tier, kind, **fields)
+
+        # ---- S2 盤サイズ ----
+        side = self.BOARD_LEN
+        if max(self.game.board_size) != side:
+            self.game.katrain.log(
+                f"[{type(self).__name__}] board size {self.game.board_size} is not {side}x{side}; "
+                f"this mode is {side}x{side}-only, playing KataGo best move",
+                OUTPUT_INFO,
+            )
+            return finish(
+                self._best_move(f"{self.LABEL}: not a {side}x{side} board, playing best move."),
+                "failsafe", "best", why="board",
+            )
+
+        # ---- S3 最善手（レポートと同じ candidate_moves[0]）----
+        cands = cn.candidate_moves
+        if not cands:
+            return finish(self._best_move(f"{self.LABEL}: no candidate moves."), "failsafe", "best", why="no_cands")
+        best_gtp = cands[0]["move"]
+        info["best"] = best_gtp
+        if best_gtp == "pass":
+            return finish(self._best_move(f"{self.LABEL}: best move is pass, playing it."), "i", "best", why="pass")
+        cand_gtps = {d["move"] for d in cands}
+
+        # ---- S4 一致率（クエリ0本・レポートと同じ定義）----
+        nodes = cn.nodes_from_root
+        mine, n_mine, opp, n_opp = veil_tally(nodes, player)
+        _mine_t, opp_trunc, _counted = parity9_match_tally(nodes, player)
+        target = float(self._setting("target_rate"))
+        p_match, u = veil_urgency(mine, n_mine, target)
+        info.update(mine=mine, n=n_mine, opp=opp, n_opp=n_opp, opp_trunc=opp_trunc, p_match=p_match, T=target, u=u)
+        self._log(
+            f"Rate: mine={mine}/{n_mine} opp={opp}/{n_opp} opp_trunc={opp_trunc} "
+            f"p_match={p_match:.3f} target={target:.2f} u={u:.2f}"
+        )
+
+        # ---- S5 リード（打つ側視点）----
+        root = cn.analysis.get("root") or {}
+        root_lead = root.get("scoreLead")
+        if root_lead is None:
+            self._log("Lead unavailable -> best move")
+            return finish(
+                self._best_move(f"{self.LABEL}: lead unavailable, playing best move."), "failsafe", "best", why="no_lead"
+            )
+        lead = root_lead * sign
+        root_wr = root.get("winrate")
+        root_wr = None if root_wr is None else (root_wr if player == "B" else 1.0 - root_wr)
+        info.update(lead=lead, root_wr=root_wr)
+
+        # ---- S6 ヨセ判定（sticky・クエリ0本。ownership が無ければ手数だけ）----
+        board = self.VEIL_BOARD
+        in_yose = bool(state["endgame"])
+        if not in_yose and cn.depth >= board["endgame_move"]:
+            ownership = cn.analysis.get("ownership")
+            n_unsettled = None if ownership is None else sum(1 for o in ownership if abs(o) < PARITY9_UNSETTLED_ABS)
+            if parity9_is_endgame(cn.depth, ownership, board["endgame_move"], board["unsettled_max"]):
+                state["endgame"] = True
+                in_yose = True
+            info["unsettled"] = n_unsettled
+            self._log(
+                f"Endgame check: depth={cn.depth} thr={board['endgame_move']} unsettled={n_unsettled} "
+                f"max={board['unsettled_max']} -> {'yose (sticky)' if in_yose else 'not yet'}"
+            )
+        info["in_yose"] = in_yose
+
+        # ---- S7 / S8 相手の直前パス・終局帯 ----
+        terminal = self._veil_terminal(cands, player, best_gtp, lead, u, info)
+        if terminal is not None:
+            result, tier, kind, fields = terminal
+            return finish(result, tier, kind, **fields)
+
+        # ---- S9 予算 ----
+        reserve = float(self._setting("reserve"))
+        f_eff = veil_free_limit(float(self._setting("free_loss")), lead, p_match)
+        cap_phase = float(self._setting("yose_max_loss" if in_yose else "max_loss"))
+        allowance, surplus = veil_allowance(lead, reserve, float(self._setting("spend_rate")), f_eff, cap_phase, u)
+        info.update(reserve=reserve, F=f_eff, S=surplus, A_t=allowance, cap=cap_phase)
+        self._log(
+            f"Budget: lead={lead:.2f} reserve={reserve:.1f} S={surplus:.2f} F={f_eff:.2f} "
+            f"cap={cap_phase:.2f} A_t={allowance:.2f} yose={in_yose}"
+        )
+
+        # ---- S10 生の候補プール（クエリ0本）----
+        trap_on = bool(self._setting("trap_mode"))
+        candidates, _n_searched = parity9_build_candidates(cands, player=player, min_visits=ENIGMA9_POOL_MIN_VISITS)
+        pool0 = [c for c in candidates if c["gtp"] not in (best_gtp, "pass")]
+        raw_cap = max(f_eff, allowance) + VEIL_RAW_MARGIN
+        nat_pool = veil_prefilter(pool0, raw_cap)
+        trap_pool = veil_prefilter(pool0, raw_cap + VEIL_TRAP_RAW_EXTRA) if trap_on else []
+        if not nat_pool and not trap_pool:
+            self._log(f"Tier i: no candidate within raw cap {raw_cap:.2f} -> best move")
+            return finish(
+                self._best_move(f"{self.LABEL}: only the best move is a candidate, playing it."),
+                "i", "best", why="no_pool",
+            )
+
+        # ---- S11 親局面の humanSL（1本）----
+        stage_hp = self._run_query(
+            "parent hp",
+            include_policy=True,
+            ownership=False,
+            visits=ENIGMA9_HP_CHILD_VISITS,
+            extra_settings={"humanSLProfile": ENIGMA9_HUMAN_PROFILE, "ignorePreRootHistory": False},
+        )
+        info["queries"] += 1
+        if not stage_hp or "humanPolicy" not in stage_hp:
+            self._log("HumanSL unavailable -> best move")
+            return finish(
+                self._best_move(f"{self.LABEL}: humanSL unavailable, playing best move."), "failsafe", "best", why="no_hp"
+            )
+        human_policy = stage_hp["humanPolicy"]
+        hp_of = enigma9_hp_lookup(human_policy, self.game.board_size)
+        best_hp = hp_of(best_gtp)
+        info["best_hp"] = best_hp
+
+        # ---- S12 段の判定と自然さ ----
+        dominant = best_hp >= float(self._setting("dominant_hp"))
+        info["dominant"] = dominant
+        if dominant and u <= 0:
+            self._log(f"Tier ii closed: best {best_gtp} hp={best_hp:.3f} and rate at/below target -> best move")
+            return finish(
+                self._best_move(f"{self.LABEL}: the best move is the obvious human move (hp {best_hp:.1%}), playing it."),
+                "ii", "best", why="dominant_closed",
+            )
+        tier = "ii" if dominant else "iii"
+        dominant_max = float(self._setting("dominant_max_loss"))
+        allowance2 = min(allowance, dominant_max) if dominant else allowance
+        trap_cap = min(cap_phase, dominant_max) if dominant else cap_phase
+        if dominant:  # 上限を絞るだけ（広げない）。自然用の足切りを掛け直す
+            raw_cap = max(f_eff, allowance2) + VEIL_RAW_MARGIN
+            nat_pool = veil_prefilter(pool0, raw_cap)
+        info["A_t"] = allowance2
+        floor = veil_natural_floor(
+            mimic_hp_top(human_policy, self.game.board_size),
+            float(self._setting("min_human_policy")),
+            float(self._setting("natural_ratio")),
+            dominant,
+        )
+        naturals = [c for c in nat_pool if hp_of(c["gtp"]) >= floor]
+        trap_cands = [c for c in trap_pool if hp_of(c["gtp"]) >= VEIL_TRAP_MIN_HP]
+        self._log(
+            f"Natural: tier={tier} floor={floor:.3f} best_hp={best_hp:.3f} raw_cap={raw_cap:.2f} "
+            f"naturals={[c['gtp'] for c in naturals]} trap_cands={len(trap_cands)}"
+        )
+        if not naturals and not trap_cands:
+            return finish(
+                self._best_move(f"{self.LABEL}: no natural alternative, playing best move."), "i", "best", why="no_natural"
+            )
+
+        # ---- S13〜S20 は Task 9b で置き換える（仮: 最善手）----
+        return finish(
+            self._best_move(f"{self.LABEL}: no safe deviation, playing best move."), tier, "best", why="none_qualified"
+        )
 
 
 @register_strategy(AI_SCORELOSS)

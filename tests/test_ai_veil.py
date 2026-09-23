@@ -11,6 +11,10 @@ import pytest
 
 import katrain.core.ai as ai_module
 from katrain.core.ai import (
+    STRATEGY_REGISTRY,
+    AnalysisDiscardedException,
+    Enigma9Strategy,
+    Veil9Strategy,
     VeilCtx,
     game_report,
     veil_allowance,
@@ -34,6 +38,7 @@ from katrain.core.ai import (
     veil_trap_price,
     veil_urgency,
 )
+from katrain.core.constants import AI_VEIL_9
 from katrain.core.game_node import GameNode
 from katrain.core.sgf_parser import Move
 
@@ -501,3 +506,268 @@ class TestDecisionRecord:
         assert text == '{"kind": "free", "lead": null, "ledger": [1, "D4"], "ok": true, "tier": "iii", "vloss": 0.123}'
         assert text.isascii()
         assert json.loads(text)["vloss"] == 0.123
+
+
+# spec §6.1 の既定値（凍結）。通しテストはこの値を明示の設定として渡す＝校正で既定値を変えてもテストの前提は動かない
+SPEC_DEFAULTS = {
+    9: {
+        "target_rate": 0.40,
+        "reserve": 3.0,
+        "min_winrate": 0.85,
+        "free_loss": 0.2,
+        "free_wr_drop": 0.03,
+        "close_drift_cap": 0.0,
+        "spend_rate": 0.5,
+        "max_loss": 3.0,
+        "yose_max_loss": 1.0,
+        "dominant_hp": 0.8,
+        "dominant_max_loss": 1.5,
+        "min_human_policy": 0.05,
+        "natural_ratio": 0.2,
+        "cost_slack": 0.3,
+        "trap_mode": False,
+        "trap_min_delta_e": 0.5,
+    },
+    13: {
+        "target_rate": 0.30,
+        "reserve": 5.0,
+        "min_winrate": 0.85,
+        "free_loss": 0.3,
+        "free_wr_drop": 0.03,
+        "close_drift_cap": 0.0,
+        "spend_rate": 0.5,
+        "max_loss": 4.5,
+        "yose_max_loss": 1.5,
+        "dominant_hp": 0.8,
+        "dominant_max_loss": 2.0,
+        "min_human_policy": 0.05,
+        "natural_ratio": 0.2,
+        "cost_slack": 0.3,
+        "trap_mode": False,
+        "trap_min_delta_e": 0.5,
+    },
+    19: {
+        "target_rate": 0.30,
+        "reserve": 7.0,
+        "min_winrate": 0.85,
+        "free_loss": 0.3,
+        "free_wr_drop": 0.03,
+        "close_drift_cap": 0.0,
+        "spend_rate": 0.5,
+        "max_loss": 6.0,
+        "yose_max_loss": 2.0,
+        "dominant_hp": 0.8,
+        "dominant_max_loss": 3.0,
+        "min_human_policy": 0.05,
+        "natural_ratio": 0.2,
+        "cost_slack": 0.3,
+        "trap_mode": False,
+        "trap_min_delta_e": 0.7,
+    },
+}
+# 校正（Task 17）で選んだ既定値の差分。apply_veil_defaults.py が書き換える（空なら spec のまま）
+CALIBRATED_DEFAULTS = {9: {}, 13: {}, 19: {}}
+# コードとパッケージ config の既定値＝spec ＋ 校正の差分
+EXPECTED_DEFAULTS = {size: {**SPEC_DEFAULTS[size], **CALIBRATED_DEFAULTS[size]} for size in SPEC_DEFAULTS}
+# 勝ちの安全条件（要件1）。変えてよいのはユーザーが要件1を再決定したときだけ（apply_veil_defaults.py --safety-redecided）
+SAFETY_DEFAULTS = {
+    9: {"reserve": 3.0, "min_winrate": 0.85},
+    13: {"reserve": 5.0, "min_winrate": 0.85},
+    19: {"reserve": 7.0, "min_winrate": 0.85},
+}
+
+
+# ===== _generate_move の通しテスト（Veil9Strategy・9路・KataGo なし）=====
+
+
+def _hp_array(size, values):
+    """{gtp: hp} → KataGo の humanPolicy フラット配列（末尾 pass）"""
+    arr = [0.0] * (size * size + 1)
+    for gtp, v in values.items():
+        if gtp == "pass":
+            arr[-1] = v
+            continue
+        x, y = Move.from_gtp(gtp).coords
+        arr[(size - 1 - y) * size + x] = v
+    return arr
+
+
+def _child(lead, wr, punish=0.0, size=9):
+    """黒番の AI が候補を打った後の子局面プローブ（scoreLead / winrate は黒視点）。
+
+    白の応手は A9（人間の本命）と J1。punish > 0 なら本命 A9 が punish 目損する罠の形
+    （hp A9 0.9 / J1 0.1 → E = 0.9 × punish、正解 J1 の hp 0.1＝find_hp）。punish 0 なら E = 0。
+    """
+    replies = [("A9", lead + punish, 300), ("J1", lead, 200)]
+    reply_hp = {"A9": 0.9, "J1": 0.1} if punish > 0 else {"A9": 0.5, "J1": 0.5}
+    clean = {
+        "rootInfo": {"scoreLead": lead, "winrate": wr},
+        "moveInfos": [{"move": g, "scoreLead": s, "visits": v} for g, s, v in replies],
+    }
+    return {"clean": clean, "hp": {"humanPolicy": _hp_array(size, reply_hp)}}
+
+
+def _hist(ai_player, mine, n_mine, opp=0, n_opp=0):
+    """一致率の履歴（veil_tally / parity9_match_tally が読む属性だけの疑似ノード列・root 込み）。"""
+    nodes = [types.SimpleNamespace(move=None, is_root=True, parent=None, player="W")]
+    opp_player = "W" if ai_player == "B" else "B"
+    for player, matched, total in ((ai_player, mine, n_mine), (opp_player, opp, n_opp)):
+        for i in range(total):
+            parent = types.SimpleNamespace(
+                analysis_complete=True, candidate_moves=[{"move": "A1" if i < matched else "B2"}]
+            )
+            move = Move.from_gtp("A1", player=player)
+            nodes.append(types.SimpleNamespace(move=move, is_root=False, parent=parent, player=player, points_lost=0.0))
+    return nodes
+
+
+class _Harness:
+    """_generate_move の通しテスト用スタブ（エンジンなし）。黒番・最善手 E5。
+    名前が Test で始まらないので pytest には収集されない（継承した側だけが走る）。"""
+
+    CLS = Veil9Strategy
+    SIZE = 9
+    CANDS = [
+        {"move": "E5", "pointsLost": 0.0, "relativePointsLost": 0.0, "visits": 600, "winrate": 0.62},
+        {"move": "D4", "pointsLost": 0.1, "relativePointsLost": 0.1, "visits": 300, "winrate": 0.61},
+        {"move": "F6", "pointsLost": 0.8, "relativePointsLost": 0.8, "visits": 150, "winrate": 0.58},
+        {"move": "C7", "pointsLost": 2.0, "relativePointsLost": 2.0, "visits": 60, "winrate": 0.50},
+        {"move": "G3", "pointsLost": 3.8, "relativePointsLost": 3.8, "visits": 40, "winrate": 0.45},
+        {"move": "A1", "pointsLost": 9.0, "relativePointsLost": 9.0, "visits": 3, "winrate": 0.20},
+    ]
+    # 床 = max(0.05, 0.2 × 0.40) = 0.08 → 自然な候補は D4 / F6、C7 / G3 は罠の資格（hp >= 0.02）だけ
+    HP = {"E5": 0.40, "D4": 0.30, "F6": 0.15, "C7": 0.03, "G3": 0.04}
+
+    def _strategy(
+        self,
+        *,
+        lead=10.0,
+        wr=0.95,
+        depth=12,
+        cands=None,
+        hp=None,
+        hp_ok=True,
+        probes=None,
+        settings=None,
+        hist=None,
+        last_move=None,
+        ownership=None,
+        size=None,
+        **game_attrs,
+    ):
+        size = size or self.SIZE
+        logs = []
+        katrain_ns = types.SimpleNamespace(log=lambda msg, *a, **k: logs.append(str(msg)))
+        node = types.SimpleNamespace(
+            next_player="B",
+            player="W",
+            depth=depth,
+            move=last_move,
+            is_root=False,
+            analysis_complete=True,
+            analysis={"root": {"scoreLead": lead, "winrate": wr}},
+            candidate_moves=[dict(c) for c in (self.CANDS if cands is None else cands)],
+            nodes_from_root=[] if hist is None else hist,
+            policy_ranking=[],
+        )
+        game = types.SimpleNamespace(katrain=katrain_ns, current_node=node, board_size=(size, size), **game_attrs)
+        spec = {f"{self.CLS.KEY_PREFIX}_{k}": v for k, v in SPEC_DEFAULTS[self.CLS.BOARD_LEN].items()}
+        s = self.CLS(game, {**spec, **(settings or {})})
+        s.queries, s.probe_calls, s.ponders = [], [], []
+        hp_values = self.HP if hp is None else hp
+
+        def run_query(label, **kw):
+            s.queries.append(label)
+            if label == "parent hp":
+                return {"humanPolicy": _hp_array(size, hp_values)} if hp_ok else None
+            return None if ownership is None else {"ownership": ownership, "rootInfo": {"scoreLead": lead}}
+
+        def probe_children(gtps, player, parent_hp=False):
+            s.probe_calls.append(list(gtps))
+            return {g: (probes or {}).get(g) for g in gtps}, None
+
+        s._run_query = run_query
+        s._probe_children = probe_children
+        s._start_ponder = lambda *a, **k: s.ponders.append(a)
+        return s, logs
+
+
+EVEN = dict(lead=0.5, wr=0.55)  # 互角・目標ちょうど（9路 T 0.40 → u = 0）の手番に _hist("B", 3, 9) と組む
+
+
+class TestStrategyClass:
+    def test_registered_as_a_9x9_enigma_subclass(self):
+        assert AI_VEIL_9 == "ai:veil9"
+        assert STRATEGY_REGISTRY[AI_VEIL_9] is Veil9Strategy
+        assert issubclass(Veil9Strategy, Enigma9Strategy)
+        assert (Veil9Strategy.BOARD_LEN, Veil9Strategy.KEY_PREFIX, Veil9Strategy.LABEL) == (9, "veil9", "Veil9")
+
+    def test_defaults_match_the_spec(self):
+        assert Veil9Strategy.SETTING_DEFAULTS == EXPECTED_DEFAULTS[9]
+        assert Veil9Strategy.VEIL_BOARD == {
+            "endgame_move": 30,
+            "unsettled_max": 8,
+            "trusted_visits": 100,
+            "probe_hp": 3,
+            "probe_cheap": 2,
+        }
+
+    def test_only_the_flow_is_overridden(self):
+        assert Veil9Strategy.generate_move is Enigma9Strategy.generate_move  # 時間ログのラッパーは共有
+        assert Veil9Strategy._generate_move is not Enigma9Strategy._generate_move
+        assert Veil9Strategy._terminal_band_move is Enigma9Strategy._terminal_band_move
+
+
+class TestTiers(_Harness):
+    def test_tier_i_only_the_best_move_needs_no_query(self):
+        s, logs = self._strategy(cands=[self.CANDS[0], self.CANDS[-1]])
+        move, _ = s.generate_move()
+        assert move.gtp() == "E5"
+        assert s.queries == [] and s.probe_calls == []
+        assert s.last_decision_info["tier"] == "i"
+
+    def test_tier_ii_closed_at_target_costs_one_query(self):
+        s, logs = self._strategy(**EVEN, hist=_hist("B", 3, 9), hp={**self.HP, "E5": 0.85})
+        move, _ = s.generate_move()
+        assert move.gtp() == "E5"
+        assert s.queries == ["parent hp"] and s.probe_calls == []
+        assert (s.last_decision_info["tier"], s.last_decision_info["why"]) == ("ii", "dominant_closed")
+
+
+class TestFailSafes(_Harness):
+    def test_wrong_board_size(self):
+        s, logs = self._strategy(size=13)
+        assert s.generate_move()[0].gtp() == "E5"
+        assert s.queries == [] and any("is not 9x9" in m for m in logs)
+
+    def test_no_candidates(self):
+        s, _ = self._strategy(cands=[])
+        assert s.generate_move()[0].is_pass
+        assert s.last_decision_info["why"] == "no_cands"
+
+    def test_no_lead(self):
+        s, _ = self._strategy(lead=None)
+        assert s.generate_move()[0].gtp() == "E5" and s.queries == []
+
+    def test_humansl_failure(self):
+        s, _ = self._strategy(hp_ok=False)
+        assert s.generate_move()[0].gtp() == "E5" and s.queries == ["parent hp"] and s.probe_calls == []
+
+    def test_unexpected_exception_plays_the_best_move(self, monkeypatch):
+        def boom(*a, **k):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(ai_module, "veil_allowance", boom)
+        s, logs = self._strategy()
+        assert s.generate_move()[0].gtp() == "E5"
+        assert any("error RuntimeError: boom" in m for m in logs)
+        assert s.last_decision_info["why"] == "error"
+
+    def test_discarded_analysis_is_not_swallowed(self, monkeypatch):
+        def discarded(*a, **k):
+            raise AnalysisDiscardedException("new game")
+
+        monkeypatch.setattr(ai_module, "veil_allowance", discarded)
+        s, _ = self._strategy()
+        with pytest.raises(AnalysisDiscardedException):
+            s.generate_move()
