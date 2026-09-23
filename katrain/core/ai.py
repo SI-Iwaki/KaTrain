@@ -4463,6 +4463,43 @@ def veil_tally(nodes, ai_player):
     return counts[ai_player][0], counts[ai_player][1], counts[opp][0], counts[opp][1]
 
 
+def veil_urgency(mine, n, target, width=VEIL_URGENCY_WIDTH, floor=VEIL_TARGET_FLOOR):
+    """この手も一致させた場合の一致率 p_match = (mine+1)/(n+1) と緊急度 u（0〜1）を返す: (p_match, u)。
+
+    u = clamp((p_match − target) / width, 0, 1)。p_match <= floor なら u = 0（15% 未満へ無駄に払わない）。
+    u > 0 が「ゲートが開いている」＝支払う外しと明らかな一手の外しが許される。u == 0 でも同値外しは続ける。
+    """
+    p_match = (mine + 1) / (n + 1)
+    if p_match <= floor:
+        return p_match, 0.0
+    if width <= 0:
+        return p_match, 1.0 if p_match > target else 0.0
+    return p_match, min(1.0, max(0.0, (p_match - target) / width))
+
+
+def veil_free_limit(free_loss, lead, p_match, behind_limit=VEIL_BEHIND_LIMIT, floor=VEIL_TARGET_FLOOR,
+                    strict=VEIL_STRICT_FREE):
+    """同値外しの閾値 F_eff（目）。劣勢（lead < behind_limit）か p_match <= floor では strict まで下げる。"""
+    if lead < behind_limit or p_match <= floor:
+        return min(free_loss, strict)
+    return free_loss
+
+
+def veil_allowance(lead, reserve, spend_rate, free, cap, u):
+    """支払う外し1回の許容損失 A_t と余剰 S を返す: (A_t, S)。
+
+    S = lead − reserve。u == 0 か S <= 0 なら A_t = 0（支払う外しなし）。それ以外は
+    A_lead = max(free, min(cap, spend_rate × S))、A_t = min(S, free + u × (A_lead − free))。
+    cap はヨセ前 max_loss・ヨセ中 yose_max_loss。max(free, …) を先に取るので cap < free でも
+    A_t は u について減らない。A_t <= S なので支払う外しだけで reserve を割ることはない。
+    """
+    surplus = lead - reserve
+    if u <= 0 or surplus <= 0:
+        return 0.0, surplus
+    a_lead = max(free, min(cap, spend_rate * surplus))
+    return min(surplus, free + u * (a_lead - free)), surplus
+
+
 @register_strategy(AI_SCORELOSS)
 class ScoreLossStrategy(AIStrategy):
     """ScoreLoss strategy - weights moves based on point loss"""
