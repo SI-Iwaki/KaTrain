@@ -255,7 +255,9 @@ def cmd_calibrate(args):
         _warn_if_unbalanced(plan)
         out = _new_output(args, stub, plan, args.label or f"calib-{args.strategy}")
     R.execute_plan(plan, out, stub, engine_factory=start_engine, retry_aborted=args.retry_aborted, log=safe_print)
-    R.summarize_dir(out, args.boot)
+    summary, _ = R.summarize_dir(out, args.boot)
+    for line in R.integrity_warnings(summary):  # review finding on Task 6fix: calibrate must warn too, not just run
+        safe_print(line)
     cal = R.calibration_result(out, plan)
     out.write_json("calibration.json", cal)
     with open(out.file("calibration.md"), "w", encoding="utf-8") as f:
@@ -276,6 +278,8 @@ def cmd_calibrate(args):
         with open(plan["write_pool"], "w", encoding="utf-8") as f:
             json.dump(R.pool_file_content(cal), f, ensure_ascii=False, indent=1)
         safe_print(f"pool written: {plan['write_pool']}")
+        if cal["integrity"].get("humansl_errors"):
+            safe_print("WARN integrity: pool written from games with humanSL errors")
     safe_print(f"calibration: {out.file('calibration.md')}")
 
 

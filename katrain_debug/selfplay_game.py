@@ -356,7 +356,7 @@ def play_game(h, arm, spec, opponent, *, komi_shift=0.0, max_moves=None, hooks=(
     for hook, at_start in zip(hooks, hook_errors_at_start):
         field = getattr(hook, "ERROR_FIELD", None)
         if field:
-            hook_errors[field] = hook_errors.get(field, 0) + hook.errors - at_start
+            hook_errors[field] = hook_errors.get(field, 0) + getattr(hook, "errors", 0) - at_start
     meta = {
         "arm": arm.name,
         "strategy": arm.strategy,

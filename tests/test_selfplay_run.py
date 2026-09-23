@@ -214,3 +214,44 @@ class TestSummaries:
         assert "| rank_3k | 2 |" in md and "実戦（目標）" in md
         pool = R.pool_file_content(cal)
         assert pool["ranks"] == ["rank_8k", "rank_3k", "rank_1d"] and pool["tau"] == 1.0
+
+    def _cal_record(self, **overrides):
+        block = {"top1": 0.2, "top5": 0.5, "mean_ptloss": 1.8, "n": 30}
+        reports = {"WATCH": {n: {"ai": {}, "opp": block} for n, _ in S.REPORT_BINS}}
+        rec = {
+            "arm": "calib",
+            "seed": 0,
+            "rank": "rank_3k",
+            "ai_color": "B",
+            "result": "win",
+            "opp_top1": 0.2,
+            "opp_n": 30,
+            "own_top1": 0.55,
+            "opp_mean_ptloss": 1.8,
+            "opp_tail": {"n": 30, "ge2": 9, "ge5": 3},
+            "n_moves": 80,
+            "reports": reports,
+        }
+        rec.update(overrides)
+        return rec
+
+    def test_calibration_result_and_markdown_carry_integrity_totals(self, tmp_path):
+        """review finding on Task 6fix (outside its file list): calibrate must surface integrity problems too."""
+        out = R.OutputDir(tmp_path / "cal")
+        plan = {"size": 13, "arms": [{"name": "calib", "strategy": "enigma13plus"}], "opponent": {"tau": 1.0}}
+        with open(out.file("games.jsonl"), "w", encoding="utf-8") as f:
+            f.write(json.dumps(self._cal_record()) + "\n")
+        cal = R.calibration_result(out, plan)
+        assert cal["integrity"] == {
+            "fallbacks": 0,
+            "humansl_errors": 0,
+            "hp_audit_errors": 0,
+            "shadow_errors": 0,
+        }
+        assert "WARN integrity" not in R.format_calibration_md(cal)
+
+        with open(out.file("games.jsonl"), "w", encoding="utf-8") as f:
+            f.write(json.dumps(self._cal_record(opponent_stats={"humansl_errors": 2})) + "\n")
+        cal = R.calibration_result(out, plan)
+        assert cal["integrity"]["humansl_errors"] == 2
+        assert "WARN integrity: arm calib: humansl_errors=2" in R.format_calibration_md(cal)

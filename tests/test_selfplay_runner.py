@@ -230,6 +230,15 @@ class TestPlayGame:
         assert rec["result"] == "aborted" and rec["end_reason"] == "aborted"
         assert "RuntimeError" in rec["error"] and f"{stage} bug" in rec["error"]
 
+    def test_hook_with_error_field_but_no_errors_attribute_does_not_raise(self, tmp_path):
+        """ERROR_FIELD はあるが errors 属性が無いフックでも、局の終わりの集計で落ちない（getattr の既定値 0）。"""
+        h = self._harness(tmp_path)
+        arm = G.resolve_arm(h.stub, "A", "default", [])
+        hook = types.SimpleNamespace(ERROR_FIELD="hp_audit_errors")  # errors 属性を持たない
+        res = G.play_game(h, arm, _spec("B"), HumanSLOpponent("rank_3k", seed=7), max_moves=6, hooks=[hook])
+        assert res.record["result"] != "aborted"
+        assert res.record["hp_audit_errors"] == 0
+
     def test_decision_info_is_recorded(self, tmp_path, monkeypatch):
         class Decides(AIStrategy):
             def generate_move(self):

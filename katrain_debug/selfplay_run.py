@@ -277,14 +277,22 @@ def _ci(ci):
     return "-" if not ci or ci[0] is None else f"[{100 * ci[0]:.1f},{100 * ci[1]:.1f}]"
 
 
+def _integrity_warning_line(label, integrity):
+    """`integrity`（fallbacks・humansl_errors・hp_audit_errors・shadow_errors の4つの合計）に1つでも 0 でない
+    ものがあれば `WARN integrity: <label>: ...` の行を返す（無ければ None）。summary（run）と calibrate の
+    calibration.md の両方がこれで同じ文言を出す。"""
+    bad = " ".join(f"{k}={v}" for k, v in integrity.items() if v)
+    return f"WARN integrity: {label}: {bad}" if bad else None
+
+
 def integrity_warnings(summary):
     """アームごとの計測の健全性の数（相手が最善手で打った回数・humanSL の失敗・hp 監査と影判定の失敗）が 0 でなければ
     `WARN integrity:` の行を返す（数字を信じる前に logs/ を見る）。"""
     lines = []
     for name, s in summary["arms"].items():
-        bad = " ".join(f"{k}={v}" for k, v in s["integrity"].items() if v)
-        if bad:
-            lines.append(f"WARN integrity: arm {name}: {bad}")
+        line = _integrity_warning_line(f"arm {name}", s["integrity"])
+        if line:
+            lines.append(line)
     return lines
 
 
@@ -401,6 +409,12 @@ def calibration_result(out, plan):
     per_rank = S.calibration_rank_stats(records)
     choices = S.selfplay_pool_choice(per_rank) if plan["size"] == 13 and len(per_rank) >= 3 else []
     best = choices[0] if choices else None
+    # 計測の健全性（review finding on Task 6fix）: calibrate も run と同じ4つの合計を出す（全アーム＝全局分）
+    integrity = {
+        **{k: sum((r.get("opponent_stats") or {}).get(k) or 0 for r in records) for k in S.INTEGRITY_OPPONENT_STATS},
+        **{k: sum(r.get(k) or 0 for r in records) for k in S.INTEGRITY_HOOK_ERRORS},
+    }
+    arm_name = plan["arms"][0].get("name", "calib")
     return {
         "run_dir": out.path,
         "strategy": plan["arms"][0]["strategy"],
@@ -413,6 +427,8 @@ def calibration_result(out, plan):
         "harness_drift_ai": (
             None if best is None or best["own_mean"] is None else best["own_mean"] - S.CALIB_TARGETS_13["ai_mean"]
         ),
+        "integrity": integrity,
+        "integrity_warning": _integrity_warning_line(f"arm {arm_name}", integrity),
     }
 
 
@@ -438,6 +454,10 @@ def format_calibration_md(cal):
     lines = [
         f"# 自己対局ハーネスの相手ボット校正（{cal['size']}路・{cal['strategy']}・tau {cal['tau']}）",
         "",
+    ]
+    if cal.get("integrity_warning"):
+        lines += [cal["integrity_warning"], ""]
+    lines += [
         f"実行: `{cal['run_dir']}`",
         "",
         "## 段位ごと（相手＝humanSL・WATCH 木・局単位）",

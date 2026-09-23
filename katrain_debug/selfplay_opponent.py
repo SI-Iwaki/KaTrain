@@ -53,8 +53,10 @@ class Waiter:
         """humanSL を1本撃って結果（KataGo の JSON）を返す。ノードには書き戻さない（コールバックで受けるだけ）。
 
         失敗（KataGo のエラー応答＝None を返す・humanPolicy の無い応答）の理由は self.humansl_error に残す（成功なら None）。
-        数えてログに出すのは呼び出し側（相手ボット・hp 監査）。
+        数えてログに出すのは呼び出し側（相手ボット・hp 監査）。until() が例外を投げても前回の値が残らないよう、
+        待ち始める前にリセットする。
         """
+        self.humansl_error = None
         out = {}
 
         def on_result(analysis, partial_result):

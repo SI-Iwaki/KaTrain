@@ -58,6 +58,27 @@ class TestWaiter:
         waiter.humansl(game.current_node, "rank_3k")
         assert waiter.humansl_error == "no humanPolicy"
 
+    def test_humansl_error_is_reset_before_the_wait_can_raise(self, tmp_path):
+        """until() が例外（タイムアウト等）を投げても、前回の humansl() の stale なエラーが残らない。"""
+        engine = FakeEngine(hp_errors={"rank_9d": "boom"})
+        game = new_game(make_stub(tmp_path), engine)
+        waiter = Waiter(engine, timeout=5)
+        waiter.humansl(game.current_node, "rank_9d")
+        assert waiter.humansl_error == "boom"
+
+        class _StuckEngine:
+            def check_alive(self):
+                return True
+
+            def request_analysis(self, node, callback, error_callback=None, **kwargs):
+                pass  # 応答しない -> until() がタイムアウトで GameAborted を投げる
+
+        stuck = Waiter(_StuckEngine(), timeout=0.05)
+        stuck.humansl_error = "stale"
+        with pytest.raises(GameAborted, match="timeout"):
+            stuck.humansl(game.current_node, "rank_3k")
+        assert stuck.humansl_error is None
+
 
 class TestHumanSLOpponent:
     def _play(self, tmp_path, engine, opp, moves=()):

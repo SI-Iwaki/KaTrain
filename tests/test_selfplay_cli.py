@@ -107,43 +107,69 @@ class TestRun:
         assert all(r["opponent"] == "strategy:default" and r["opp_top1"] == 1.0 for r in recs)
 
 
+def _calibrate_args(env, pool=None, ranks="rank_8k,rank_3k,rank_1d", games="2"):
+    args = [
+        "calibrate",
+        "--size",
+        "13",
+        "--strategy",
+        "default",
+        "--ranks",
+        ranks,
+        "--games",
+        games,
+        "--no-resign",
+        "--max-moves",
+        "6",
+        "--timeout",
+        "5",
+        "--boot",
+        "100",
+        "--config",
+        env["config"],
+        "--out-root",
+        env["out"],
+    ]
+    if pool is not None:
+        args += ["--write-pool", str(pool)]
+    return args
+
+
 class TestCalibrate:
-    def test_writes_calibration_files_and_the_pool(self, env):
+    def test_writes_calibration_files_and_the_pool(self, env, capsys):
         pool = env["tmp"] / "opponent_pool_13.json"
-        CLI.main(
-            [
-                "calibrate",
-                "--size",
-                "13",
-                "--strategy",
-                "default",
-                "--ranks",
-                "rank_8k,rank_3k,rank_1d",
-                "--games",
-                "2",
-                "--no-resign",
-                "--max-moves",
-                "6",
-                "--timeout",
-                "5",
-                "--boot",
-                "100",
-                "--config",
-                env["config"],
-                "--out-root",
-                env["out"],
-                "--write-pool",
-                str(pool),
-            ]
-        )
+        CLI.main(_calibrate_args(env, pool=pool))
         run_dir = _only_dir(env["out"])
         assert run_dir.endswith("_calib-default")
         cal = json.load(open(os.path.join(run_dir, "calibration.json"), encoding="utf-8"))
         assert set(cal["per_rank"]) == {"rank_8k", "rank_3k", "rank_1d"}
         assert all(s["games"] == 2 for s in cal["per_rank"].values())
+        assert cal["integrity"] == {"fallbacks": 0, "humansl_errors": 0, "hp_audit_errors": 0, "shadow_errors": 0}
         assert os.path.exists(os.path.join(run_dir, "calibration.md"))
         written = json.loads(pool.read_text(encoding="utf-8"))
         assert sorted(written["ranks"]) == ["rank_1d", "rank_3k", "rank_8k"] and written["tau"] == 1.0
+        out = capsys.readouterr().out
+        assert "WARN integrity" not in out  # clean run: no WARN anywhere
+
+    def test_calibrate_surfaces_humansl_errors(self, env, capsys, monkeypatch):
+        """review finding on Task 6fix: calibrate must warn about integrity problems too, not just `run`."""
+        monkeypatch.setattr(CLI, "start_engine", lambda stub: FakeEngine(hp_errors={"rank_3k": "boom"}))
+        CLI.main(_calibrate_args(env, ranks="rank_3k", games="1"))
+        run_dir = _only_dir(env["out"])
+        cal = json.load(open(os.path.join(run_dir, "calibration.json"), encoding="utf-8"))
+        assert cal["integrity"]["humansl_errors"] > 0
+        md = open(os.path.join(run_dir, "calibration.md"), encoding="utf-8").read()
+        assert "WARN integrity:" in md
+        out = capsys.readouterr().out
+        assert "WARN integrity:" in out
+
+    def test_calibrate_write_pool_warns_when_humansl_failed(self, env, capsys, monkeypatch):
+        monkeypatch.setattr(CLI, "start_engine", lambda stub: FakeEngine(hp_errors={"rank_3k": "boom"}))
+        pool = env["tmp"] / "opponent_pool_13.json"
+        CLI.main(_calibrate_args(env, pool=pool))
+        assert pool.exists()  # フックの失敗があってもプールは書く
+        out = capsys.readouterr().out
+        assert "WARN integrity: pool written from games with humanSL errors" in out
 
 
 class TestSummarize:
