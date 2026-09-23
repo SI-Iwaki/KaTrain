@@ -2,7 +2,7 @@
 
 日付: 2026-09-23
 対象: `katrain_debug/selfplay.py`（新規）・`katrain_debug/selfplay_stats.py`（新規・純関数）
-状態: 実装済み（2026-09-24・plan `2026-09-23-selfplay-harness.md`・実装 `katrain_debug/selfplay.py`（CLI）/ `selfplay_game.py` / `selfplay_opponent.py` / `selfplay_hooks.py` / `selfplay_run.py` / `selfplay_stats.py`）。相手ボットの校正は未実施（calibrate の結果を `calibration-data/selfplay/` に記録する）。最初の用途は韜晦（spec `2026-09-23-veil-strategy-design.md`）の校正と A/B
+状態: 実装済み（2026-09-24・plan `2026-09-23-selfplay-harness.md`・実装 `katrain_debug/selfplay.py`（CLI）/ `selfplay_game.py` / `selfplay_opponent.py` / `selfplay_hooks.py` / `selfplay_run.py` / `selfplay_stats.py`）。相手ボットは校正済み（2026-09-24・rank_1k / rank_1d / rank_3d・τ 1.0・`calibration-data/selfplay/opponent_pool_13.json`・結果 `calibration-data/selfplay/selfplay-calibration-results-20260924.md`）。最初の用途は韜晦（spec `2026-09-23-veil-strategy-design.md`）の校正と A/B
 
 ## 0. 目的
 
