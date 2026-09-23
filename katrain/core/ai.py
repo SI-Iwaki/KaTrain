@@ -4500,6 +4500,46 @@ def veil_allowance(lead, reserve, spend_rate, free, cap, u):
     return min(surplus, free + u * (a_lead - free)), surplus
 
 
+def veil_natural_floor(hp_top, min_hp, ratio, dominant):
+    """「人間らしい外し」に要求する humanPolicy の床。
+
+    明らかな一手（dominant）の手番は絶対床 min_hp だけ（第一感が1点に集中しているので相対床を掛けると
+    代替手が消える）。それ以外は `mimic_natural_floor`＝max(min_hp, ratio × hp_top)。
+    """
+    if dominant:
+        return min_hp
+    return mimic_natural_floor(hp_top, min_hp, ratio)
+
+
+def veil_prefilter(pool0, raw_cap):
+    """生の loss（relativePointsLost）が raw_cap 以下の候補（pass は除く）。プローブ前の足切り（クエリ0本）。"""
+    return [c for c in pool0 if c["gtp"] != "pass" and c["loss"] <= raw_cap]
+
+
+def veil_shortlist(naturals, trap_cands, hp_of, band_cap, probe_hp, probe_cheap, trap_probes,
+                   trusted_visits=ENIGMA9_TRUSTED_VISITS):
+    """子局面プローブに回す候補を (自然枠, 罠枠) で返す。
+
+    自然枠: 生の loss が band_cap 以内の自然な候補から hp 降順に probe_hp 手（同点は loss → gtp）、
+    残りから生の loss の安い順に probe_cheap 手（同点は visits 多い順 → gtp）。
+    罠枠: 罠用の候補のうち自然枠に入らなかった手から、`enigma9_shortlist_spread` で loss の範囲に
+    等間隔に trap_probes 手（0 なら空）。罠枠の有無で自然枠は変わらない（罠 ON/OFF のクエリ列は罠枠だけが違う）。
+    """
+    band = [c for c in naturals if c["loss"] <= band_cap]
+    top = sorted(band, key=lambda c: (-hp_of(c["gtp"]), c["loss"], c["gtp"]))[: max(0, int(probe_hp))]
+    taken = {c["gtp"] for c in top}
+    rest = sorted(
+        [c for c in band if c["gtp"] not in taken],
+        key=lambda c: (c["loss"], -c.get("visits", 0), c["gtp"]),
+    )
+    nat = top + rest[: max(0, int(probe_cheap))]
+    taken = {c["gtp"] for c in nat}
+    if int(trap_probes) <= 0:
+        return nat, []
+    trap_rest = [c for c in trap_cands if c["gtp"] not in taken]
+    return nat, enigma9_shortlist_spread(trap_rest, 0, int(trap_probes), trusted_visits)
+
+
 @register_strategy(AI_SCORELOSS)
 class ScoreLossStrategy(AIStrategy):
     """ScoreLoss strategy - weights moves based on point loss"""

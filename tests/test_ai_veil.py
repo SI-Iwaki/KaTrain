@@ -14,6 +14,9 @@ from katrain.core.ai import (
     game_report,
     veil_allowance,
     veil_free_limit,
+    veil_natural_floor,
+    veil_prefilter,
+    veil_shortlist,
     veil_tally,
     veil_urgency,
 )
@@ -168,3 +171,59 @@ class TestAllowance:
             for u in [0.1, 0.5, 1.0]:
                 a_t, surplus = veil_allowance(lead, 5.0, 1.0, 0.3, 6.0, u)
                 assert a_t <= surplus + 1e-12
+
+
+def cand(gtp, loss, visits=100):
+    return {"gtp": gtp, "loss": loss, "visits": visits, "wr": 0.5}
+
+
+def hp_table(values):
+    return lambda gtp: values.get(gtp, 0.0)
+
+
+class TestNaturalFloor:
+    def test_relative_floor_applies_when_not_dominant(self):
+        assert veil_natural_floor(0.40, 0.05, 0.2, dominant=False) == pytest.approx(0.08)
+        assert veil_natural_floor(0.10, 0.05, 0.2, dominant=False) == pytest.approx(0.05)
+
+    def test_dominant_uses_only_the_absolute_floor(self):
+        assert veil_natural_floor(0.90, 0.05, 0.2, dominant=True) == pytest.approx(0.05)
+
+
+class TestPrefilter:
+    def test_keeps_moves_within_the_raw_cap_and_drops_pass(self):
+        pool0 = [cand("D4", 0.2), cand("K10", 0.61), cand("pass", 0.0), cand("C3", 0.6)]
+        assert [c["gtp"] for c in veil_prefilter(pool0, 0.6)] == ["D4", "C3"]
+
+
+class TestShortlist:
+    def test_hp_top_then_cheapest_of_the_rest_within_the_band(self):
+        naturals = [cand("A", 0.9), cand("B", 0.1), cand("C", 0.5), cand("D", 0.3), cand("E", 0.2), cand("F", 2.0)]
+        hp = hp_table({"A": 0.30, "B": 0.10, "C": 0.25, "D": 0.20, "E": 0.09, "F": 0.50})
+        nat, traps = veil_shortlist(naturals, [], hp, 1.0, 3, 2, 0)
+        # F は帯（1.0）の外。hp 上位 A/C/D → 残り B(0.1)・E(0.2) を安い順
+        assert [c["gtp"] for c in nat] == ["A", "C", "D", "B", "E"]
+        assert traps == []
+
+    def test_cheap_slots_can_be_zero(self):
+        naturals = [cand("A", 0.2), cand("B", 0.1)]
+        nat, _ = veil_shortlist(naturals, [], hp_table({"A": 0.3, "B": 0.2}), 1.0, 1, 0, 0)
+        assert [c["gtp"] for c in nat] == ["A"]
+
+    def test_trap_slots_are_spread_over_the_rest_and_never_change_the_natural_slots(self):
+        naturals = [cand("A", 0.2), cand("B", 0.4)]
+        trap_cands = [
+            cand("A", 0.2),
+            cand("T1", 0.5),
+            cand("T2", 1.0),
+            cand("T3", 1.5),
+            cand("T4", 2.0),
+            cand("T5", 2.5),
+        ]
+        hp = hp_table({"A": 0.3, "B": 0.2, "T1": 0.03, "T2": 0.03, "T3": 0.03, "T4": 0.03, "T5": 0.03})
+        nat_off, traps_off = veil_shortlist(naturals, trap_cands, hp, 1.0, 3, 2, 0)
+        nat_on, traps_on = veil_shortlist(naturals, trap_cands, hp, 1.0, 3, 2, 3)
+        assert [c["gtp"] for c in nat_on] == [c["gtp"] for c in nat_off] == ["A", "B"]
+        assert traps_off == []
+        # 自然枠に入った A は罠枠に出ない。残り5手から loss の範囲に等間隔（両端込み）
+        assert [c["gtp"] for c in traps_on] == ["T1", "T3", "T5"]
