@@ -24,6 +24,9 @@ RESIGN_STREAK = 2  # AI の手番で何回続いたら投了するか
 VISITS_CHECK_RATIO = 0.9  # root visits が max_visits のこの倍率未満なら visits_low
 BLUNDER_TAILS = (1.0, 2.0, 3.0, 6.0)  # AI の失着の尾（目）
 HP_AUDIT_LOW = 0.05  # 外した手の 9段 hp がこれ未満の割合を出す
+# 計測の健全性（要約の WARN integrity）: 相手ボットの stats の数と、計器（フック）の失敗の数（games.jsonl の列）
+INTEGRITY_OPPONENT_STATS = ("fallbacks", "humansl_errors")
+INTEGRITY_HOOK_ERRORS = ("hp_audit_errors", "shadow_errors")
 GTP_LETTERS = "ABCDEFGHJKLMNOPQRSTUVWXYZ"
 
 # game_report の depth_filter（盤面積の割合。game_report が ceil(frac * x * y) で手数に直す）
@@ -794,6 +797,11 @@ def selfplay_arm_summary(records, n_boot=10000, seed=0):
     out["shadow_same_as_played"] = _fmean([(r.get("shadow") or {}).get("same_as_played") for r in ok])
     out["shadow_vloss_mean"] = _fmean([(r.get("shadow") or {}).get("vloss_mean") for r in ok])
     out["shadow_played_loss_mean"] = _fmean([(r.get("shadow") or {}).get("played_loss_mean") for r in ok])
+    # 計測の健全性は aborted の局も含めて数える（列の無い古い games.jsonl の行は 0）
+    out["integrity"] = {
+        **{k: sum((r.get("opponent_stats") or {}).get(k) or 0 for r in records) for k in INTEGRITY_OPPONENT_STATS},
+        **{k: sum(r.get(k) or 0 for r in records) for k in INTEGRITY_HOOK_ERRORS},
+    }
     return out
 
 

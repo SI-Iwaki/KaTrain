@@ -8,6 +8,7 @@ import ast
 import inspect
 import textwrap
 import time
+import types
 
 import pytest
 
@@ -143,6 +144,8 @@ class TestPlayGame:
         assert all(r["best_at_decision"] == r["played"] for r in ai_rows)
         assert all(r["strategy_s"] >= 0 and r["decision"] is None for r in ai_rows)
         assert rec["opponent"] == "humanSL:rank_3k" and rec["opponent_stats"]["moves"] == 4
+        assert rec["opponent_stats"]["humansl_errors"] == 0 and rec["opponent_stats"]["fallbacks"] == 0
+        assert rec["hp_audit_errors"] == 0 and rec["shadow_errors"] == 0  # フックなし＝どちらも 0
         assert h.engine.new_games == 1
 
     def test_ai_as_white_and_komi_shift_against_the_ai(self, tmp_path):
@@ -213,6 +216,19 @@ class TestPlayGame:
         arm = G.Arm("A", "x", "ai:test_crash", {}, [], "Crashes", "test")
         res = G.play_game(h, arm, _spec("B"), HumanSLOpponent("rank_3k", seed=7), max_moves=6)
         assert res.record["result"] == "aborted" and "RuntimeError" in res.record["error"]
+
+    @pytest.mark.parametrize("stage", ["before_ai", "after_ai"])
+    def test_hook_exception_aborts_only_the_game(self, tmp_path, stage):
+        def crash(*args):
+            raise RuntimeError(f"{stage} bug")
+
+        h = self._harness(tmp_path)
+        arm = G.resolve_arm(h.stub, "A", "default", [])
+        hook = types.SimpleNamespace(**{stage: crash})
+        res = G.play_game(h, arm, _spec("B"), HumanSLOpponent("rank_3k", seed=7), max_moves=6, hooks=[hook])
+        rec = res.record
+        assert rec["result"] == "aborted" and rec["end_reason"] == "aborted"
+        assert "RuntimeError" in rec["error"] and f"{stage} bug" in rec["error"]
 
     def test_decision_info_is_recorded(self, tmp_path, monkeypatch):
         class Decides(AIStrategy):

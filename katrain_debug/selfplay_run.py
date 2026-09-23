@@ -277,8 +277,23 @@ def _ci(ci):
     return "-" if not ci or ci[0] is None else f"[{100 * ci[0]:.1f},{100 * ci[1]:.1f}]"
 
 
+def integrity_warnings(summary):
+    """アームごとの計測の健全性の数（相手が最善手で打った回数・humanSL の失敗・hp 監査と影判定の失敗）が 0 でなければ
+    `WARN integrity:` の行を返す（数字を信じる前に logs/ を見る）。"""
+    lines = []
+    for name, s in summary["arms"].items():
+        bad = " ".join(f"{k}={v}" for k, v in s["integrity"].items() if v)
+        if bad:
+            lines.append(f"WARN integrity: arm {name}: {bad}")
+    return lines
+
+
 def format_summary_text(summary):
-    lines = ["# selfplay summary (own = strategy, opp = opponent; WATCH tree; rates in %)", ""]
+    lines = [
+        "# selfplay summary (own = strategy, opp = opponent; WATCH tree; rates in %)",
+        *integrity_warnings(summary),
+        "",
+    ]
     header = (
         f"{'group':<32} {'n':>3} {'W-L-J':>8} {'win CI':>13} {'own mean':>8} {'own CI':>13} {'opp mean':>8} "
         f"{'own-opp':>7} {'P(o<p)':>6} {'P<=T+5':>6} {'P<15':>6} {'loss o/p':>9} {'>=6':>4} {'flip':>4} "

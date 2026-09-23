@@ -33,10 +33,32 @@ class _StickyProbe(AIStrategy):
         return Move.from_gtp(self.cn.candidate_moves[0]["move"], player=self.cn.next_player), "probe"
 
 
+class _ShadowCrash(AIStrategy):
+    def generate_move(self):
+        raise RuntimeError("shadow bug")
+
+
 @pytest.fixture
 def probe_mode(monkeypatch):
     monkeypatch.setitem(ai_module.STRATEGY_REGISTRY, "ai:test_probe", _StickyProbe)
     return G.Arm("B", "x", "ai:test_probe", {}, [], "_StickyProbe", "test")
+
+
+@pytest.fixture
+def crash_mode(monkeypatch):
+    monkeypatch.setitem(ai_module.STRATEGY_REGISTRY, "ai:test_shadow_crash", _ShadowCrash)
+    return G.Arm("B", "x", "ai:test_shadow_crash", {}, [], "_ShadowCrash", "t")
+
+
+def _play(tmp_path, hooks, engine=None, max_moves=6):
+    """AI（default・黒）と humanSL rank_3k の1局を hooks つきで打つ。"""
+    stub = make_stub(tmp_path)
+    h = G.Harness(stub, engine or FakeEngine(), size=9, timeout=5)
+    spec = {"index": 0, "seed": 1, "ai_color": "B", "rank": "rank_3k", "opp_seed": 7, "strategy_seed": 11}
+    spec["resign_lead"] = None
+    opponent = HumanSLOpponent("rank_3k", seed=7)
+    arm_a = G.resolve_arm(stub, "A", "default", [])
+    return G.play_game(h, arm_a, spec, opponent, max_moves=max_moves, hooks=hooks)
 
 
 class TestShadow:
@@ -65,29 +87,27 @@ class TestShadow:
         assert random.getstate() == rng_before
         assert game.current_node is before_node and not before_node.children
 
-    def test_shadow_failure_does_not_stop_the_game(self, tmp_path, monkeypatch):
-        class Crashes(AIStrategy):
-            def generate_move(self):
-                raise RuntimeError("shadow bug")
-
-        monkeypatch.setitem(ai_module.STRATEGY_REGISTRY, "ai:test_shadow_crash", Crashes)
+    def test_shadow_failure_does_not_stop_the_game(self, tmp_path, crash_mode):
         game = new_game(make_stub(tmp_path), FakeEngine())
-        out = H.run_shadow(game, G.Arm("B", "x", "ai:test_shadow_crash", {}, [], "Crashes", "t"), {})
+        out = H.run_shadow(game, crash_mode, {})
         assert out["move"] is None and "shadow bug" in out["error"]
 
     def test_shadow_hook_in_a_game(self, tmp_path, probe_mode):
-        stub = make_stub(tmp_path)
-        h = G.Harness(stub, FakeEngine(), size=9, timeout=5)
-        arm_a = G.resolve_arm(stub, "A", "default", [])
-        spec = {"index": 0, "seed": 1, "ai_color": "B", "rank": "rank_3k", "opp_seed": 7, "strategy_seed": 11}
-        spec["resign_lead"] = None
-        opponent = HumanSLOpponent("rank_3k", seed=7)
-        res = G.play_game(h, arm_a, spec, opponent, max_moves=6, hooks=[H.ShadowHook(probe_mode)])
+        res = _play(tmp_path, [H.ShadowHook(probe_mode)])
         ai_rows = [r for r in res.rows if r["is_ai"]]
         assert [r["shadow"]["decision"]["n"] for r in ai_rows] == [1, 2, 3]
         assert all(r["played"] == r["best_at_decision"] for r in ai_rows)
         assert res.record["shadow"]["n"] == 3 and res.record["shadow"]["same_as_played"] == 1.0
+        assert res.record["shadow_errors"] == 0 and res.record["hp_audit_errors"] == 0  # hp 監査は OFF
         assert not hasattr(res.game, "_veil_state")  # A（DefaultStrategy）は状態を持たない＝B の状態が漏れていない
+
+    def test_shadow_failures_are_counted_and_logged(self, tmp_path, crash_mode):
+        res = _play(tmp_path, [H.ShadowHook(crash_mode)])
+        assert res.record["end_reason"] == "move_cap" and res.record["error"] is None  # 本番の局は最後まで打つ
+        assert all("shadow bug" in r["shadow"]["error"] for r in res.rows if r["is_ai"])
+        assert res.record["shadow_errors"] == 3  # AI の3手番すべて
+        failed = [line for line in res.logs if line.startswith("selfplay: shadow failed:")]
+        assert len(failed) == 3 and "RuntimeError" in failed[0] and "shadow bug" in failed[0]
 
 
 class TestHpAudit:
@@ -101,6 +121,17 @@ class TestHpAudit:
         node, kw = engine.requests[-1]
         assert node is strategy.cn and kw["visits"] == 1
         assert kw["extra_settings"]["humanSLProfile"] == "rank_9d"
+
+    def test_failed_audit_query_is_counted_in_the_game_record(self, tmp_path):
+        engine = FakeEngine(hp_errors={"rank_9d": "humanSL model not loaded"})  # 相手の rank_3k は通る
+        res = _play(tmp_path, [H.HpAuditHook("rank_9d")], engine=engine, max_moves=2)  # AI の手番は1回
+        ai_rows = [r for r in res.rows if r["is_ai"]]
+        assert [(r["hp_played"], r["hp_best"], r["hp_rank"]) for r in ai_rows] == [(None, None, None)]
+        assert res.record["end_reason"] == "move_cap" and res.record["error"] is None
+        assert res.record["hp_audit_errors"] == 1 and res.record["shadow_errors"] == 0
+        assert res.record["opponent_stats"]["humansl_errors"] == 0
+        failed = [line for line in res.logs if line.startswith("selfplay: hp-audit failed:")]
+        assert len(failed) == 1 and "rank_9d" in failed[0] and "humanSL model not loaded" in failed[0]
 
     def test_factory_skips_shadowing_the_arm_itself(self, probe_mode):
         arms = {"A": probe_mode, "B": probe_mode}

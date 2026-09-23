@@ -7,6 +7,7 @@ import os
 
 os.environ.setdefault("KIVY_NO_ARGS", "1")
 
+import contextlib  # noqa: E402
 import dataclasses  # noqa: E402
 import json  # noqa: E402
 import random  # noqa: E402
@@ -252,11 +253,24 @@ def _veil_extras(arm, game):
     return reserve, ledger
 
 
+@contextlib.contextmanager
+def _abort_on_exception(what):
+    """with の中の予期しない例外をこの局の aborted（GameAborted）に変える＝実行全体は止めない。GameAborted はそのまま通す。"""
+    try:
+        yield
+    except GameAborted:
+        raise
+    except Exception as e:
+        raise GameAborted(f"{what} exception: {e!r}") from e
+
+
 def play_game(h, arm, spec, opponent, *, komi_shift=0.0, max_moves=None, hooks=(), target=None):
-    """1局打って GameResult を返す。例外で落ちない（エンジン停止・タイムアウト・AI と相手の例外は aborted）。
+    """1局打って GameResult を返す。例外で落ちない（エンジン停止・タイムアウト・AI と相手とフックの例外は aborted）。
 
     hooks: before_ai(game, cn, waiter) -> dict（AI の着手前・同じ局面）/ after_ai(game, strategy, move, waiter) -> dict
     （着手後）を持つオブジェクト。戻り値の dict はその手番の記録に足す（所要時間の集計には入らない）。
+    ERROR_FIELD（games.jsonl の列名）と errors（失敗の数）を持つフックは、この局の間に増えた分をその列に書く
+    （S.INTEGRITY_HOOK_ERRORS の列はフックが無くても 0 で書く）。
     """
     size = h.size
     ai = spec["ai_color"]
@@ -274,6 +288,7 @@ def play_game(h, arm, spec, opponent, *, komi_shift=0.0, max_moves=None, hooks=(
     cap = max_moves or S.move_cap(size)
     turns, logs = [], []
     streak, end_reason, error = 0, None, None
+    hook_errors_at_start = [getattr(hook, "errors", 0) for hook in hooks]
     started = time.time()
     try:
         while True:
@@ -296,14 +311,11 @@ def play_game(h, arm, spec, opponent, *, komi_shift=0.0, max_moves=None, hooks=(
                 extra = {}
                 for hook in hooks:
                     if hasattr(hook, "before_ai"):
-                        extra.update(hook.before_ai(game, cn, waiter))
+                        with _abort_on_exception(f"hook {type(hook).__name__}.before_ai"):
+                            extra.update(hook.before_ai(game, cn, waiter))
                 t1 = time.time()
-                try:
+                with _abort_on_exception("AI"):
                     move, played, strategy = _ai_turn(game, arm.mode, arm.settings)
-                except GameAborted:
-                    raise
-                except Exception as e:
-                    raise GameAborted(f"AI exception: {e!r}") from e
                 strategy_s = time.time() - t1
                 if played is None:
                     raise GameAborted("AI move discarded (analysis discarded or position changed)")
@@ -319,15 +331,12 @@ def play_game(h, arm, spec, opponent, *, komi_shift=0.0, max_moves=None, hooks=(
                 }
                 for hook in hooks:
                     if hasattr(hook, "after_ai"):
-                        turn.update(hook.after_ai(game, strategy, move, waiter))
+                        with _abort_on_exception(f"hook {type(hook).__name__}.after_ai"):
+                            turn.update(hook.after_ai(game, strategy, move, waiter))
                 turns.append(turn)
             else:
-                try:
+                with _abort_on_exception("opponent"):  # 相手の戦略のバグでも実行全体を止めない（その局だけ aborted）
                     opponent.play(game, waiter)
-                except GameAborted:
-                    raise
-                except Exception as e:  # 相手の戦略のバグでも実行全体を止めない（その局だけ aborted）
-                    raise GameAborted(f"opponent exception: {e!r}") from e
             logs.extend(drain_logs(h.stub))
     except GameAborted as e:
         end_reason, error = "aborted", str(e)
@@ -343,6 +352,11 @@ def play_game(h, arm, spec, opponent, *, komi_shift=0.0, max_moves=None, hooks=(
         game.current_node.end_state = f"{ai}+R"
     reports = compute_reports(game, h.thresholds, ai) if end_reason != "aborted" else {}
     rows = S.merge_turns(S.selfplay_move_rows(nodes[1:], ai, size, h.max_visits), turns)
+    hook_errors = dict.fromkeys(S.INTEGRITY_HOOK_ERRORS, 0)
+    for hook, at_start in zip(hooks, hook_errors_at_start):
+        field = getattr(hook, "ERROR_FIELD", None)
+        if field:
+            hook_errors[field] = hook_errors.get(field, 0) + hook.errors - at_start
     meta = {
         "arm": arm.name,
         "strategy": arm.strategy,
@@ -352,6 +366,7 @@ def play_game(h, arm, spec, opponent, *, komi_shift=0.0, max_moves=None, hooks=(
         "rank": spec["rank"],
         "opponent": opponent.label,
         "opponent_stats": dict(getattr(opponent, "stats", {})),
+        **hook_errors,
         "komi": komi,
         "size": size,
         "resign_lead": spec["resign_lead"],

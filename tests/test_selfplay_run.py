@@ -154,6 +154,27 @@ class TestSummaries:
         assert written == text and "paired diff A - A" in text
         assert json.loads((tmp_path / "run" / "summary.json").read_text(encoding="utf-8"))["arms"]["A"]
 
+    def test_integrity_warning_only_when_a_counter_is_non_zero(self, tmp_path):
+        stub = make_stub(tmp_path)
+        out = R.OutputDir(tmp_path / "run")
+        _run(_plan(stub), out, stub, FakeEngine())
+        summary, text = R.summarize_dir(out, n_boot=100)
+        assert summary["arms"]["A"]["integrity"] == {
+            "fallbacks": 0,
+            "humansl_errors": 0,
+            "hp_audit_errors": 0,
+            "shadow_errors": 0,
+        }
+        assert "WARN integrity:" not in text
+        recs = out.records()
+        recs[1]["opponent_stats"]["fallbacks"] = 2
+        with open(out.file("games.jsonl"), "w", encoding="utf-8") as f:
+            f.writelines(json.dumps(r) + "\n" for r in recs)
+        summary, text = R.summarize_dir(out, n_boot=100)
+        assert summary["arms"]["A"]["integrity"]["fallbacks"] == 2
+        assert [line for line in text.splitlines() if "WARN" in line] == ["WARN integrity: arm A: fallbacks=2"]
+        assert "WARN integrity: arm A: fallbacks=2" in (tmp_path / "run" / "summary.txt").read_text(encoding="ascii")
+
     def test_resign_pool_reads_report_jsons(self, tmp_path):
         for i, (ai, n, fs) in enumerate([("B", 59, 28.9), ("W", 31, -2.7)]):
             summary = {"ai": ai, "n_moves": n, "final_score": fs}

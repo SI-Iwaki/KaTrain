@@ -473,6 +473,17 @@ class TestArmSummary:
         assert s["hp_dev_median"] == pytest.approx(0.15) and s["hp_dev_n"] == 6
         assert s["own_top1_by_bin"]["all"] is not None
 
+    def test_integrity_totals_count_every_game(self):
+        recs = [
+            _rec(
+                "A", 0, 0.3, 0.2, opponent_stats={"moves": 40, "fallbacks": 2, "humansl_errors": 1}, hp_audit_errors=3
+            ),
+            _rec("A", 1, None, None, result="aborted", opponent_stats={"fallbacks": 1}, shadow_errors=2),
+            _rec("A", 2, 0.3, 0.2),  # この修正の前の games.jsonl（フィールドなし）は 0 と数える
+        ]
+        s = S.selfplay_arm_summary(recs, n_boot=100)
+        assert s["integrity"] == {"fallbacks": 3, "humansl_errors": 1, "hp_audit_errors": 3, "shadow_errors": 2}
+
     def test_summarize_groups_by_arm_and_stratum(self):
         recs = [_rec("A", 0, 0.3, 0.2), _rec("A", 1, 0.4, 0.2), _rec("B", 0, 0.5, 0.2)]
         out = S.selfplay_summarize(recs, n_boot=100)

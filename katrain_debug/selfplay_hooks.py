@@ -10,7 +10,7 @@ import time
 os.environ.setdefault("KIVY_NO_ARGS", "1")
 
 from katrain.core.ai import STRATEGY_REGISTRY, AnalysisDiscardedException  # noqa: E402
-from katrain.core.constants import AI_DEFAULT  # noqa: E402
+from katrain.core.constants import AI_DEFAULT, OUTPUT_ERROR  # noqa: E402
 from katrain_debug import selfplay_stats as S  # noqa: E402
 from katrain_debug.selfplay_game import jsonable  # noqa: E402
 from katrain_debug.selfplay_opponent import GameAborted  # noqa: E402
@@ -62,7 +62,8 @@ def run_shadow(game, arm, store):
         }
     except AnalysisDiscardedException as e:
         raise GameAborted(f"shadow {arm.name}: analysis discarded ({e})") from e
-    except Exception as e:  # 影の失敗で本番の局を止めない
+    except Exception as e:  # 影の失敗で本番の局を止めない（行の error とログに残し、ShadowHook が局ごとに数える）
+        game.katrain.log(f"selfplay: shadow failed: {arm.name} at move {game.current_node.depth}: {e!r}", OUTPUT_ERROR)
         result = {"arm": arm.name, "move": None, "error": repr(e), "secs": time.time() - started}
     finally:
         after = shadow_state_keys(list(vars(game)))
@@ -77,30 +78,50 @@ def run_shadow(game, arm, store):
 
 
 class ShadowHook:
-    """AI（アーム A）の各手番の前に、同じ局面でアーム B の戦略を走らせて記録する。"""
+    """AI（アーム A）の各手番の前に、同じ局面でアーム B の戦略を走らせて記録する。
+
+    errors は影の失敗の数（play_game がその局の分を games.jsonl の ERROR_FIELD に書く）。
+    """
+
+    ERROR_FIELD = "shadow_errors"
 
     def __init__(self, arm):
         self.arm = arm
+        self.errors = 0
 
     def before_ai(self, game, cn, waiter):
         stores = game.__dict__.setdefault("_shadow_state", {})
-        return {"shadow": run_shadow(game, self.arm, stores.setdefault(self.arm.name, {}))}
+        result = run_shadow(game, self.arm, stores.setdefault(self.arm.name, {}))
+        if "error" in result:
+            self.errors += 1
+        return {"shadow": result}
 
 
 class HpAuditHook:
-    """AI の全着手の親局面に humanSL（既定 rank_9d）を 1visit で撃ち、選んだ手と最善手の hp・順位を記録する。"""
+    """AI の全着手の親局面に humanSL（既定 rank_9d）を 1visit で撃ち、選んだ手と最善手の hp・順位を記録する。
+
+    humanSL が失敗した手番は値を None にしてログに出し、errors に数える（play_game がその局の分を games.jsonl の
+    ERROR_FIELD に書く）。
+    """
+
+    ERROR_FIELD = "hp_audit_errors"
 
     def __init__(self, profile="rank_9d"):
         self.profile = profile
+        self.errors = 0
 
     def after_ai(self, game, strategy, move, waiter):
         cands = strategy.cn.candidate_moves
         best = cands[0]["move"] if cands else None
         analysis = waiter.humansl(strategy.cn, self.profile, visits=1)
-        hp = (analysis or {}).get("humanPolicy")
-        if not hp:
+        if waiter.humansl_error is not None:
+            self.errors += 1
+            game.katrain.log(
+                f"selfplay: hp-audit failed: {self.profile} at move {strategy.cn.depth}: {waiter.humansl_error}",
+                OUTPUT_ERROR,
+            )
             return {"hp_played": None, "hp_best": None, "hp_rank": None}
-        return S.hp_audit_values(hp, game.board_size[0], move.gtp(), best)
+        return S.hp_audit_values(analysis["humanPolicy"], game.board_size[0], move.gtp(), best)
 
 
 def make_hooks_factory(plan, arms):

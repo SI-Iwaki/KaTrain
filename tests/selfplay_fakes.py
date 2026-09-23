@@ -67,11 +67,15 @@ class FakeEngine:
     通常解析: 候補は空点を左下から走査した先頭3点（order 順・[0] が最善手）。勝率は全ノード winrate（黒視点）。黒視点 scoreLead は
     root = lead、候補 i = lead - sign * 0.5 * i（打つ側から見て i 番目ほど 0.5 目ずつ悪い）。
     include_pass なら pass を pointsLost = pass_loss で候補の末尾に足す。
-    humanSL（extra_settings に humanSLProfile）: hp_fn(node, empties) の humanPolicy を返す。
+    humanSL（extra_settings に humanSLProfile）: hp_fn(node, empties) の humanPolicy を返す。hp_errors（{段位: エラー文}）に
+    ある段位は error_callback に KataGo のエラー応答（{"error": ...}）を渡して失敗する。
     """
 
-    def __init__(self, hp_fn=top_right_hp, include_pass=False, pass_loss=0.0, lead=0.5, winrate=0.6, visits=100):
+    def __init__(
+        self, hp_fn=top_right_hp, include_pass=False, pass_loss=0.0, lead=0.5, winrate=0.6, visits=100, hp_errors=None
+    ):
         self.hp_fn = hp_fn
+        self.hp_errors = hp_errors or {}
         self.winrate = winrate
         self.include_pass = include_pass
         self.pass_loss = pass_loss
@@ -88,6 +92,10 @@ class FakeEngine:
         empties = empties_of(node)
         extra = kwargs.get("extra_settings") or {}
         if "humanSLProfile" in extra:
+            error = self.hp_errors.get(extra["humanSLProfile"])
+            if error is not None:
+                error_callback({"id": "QUERY:fake", "error": error})
+                return
             hp = self.hp_fn(node, empties)
             callback(
                 {"rootInfo": {"scoreLead": 0.0, "winrate": 0.5, "visits": 1}, "moveInfos": [], "humanPolicy": hp}, False

@@ -8,7 +8,7 @@ import types
 
 import pytest
 
-from katrain.core.constants import PRIORITY_EXTRA_AI_QUERY
+from katrain.core.constants import OUTPUT_ERROR, PRIORITY_EXTRA_AI_QUERY
 from katrain.core.sgf_parser import Move
 from katrain_debug.selfplay_opponent import GameAborted, HumanSLOpponent, Waiter
 from tests.selfplay_fakes import FakeEngine, hp_array, make_stub, new_game
@@ -46,6 +46,17 @@ class TestWaiter:
         assert kw["visits"] == 1 and kw["include_policy"] is True and kw["ownership"] is False
         assert kw["priority"] == PRIORITY_EXTRA_AI_QUERY and kw["time_limit"] is False
         assert kw["extra_settings"] == {"humanSLProfile": "rank_3k", "ignorePreRootHistory": False}
+
+    def test_humansl_failure_reason_is_kept(self, tmp_path):
+        engine = FakeEngine(hp_errors={"rank_9d": "humanSL model not loaded"})
+        game = new_game(make_stub(tmp_path), engine)
+        waiter = Waiter(engine, timeout=5)
+        assert waiter.humansl(game.current_node, "rank_9d") is None
+        assert waiter.humansl_error == "humanSL model not loaded"
+        assert "humanPolicy" in waiter.humansl(game.current_node, "rank_3k") and waiter.humansl_error is None
+        engine.hp_fn = lambda node, empties: None  # 応答はあるが humanPolicy が無い
+        waiter.humansl(game.current_node, "rank_3k")
+        assert waiter.humansl_error == "no humanPolicy"
 
 
 class TestHumanSLOpponent:
@@ -96,6 +107,17 @@ class TestHumanSLOpponent:
         opp = HumanSLOpponent("rank_3k", seed=0, max_loss=0.2)
         game, node = self._play(tmp_path, FakeEngine(hp_fn=_hp({(8, 8): 1.0})), opp)
         assert node.move.coords == (0, 0) and opp.stats["fallbacks"] == 1
+        assert opp.stats["humansl_errors"] == 0  # humanSL は通っていて、max_loss で候補が空になっただけ
+
+    def test_humansl_error_falls_back_to_the_best_move_and_is_counted_and_logged(self, tmp_path):
+        opp = HumanSLOpponent("rank_3k", seed=0)
+        engine = FakeEngine(hp_errors={"rank_3k": "humanSL model not loaded"})
+        game, node = self._play(tmp_path, engine, opp)
+        assert node.move.coords == (0, 0)  # KataGo の最善手（左下）で局は続く
+        assert opp.stats["humansl_errors"] == 1 and opp.stats["fallbacks"] == 1
+        errors = [msg for msg, level in game.katrain.logs if level == OUTPUT_ERROR]
+        assert len(errors) == 1 and errors[0].startswith("selfplay: opponent humanSL failed:")
+        assert "rank_3k" in errors[0] and "humanSL model not loaded" in errors[0]
 
     def test_same_seed_same_moves(self, tmp_path):
         spread = {(x, 8): 0.1 + 0.05 * x for x in range(9)}

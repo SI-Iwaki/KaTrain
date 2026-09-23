@@ -11,7 +11,7 @@ import random  # noqa: E402
 import time  # noqa: E402
 
 from katrain.core.ai import _area_scoring_should_pass  # noqa: E402
-from katrain.core.constants import PRIORITY_EXTRA_AI_QUERY  # noqa: E402
+from katrain.core.constants import OUTPUT_ERROR, PRIORITY_EXTRA_AI_QUERY  # noqa: E402
 from katrain.core.game import IllegalMoveException  # noqa: E402
 from katrain.core.sgf_parser import Move  # noqa: E402
 from katrain_debug import selfplay_stats as S  # noqa: E402
@@ -33,6 +33,7 @@ class Waiter:
         self.timeout = timeout
         self.watchdog = watchdog
         self.generation = watchdog.restarts if watchdog is not None else None
+        self.humansl_error = None  # 直前の humansl() の失敗の理由（成功なら None）
 
     def until(self, pred, what, poll=0.01):
         started = time.time()
@@ -49,7 +50,11 @@ class Waiter:
         self.until(lambda: all(n.analysis_complete for n in nodes), what)
 
     def humansl(self, node, profile, visits=1):
-        """humanSL を1本撃って結果（KataGo の JSON）を返す。ノードには書き戻さない（コールバックで受けるだけ）。"""
+        """humanSL を1本撃って結果（KataGo の JSON）を返す。ノードには書き戻さない（コールバックで受けるだけ）。
+
+        失敗（KataGo のエラー応答＝None を返す・humanPolicy の無い応答）の理由は self.humansl_error に残す（成功なら None）。
+        数えてログに出すのは呼び出し側（相手ボット・hp 監査）。
+        """
         out = {}
 
         def on_result(analysis, partial_result):
@@ -71,7 +76,15 @@ class Waiter:
             extra_settings={"humanSLProfile": profile, "ignorePreRootHistory": False},
         )
         self.until(lambda: "a" in out or "err" in out, f"humanSL {profile}")
-        return out.get("a")
+        analysis = out.get("a")
+        if "err" in out:
+            err = out["err"]
+            self.humansl_error = str(err.get("error", err)) if isinstance(err, dict) else str(err)
+        elif not (analysis or {}).get("humanPolicy"):
+            self.humansl_error = "no humanPolicy"
+        else:
+            self.humansl_error = None
+        return analysis
 
 
 class HumanSLOpponent:
@@ -81,6 +94,9 @@ class HumanSLOpponent:
     引く。非合法手は捨てて引き直す。パスが引かれたら現局面の通常解析を待ち、候補のパスの pointsLost を
     _area_scoring_should_pass に渡して真ならパス、偽かパスが候補に無ければパスを外して引き直す。
     max_loss（既定 None＝OFF）は通常解析で pointsLost <= max_loss の手だけを残す（強め・慎重な相手の層）。
+    humanSL が失敗したら（エラー応答・humanPolicy なし）局は止めずに KataGo の最善手で打つが、stats の humansl_errors に
+    数えて OUTPUT_ERROR でログに出す（最善手で打った手は相手の一致率を上げる＝要約が WARN を出す）。fallbacks は最善手で
+    打った回数（humanSL の失敗と、max_loss で候補が空になった場合の両方）。
     """
 
     def __init__(self, profile, tau=1.0, seed=0, max_loss=None, visits=1):
@@ -89,7 +105,7 @@ class HumanSLOpponent:
         self.rng = random.Random(seed)
         self.max_loss = max_loss
         self.visits = visits
-        self.stats = {"moves": 0, "pass_redraws": 0, "illegal_redraws": 0, "fallbacks": 0}
+        self.stats = {"moves": 0, "pass_redraws": 0, "illegal_redraws": 0, "fallbacks": 0, "humansl_errors": 0}
 
     @property
     def label(self):
@@ -100,6 +116,12 @@ class HumanSLOpponent:
         player = cn.next_player
         size = game.board_size[0]
         analysis = waiter.humansl(cn, self.profile, self.visits)
+        if waiter.humansl_error is not None:
+            self.stats["humansl_errors"] += 1
+            game.katrain.log(
+                f"selfplay: opponent humanSL failed: {self.profile} at move {cn.depth}: {waiter.humansl_error}",
+                OUTPUT_ERROR,
+            )
         cands = S.hp_to_cands((analysis or {}).get("humanPolicy") or [], size)
         if self.max_loss is not None and cands:
             waiter.nodes([cn], "opponent max_loss filter")
