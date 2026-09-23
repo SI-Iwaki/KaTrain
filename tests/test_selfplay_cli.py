@@ -109,6 +109,27 @@ class TestRun:
         with pytest.raises(SystemExit, match="no opponent ranks"):
             CLI.main(args)
 
+    def test_ranks_are_stripped(self, env):
+        args = [a if a != "rank_3k" else " rank_3k , rank_1d " for a in _run_args(env, "--arm", "A=default")]
+        CLI.main(args)
+        plan = json.load(open(os.path.join(_only_dir(env["out"]), "run.json"), encoding="utf-8"))
+        assert plan["opponent"]["ranks"] == ["rank_3k", "rank_1d"]
+
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            ["--ranks", "rank_3k,rank3k"],  # --ranks は後の指定が勝つ
+            ["--ranks", "rank_3k,1d"],
+            ["--hp-audit", "9d"],
+        ],
+    )
+    def test_invalid_humansl_profiles_are_refused_before_the_engine_starts(self, env, monkeypatch, extra):
+        started = []
+        monkeypatch.setattr(CLI, "start_engine", lambda stub: started.append(1) or FakeEngine())
+        with pytest.raises(SystemExit, match="invalid humanSL profile"):
+            CLI.main(_run_args(env, "--arm", "A=default", *extra))
+        assert started == [] and not os.path.exists(env["out"])
+
     def test_opponent_pool_file_sets_ranks_and_tau(self, env):
         pool = env["tmp"] / "pool.json"
         pool.write_text(json.dumps({"ranks": ["rank_1k", "rank_1d"], "tau": 0.9}), encoding="utf-8")
@@ -209,6 +230,7 @@ class TestCalibrate:
         assert os.path.exists(os.path.join(run_dir, "calibration.md"))
         written = json.loads(pool.read_text(encoding="utf-8"))
         assert sorted(written["ranks"]) == ["rank_1d", "rank_3k", "rank_8k"] and written["tau"] == 1.0
+        assert not (env["tmp"] / "opponent_pool_13.json.suspect").exists()
         out = capsys.readouterr().out
         assert "WARN integrity" not in out  # clean run: no WARN anywhere
 
@@ -224,13 +246,29 @@ class TestCalibrate:
         out = capsys.readouterr().out
         assert "WARN integrity:" in out
 
-    def test_calibrate_write_pool_warns_when_humansl_failed(self, env, capsys, monkeypatch):
+    def test_calibrate_writes_a_suspect_pool_when_integrity_counters_are_non_zero(self, env, capsys, monkeypatch):
         monkeypatch.setattr(CLI, "start_engine", lambda stub: FakeEngine(hp_errors={"rank_3k": "boom"}))
         pool = env["tmp"] / "opponent_pool_13.json"
+        pool.write_text('{"ranks": ["rank_1k"]}', encoding="utf-8")  # コミット済みの既定のプール
         CLI.main(_calibrate_args(env, pool=pool))
-        assert pool.exists()  # フックの失敗があってもプールは書く
+        assert json.loads(pool.read_text(encoding="utf-8")) == {"ranks": ["rank_1k"]}  # 上書きしない
+        suspect = env["tmp"] / "opponent_pool_13.json.suspect"
+        assert sorted(json.loads(suspect.read_text(encoding="utf-8"))["ranks"]) == ["rank_1d", "rank_3k", "rank_8k"]
         out = capsys.readouterr().out
-        assert "WARN integrity: pool written from games with humanSL errors" in out
+        assert "WARN integrity: pool NOT written" in out and "opponent_pool_13.json.suspect" in out
+
+    def test_force_pool_overwrites_despite_integrity_counters(self, env, capsys, monkeypatch):
+        monkeypatch.setattr(CLI, "start_engine", lambda stub: FakeEngine(hp_errors={"rank_3k": "boom"}))
+        pool = env["tmp"] / "opponent_pool_13.json"
+        CLI.main(_calibrate_args(env, pool=pool) + ["--force-pool"])
+        assert pool.exists() and not (env["tmp"] / "opponent_pool_13.json.suspect").exists()
+        assert (
+            "WARN integrity: pool written from games with integrity problems (--force-pool)" in capsys.readouterr().out
+        )
+
+    def test_invalid_calibrate_ranks_are_refused(self, env):
+        with pytest.raises(SystemExit, match="invalid humanSL profile"):
+            CLI.main(_calibrate_args(env, ranks="rank_8k, 3k"))
 
 
 class TestSummarize:

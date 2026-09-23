@@ -9,6 +9,7 @@ import itertools
 import json
 import math
 import random
+import re
 import statistics
 from collections import Counter
 from contextlib import contextmanager
@@ -805,9 +806,9 @@ def _fmean(vals):
 
 
 def integrity_totals(records):
-    """計測の健全性の4つの合計（fallbacks・humansl_errors・hp_audit_errors・shadow_errors）を records から数える
-    （review finding on Task 6fix2）。aborted の局も含めて全ての records から数える（列の無い古い games.jsonl の
-    行は 0）。`selfplay_arm_summary`（run の要約）と `calibration_result`（calibrate）の両方がこれを使う。"""
+    """計測の健全性の4つの合計（fallbacks・humansl_errors・hp_audit_errors・shadow_errors）を records から数える。
+    aborted の局も含めて全ての records から数える（列の無い古い games.jsonl の行は 0）。
+    `selfplay_arm_summary`（run の要約）と `calibration_result`（calibrate）の両方がこれを使う。"""
     return {
         **{k: sum((r.get("opponent_stats") or {}).get(k) or 0 for r in records) for k in INTEGRITY_OPPONENT_STATS},
         **{k: sum(r.get(k) or 0 for r in records) for k in INTEGRITY_HOOK_ERRORS},
@@ -879,8 +880,14 @@ def selfplay_summarize(records, n_boot=10000, seed=0):
     }
 
 
+RATE_METRICS = ("own_top1", "opp_top1", "own_minus_opp")  # 停止規則の ±3pt が意味を持つ一致率の指標
+
+
 def selfplay_paired_diff(recs_a, recs_b, metric, n_boot=10000, seed=0, conf=0.975, margin=0.03):
-    """同じ seed の対の差 a − b（spec §6）。conf 既定 0.975＝2回見る停止規則の Bonferroni。"""
+    """同じ seed の対の差 a − b（spec §6）。conf 既定 0.975＝2回見る停止規則の Bonferroni。
+
+    verdict（±margin の停止規則）は一致率の指標（RATE_METRICS）だけ。局あたりの回数・目・勝率には None。
+    """
     fa = {r["seed"]: metric_value(r, metric) for r in recs_a if r.get("result") != "aborted"}
     fb = {r["seed"]: metric_value(r, metric) for r in recs_b if r.get("result") != "aborted"}
     seeds = sorted(s for s in fa if s in fb and fa[s] is not None and fb[s] is not None)
@@ -894,7 +901,7 @@ def selfplay_paired_diff(recs_a, recs_b, metric, n_boot=10000, seed=0, conf=0.97
         "wilcoxon_p": wilcoxon_signed_rank(diffs),
         "boot_ci": list(cluster_bootstrap(diffs, lambda s: statistics.fmean(s), n_boot, seed, conf)),
         "conf": conf,
-        "verdict": selfplay_stop_rule(t_lo, t_hi, margin),
+        "verdict": selfplay_stop_rule(t_lo, t_hi, margin) if metric in RATE_METRICS else None,
     }
 
 
@@ -955,6 +962,20 @@ def parse_arm(text):
     if not name or not strategy:
         raise ValueError(f"arm must be NAME=STRATEGY[:key=val,...]: {text!r}")
     return name, strategy, [s.strip() for s in tail.split(",") if s.strip()]
+
+
+HUMANSL_PROFILE_RE = re.compile(r"(rank|preaz)_\d{1,2}[kd]|proyear_\d{4}")  # KataGo の humanSLProfile の形
+
+
+def parse_profiles(text):
+    """'rank_3k, rank_1d' -> ['rank_3k', 'rank_1d']（前後の空白と空の要素を落とす）。"""
+    return [p.strip() for p in text.split(",") if p.strip()]
+
+
+def invalid_humansl_profiles(profiles):
+    """humanSL の段位の形（rank_<N>k|d・preaz_<N>k|d・proyear_<YYYY>）でないもの。KataGo はエラーを返すだけなので、
+    そのまま走らせると相手の全手が最善手へのフォールバックになる＝エンジンを起こす前に止める。"""
+    return [p for p in profiles if not HUMANSL_PROFILE_RE.fullmatch(p)]
 
 
 def parse_range(text):

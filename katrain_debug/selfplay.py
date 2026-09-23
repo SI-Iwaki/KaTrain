@@ -69,6 +69,18 @@ def setup_errors():
         raise SystemExit(f"error: {e}") from e
 
 
+def humansl_profiles(profiles, what):
+    """humanSL の段位のリストを確かめる（エンジンを起こす前）。形の違う段位は KataGo がエラーを返すだけで、
+    相手の全手が最善手へのフォールバックになる（WARN integrity は実行の後にしか出ない）。"""
+    bad = S.invalid_humansl_profiles(profiles)
+    if bad:
+        raise SystemExit(
+            f"invalid humanSL profile(s) for {what}: {bad} "
+            "(expected rank_<N>k / rank_<N>d, preaz_<N>k / preaz_<N>d or proyear_<YYYY>)"
+        )
+    return profiles
+
+
 def default_config_path():
     return os.path.expanduser(os.path.join(DATA_FOLDER, "config.json"))
 
@@ -93,9 +105,10 @@ def opponent_plan(args, size):
             raise SystemExit(f"opponent pool not found: {pool_file}")
         with open(pool_file, encoding="utf-8") as f:
             pool = json.load(f)
-    ranks = args.ranks.split(",") if args.ranks else (pool or {}).get("ranks")
+    ranks = S.parse_profiles(args.ranks) if args.ranks else (pool or {}).get("ranks")
     if not ranks:
         raise SystemExit("no opponent ranks: pass --ranks or --opp-pool (or run calibrate --write-pool first)")
+    humansl_profiles(ranks, "--ranks" if args.ranks else f"the opponent pool {pool_file}")
     tau = args.tau if args.tau is not None else (pool or {}).get("tau", 1.0)
     return {
         "kind": "humansl",
@@ -189,6 +202,9 @@ def _plan_run(args):
         raise SystemExit(f"null experiment: arms {same} resolve to identical settings")
     if args.shadow is not None and args.shadow not in {a.name for a in arms}:
         raise SystemExit(f"--shadow {args.shadow}: not one of the --arm names")
+    hp_audit = args.hp_audit.strip() if args.hp_audit is not None else None
+    if hp_audit is not None:
+        humansl_profiles([hp_audit], "--hp-audit")
     opponent = opponent_plan(args, args.size)
     if opponent["kind"] == "strategy":  # 相手の戦略名と上書きキーの綴りも開始前に確かめる
         resolve_arm(stub, "opponent", opponent["strategy"], opponent["override_items"])
@@ -209,7 +225,7 @@ def _plan_run(args):
         extra={
             "config_path": args.config or default_config_path(),
             "shadow": args.shadow,
-            "hp_audit": args.hp_audit,
+            "hp_audit": hp_audit,
         },
     )
     return stub, plan
@@ -242,7 +258,7 @@ def _plan_calibrate(args):
     """calibrate の計画（1アーム × 段位ごとに --games 局・色は交互）。-> (stub, plan)"""
     stub = make_stub(args.config)
     arm = resolve_arm(stub, "calib", args.strategy, [])
-    ranks = args.ranks.split(",")
+    ranks = humansl_profiles(S.parse_profiles(args.ranks), "--ranks")
     resign = resign_plan(args, args.size)
     opponent = {
         "kind": "humansl",
@@ -261,9 +277,32 @@ def _plan_calibrate(args):
         opponent=opponent,
         resign=resign,
         timeout=args.timeout,
-        extra={"config_path": args.config or default_config_path(), "write_pool": args.write_pool},
+        extra={
+            "config_path": args.config or default_config_path(),
+            "write_pool": args.write_pool,
+            "force_pool": args.force_pool,
+        },
     )
     return stub, plan
+
+
+def _write_pool(plan, cal, force):
+    """--write-pool: 計測の健全性の数が 0 でなければ既定のプールを上書きせず <path>.suspect に書く（--force-pool で上書き）。"""
+    path = plan["write_pool"]
+    bad = " ".join(f"{k}={v}" for k, v in cal["integrity"].items() if v)
+    if bad and not force:
+        path += ".suspect"
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(R.pool_file_content(cal), f, ensure_ascii=False, indent=1)
+    if bad and not force:
+        safe_print(
+            f"WARN integrity: pool NOT written to {plan['write_pool']} ({bad}); wrote {path} instead. "
+            "Check logs/, or re-run with --force-pool to overwrite the pool."
+        )
+    else:
+        safe_print(f"pool written: {path}")
+        if bad:
+            safe_print("WARN integrity: pool written from games with integrity problems (--force-pool)")
 
 
 def cmd_calibrate(args):
@@ -284,7 +323,7 @@ def cmd_calibrate(args):
         log=safe_print,
     )
     summary, _ = R.summarize_dir(out, args.boot)
-    for line in R.integrity_warnings(summary):  # review finding on Task 6fix: calibrate must warn too, not just run
+    for line in R.integrity_warnings(summary):  # calibrate も run と同じ WARN integrity を出す
         safe_print(line)
     cal = R.calibration_result(out, plan)
     out.write_json("calibration.json", cal)
@@ -303,11 +342,7 @@ def cmd_calibrate(args):
             f"loss={R.fmt_num(best['opp_loss'], '.2f')} drift_ai={R.fmt_num(cal['harness_drift_ai'], '+.3f')}"
         )
     if plan.get("write_pool") and best is not None:
-        with open(plan["write_pool"], "w", encoding="utf-8") as f:
-            json.dump(R.pool_file_content(cal), f, ensure_ascii=False, indent=1)
-        safe_print(f"pool written: {plan['write_pool']}")
-        if cal["integrity"].get("humansl_errors"):
-            safe_print("WARN integrity: pool written from games with humanSL errors")
+        _write_pool(plan, cal, force=args.force_pool or plan.get("force_pool"))
     safe_print(f"calibration: {out.file('calibration.md')}")
 
 
@@ -415,6 +450,12 @@ def build_parser():
     cal.add_argument("--ranks", default=DEFAULT_CALIB_RANKS)
     cal.add_argument("--games", type=int, default=8, help="段位ごとの局数（色は交互）")
     cal.add_argument("--write-pool", default=None, help="選んだプールを書き出すパス（opponent_pool_13.json）")
+    cal.add_argument(
+        "--force-pool",
+        action="store_true",
+        help="計測の健全性の数（fallbacks・humanSL の失敗など）が 0 でなくても --write-pool を上書きする"
+        "（既定は <path>.suspect に書く）",
+    )
     _add_common(cal)
     summ = sub.add_parser("summarize", help="games.jsonl を集計し直す（複数の実行を合わせられる）")
     summ.add_argument("dirs", nargs="+", metavar="DIR", help="実行ディレクトリ（延長の実行を後ろに並べる）")

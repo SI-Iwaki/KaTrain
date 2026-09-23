@@ -546,6 +546,13 @@ class TestArmSummary:
         d2 = S.selfplay_paired_diff(a, a, "win", n_boot=100)
         assert d2["n"] == 10 and d2["mean"] == 0.0
 
+    def test_verdict_only_for_rate_metrics(self):
+        a = [_rec("A", s, 0.30, 0.2, flip_moves=s % 3) for s in range(6)]
+        b = [_rec("B", s, 0.40, 0.2, flip_moves=0) for s in range(6)]
+        assert S.selfplay_paired_diff(a, b, "own_top1", n_boot=100)["verdict"] == "lower"
+        for metric in ("flip_moves", "win", "own_mean_ptloss", "ge6"):  # 率でない指標に ±3pt の判定線は無意味
+            assert S.selfplay_paired_diff(a, b, metric, n_boot=100)["verdict"] is None
+
 
 class TestArmsAndParsing:
     def test_null_guard_detects_identical_resolved_settings(self):
@@ -574,6 +581,13 @@ class TestArmsAndParsing:
             "veil13_reserv"
         ]
         assert S.unknown_override_keys({"veil13_trap_mode": True}, {}, {"veil13_trap_mode"}) == []
+
+    def test_humansl_profiles_are_stripped_and_validated(self):
+        assert S.parse_profiles(" rank_3k, rank_1d ,") == ["rank_3k", "rank_1d"]
+        good = ["rank_20k", "rank_1k", "rank_9d", "preaz_5k", "preaz_2d", "proyear_1990"]
+        assert S.invalid_humansl_profiles(good) == []
+        bad = ["rank3k", "rank_3x", "9d", "rank_3k ", "proyear_90", "strategy:x"]
+        assert S.invalid_humansl_profiles(good + bad) == bad
 
     def test_parse_arm_and_range(self):
         assert S.parse_arm("A=veil13") == ("A", "veil13", [])

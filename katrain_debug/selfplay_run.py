@@ -17,6 +17,7 @@ os.environ.setdefault("KIVY_NO_ARGS", "1")
 from katrain.core import ai as ai_module  # noqa: E402
 from katrain_debug import selfplay_stats as S  # noqa: E402
 from katrain_debug.selfplay_game import (  # noqa: E402
+    ENGINE_STALL_S,
     EngineWatchdog,
     Harness,
     make_opponent,
@@ -191,37 +192,76 @@ class OutputDir:
         with open(self.file(name), encoding="utf-8") as f:
             return json.load(f)
 
-    def records(self):
-        path = self.file("games.jsonl")
+    def _jsonl(self, name, log=print):
+        """jsonl の (行の文字列, dict) のリスト。最後の行だけが壊れている（書いている途中で止まった）なら捨てて warning を
+        log に出す。途中の行が壊れていれば止まる（手で直す）。"""
+        return self._read_jsonl(name, log)[0]
+
+    def _read_jsonl(self, name, log=print):
+        """-> (rows, 手を入れるべきか)。手を入れるべき＝書きかけの最後の行を捨てたか、最後の行に改行が無い。"""
+        path = self.file(name)
         if not os.path.exists(path):
-            return []
+            return [], False
         with open(path, encoding="utf-8") as f:
-            return [json.loads(line) for line in f if line.strip()]
+            text = f.read()
+        lines = [line for line in text.split("\n") if line.strip()]
+        rows = []
+        for i, line in enumerate(lines, 1):
+            try:
+                rows.append((line, json.loads(line)))
+            except json.JSONDecodeError as e:
+                if i < len(lines):
+                    raise SystemExit(f"{path}: {name} line {i} is broken ({e}); only a torn last line is skipped")
+                log(f"warning: {repo_relpath(path)}: skipped a torn last line ({len(line)} chars, {e.msg})")
+        return rows, len(rows) < len(lines) or bool(text) and not text.endswith("\n")
+
+    def _rewrite(self, name, lines):
+        """一時ファイルに書いてから os.replace で置き換える（途中で止まっても元のファイルは無傷）。"""
+        path = self.file(name)
+        tmp = path + ".tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.writelines(line if line.endswith("\n") else line + "\n" for line in lines)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, path)
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+
+    def records(self, log=print):
+        return [row for _, row in self._jsonl("games.jsonl", log)]
 
     def done_keys(self):
         return {(r["arm"], r["seed"]) for r in self.records()}
 
+    def repair_torn_tails(self, log=print):
+        """再開の前に: games.jsonl / moves.jsonl の書きかけの最後の行（改行の無い行を含む）を取り除く。
+
+        そのまま追記すると書きかけの行に次の行がつながり、途中の壊れた行になる。取り除いた行は warning で log に出す。
+        """
+        for name in ("games.jsonl", "moves.jsonl"):
+            rows, needs_repair = self._read_jsonl(name, log)
+            if needs_repair:
+                self._rewrite(name, [line for line, _ in rows])
+
     def drop_aborted(self):
         """--retry-aborted: games.jsonl から aborted の行を aborted.jsonl へ移す（次の再開で打ち直す）。移した数を返す。"""
-        records = self.records()
-        aborted = [r for r in records if r.get("result") == "aborted"]
+        rows = self._jsonl("games.jsonl")
+        aborted = [r for _, r in rows if r.get("result") == "aborted"]
         if not aborted:
             return 0
         with open(self.file("aborted.jsonl"), "a", encoding="utf-8") as f:
             f.writelines(json.dumps(r, ensure_ascii=False, default=str) + "\n" for r in aborted)
-        with open(self.file("games.jsonl"), "w", encoding="utf-8") as f:
-            f.writelines(json.dumps(r, ensure_ascii=False, default=str) + "\n" for r in records if r not in aborted)
+        self._rewrite("games.jsonl", [line for line, r in rows if r.get("result") != "aborted"])
         return len(aborted)
 
     def prune_moves(self, done):
         """再開時: games.jsonl に無い局（落ちた局の書きかけ）の moves.jsonl の行を捨てる。"""
-        path = self.file("moves.jsonl")
-        if not os.path.exists(path):
+        if not os.path.exists(self.file("moves.jsonl")):
             return
-        with open(path, encoding="utf-8") as f:
-            keep = [line for line in f if line.strip() and tuple(json.loads(line)[k] for k in ("arm", "seed")) in done]
-        with open(path, "w", encoding="utf-8") as f:
-            f.writelines(keep)
+        rows = self._jsonl("moves.jsonl")
+        self._rewrite("moves.jsonl", [line for line, r in rows if (r["arm"], r["seed"]) in done])
 
     def write_game(self, result, trainer_config):
         """SGF（KT 解析つき）・ログ・moves.jsonl・games.jsonl の順に書く（games.jsonl の行が完了の印）。"""
@@ -294,6 +334,7 @@ def execute_plan(
         o = plan["opponent"]
         opponent_arm = resolve_arm(stub, "opponent", o["strategy"], o["override_items"])
     hooks_for = hooks_builder(plan, arms) if hooks_builder else (lambda name: [])
+    out.repair_torn_tails(log)  # 前の実行が行の途中で止まっていたら、その行を捨ててから追記する
     if retry_aborted:
         n = out.drop_aborted()
         if n:
@@ -301,7 +342,10 @@ def execute_plan(
     done = out.done_keys()
     out.prune_moves(done)
     engine = engine_factory(stub)
-    watchdog = EngineWatchdog(engine, watchdog_interval).start() if watchdog_interval else None
+    watchdog = None
+    if watchdog_interval:  # 返事の無い KataGo の検出は、待ちの上限（--timeout）と 180 秒の長い方
+        stall_timeout = max(ENGINE_STALL_S, plan["timeout"])
+        watchdog = EngineWatchdog(engine, watchdog_interval, stall_timeout=stall_timeout).start()
     h = Harness(stub, engine, plan["size"], plan["komi"], plan["rules"], watchdog, plan["timeout"], plan["watch_flags"])
     try:
         for arm_name, idx in plan["order"]:
@@ -395,7 +439,7 @@ def format_summary_text(summary):
             lines.append(
                 f"{m:<16} n={d['n']:>3} mean={fmt_num(d['mean'], '+.4f')} t={fmt_num(d['t_ci'][0], '+.4f')}.."
                 f"{fmt_num(d['t_ci'][1], '+.4f')} boot={fmt_num(d['boot_ci'][0], '+.4f')}..{fmt_num(d['boot_ci'][1], '+.4f')} "
-                f"wilcoxon_p={fmt_num(d['wilcoxon_p'], '.4f')} verdict(+-3pt)={d['verdict']}"
+                f"wilcoxon_p={fmt_num(d['wilcoxon_p'], '.4f')} verdict(+-3pt)={d['verdict'] or '-'}"
             )
     if len(summary.get("sources") or []) > 1:
         lines += ["", "## sources"] + summary["sources"]
@@ -444,7 +488,7 @@ def load_records(outs, allow_mixed=False, log=print):
             else:
                 where = f"{repo_relpath(first[0].path)} vs {repo_relpath(out.path)}"
                 check_baseline(first[1], plan, where, allow_mixed, log)
-        for r in out.records():
+        for r in out.records(log):
             key = (r["arm"], r["seed"])
             if key in seen:
                 raise SystemExit(f"arm {r['arm']} seed {r['seed']} appears in both {seen[key]} and {out.path}")
@@ -485,8 +529,8 @@ def calibration_result(out, plan):
     per_rank = S.calibration_rank_stats(records)
     choices = S.selfplay_pool_choice(per_rank) if plan["size"] == 13 and len(per_rank) >= 3 else []
     best = choices[0] if choices else None
-    # 計測の健全性（review finding on Task 6fix, dedup: Task 6fix2）: calibrate も run と同じ4つの合計を出す
-    # （全アーム＝全局分）。集計式そのものは selfplay_arm_summary と共有（S.integrity_totals）。
+    # 計測の健全性: calibrate も run と同じ4つの合計を出す（全アーム＝全局分）。集計式は selfplay_arm_summary と
+    # 共有（S.integrity_totals）。
     integrity = S.integrity_totals(records)
     arm_name = plan["arms"][0].get("name", "calib")
     return {

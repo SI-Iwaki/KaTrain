@@ -35,19 +35,31 @@ def start_engine(stub):
     return KataGoEngine(stub, {**stub.config("engine"), "allow_recovery": False})
 
 
+ENGINE_STALL_S = 180.0  # 待ちの問い合わせがあるのに KataGo の返事がこの秒数ないなら、生きていても再起動する
+
+
 class EngineWatchdog:
-    """エンジンの死活を見張り、落ちていたら再起動する。
+    """エンジンの死活を見張り、落ちていたら再起動する。生きているのに返事をしない（止まった）ときも再起動する。
 
     戦略の待ちループは check_alive の戻り値を見ずに回り続ける（ai.py:584-591）ので、エンジンが死ぬと
     query_generation を進める restart でしか抜けられない（raise_if_discarded → AnalysisDiscardedException）。
     ハーネスの待ちループ（Waiter）は restarts の変化を見てその局を aborted にする。execute_plan は各局の前にも
     ensure_alive を呼ぶ（落ちたエンジンのまま次の局を始めると、残りの局が全部すぐ aborted になる）。
+
+    止まった KataGo（check_alive は True のまま）は Waiter のタイムアウトが効かない戦略自身の待ちループを永遠に
+    止めるので、engine.queries（待ちの問い合わせ）が空でないのに、そのどれにも返事が来ない（どれも queries から
+    消えない）状態が stall_timeout 秒を超えたら再起動する。控えめな判定: 何も待っていない・どれか1つでも返事が
+    来た・待ち始めた、のどれかで時計を戻す。queries を持たないエンジン（テストの偽物）と stall_timeout 0 は見ない。
     """
 
-    def __init__(self, engine, interval=2.0):
+    def __init__(self, engine, interval=2.0, stall_timeout=ENGINE_STALL_S):
         self.engine = engine
         self.interval = interval
+        self.stall_timeout = stall_timeout
         self.restarts = 0
+        self.stalls = 0
+        self._pending = set()
+        self._progress_at = None
         self._stop = threading.Event()
         self._lock = threading.Lock()
 
@@ -55,12 +67,46 @@ class EngineWatchdog:
         threading.Thread(target=self._run, daemon=True).start()
         return self
 
+    def _pending_queries(self):
+        queries = getattr(self.engine, "queries", None)
+        if queries is None:
+            return None
+        with getattr(self.engine, "thread_lock", None) or contextlib.nullcontext():
+            return set(queries)
+
+    def stalled(self, now=None):
+        """待ちの問い合わせに stall_timeout 秒を超えて1つも返事が来ていないか（呼ぶたびに観測を更新する）。"""
+        if not self.stall_timeout:
+            return False
+        pending = self._pending_queries()
+        if pending is None:
+            return False
+        now = time.monotonic() if now is None else now
+        if not pending or not self._pending or (self._pending - pending) or self._progress_at is None:
+            self._progress_at = now
+        self._pending = pending
+        return bool(pending) and now - self._progress_at > self.stall_timeout
+
+    def _restart(self):
+        self.engine.restart()
+        self.restarts += 1
+        self._pending, self._progress_at = set(), None
+
     def ensure_alive(self):
-        """落ちていれば再起動する（見張りのスレッドと execute_plan の局の間の両方から呼ぶ＝ロックで1回だけ）。"""
+        """落ちているか止まっていれば再起動する（見張りのスレッドと execute_plan の局の間の両方から呼ぶ＝ロックで1回だけ）。"""
         with self._lock:
             if not self.engine.check_alive():
-                self.engine.restart()
-                self.restarts += 1
+                self._restart()
+            elif self.stalled():
+                self.stalls += 1
+                katrain = getattr(self.engine, "katrain", None)
+                if katrain is not None:
+                    katrain.log(
+                        f"selfplay: KataGo stalled ({len(self._pending)} queries pending, no reply for "
+                        f"{self.stall_timeout:.0f}s): restarting the engine",
+                        OUTPUT_ERROR,
+                    )
+                self._restart()
 
     def _run(self):
         while not self._stop.wait(self.interval):

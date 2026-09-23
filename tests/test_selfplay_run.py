@@ -135,6 +135,65 @@ class TestExecutePlan:
         assert engine.requests == [] and engine.new_games == 0  # 1局も打たずに止まる
         assert [r["seed"] for r in out.records()] == [1000, 1001]
 
+    def test_resume_drops_torn_last_lines_with_a_warning(self, tmp_path):
+        stub = make_stub(tmp_path)
+        out = R.OutputDir(tmp_path / "run")
+        plan = _plan(stub)
+        _run(plan, out, stub, FakeEngine())
+        games = open(out.file("games.jsonl"), encoding="utf-8").read().splitlines()
+        moves = open(out.file("moves.jsonl"), encoding="utf-8").read().splitlines()
+        with open(out.file("games.jsonl"), "w", encoding="utf-8") as f:  # 2局目の行を書いている途中で止まった
+            f.write(games[0] + "\n" + games[1][:40])
+        with open(out.file("moves.jsonl"), "w", encoding="utf-8") as f:
+            f.write("\n".join(moves) + "\n" + moves[-1][:30])
+        lines = _run(plan, out, stub, FakeEngine())
+        warnings = [line for line in lines if line.startswith("warning:")]
+        assert len(warnings) == 2 and "games.jsonl" in warnings[0] and "moves.jsonl" in warnings[1]
+        assert "torn last line" in warnings[0]
+        assert [r["seed"] for r in out.records()] == [1000, 1001]  # 書きかけの局は打ち直した
+        for name in ("games.jsonl", "moves.jsonl"):
+            text = open(out.file(name), encoding="utf-8").read()
+            assert text.endswith("\n") and all(json.loads(line) for line in text.splitlines())
+        assert len(open(out.file("moves.jsonl"), encoding="utf-8").read().splitlines()) == 12
+
+    def test_summarize_skips_a_torn_last_line_with_a_warning(self, tmp_path):
+        stub = make_stub(tmp_path)
+        out = R.OutputDir(tmp_path / "run")
+        _run(_plan(stub), out, stub, FakeEngine())
+        with open(out.file("games.jsonl"), "a", encoding="utf-8") as f:
+            f.write('{"arm": "A", "seed": 10')  # 書きかけ（集計は読むだけでファイルは直さない）
+        lines = []
+        summary, _ = R.summarize_dir(out, n_boot=50, log=lines.append)
+        assert summary["arms"]["A"]["games"] == 2
+        assert len(lines) == 1 and lines[0].startswith("warning:") and "torn last line" in lines[0]
+
+    def test_a_broken_line_in_the_middle_stops(self, tmp_path):
+        out = R.OutputDir(tmp_path / "run")
+        with open(out.file("games.jsonl"), "w", encoding="utf-8") as f:
+            f.write('{"arm": "A", "seed": 1}\n{"arm": \n{"arm": "A", "seed": 2}\n')
+        with pytest.raises(SystemExit, match="games.jsonl line 2"):
+            out.records()
+
+    def test_rewrites_go_through_a_temp_file(self, tmp_path, monkeypatch):
+        """drop_aborted / prune_moves は一時ファイルに書いてから os.replace する（途中で止まっても元のファイルは無傷）。"""
+        stub = make_stub(tmp_path)
+        out = R.OutputDir(tmp_path / "run")
+        _run(_plan(stub, n_seeds=4), out, stub, DiesInTheSecondGame())
+        before = {name: open(out.file(name), "rb").read() for name in ("games.jsonl", "moves.jsonl")}
+
+        def interrupted(src, dst):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(R.os, "replace", interrupted)
+        with pytest.raises(KeyboardInterrupt):
+            out.drop_aborted()
+        with pytest.raises(KeyboardInterrupt):
+            out.prune_moves({("A", 1000)})
+        monkeypatch.undo()
+        assert {name: open(out.file(name), "rb").read() for name in before} == before
+        assert sorted(p.name for p in (tmp_path / "run").iterdir() if p.name.endswith(".tmp")) == []
+        assert out.drop_aborted() == 1 and [r["seed"] for r in out.records()] == [1000, 1002, 1003]
+
     def test_plan_order_is_abba(self, tmp_path):
         stub = make_stub(tmp_path, **{"ai:policy": {}})
         arms = [resolve_arm(stub, "A", "default", []), resolve_arm(stub, "B", "policy", [])]
@@ -319,6 +378,11 @@ class TestSummaries:
         assert summary["compare"][0]["diffs"]["own_top1"]["n"] == 2
         written = (tmp_path / "run" / "summary.txt").read_text(encoding="ascii")  # ASCII 以外があれば例外
         assert written == text and "paired diff A - A" in text
+        verdicts = {
+            line.split()[0]: line.rsplit("verdict(+-3pt)=", 1)[1] for line in text.splitlines() if "verdict(" in line
+        }
+        assert verdicts["own_top1"] == "within" and verdicts["own_minus_opp"] == "within"  # ±3pt は一致率の差だけ
+        assert verdicts["flip_moves"] == verdicts["own_mean_ptloss"] == verdicts["ge6"] == verdicts["win"] == "-"
         assert json.loads((tmp_path / "run" / "summary.json").read_text(encoding="utf-8"))["arms"]["A"]
 
     def test_integrity_warning_only_when_a_counter_is_non_zero(self, tmp_path):
