@@ -748,6 +748,16 @@ def _fmean(vals):
     return statistics.fmean(vals) if vals else None
 
 
+def integrity_totals(records):
+    """計測の健全性の4つの合計（fallbacks・humansl_errors・hp_audit_errors・shadow_errors）を records から数える
+    （review finding on Task 6fix2）。aborted の局も含めて全ての records から数える（列の無い古い games.jsonl の
+    行は 0）。`selfplay_arm_summary`（run の要約）と `calibration_result`（calibrate）の両方がこれを使う。"""
+    return {
+        **{k: sum((r.get("opponent_stats") or {}).get(k) or 0 for r in records) for k in INTEGRITY_OPPONENT_STATS},
+        **{k: sum(r.get(k) or 0 for r in records) for k in INTEGRITY_HOOK_ERRORS},
+    }
+
+
 def selfplay_arm_summary(records, n_boot=10000, seed=0):
     """1群（アーム、またはアーム × 段位 × 色）の要約（spec §5 summary）。aborted の局は数えるだけ。"""
     ok = [r for r in records if r.get("result") != "aborted"]
@@ -797,11 +807,7 @@ def selfplay_arm_summary(records, n_boot=10000, seed=0):
     out["shadow_same_as_played"] = _fmean([(r.get("shadow") or {}).get("same_as_played") for r in ok])
     out["shadow_vloss_mean"] = _fmean([(r.get("shadow") or {}).get("vloss_mean") for r in ok])
     out["shadow_played_loss_mean"] = _fmean([(r.get("shadow") or {}).get("played_loss_mean") for r in ok])
-    # 計測の健全性は aborted の局も含めて数える（列の無い古い games.jsonl の行は 0）
-    out["integrity"] = {
-        **{k: sum((r.get("opponent_stats") or {}).get(k) or 0 for r in records) for k in INTEGRITY_OPPONENT_STATS},
-        **{k: sum(r.get(k) or 0 for r in records) for k in INTEGRITY_HOOK_ERRORS},
-    }
+    out["integrity"] = integrity_totals(records)
     return out
 
 

@@ -409,11 +409,9 @@ def calibration_result(out, plan):
     per_rank = S.calibration_rank_stats(records)
     choices = S.selfplay_pool_choice(per_rank) if plan["size"] == 13 and len(per_rank) >= 3 else []
     best = choices[0] if choices else None
-    # 計測の健全性（review finding on Task 6fix）: calibrate も run と同じ4つの合計を出す（全アーム＝全局分）
-    integrity = {
-        **{k: sum((r.get("opponent_stats") or {}).get(k) or 0 for r in records) for k in S.INTEGRITY_OPPONENT_STATS},
-        **{k: sum(r.get(k) or 0 for r in records) for k in S.INTEGRITY_HOOK_ERRORS},
-    }
+    # 計測の健全性（review finding on Task 6fix, dedup: Task 6fix2）: calibrate も run と同じ4つの合計を出す
+    # （全アーム＝全局分）。集計式そのものは selfplay_arm_summary と共有（S.integrity_totals）。
+    integrity = S.integrity_totals(records)
     arm_name = plan["arms"][0].get("name", "calib")
     return {
         "run_dir": out.path,
