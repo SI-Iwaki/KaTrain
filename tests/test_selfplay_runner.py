@@ -17,6 +17,7 @@ from katrain.core.ai import AIStrategy, AnalysisDiscardedException, generate_ai_
 from katrain.core.constants import OUTPUT_ERROR
 from katrain.core.sgf_parser import Move
 from katrain_debug import selfplay_game as G
+from katrain_debug import selfplay_stats as S
 from katrain_debug.selfplay_opponent import HumanSLOpponent
 from tests.selfplay_fakes import FakeEngine, make_stub, new_game
 
@@ -110,6 +111,41 @@ class TestResolveArm:
     def test_mode_missing_from_user_config_is_flagged(self, tmp_path):
         arm = G.resolve_arm(make_stub(tmp_path), "A", "enigma13", [])
         assert arm.settings == {} and arm.settings_source.startswith("code defaults")
+
+
+class TestNullGuardOnEffectiveSettings:
+    """null ガードは戦略が実際に使う設定（コードの既定値 → ユーザー config → 上書き・数値は正規化）で比べる。"""
+
+    def test_int_and_float_of_the_same_value_are_the_same_setting(self, tmp_path):
+        stub = make_stub(tmp_path, **{"ai:enigma13plus": {"enigma13plus_probe_extra": 6.0}})
+        a = G.resolve_arm(stub, "A", "enigma13plus", [])
+        b = G.resolve_arm(stub, "B", "enigma13plus", ["enigma13plus_probe_extra=6"])
+        assert type(b.settings["enigma13plus_probe_extra"]) is int  # parse_settings は "6" を int にする
+        assert a.fingerprint != b.fingerprint  # run.json の指紋（再開の突き合わせ）は生の設定のまま
+        assert S.arms_null_guard([a.as_dict(), b.as_dict()]) == [("A", "B")]
+        c = G.resolve_arm(stub, "C", "enigma13plus", ["enigma13plus_probe_extra=5"])
+        assert S.arms_null_guard([a.as_dict(), c.as_dict()]) == []
+
+    def test_override_equal_to_the_code_default_is_no_difference(self, tmp_path):
+        stub = make_stub(tmp_path, **{"ai:mimic13": {}})  # ユーザー config の節は空＝すべてコードの既定値
+        a = G.resolve_arm(stub, "A", "mimic13", [])
+        b = G.resolve_arm(stub, "B", "mimic13", ["mimic13_probe_extra=4", "mimic13_reserve=3.0"])  # どちらも既定値
+        assert a.effective_settings["mimic13_probe_extra"] == 4.0 and a.effective_settings["mimic13_reserve"] == 3.0
+        assert S.arms_null_guard([a.as_dict(), b.as_dict()]) == [("A", "B")]
+        c = G.resolve_arm(stub, "C", "mimic13", ["mimic13_reserve=4.0"])
+        assert S.arms_null_guard([a.as_dict(), b.as_dict(), c.as_dict()]) == [("A", "B")]
+
+    def test_different_strategies_are_never_null(self, tmp_path):
+        stub = make_stub(tmp_path, **{"ai:mimic13": {}, "ai:enigma13plus": {}})
+        arms = [G.resolve_arm(stub, n, s, []) for n, s in (("A", "enigma13plus"), ("B", "mimic13"))]
+        assert S.arms_null_guard([a.as_dict() for a in arms]) == []
+
+    def test_strategy_without_code_defaults_uses_the_resolved_settings(self, tmp_path):
+        stub = make_stub(tmp_path, **{"ai:default": {"dummy": 1}})
+        a = G.resolve_arm(stub, "A", "default", [])
+        b = G.resolve_arm(stub, "B", "default", ["dummy=1.0"])
+        assert a.effective_settings == {"dummy": 1.0}
+        assert S.arms_null_guard([a.as_dict(), b.as_dict()]) == [("A", "B")]
 
 
 def _spec(ai_color="B", resign_lead=None, seed=1000, resign_len=None):

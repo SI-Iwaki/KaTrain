@@ -72,7 +72,11 @@ class EngineWatchdog:
 
 @dataclasses.dataclass
 class Arm:
-    """アーム＝戦略と解決済み設定（ユーザー config の節 + 上書き）。"""
+    """アーム＝戦略と解決済み設定（ユーザー config の節 + 上書き）。
+
+    effective_settings は戦略が実際に使う設定（コードの既定値に settings を重ねて数値を正規化・null ガード用）。
+    fingerprint は settings の指紋のまま（run.json の再開・複数の実行の突き合わせと互換）。
+    """
 
     name: str
     strategy: str
@@ -81,6 +85,7 @@ class Arm:
     override_items: list
     strategy_class: str
     settings_source: str
+    effective_settings: dict = None
 
     @property
     def fingerprint(self):
@@ -99,21 +104,25 @@ def resolve_arm(stub, name, strategy, override_items):
     overrides = parse_settings(list(override_items)) or {}
     cls = STRATEGY_REGISTRY.get(mode)
     known = set()
+    prefix = defaults = None
     if cls is not None and hasattr(cls, "KEY_PREFIX") and hasattr(cls, "SETTING_DEFAULTS"):
-        known = {f"{cls.KEY_PREFIX}_{k}" for k in cls.SETTING_DEFAULTS}
+        prefix, defaults = cls.KEY_PREFIX, cls.SETTING_DEFAULTS
+        known = {f"{prefix}_{k}" for k in defaults}
     unknown = S.unknown_override_keys(overrides, user, known)
     if unknown:
         raise ValueError(
             f"arm {name}: unknown setting keys {unknown} (not in the user config nor the strategy defaults)"
         )
+    settings = {**(user or {}), **overrides}
     return Arm(
         name=name,
         strategy=strategy,
         mode=mode,
-        settings={**(user or {}), **overrides},
+        settings=settings,
         override_items=list(override_items),
         strategy_class=cls.__name__ if cls is not None else None,
         settings_source="user config" if user is not None else "code defaults (mode missing from the user config)",
+        effective_settings=S.effective_settings(settings, prefix, defaults),
     )
 
 

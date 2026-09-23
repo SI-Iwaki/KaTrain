@@ -557,6 +557,18 @@ class TestArmsAndParsing:
         assert S.arms_null_guard(arms) == [("A", "B")]
         assert S.settings_fingerprint("ai:x", {"a": 1, "b": 2}) == S.settings_fingerprint("ai:x", {"b": 2, "a": 1})
 
+    def test_effective_settings_overlay_code_defaults_and_normalise_numbers(self):
+        settings = {"veil13_reserve": 4, "other": 2, "flag": True}
+        eff = S.effective_settings(settings, "veil13", {"reserve": 3.0, "tau": 1})
+        assert eff == {"veil13_reserve": 4.0, "veil13_tau": 1.0, "other": 2.0, "flag": True}
+        assert type(eff["flag"]) is bool and type(eff["other"]) is float  # bool は数値にしない
+        assert S.effective_settings({"a": 6}) == {"a": 6.0}
+        arms = [
+            {"name": "A", "mode": "ai:x", "settings": {"k": 6}, "effective_settings": {"k": 6, "d": 1.0}},
+            {"name": "B", "mode": "ai:x", "settings": {"k": 6.0, "d": 1}, "effective_settings": {"k": 6.0, "d": 1}},
+        ]
+        assert S.arms_null_guard(arms) == [("A", "B")]
+
     def test_unknown_override_keys(self):
         assert S.unknown_override_keys({"veil13_reserv": 4}, {"veil13_reserve": 5}, {"veil13_trap_mode"}) == [
             "veil13_reserv"

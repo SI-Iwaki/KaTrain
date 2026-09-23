@@ -904,11 +904,38 @@ def settings_fingerprint(mode, settings):
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
 
+def _normalize_setting(value):
+    """数値の型の違いを消す（6 == 6.0）。bool は数値にしない（True と 1.0 は別の設定として残す）。"""
+    if isinstance(value, bool):
+        return value
+    return float(value) if isinstance(value, int) else value
+
+
+def effective_settings(settings, key_prefix=None, setting_defaults=None):
+    """戦略が実際に使う設定: コードの既定値 {f"{key_prefix}_{k}": v} → settings（ユーザー config + 上書き）の順に重ね、
+    数値を正規化する。
+
+    KEY_PREFIX / SETTING_DEFAULTS を持つ戦略は settings.get(f"{KEY_PREFIX}_{k}", SETTING_DEFAULTS[k]) で読む
+    （ai.py の _setting）ので、既定値と同じ値の上書きは違いにならない。持たない戦略は settings だけを正規化する。
+    """
+    base = {f"{key_prefix}_{k}": v for k, v in (setting_defaults or {}).items()} if key_prefix else {}
+    return {k: _normalize_setting(v) for k, v in {**base, **(settings or {})}.items()}
+
+
 def arms_null_guard(arms):
-    """解決済み設定が同一のアームの組 [(name, name)]。空でなければ null 実験＝中止する。"""
+    """戦略が実際に使う設定が同一のアームの組 [(name, name)]。空でなければ null 実験＝中止する。
+
+    アームの dict の effective_settings（resolve_arm がコードの既定値から解決したもの。無ければ settings）を
+    正規化して比べる＝型だけの違い（6 と 6.0）や既定値と同じ上書きは「同じ設定」。
+    """
+
+    def effective_fingerprint(arm):
+        eff = arm.get("effective_settings")
+        return settings_fingerprint(arm["mode"], effective_settings(arm["settings"] if eff is None else eff))
+
     pairs = []
     for a, b in itertools.combinations(arms, 2):
-        if settings_fingerprint(a["mode"], a["settings"]) == settings_fingerprint(b["mode"], b["settings"]):
+        if effective_fingerprint(a) == effective_fingerprint(b):
             pairs.append((a["name"], b["name"]))
     return pairs
 

@@ -66,6 +66,7 @@ class TestRun:
         assert len(games) == 2
         out = capsys.readouterr().out
         assert "output:" in out and "# selfplay summary" in out
+        assert "settings_source" not in out  # ユーザー config の節で走るアームは何も言わない
 
         CLI.main(["run", "--resume", run_dir, "--boot", "100"])
         assert len(open(os.path.join(run_dir, "games.jsonl"), encoding="utf-8").read().splitlines()) == 2
@@ -82,6 +83,21 @@ class TestRun:
     def test_null_experiment_is_refused(self, env):
         with pytest.raises(SystemExit, match="null experiment"):
             CLI.main(_run_args(env, "--arm", "A=default", "--arm", "B=default"))
+
+    def test_override_equal_to_the_code_default_is_a_null_experiment(self, env, monkeypatch):
+        engine_started = []
+        monkeypatch.setattr(CLI, "start_engine", lambda stub: engine_started.append(1) or FakeEngine())
+        with pytest.raises(SystemExit, match="null experiment"):  # mimic13_probe_extra の既定値は 4
+            CLI.main(_run_args(env, "--arm", "A=mimic13", "--arm", "B=mimic13:mimic13_probe_extra=4"))
+        assert engine_started == []
+
+    def test_code_default_settings_are_announced_at_plan_time(self, env, capsys):
+        cfg = json.loads(open(env["config"], encoding="utf-8").read())
+        del cfg["ai"]["ai:default"]  # 戦略の節がユーザー config に無い＝コードの既定値で走る
+        open(env["config"], "w", encoding="utf-8").write(json.dumps(cfg))
+        CLI.main(_run_args(env, "--arm", "A=default"))
+        out = capsys.readouterr().out
+        assert "arm A (default): settings_source = code defaults (mode missing from the user config)" in out
 
     def test_typo_in_an_override_is_refused(self, env):
         with pytest.raises(SystemExit, match="unknown setting keys"):

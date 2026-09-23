@@ -157,6 +157,9 @@ def _warn_if_unbalanced(plan):
     warning = S.schedule_balance_warning(plan["schedule"], plan["opponent"]["ranks"])
     if warning:
         safe_print(warning)
+    for arm in plan["arms"]:  # spec §11: 戦略の節がユーザー config に無いと、GUI と違うコードの既定値で走る
+        if arm["settings_source"] != "user config":
+            safe_print(f"note: arm {arm['name']} ({arm['strategy']}): settings_source = {arm['settings_source']}")
 
 
 def _new_output(args, stub, plan, label):
