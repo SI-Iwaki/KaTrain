@@ -73,7 +73,7 @@
 | spec | |
 |---|---|
 | `2026-04-11-strategy-debug-cli-design.md` | 🟢 戦略デバッグCLI（`katrain_debug`） |
-| `2026-09-23-selfplay-harness-design.md` | 📝 自己対局ハーネス `katrain_debug.selfplay`＝戦略 vs humanSL ボット（実戦の相手に校正）を無人で N 局打たせ、本物の `game_report` で両者の一致率・勝敗・目差を集計。seed 対の ABBA・接戦ストレス層・投了なし・影判定・hp 監査 |
+| `2026-09-23-selfplay-harness-design.md` | 🟢 自己対局ハーネス `katrain_debug.selfplay`＝戦略 vs humanSL ボット（実戦の相手に校正）を無人で N 局打たせ、本物の `game_report` で両者の一致率・勝敗・目差を集計。seed 対の ABBA・接戦ストレス層・投了なし・影判定・hp 監査。実装 `katrain_debug/selfplay*.py`・データ `calibration-data/selfplay/`（相手ボットの校正は未実施） |
 | `2026-04-14-lambdago-cheat-metrics-design.md` | 🟢 `--batch` のチート検出メトリック |
 
 ---
@@ -148,7 +148,7 @@
 
 ## 実装プラン（`docs/superpowers/plans/`）
 
-51本。上の各 spec と**1対1で対応する実装チェックリスト**（ファイル名は spec から `-design` を
+52本。上の各 spec と**1対1で対応する実装チェックリスト**（ファイル名は spec から `-design` を
 除いたもの、例 `2026-08-18-board-watch.md` ↔ `2026-08-18-board-watch-design.md`）。
 実装済みの機能では履歴的な資料で、**現在の挙動を知りたいなら spec か rules を見ること**
 （プランは着手前に書かれるので、実装中に変わった判断が反映されていない）。
@@ -164,3 +164,4 @@
 - `tsumego-web/` — Web キャプチャの実スクショ回帰（`validate_web_capture.py`）
 - `jigo-speedup/` `jigo-endgame/` `parity9/` `enigma9/` `board-watch/` `runs/` — 各機能の校正結果
 - `enigma-overdraft/` — 難解「捨て身の罠」の在庫の反実仮想（ハーネス `overdraft_cf.py`・集計 `overdraft_cf_report.py`・復元 SGF 18 局）
+- `selfplay/` — 自己対局ハーネス（`python -m katrain_debug.selfplay`）: 実戦 13路 18局の復元 SGF と事後 2500v レポート（`recon/`）・校正目標 `calib_targets.py`・相手ボットのプール `opponent_pool_13.json`（calibrate の出力）・試作と計測・韜晦の反実仮想（`README.md` に一覧）
