@@ -4622,6 +4622,29 @@ def veil_classify(c, ctx):
     return None, cost
 
 
+def veil_choose(scored, slack, prefer_safe, hp_tie=VEIL_HP_TIE):
+    """種類の付いた候補（kind が真）から1手を選ぶ。該当なしは None。
+
+    cost の最小値 c0 から slack 以内の帯で humanPolicy 最大（決定的）。prefer_safe（余剰がある手番）なら
+    hp の差が hp_tie 以内の手のうち着手後勝率が高い手を優先し、それでも同点なら cost 昇順 → gtp 昇順。
+    prefer_safe でなければ hp 降順 → cost 昇順 → gtp 昇順。
+    scored: [{"gtp", "kind", "cost", "hp", "wr_after"}]。
+    """
+    eligible = [c for c in scored if c.get("kind")]
+    if not eligible:
+        return None
+    cheapest = min(c["cost"] for c in eligible)
+    band = [c for c in eligible if c["cost"] <= cheapest + slack + _VEIL_EPS]
+    if prefer_safe:
+        top_hp = max(c["hp"] for c in band)
+        tied = [c for c in band if c["hp"] >= top_hp - hp_tie - _VEIL_EPS]
+        return min(
+            tied,
+            key=lambda c: (-(c["wr_after"] if c.get("wr_after") is not None else -1.0), c["cost"], c["gtp"]),
+        )
+    return min(band, key=lambda c: (-c["hp"], c["cost"], c["gtp"]))
+
+
 @register_strategy(AI_SCORELOSS)
 class ScoreLossStrategy(AIStrategy):
     """ScoreLoss strategy - weights moves based on point loss"""

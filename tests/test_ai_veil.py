@@ -14,6 +14,7 @@ from katrain.core.ai import (
     VeilCtx,
     game_report,
     veil_allowance,
+    veil_choose,
     veil_classify,
     veil_close_drift_ok,
     veil_cons_loss,
@@ -335,3 +336,36 @@ class TestClassify:
         assert veil_classify(row(0.1), capped) == ("paid", 0.1)
         closed = ctx(close=True, close_drift=0.25, close_drift_cap=0.3, urgency=0.0, allowance=0.0)
         assert veil_classify(row(0.1), closed) == (None, 0.1)
+
+
+def pick(gtp, cost, hp, wr_after=0.9, kind="free"):
+    return {"gtp": gtp, "kind": kind, "cost": cost, "hp": hp, "wr_after": wr_after}
+
+
+class TestChoose:
+    def test_none_without_a_qualifying_move(self):
+        assert veil_choose([], 0.3, prefer_safe=False) is None
+        assert veil_choose([pick("D4", 0.1, 0.3, kind=None)], 0.3, prefer_safe=False) is None
+
+    def test_most_human_move_inside_the_cheapest_band(self):
+        scored = [pick("A", 0.0, 0.10), pick("B", 0.3, 0.40), pick("C", 0.31, 0.90, kind="paid")]
+        assert veil_choose(scored, 0.3, prefer_safe=False)["gtp"] == "B"  # C は帯（0.0〜0.3）の外
+
+    def test_zero_slack_is_the_cheapest(self):
+        scored = [pick("A", 0.2, 0.10), pick("B", 0.1, 0.05)]
+        assert veil_choose(scored, 0.0, prefer_safe=False)["gtp"] == "B"
+
+    def test_exact_hp_tie_breaks_on_cost_then_gtp(self):
+        scored = [pick("K10", 0.2, 0.3), pick("D4", 0.2, 0.3), pick("C3", 0.1, 0.3)]
+        assert veil_choose(scored, 0.3, prefer_safe=False)["gtp"] == "C3"
+        scored = [pick("K10", 0.2, 0.3), pick("D4", 0.2, 0.3)]
+        assert veil_choose(scored, 0.3, prefer_safe=False)["gtp"] == "D4"
+
+    def test_with_surplus_near_tied_hp_prefers_the_safer_move(self):
+        scored = [pick("A", 0.1, 0.30, wr_after=0.90), pick("B", 0.2, 0.29, wr_after=0.95), pick("C", 0.0, 0.20)]
+        assert veil_choose(scored, 0.3, prefer_safe=True)["gtp"] == "B"
+        assert veil_choose(scored, 0.3, prefer_safe=False)["gtp"] == "A"
+
+    def test_with_surplus_a_clearly_more_human_move_still_wins(self):
+        scored = [pick("A", 0.1, 0.30, wr_after=0.90), pick("B", 0.2, 0.27, wr_after=0.99)]
+        assert veil_choose(scored, 0.3, prefer_safe=True)["gtp"] == "A"
