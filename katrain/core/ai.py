@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import copy
 import heapq
+import json
 import math
 import random
 import threading
@@ -4726,6 +4727,55 @@ def veil_terminal_swap(candidates, best_gtp, hp_of, floor, lead, dominant, urgen
     if not pool:
         return None
     return min(pool, key=lambda c: (-c["hp"], c["loss"], c["gtp"]))
+
+
+def veil_invariant_ok(chosen, best, cand_gtps, kind, bounds):
+    """選んだ手の最終確認（S19）。違反なら False（呼び出し側は ERROR ログ＋最善手）。
+
+    共通: chosen が通常解析の候補 cand_gtps に含まれ、best でも pass でもないこと。種類ごとの上限（bounds のキー）:
+    free / decided: cost <= f_eff。paid: cost <= allowance かつ lead − cost >= reserve。
+    trap: price <= allow かつ max(0, vloss) <= trap_cap かつ lead − max(0, vloss) >= reserve。
+    terminal: raw <= limit。それ以外の kind・キー欠落は False。
+    """
+    if chosen is None or chosen == best or chosen == "pass" or chosen not in cand_gtps:
+        return False
+    try:
+        if kind in ("free", "decided"):
+            return bounds["cost"] <= bounds["f_eff"] + _VEIL_EPS
+        if kind == "paid":
+            return (
+                bounds["cost"] <= bounds["allowance"] + _VEIL_EPS
+                and bounds["lead"] - bounds["cost"] >= bounds["reserve"] - _VEIL_EPS
+            )
+        if kind == "trap":
+            paid = max(0.0, bounds["vloss"])
+            return (
+                bounds["price"] <= bounds["allow"] + _VEIL_EPS
+                and paid <= bounds["trap_cap"] + _VEIL_EPS
+                and bounds["lead"] - paid >= bounds["reserve"] - _VEIL_EPS
+            )
+        if kind == "terminal":
+            return bounds["raw"] <= bounds["limit"] + _VEIL_EPS
+    except (KeyError, TypeError):
+        return False
+    return False
+
+
+def veil_decision_record(**fields):
+    """`Decision:` 行の JSON（ASCII のみ・キー順固定・float は小数3桁・NaN/inf は null）。"""
+
+    def clean(v):
+        if v is None or isinstance(v, (bool, int, str)):
+            return v
+        if isinstance(v, float):
+            return None if math.isnan(v) or math.isinf(v) else round(v, 3)
+        if isinstance(v, (list, tuple)):
+            return [clean(x) for x in v]
+        if isinstance(v, dict):
+            return {str(k): clean(x) for k, x in v.items()}
+        return str(v)
+
+    return json.dumps({k: clean(v) for k, v in fields.items()}, ensure_ascii=True, sort_keys=True)
 
 
 @register_strategy(AI_SCORELOSS)

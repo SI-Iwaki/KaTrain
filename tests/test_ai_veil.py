@@ -18,7 +18,9 @@ from katrain.core.ai import (
     veil_classify,
     veil_close_drift_ok,
     veil_cons_loss,
+    veil_decision_record,
     veil_free_limit,
+    veil_invariant_ok,
     veil_merge_trap,
     veil_natural_floor,
     veil_near_free_ok,
@@ -460,3 +462,42 @@ class TestTerminalSwap:
         assert blocked is None
         free = veil_terminal_swap(*args, lead=10.0, dominant=False, urgency=0.0, close_drift=5.0, close_drift_cap=1.0)
         assert free["gtp"] == "C3"  # |lead| >= 3 では累計を見ない
+
+
+class TestInvariant:
+    GTPS = {"E5", "D4", "C3", "pass"}
+
+    def test_common_rules(self):
+        free = {"cost": 0.1, "f_eff": 0.3}
+        assert veil_invariant_ok("D4", "E5", self.GTPS, "free", free)
+        assert not veil_invariant_ok("E5", "E5", self.GTPS, "free", free)  # 最善手
+        assert not veil_invariant_ok("pass", "E5", self.GTPS, "free", free)
+        assert not veil_invariant_ok("Q16", "E5", self.GTPS, "free", free)  # 候補に無い
+        assert not veil_invariant_ok(None, "E5", self.GTPS, "free", free)
+
+    def test_bounds_per_kind(self):
+        assert not veil_invariant_ok("D4", "E5", self.GTPS, "decided", {"cost": 0.31, "f_eff": 0.3})
+        paid = {"cost": 2.0, "allowance": 2.0, "lead": 7.0, "reserve": 5.0}
+        assert veil_invariant_ok("D4", "E5", self.GTPS, "paid", paid)
+        assert not veil_invariant_ok("D4", "E5", self.GTPS, "paid", {**paid, "allowance": 1.9})
+        assert not veil_invariant_ok("D4", "E5", self.GTPS, "paid", {**paid, "lead": 6.9})
+        trap_b = {"price": -0.5, "allow": 0.0, "vloss": 1.5, "trap_cap": 1.5, "lead": 8.0, "reserve": 5.0}
+        assert veil_invariant_ok("C3", "E5", self.GTPS, "trap", trap_b)
+        assert not veil_invariant_ok("C3", "E5", self.GTPS, "trap", {**trap_b, "vloss": 1.6})
+        assert not veil_invariant_ok("C3", "E5", self.GTPS, "trap", {**trap_b, "price": 0.1})
+        assert veil_invariant_ok("D4", "E5", self.GTPS, "terminal", {"raw": 0.05, "limit": 0.05})
+        assert not veil_invariant_ok("D4", "E5", self.GTPS, "terminal", {"raw": 0.06, "limit": 0.05})
+
+    def test_unknown_kind_or_missing_bounds_fail(self):
+        assert not veil_invariant_ok("D4", "E5", self.GTPS, "mystery", {"cost": 0.0, "f_eff": 1.0})
+        assert not veil_invariant_ok("D4", "E5", self.GTPS, "paid", {"cost": 0.1})
+
+
+class TestDecisionRecord:
+    def test_json_is_ascii_sorted_and_rounded(self):
+        text = veil_decision_record(
+            tier="iii", kind="free", vloss=0.123456, lead=float("nan"), ledger=(1, "D4"), ok=True
+        )
+        assert text == '{"kind": "free", "lead": null, "ledger": [1, "D4"], "ok": true, "tier": "iii", "vloss": 0.123}'
+        assert text.isascii()
+        assert json.loads(text)["vloss"] == 0.123
