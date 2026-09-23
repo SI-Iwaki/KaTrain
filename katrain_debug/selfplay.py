@@ -26,6 +26,7 @@ from katrain_debug import selfplay_run as R  # noqa: E402
 from katrain_debug import selfplay_stats as S  # noqa: E402
 from katrain_debug.katrain_stub import KaTrainStub  # noqa: E402
 from katrain_debug.selfplay_game import report_sgf, resolve_arm, start_engine  # noqa: E402
+from katrain_debug.selfplay_hooks import make_hooks_factory  # noqa: E402
 
 DEFAULT_CALIB_RANKS = "rank_8k,rank_5k,rank_3k,rank_1k,rank_1d,rank_3d"
 
@@ -167,6 +168,8 @@ def _plan_run(args):
     same = S.arms_null_guard([a.as_dict() for a in arms])
     if same:
         raise SystemExit(f"null experiment: arms {same} resolve to identical settings")
+    if args.shadow is not None and args.shadow not in {a.name for a in arms}:
+        raise SystemExit(f"--shadow {args.shadow}: not one of the --arm names")
     opponent = opponent_plan(args, args.size)
     if opponent["kind"] == "strategy":  # 相手の戦略名と上書きキーの綴りも開始前に確かめる
         resolve_arm(stub, "opponent", opponent["strategy"], opponent["override_items"])
@@ -184,7 +187,11 @@ def _plan_run(args):
         resign=resign,
         watch_flags=args.watch_flags,
         timeout=args.timeout,
-        extra={"config_path": args.config or default_config_path()},
+        extra={
+            "config_path": args.config or default_config_path(),
+            "shadow": args.shadow,
+            "hp_audit": args.hp_audit,
+        },
     )
     return stub, plan
 
@@ -197,7 +204,15 @@ def cmd_run(args):
             stub, plan = _plan_run(args)
         _warn_if_unbalanced(plan)
         out = _new_output(args, stub, plan, args.label or "run")
-    R.execute_plan(plan, out, stub, engine_factory=start_engine, retry_aborted=args.retry_aborted, log=safe_print)
+    R.execute_plan(
+        plan,
+        out,
+        stub,
+        engine_factory=start_engine,
+        hooks_builder=make_hooks_factory,
+        retry_aborted=args.retry_aborted,
+        log=safe_print,
+    )
     names = [a["name"] for a in plan["arms"]]
     _, text = R.summarize_dir(out, args.boot, compare=[(names[0], n) for n in names[1:]])  # アーム間の差（spec §5）
     safe_print(text)
@@ -342,6 +357,8 @@ def build_parser():
     run.add_argument("--opponent", default="humansl", help="humansl か strategy:NAME[:key=val,...]")
     run.add_argument("--komi-shift", type=float, default=0.0, help="AI 不利にずらすコミ（接戦ストレス層）")
     run.add_argument("--watch-flags", action="store_true", help="game.board_watch_active を立てる（監視専用の分岐）")
+    run.add_argument("--shadow", default=None, metavar="ARM", help="他のアームの各手番でこのアームの判断も記録する")
+    run.add_argument("--hp-audit", default=None, metavar="PROFILE", help="hp 監査の humanSL（例 rank_9d）")
     _add_common(run)
     cal = sub.add_parser("calibrate", help="相手ボットの段位ごとの統計を取り、3段位プールを選ぶ")
     cal.add_argument("--strategy", default="enigma13plus", help="校正に使う戦略（runner の戦略名）")
