@@ -4858,9 +4858,116 @@ class Veil9Strategy(Enigma9Strategy):
         )
         return self._best_move(f"{self.LABEL}: invariant check failed, playing best move.")
 
+    def _veil_candidates(self, cands, player):
+        """通常解析の候補を `parity9_build_candidates` の {"gtp", "loss", "visits", "wr"} の列に（S10・S8 共通）。"""
+        candidates, _n_searched = parity9_build_candidates(cands, player=player, min_visits=ENIGMA9_POOL_MIN_VISITS)
+        return candidates
+
+    def _veil_parent_hp(self, info):
+        """親局面の humanSL（9段・8visits）を1本撃ち info["queries"] を数える（S11・S8 共通）。失敗なら None。"""
+        stage_hp = self._run_query(
+            "parent hp",
+            include_policy=True,
+            ownership=False,
+            visits=ENIGMA9_HP_CHILD_VISITS,
+            extra_settings={"humanSLProfile": ENIGMA9_HUMAN_PROFILE, "ignorePreRootHistory": False},
+        )
+        info["queries"] += 1
+        return stage_hp
+
+    def _veil_dominant(self, best_hp):
+        """明らかな一手（最善手の humanPolicy >= dominant_hp）か（S12・S8 共通）。"""
+        return best_hp >= float(self._setting("dominant_hp"))
+
+    def _veil_floor(self, human_policy, dominant):
+        """自然さの床（盤上の第一感と設定値を `veil_natural_floor` に渡す。S12・S8 共通）。"""
+        return veil_natural_floor(
+            mimic_hp_top(human_policy, self.game.board_size),
+            float(self._setting("min_human_policy")),
+            float(self._setting("natural_ratio")),
+            dominant,
+        )
+
     def _veil_terminal(self, cands, player, best_gtp, lead, u, info):
         """S7（相手の直前パス）と S8（終局帯）。該当すれば (result, tier, kind, fields)、しなければ None。"""
-        return None
+        pass_loss = enigma9_pass_loss(cands)
+        # ---- S7 相手の直前パス: pass_loss の値に関係なく基底の終局処理（外しには進まない）----
+        # pass_loss < 0.5 なら即パス、そうでなければ ownership の Probe を1本撃ち、決着ならパス・未決着なら最善手
+        # （中国ルールで死石が残って pass が大損に出る終局でも外さない＝game_20260828_065952 の回帰防止）
+        if self.cn.move is not None and self.cn.move.is_pass:
+            cheap_pass = pass_loss is not None and pass_loss < _AREA_PASS_MARGIN
+            info["queries"] += 0 if cheap_pass else 1
+            result = self._terminal_band_move(cands, player)
+            if result is not None:
+                kind = "pass" if result[0].is_pass else "best"
+                return result, "terminal", kind, {"why": "opp_pass", "pass_loss": pass_loss}
+        if pass_loss is None or pass_loss >= _AREA_PASS_MARGIN:
+            return None
+        # ---- S8 終局帯（盤上に 0.5 目以上の手が無い）----
+        stage_hp = self._veil_parent_hp(info)
+        board_size = self.game.board_size
+        human_policy = (stage_hp or {}).get("humanPolicy")
+        human_top = enigma9_human_top(human_policy, board_size)
+        fields = {"why": "terminal", "pass_loss": pass_loss}
+        if human_top is None:
+            self._log(f"Terminal: pass loses {pass_loss:.2f} but humanSL unavailable -> best move")
+            return (
+                self._best_move(f"{self.LABEL}: game is nearly over, humanSL unavailable, playing best move."),
+                "failsafe", "best", {**fields, "why": "no_hp"},
+            )
+        top_gtp, top_hp, pass_hp = human_top
+        hp_of = enigma9_hp_lookup(human_policy, board_size)
+        best_hp = hp_of(best_gtp)
+        dominant = self._veil_dominant(best_hp)
+        floor = self._veil_floor(human_policy, dominant)
+        fields.update(best_hp=best_hp, dominant=dominant)
+        # (b) 9段が pass を最上位に置き、pass の損失も margin 未満 → パス
+        if enigma9_terminal_pass(pass_loss, pass_hp, top_hp):
+            self._log(f"Terminal: pass loses {pass_loss:.2f}, humanSL pass {pass_hp:.1%} >= {top_gtp} {top_hp:.1%} -> pass")
+            return (
+                (Move(None, player=player), f"{self.LABEL}: game is over (pass loses {pass_loss:.2f}), passing."),
+                "terminal", "pass", fields,
+            )
+        # (c) ダメ詰めの順番入れ替え（レポート上の不一致）
+        state = self._veil_state()
+        drift_cap = float(self._setting("close_drift_cap"))
+        candidates = self._veil_candidates(cands, player)
+        limit = veil_terminal_limit(lead)
+        swap = veil_terminal_swap(candidates, best_gtp, hp_of, floor, lead, dominant, u, state["close_drift"], drift_cap)
+        if swap is not None:
+            bounds = {"raw": swap["loss"], "limit": limit}
+            if not veil_invariant_ok(swap["gtp"], best_gtp, {d["move"] for d in cands}, "terminal", bounds):
+                return self._veil_violation(swap["gtp"], "terminal", bounds), "failsafe", "best", {**fields, "why": "invariant"}
+            if drift_cap > 0 and abs(lead) < VEIL_TERMINAL_CLOSE_LEAD:
+                state["close_drift"] += max(0.0, swap["loss"])
+            self._log(f"Terminal swap: played {swap['gtp']} (raw {swap['loss']:.2f} <= {limit:.2f}, hp {swap['hp']:.3f})")
+            return (
+                (
+                    Move.from_gtp(swap["gtp"], player=player),
+                    f"{self.LABEL}: game is nearly over, filling {swap['gtp']} (loss {swap['loss']:.2f}) "
+                    f"instead of {best_gtp}.",
+                ),
+                "terminal", "swap", {**fields, "raw": swap["loss"], "hp": swap["hp"]},
+            )
+        # (d) 9段の終局処理の手（最善手でなければ (c) と同じ損失上限）
+        finish_loss = enigma9_terminal_move(top_gtp, cands)
+        if finish_loss is not None and (top_gtp == best_gtp or finish_loss <= limit + _VEIL_EPS):
+            kind = "best" if top_gtp == best_gtp else "finish"
+            self._log(f"Terminal: humanSL top {top_gtp} {top_hp:.1%} (loss {finish_loss:.2f}) -> play it")
+            return (
+                (
+                    Move.from_gtp(top_gtp, player=player),
+                    f"{self.LABEL}: game is nearly over, playing the 9d finishing move {top_gtp} "
+                    f"(loss {finish_loss:.2f}).",
+                ),
+                "terminal", kind, {**fields, "raw": finish_loss, "hp": top_hp},
+            )
+        # (e) 最善手
+        self._log(f"Terminal: no cheap natural finishing move (limit {limit:.2f}) -> best move")
+        return (
+            self._best_move(f"{self.LABEL}: game is nearly over, playing best move."),
+            "terminal", "best", fields,
+        )
 
     def _generate_move(self) -> Tuple[Move, str]:
         # ---- S0 ラッパー: 解析の破棄は上へ、それ以外の例外は最善手 ----
@@ -4975,7 +5082,7 @@ class Veil9Strategy(Enigma9Strategy):
 
         # ---- S10 生の候補プール（クエリ0本）----
         trap_on = bool(self._setting("trap_mode"))
-        candidates, _n_searched = parity9_build_candidates(cands, player=player, min_visits=ENIGMA9_POOL_MIN_VISITS)
+        candidates = self._veil_candidates(cands, player)
         pool0 = [c for c in candidates if c["gtp"] not in (best_gtp, "pass")]
         raw_cap = max(f_eff, allowance) + VEIL_RAW_MARGIN
         nat_pool = veil_prefilter(pool0, raw_cap)
@@ -4988,14 +5095,7 @@ class Veil9Strategy(Enigma9Strategy):
             )
 
         # ---- S11 親局面の humanSL（1本）----
-        stage_hp = self._run_query(
-            "parent hp",
-            include_policy=True,
-            ownership=False,
-            visits=ENIGMA9_HP_CHILD_VISITS,
-            extra_settings={"humanSLProfile": ENIGMA9_HUMAN_PROFILE, "ignorePreRootHistory": False},
-        )
-        info["queries"] += 1
+        stage_hp = self._veil_parent_hp(info)
         if not stage_hp or "humanPolicy" not in stage_hp:
             self._log("HumanSL unavailable -> best move")
             return finish(
@@ -5007,7 +5107,7 @@ class Veil9Strategy(Enigma9Strategy):
         info["best_hp"] = best_hp
 
         # ---- S12 段の判定と自然さ ----
-        dominant = best_hp >= float(self._setting("dominant_hp"))
+        dominant = self._veil_dominant(best_hp)
         info["dominant"] = dominant
         if dominant and u <= 0:
             self._log(f"Tier ii closed: best {best_gtp} hp={best_hp:.3f} and rate at/below target -> best move")
@@ -5023,12 +5123,7 @@ class Veil9Strategy(Enigma9Strategy):
             raw_cap = max(f_eff, allowance2) + VEIL_RAW_MARGIN
             nat_pool = veil_prefilter(pool0, raw_cap)
         info["A_t"] = allowance2
-        floor = veil_natural_floor(
-            mimic_hp_top(human_policy, self.game.board_size),
-            float(self._setting("min_human_policy")),
-            float(self._setting("natural_ratio")),
-            dominant,
-        )
+        floor = self._veil_floor(human_policy, dominant)
         naturals = [c for c in nat_pool if hp_of(c["gtp"]) >= floor]
         trap_cands = [c for c in trap_pool if hp_of(c["gtp"]) >= VEIL_TRAP_MIN_HP]
         self._log(

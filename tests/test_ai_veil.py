@@ -943,3 +943,86 @@ class TestTrapLayer(_Harness):
         s, _ = self._strategy(hp=hp, probes=cheap, settings={"veil9_trap_mode": True})
         assert s.generate_move()[0].gtp() == "C7"
         assert s.last_decision_info["tier"] == "ii"
+
+
+class TestTerminal(_Harness):
+    """S7（相手の直前パス）と S8（終局帯）。9路・黒番・最善手 E5。"""
+
+    END = [
+        {"move": "E5", "pointsLost": 0.0, "relativePointsLost": 0.0, "visits": 600, "winrate": 0.9},
+        {"move": "D4", "pointsLost": 0.04, "relativePointsLost": 0.04, "visits": 50, "winrate": 0.9},
+        {"move": "C3", "pointsLost": 0.08, "relativePointsLost": 0.08, "visits": 40, "winrate": 0.9},
+        {"move": "F6", "pointsLost": 0.3, "relativePointsLost": 0.3, "visits": 30, "winrate": 0.9},
+        {"move": "G7", "pointsLost": 0.02, "relativePointsLost": 0.02, "visits": 5, "winrate": 0.9},
+        {"move": "pass", "pointsLost": 0.2, "relativePointsLost": 0.2, "visits": 60, "winrate": 0.9},
+    ]
+    # 盤上の第一感 G7 0.45 → 床 = max(0.05, 0.2 × 0.45) = 0.09
+    END_HP = {"E5": 0.30, "D4": 0.10, "C3": 0.25, "F6": 0.40, "G7": 0.45, "pass": 0.0}
+
+    def _end(self, pass_loss=0.2, **kw):
+        cands = [dict(c) for c in self.END]
+        cands[-1]["relativePointsLost"] = cands[-1]["pointsLost"] = pass_loss
+        kw.setdefault("hp", self.END_HP)
+        return self._strategy(cands=cands, **kw)
+
+    def test_opponent_pass_with_an_expensive_pass_never_deviates(self):
+        s, _ = self._end(pass_loss=3.0, lead=10.0, last_move=Move(None, player="W"), ownership=[0.1] * 81)
+        move, _ = s.generate_move()
+        assert move.gtp() == "E5"
+        assert s.queries == ["Probe"] and s.probe_calls == []
+        info = s.last_decision_info
+        assert (info["tier"], info["why"], info["queries"]) == ("terminal", "opp_pass", 1)
+
+    def test_opponent_pass_on_a_settled_board_passes(self):
+        s, _ = self._end(pass_loss=3.0, last_move=Move(None, player="W"), ownership=[0.95] * 81)
+        assert s.generate_move()[0].is_pass
+        assert s.queries == ["Probe"]
+
+    def test_opponent_pass_with_a_cheap_pass_passes_without_queries(self):
+        s, _ = self._end(pass_loss=0.2, last_move=Move(None, player="W"))
+        assert s.generate_move()[0].is_pass
+        assert s.queries == [] and s.last_decision_info["kind"] == "pass"
+
+    def test_terminal_band_passes_when_a_9d_would(self):
+        s, _ = self._end(hp={**self.END_HP, "pass": 0.6})
+        assert s.generate_move()[0].is_pass
+        assert s.queries == ["parent hp"] and s.probe_calls == []
+
+    def test_swap_allows_0_10_with_a_clear_lead_and_0_05_in_a_close_game(self):
+        clear, _ = self._end(lead=10.0)
+        move, _ = clear.generate_move()
+        assert move.gtp() == "C3"  # hp 0.25・0.08 目（F6 は 0.3 目、G7 は visits 5）
+        assert clear.last_decision_info["kind"] == "swap" and clear.probe_calls == []
+        close, _ = self._end(lead=1.0)
+        assert close.generate_move()[0].gtp() == "D4"  # 0.05 目以内は D4 だけ
+
+    def test_swap_needs_an_open_gate_for_an_obvious_move(self):
+        hp = {**self.END_HP, "E5": 0.85, "G7": 0.05}
+        s, _ = self._end(lead=10.0, hist=_hist("B", 3, 9), hp=hp)
+        move, _ = s.generate_move()
+        assert move.gtp() == "E5"  # 9段の最上位 E5＝最善手（(d)）
+        assert s.last_decision_info["kind"] == "best"
+
+    def test_finishing_move_respects_the_same_loss_limit(self):
+        hp = {"E5": 0.30, "D4": 0.01, "C3": 0.01, "F6": 0.02, "G7": 0.45}
+        cheap, _ = self._end(lead=1.0, hp=hp)
+        assert cheap.generate_move()[0].gtp() == "G7"  # 0.02 目 <= 0.05
+        assert cheap.last_decision_info["kind"] == "finish"
+        dear_cands = [dict(c) for c in self.END]
+        dear_cands[4]["relativePointsLost"] = 0.3
+        dear, _ = self._strategy(cands=dear_cands, lead=1.0, hp=hp)
+        assert dear.generate_move()[0].gtp() == "E5"  # 0.3 目 > 0.05（margin 0.5 未満でも打たない）
+
+    @pytest.mark.parametrize("cap,kind,drift_after", [(0.0, "swap", 0.08), (0.2, "swap", 0.12), (0.1, "finish", 0.08)])
+    def test_close_drift_cap_limits_the_swap(self, cap, kind, drift_after):
+        hp = {"E5": 0.20, "D4": 0.30, "C3": 0.25, "F6": 0.0, "G7": 0.0}
+        state = {"veil9": {"endgame": False, "close_drift": 0.08, "ledger": []}}
+        s, _ = self._end(lead=1.0, hp=hp, settings={"veil9_close_drift_cap": cap}, _veil_state=state)
+        assert s.generate_move()[0].gtp() == "D4"
+        assert s.last_decision_info["kind"] == kind
+        assert state["veil9"]["close_drift"] == pytest.approx(drift_after)
+
+    def test_terminal_humansl_failure_plays_the_best_move(self):
+        s, _ = self._end(hp_ok=False)
+        assert s.generate_move()[0].gtp() == "E5"
+        assert s.last_decision_info["why"] == "no_hp"
