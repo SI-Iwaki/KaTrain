@@ -5113,7 +5113,7 @@ class Veil9Strategy(Enigma9Strategy):
 
         # ---- S16 分類（自然枠は free / paid、罠は §7）----
         nat_gtps = {c["gtp"] for c in nat_short}
-        plain = []
+        plain, traps, shadow = [], [], []
         for c in shortlist:
             pr = probes.get(c["gtp"]) or {}
             lead_after, wr_after = enigma9_verified_metrics(pr.get("clean"), player)
@@ -5134,16 +5134,20 @@ class Veil9Strategy(Enigma9Strategy):
                 kind, cost = veil_classify(row, ctx)
                 if kind:
                     plain.append({**row, "kind": kind, "cost": cost})
+            trap_ok, price = veil_trap_ok(row, ctx)
+            if trap_ok:
+                (traps if trap_on else shadow).append({**row, "kind": "trap", "price": price, "cost": max(0.0, vloss)})
             wr_txt = "n/a" if wr_after is None else f"{wr_after:.1%}"
             de_txt = "n/a" if d_e is None else f"{d_e:+.2f}"
             self._log(
                 f"Score {c['gtp']}: raw={c['loss']:.2f} vloss={vloss:.2f} cons={cons:.2f} wr={wr_txt} "
-                f"hp={row['hp']:.3f} dE={de_txt} kind={kind or '-'}"
+                f"hp={row['hp']:.3f} dE={de_txt} kind={kind or '-'} trap={'ok' if trap_ok else '-'}"
             )
+        info["trap_shadow"] = len(shadow)
 
         # ---- S17 / S18 選択と罠の合流 ----
         plain_pick = veil_choose(plain, slack, prefer_safe=surplus > 0)
-        chosen = plain_pick
+        chosen = veil_merge_trap(plain_pick, traps) if trap_on else plain_pick
         if chosen is None:
             self._log("No qualifying deviation -> best move")
             return finish(

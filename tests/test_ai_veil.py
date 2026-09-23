@@ -892,3 +892,54 @@ class TestFailSafesDeviating(_Harness):
         assert any("Invariant violated: chosen=J9" in m for m in logs)
         assert s.last_decision_info["why"] == "invariant"
         assert s.ponders == []
+
+
+class TestTrapLayer(_Harness):
+    PROBES = {"E5": _child(10.0, 0.95), "D4": _child(9.95, 0.948), "F6": _child(9.2, 0.93)}
+
+    def test_trap_mode_only_adds_trap_slots_to_the_probe_batch(self):
+        off, _ = self._strategy(probes=self.PROBES)
+        on, _ = self._strategy(probes=self.PROBES, settings={"veil9_trap_mode": True})
+        assert off.generate_move()[0].gtp() == on.generate_move()[0].gtp() == "D4"
+        assert off.queries == on.queries == ["parent hp"]
+        assert off.probe_calls == [["E5", "D4", "F6"]]
+        assert on.probe_calls == [["E5", "D4", "F6", "C7", "G3"]]
+
+    def test_a_plain_deviation_is_not_lost_to_a_dearer_trap(self):
+        probes = {**self.PROBES, "C7": _child(8.4, 0.90, punish=3.0)}  # 値段 1.6 − 0.5 × 2.7 = 0.25
+        s, _ = self._strategy(probes=probes, settings={"veil9_trap_mode": True})
+        assert s.generate_move()[0].gtp() == "D4"
+        assert s.last_decision_info["kind"] == "free"
+
+    def test_a_clearly_cheaper_trap_replaces_the_plain_deviation(self):
+        probes = {**self.PROBES, "C7": _child(9.6, 0.94, punish=3.0)}  # 値段 0.4 − 1.35 = −0.95
+        s, _ = self._strategy(probes=probes, settings={"veil9_trap_mode": True})
+        assert s.generate_move()[0].gtp() == "C7"
+        assert s.last_decision_info["kind"] == "trap"
+        assert s.last_decision_info["price"] == pytest.approx(-0.95)
+        assert s.last_decision_info["E"] == pytest.approx(2.7)  # ハーネスが罠の実損 / E に使うキー
+
+    def test_trap_off_only_logs_the_trap_it_could_have_used(self):
+        hp = {**self.HP, "D4": 0.30}
+        probes = {"E5": _child(10.0, 0.95), "D4": _child(9.9, 0.94, punish=3.0), "F6": _child(9.2, 0.93)}
+        s, _ = self._strategy(hp=hp, probes=probes)
+        assert s.generate_move()[0].gtp() == "D4"
+        assert s.last_decision_info["trap_shadow"] == 1
+
+    def test_yose_trap_never_exceeds_yose_max_loss(self):
+        hp = {"E5": 0.40, "D4": 0.01, "F6": 0.01, "C7": 0.03, "G3": 0.04}
+        probes = {"E5": _child(10.0, 0.95), "C7": _child(8.8, 0.93, punish=3.0)}  # vloss 1.2・値段 −0.15
+        yose, _ = self._strategy(depth=32, hp=hp, probes=probes, settings={"veil9_trap_mode": True})
+        assert yose.generate_move()[0].gtp() == "E5"  # ヨセの上限 yose_max_loss 1.0 < 1.2
+        mid, _ = self._strategy(depth=12, hp=hp, probes=probes, settings={"veil9_trap_mode": True})
+        assert mid.generate_move()[0].gtp() == "C7"
+
+    def test_dominant_trap_never_exceeds_dominant_max_loss(self):
+        hp = {"E5": 0.85, "D4": 0.01, "F6": 0.01, "C7": 0.03, "G3": 0.04}
+        dear = {"E5": _child(10.0, 0.95), "C7": _child(8.2, 0.93, punish=3.0)}  # vloss 1.8 > 1.5
+        s, _ = self._strategy(hp=hp, probes=dear, settings={"veil9_trap_mode": True})
+        assert s.generate_move()[0].gtp() == "E5"
+        cheap = {"E5": _child(10.0, 0.95), "C7": _child(8.8, 0.93, punish=3.0)}
+        s, _ = self._strategy(hp=hp, probes=cheap, settings={"veil9_trap_mode": True})
+        assert s.generate_move()[0].gtp() == "C7"
+        assert s.last_decision_info["tier"] == "ii"
