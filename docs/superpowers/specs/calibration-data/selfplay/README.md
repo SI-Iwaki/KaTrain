@@ -21,3 +21,11 @@ spec `2026-09-23-selfplay-harness-design.md`（§3 校正・§10 移設）。設
 
 確認: `python docs/superpowers/specs/calibration-data/selfplay/calib_targets.py` が
 `opp all n= 715 match=0.218 loss=1.74`（相手 18局・全手まとめ）と `median 78.5`（手数）を出す。
+
+## 動作確認（2026-09-24・13路 難解＋ vs rank_3k・投了あり／19路 1局）
+
+- seed 1000（AI 黒）: win（double_pass）157 手・own 0.410 / opp 0.130・strategy_p95 3.47 秒・wall 319 秒
+- seed 1001（AI 白）: win（opp_resign）49 手・own 0.333 / opp 0.200・strategy_p95 3.23 秒・wall 83 秒
+- 保存 SGF を `report-sgf` で読み直した一致率は WATCH / STRICT × 7区間で記録と完全一致。GUI の終局レポートとの一致: 確認済み（黒 40.5% / 白 14.1%＝STRICT all と一致）
+- `--shadow B --hp-audit rank_9d`（難解＋ / 擬態・40手）: 影判定 20/20 手番（B の手の pointsLost 平均 0.23）、hp 監査 40/40 手
+- 19路（`enigma19plus` vs rank_3k・120手まで）: win（move_cap）120 手・own 0.483 / opp 0.183・wall 200 秒・report-sgf と完全一致
