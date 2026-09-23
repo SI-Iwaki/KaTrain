@@ -26,6 +26,8 @@ from katrain.core.ai import (
     veil_prefilter,
     veil_shortlist,
     veil_tally,
+    veil_terminal_limit,
+    veil_terminal_swap,
     veil_trap_ok,
     veil_trap_price,
     veil_urgency,
@@ -422,3 +424,39 @@ class TestTrap:
         b = {"gtp": "A1", "kind": "trap", "price": -1.0, "hp": 0.05}
         c = {"gtp": "A2", "kind": "trap", "price": -1.0, "hp": 0.05}
         assert veil_merge_trap(None, [a, b, c])["gtp"] == "A1"
+
+
+class TestTerminalSwap:
+    CANDS = [cand("E5", 0.0, 900), cand("D4", 0.04, 50), cand("C3", 0.08, 40), cand("F6", 0.2, 30), cand("G7", 0.0, 5)]
+    CANDS.append(cand("pass", 0.1, 60))
+    HP = staticmethod(hp_table({"D4": 0.10, "C3": 0.30, "F6": 0.60, "G7": 0.70, "pass": 0.9}))
+
+    def test_limit_depends_on_the_lead(self):
+        assert veil_terminal_limit(2.9) == pytest.approx(0.05)
+        assert veil_terminal_limit(-2.9) == pytest.approx(0.05)
+        assert veil_terminal_limit(3.0) == pytest.approx(0.10)
+
+    def test_clear_lead_allows_up_to_0_10_and_picks_the_most_human(self):
+        swap = veil_terminal_swap(self.CANDS, "E5", self.HP, 0.05, lead=10.0, dominant=False, urgency=0.0)
+        assert swap["gtp"] == "C3" and swap["hp"] == pytest.approx(0.30)  # F6 は 0.2 目・G7 は visits 5・pass は除外
+
+    def test_close_game_allows_only_0_05(self):
+        swap = veil_terminal_swap(self.CANDS, "E5", self.HP, 0.05, lead=1.0, dominant=False, urgency=0.0)
+        assert swap["gtp"] == "D4"
+
+    def test_natural_floor_applies(self):
+        assert veil_terminal_swap(self.CANDS, "E5", self.HP, 0.2, lead=1.0, dominant=False, urgency=1.0) is None
+
+    def test_dominant_needs_an_open_gate(self):
+        assert veil_terminal_swap(self.CANDS, "E5", self.HP, 0.05, lead=10.0, dominant=True, urgency=0.0) is None
+        assert veil_terminal_swap(self.CANDS, "E5", self.HP, 0.05, lead=10.0, dominant=True, urgency=0.5) is not None
+
+    def test_close_drift_cap_in_close_games(self):
+        args = (self.CANDS, "E5", self.HP, 0.05)
+        assert veil_terminal_swap(*args, lead=1.0, dominant=False, urgency=0.0, close_drift=0.96, close_drift_cap=1.0)
+        blocked = veil_terminal_swap(
+            *args, lead=1.0, dominant=False, urgency=0.0, close_drift=0.97, close_drift_cap=1.0
+        )
+        assert blocked is None
+        free = veil_terminal_swap(*args, lead=10.0, dominant=False, urgency=0.0, close_drift=5.0, close_drift_cap=1.0)
+        assert free["gtp"] == "C3"  # |lead| >= 3 では累計を見ない

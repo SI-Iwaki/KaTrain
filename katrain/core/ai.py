@@ -4692,6 +4692,42 @@ def veil_merge_trap(plain, traps, swap_margin=VEIL_TRAP_SWAP_MARGIN):
     return plain
 
 
+def veil_terminal_limit(lead):
+    """終局帯で最善手から外してよい生の loss の上限。|lead| < VEIL_TERMINAL_CLOSE_LEAD なら厳しい側。"""
+    return VEIL_TERMINAL_CLOSE_MAX if abs(lead) < VEIL_TERMINAL_CLOSE_LEAD else VEIL_TERMINAL_MAX
+
+
+def veil_terminal_swap(candidates, best_gtp, hp_of, floor, lead, dominant, urgency, close_drift=0.0,
+                       close_drift_cap=0.0):
+    """終局帯の入れ替え（ダメ詰めの順番入れ替え＝レポート上の不一致）。候補が無ければ None。
+
+    candidates は `parity9_build_candidates` の {"gtp", "loss", "visits", "wr"}。最善手でも pass でもなく、
+    visits >= VEIL_TERMINAL_MIN_VISITS、生の loss <= `veil_terminal_limit(lead)`、hp >= floor の手のうち hp 最大
+    （同点は loss → gtp）。明らかな一手（dominant）でゲートが閉じていれば不可。close_drift_cap > 0 かつ
+    |lead| < VEIL_TERMINAL_CLOSE_LEAD なら、累計 close_drift + max(0, loss) が上限を超える手は除く。
+    返り値は候補 dict に "hp" を足したもの。
+    """
+    if dominant and urgency <= 0:
+        return None
+    limit = veil_terminal_limit(lead)
+    capped = close_drift_cap > 0 and abs(lead) < VEIL_TERMINAL_CLOSE_LEAD
+    pool = []
+    for c in candidates:
+        if c["gtp"] in (best_gtp, "pass") or c.get("visits", 0) < VEIL_TERMINAL_MIN_VISITS:
+            continue
+        if c["loss"] > limit + _VEIL_EPS:
+            continue
+        hp = hp_of(c["gtp"])
+        if hp < floor:
+            continue
+        if capped and close_drift + max(0.0, c["loss"]) > close_drift_cap + _VEIL_EPS:
+            continue
+        pool.append({**c, "hp": hp})
+    if not pool:
+        return None
+    return min(pool, key=lambda c: (-c["hp"], c["loss"], c["gtp"]))
+
+
 @register_strategy(AI_SCORELOSS)
 class ScoreLossStrategy(AIStrategy):
     """ScoreLoss strategy - weights moves based on point loss"""
