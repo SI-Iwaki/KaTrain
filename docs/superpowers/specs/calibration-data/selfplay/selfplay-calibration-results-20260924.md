@@ -1,5 +1,7 @@
 # 自己対局ハーネスの相手ボット校正（13路・enigma13plus・tau 1.0）
 
+> **置き換え済み（2026-09-24）**: この校正（lead の投了モデル）は、length の投了モデルで校正し直した `selfplay-calibration-results-20260924-length.md` に置き換えた（段位の組は同じ・`opponent_pool_13.json` は新しい実行の値）。以下は記録として残す。
+
 実行: `experiments/selfplay/20260924_0202_calib13`（リポジトリ相対・gitignore 済み。投了モデル: lead）
 
 > 注意（2026-09-24 追記）: この校正は lead の投了モデル（実戦の投了局の最終リード R）で行った。ハーネスの局は実戦より

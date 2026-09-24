@@ -17,8 +17,8 @@ spec `2026-09-23-selfplay-harness-design.md`（§3 校正・§10 移設）。設
 | `proto_selfplay.py` | ハーネスの試作（本物の `generate_ai_move`・1visit humanSL の相手） |
 | `bench_pipeline.py` / `bench_size.py` | 戦略なしの流れの所要時間（spec §7。KataGo を起動する） |
 | `cf_absolute.py` / `cf_absolute2.py` / `cf_veil.py` / `veil_cf.py` / `judge/unified_cf.py` | 韜晦の反実仮想（KataGo 不要。韜晦 spec §2.4） |
-| `opponent_pool_13.json` | 相手ボットの 3段位プール（`calibrate --write-pool` の出力。`run` の既定の相手）。今のプール（2026-09-24 02:02）は lead の投了モデルで局が実戦より約1.6倍長い（手数中央値 125 vs 78.5）まま合わせたもの＝length の投了モデルで校正し直す |
-| `selfplay-calibration-results-*.md` | 校正の結果（段位ごとの表・プールの候補・ハーネスと実戦のずれ） |
+| `opponent_pool_13.json` | 相手ボットの 3段位プール（`calibrate --write-pool` の出力。`run` の既定の相手）。今のプール（2026-09-24 08:22）は length の投了モデルで合わせたもの（手数中央値 81 vs 実戦 78.5・結果 `selfplay-calibration-results-20260924-length.md`） |
+| `selfplay-calibration-results-*.md` | 校正の結果（段位ごとの表・プールの候補・ハーネスと実戦のずれ）。`-20260924.md` は lead の投了モデルでの最初の校正＝`-20260924-length.md` に置き換え済み |
 
 確認: `python docs/superpowers/specs/calibration-data/selfplay/calib_targets.py` が
 `opp all n= 715 match=0.218 loss=1.74`（相手 18局・全手まとめ）と `median 78.5`（手数）を出す。

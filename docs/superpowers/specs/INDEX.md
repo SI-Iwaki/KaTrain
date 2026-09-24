@@ -73,7 +73,7 @@
 | spec | |
 |---|---|
 | `2026-04-11-strategy-debug-cli-design.md` | 🟢 戦略デバッグCLI（`katrain_debug`） |
-| `2026-09-23-selfplay-harness-design.md` | 🟢 自己対局ハーネス `katrain_debug.selfplay`＝戦略 vs humanSL ボット（実戦の相手に校正）を無人で N 局打たせ、本物の `game_report` で両者の一致率・勝敗・目差を集計。seed 対の ABBA・接戦ストレス層・投了なし・影判定・hp 監査。実装 `katrain_debug/selfplay*.py`・データ `calibration-data/selfplay/`（相手ボットは校正済み: rank_1k / rank_1d / rank_3d・τ 1.0・結果 `selfplay/selfplay-calibration-results-20260924.md`。ただし lead の投了モデルで、局が実戦より約1.6倍長い（手数中央値 125 vs 78.5）まま合わせたもの＝投了の既定を length モデル（実戦の手数）にして校正し直し中） |
+| `2026-09-23-selfplay-harness-design.md` | 🟢 自己対局ハーネス `katrain_debug.selfplay`＝戦略 vs humanSL ボット（実戦の相手に校正）を無人で N 局打たせ、本物の `game_report` で両者の一致率・勝敗・目差を集計。seed 対の ABBA・接戦ストレス層・投了なし・影判定・hp 監査。実装 `katrain_debug/selfplay*.py`・データ `calibration-data/selfplay/`（相手ボットは校正済み: rank_1k / rank_1d / rank_3d・τ 1.0・投了は length モデル（手数中央値 81 vs 実戦 78.5・AI 側のずれ -0.8pt）・結果 `selfplay/selfplay-calibration-results-20260924-length.md`） |
 | `2026-04-14-lambdago-cheat-metrics-design.md` | 🟢 `--batch` のチート検出メトリック |
 
 ---

@@ -2,7 +2,7 @@
 
 日付: 2026-09-23
 対象: `katrain_debug/selfplay.py`（新規）・`katrain_debug/selfplay_stats.py`（新規・純関数）
-状態: 実装済み（2026-09-24・plan `2026-09-23-selfplay-harness.md`・実装 `katrain_debug/selfplay.py`（CLI）/ `selfplay_game.py` / `selfplay_opponent.py` / `selfplay_hooks.py` / `selfplay_run.py` / `selfplay_stats.py`）。相手ボットは校正済み（2026-09-24・rank_1k / rank_1d / rank_3d・τ 1.0・`calibration-data/selfplay/opponent_pool_13.json`・結果 `calibration-data/selfplay/selfplay-calibration-results-20260924.md`）。ただしこのプール（2026-09-24 02:02 の実行）は lead の投了モデルで、局が実戦より約1.6倍長い（手数中央値 125 vs 78.5）まま合わせたもの＝一致率の絶対値は結果 md の注意つきで読む。投了は length モデル（実戦の手数 L・§3）を既定にして校正し直す。最初の用途は韜晦（spec `2026-09-23-veil-strategy-design.md`）の校正と A/B
+状態: 実装済み（2026-09-24・plan `2026-09-23-selfplay-harness.md`・実装 `katrain_debug/selfplay.py`（CLI）/ `selfplay_game.py` / `selfplay_opponent.py` / `selfplay_hooks.py` / `selfplay_run.py` / `selfplay_stats.py`）。相手ボットは校正済み（2026-09-24・投了は既定の length モデル（§3）・rank_1k / rank_1d / rank_3d・τ 1.0・手数中央値 81 vs 実戦 78.5・AI 側のずれ -0.8pt・`calibration-data/selfplay/opponent_pool_13.json`・結果 `calibration-data/selfplay/selfplay-calibration-results-20260924-length.md`。lead の投了モデルでの最初の校正（`calibration-data/selfplay/selfplay-calibration-results-20260924.md`・手数中央値 125）を置き換えた）。終盤の区間（85 手以降）の相手の一致率は実戦より約 15pt 低い（結果 md の判断）。最初の用途は韜晦（spec `2026-09-23-veil-strategy-design.md`）の校正と A/B
 
 ## 0. 目的
 

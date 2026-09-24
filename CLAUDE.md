@@ -159,7 +159,7 @@ python -m katrain_debug --sgf FILE --strategy hunt --batch --settings hunt_max_l
 **自己対局ハーネス**（`python -m katrain_debug.selfplay`・spec `2026-09-23-selfplay-harness-design.md`）: 戦略 vs humanSL ボット（実戦の相手に校正）を無人で N 局打たせ、本物の `game_report` で両者の一致率・勝敗・目差を集計する。**実戦中の KaTrain と同時に走らせない**（起動中の katago.exe があれば止まる。GPU を取り合うと実戦の AI が maxTime に当たる）。
 ```bash
 # A/B（全アームが同じ seed＝色・相手・投了の条件を対にする。10 seed ごとに ABBA）。相手は既定で calibration-data/selfplay/opponent_pool_13.json
-# 注意: 今のプール（2026-09-24 02:02 の校正）は lead の投了モデルで、局が実戦より約1.6倍長い（手数中央値 125 vs 78.5）まま合わせたもの。length の投了モデルで校正し直すまで、一致率の絶対値は結果 md の注意つきで読む
+# 今のプール（2026-09-24 08:22 の校正）は length の投了モデルで合わせたもの（手数中央値 81 vs 実戦 78.5・AI 側のずれ -0.8pt。結果 calibration-data/selfplay/selfplay-calibration-results-20260924-length.md）。終盤（85手以降）の相手の一致率は実戦より約 15pt 低い
 # --pairs 20 は3段位のプールで層が 8/6/6 局になり unbalanced の警告が出る（想定内＝停止規則の 20/40 ペア。層を揃えるなら 18 / 24）
 python -m katrain_debug.selfplay run --arm A=enigma13plus --arm B=enigma13plus:enigma13plus_max_loss=2.0 --size 13 --pairs 20 --label maxloss-ab
 # 投了は既定で length モデル（実戦 13路 18局の手数から局ごとに L を引き、L 以降に AI 勝率 >= 0.90 かつリード >= 2.5目が AI の2手番続けば投了）。
