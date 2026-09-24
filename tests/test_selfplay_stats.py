@@ -430,6 +430,21 @@ class TestGameSummary:
         assert veil["trap_next_loss_over_E"] == pytest.approx(1.5)  # 次の相手手 3.0 / E 2.0
         assert veil["ledger_mismatch"] == 1  # depth 6 の外しが depth 7 でレポート一致
 
+    def test_nonfree_below_reserve_ignores_the_terminal_band(self):
+        # 終局帯（tier terminal）のパス・ダメ詰めの入れ替え・9段の締めの手は、リード < reserve でも支払う外しではない
+        def dec(tier, kind, chosen, lead):
+            return {"tier": tier, "kind": kind, "best": "C3", "chosen": chosen, "vloss": 0.0, "lead": lead}
+
+        rows = [
+            _row(1, True, False, 0.0, move="pass", decision=dec("terminal", "pass", "pass", 1.0)),
+            _row(3, True, False, 0.04, decision=dec("terminal", "swap", "D4", 1.0)),
+            _row(5, True, False, 0.02, move="E5", decision=dec("terminal", "finish", "E5", 2.0)),
+            _row(7, True, False, 1.0, decision=dec("iii", "paid", "D4", 4.0)),
+        ]
+        veil = S.selfplay_game_summary(META, _reports(0.25, 0.2), rows, target=0.30, reserve=5.0)["veil"]
+        assert veil["kinds"] == {"pass": 1, "swap": 1, "finish": 1, "paid": 1}
+        assert veil["nonfree_below_reserve"] == 1  # 数えるのは lead 4.0 の paid だけ
+
     def test_shadow_metrics(self):
         rows = [
             _row(1, True, True, 0.0, move="C3", shadow={"arm": "B", "move": "D4", "vloss": 0.8, "secs": 0.4}),

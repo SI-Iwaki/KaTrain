@@ -459,12 +459,18 @@ def _num(v):
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
+# 韜晦の終局帯の手（tier "terminal"）。生の loss の上限（0.05〜0.10 目）で守る別枠で、支払う外しではない
+VEIL_TERMINAL_KINDS = ("pass", "swap", "finish")
+
+
 def _decision_metrics(ai_rows, rows, reserve, ledger):
     """判定情報（last_decision_info）を持つ戦略（韜晦）だけの指標。持たない戦略では None。
 
     期待するキー（韜晦の計画 plans/2026-09-23-veil-strategy.md の「共有インターフェース」）: tier / kind（free・paid・
     trap ほか）/ best / chosen / vloss / lead / E / close（無ければ lead < reserve で代用）。
     curse_by_kind = 外しの種類ごとの「レポートの損失 − 判定時の vloss」（spec §6 勝者の呪いの検出。正なら判定が甘い）。
+    nonfree_below_reserve = lead < reserve で打った free でない外しの数（安全の警報）。終局帯の手（tier terminal か
+    kind pass / swap / finish）は数えない。
     """
     decs = [r for r in ai_rows if isinstance(r.get("decision"), dict) and r["decision"]]
     if not decs:
@@ -500,7 +506,11 @@ def _decision_metrics(ai_rows, rows, reserve, ledger):
     }
     if reserve is not None:
         below = [d for d in deviated if _num(d.get("lead")) and d["lead"] < reserve]
-        out["nonfree_below_reserve"] = sum(1 for d in below if d.get("kind") != "free")
+        out["nonfree_below_reserve"] = sum(
+            1
+            for d in below
+            if d.get("kind") != "free" and d.get("tier") != "terminal" and d.get("kind") not in VEIL_TERMINAL_KINDS
+        )
         out["close_free_vloss"] = sum(
             vl(d)
             for d in deviated
