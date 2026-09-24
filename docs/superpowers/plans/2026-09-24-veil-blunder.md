@@ -24,6 +24,8 @@ Spec: `docs/superpowers/specs/2026-09-23-veil-strategy-design.md` §13（この�
 
 ## Task 1: 失着の定数・純関数・不変条件（TDD）
 
+状態: 完了（`8b5426f2`）。
+
 要件の正本: spec §13（`docs/superpowers/specs/2026-09-23-veil-strategy-design.md`・worktree 内）。この brief はその §13.2 の定数と §13.3 手順4・6・8 の純関数部分。
 
 ### 1. 定数（ai.py・`VEIL_HP_TIE = 0.02 ...` の行の直後、`_VEIL_EPS` の前に挿入）
@@ -52,10 +54,10 @@ def veil_blunder_candidates(candidates, best_gtp, best_hp, hp_of, ratio, cap, ma
 - docstring に「spec §13.3 手順4。hp が最善手の ratio 倍以上＝9段 humanSL 自身が迷う局面なので『難しい局面』の条件を兼ねる」と書く。
 
 ```python
-def veil_blunder_ok(row, cap, max_loss, reserve, margin=VEIL_BLUNDER_MARGIN, min_wr=VEIL_BLUNDER_MIN_WR):
+def veil_blunder_ok(row, cap, max_loss, reserve, lead, margin=VEIL_BLUNDER_MARGIN, min_wr=VEIL_BLUNDER_MIN_WR):
 ```
-- row は `{"vloss", "lead_after", "wr_after", ...}`。**どれかが None なら False**。
-- True の条件: `cap < vloss <= max_loss + _VEIL_EPS` かつ `lead_after >= reserve + margin - _VEIL_EPS` かつ `wr_after >= min_wr - _VEIL_EPS`。
+- row は `{"vloss", "lead_after", "wr_after", ...}`、lead は root リード（Task 3b で追加）。**lead かどれかが None なら False**。
+- True の条件: `cap < vloss <= max_loss + _VEIL_EPS` かつ `lead_after >= reserve + margin - _VEIL_EPS` かつ `lead - max(0.0, vloss) >= reserve + margin - _VEIL_EPS`（Task 3b）かつ `wr_after >= min_wr - _VEIL_EPS`。
 - docstring: spec §13.3 手順6。
 
 ```python
@@ -99,6 +101,8 @@ import に `veil_blunder_candidates, veil_blunder_ok, veil_blunder_pick` と定�
 ---
 
 ## Task 2: 失着の設定4キー（既定値と登録）
+
+状態: 完了（`bab11c18`）。
 
 要件の正本: spec §13.2（設定4キー × 3盤・スライダーの候補値）。この Task は**設定を足して登録するだけ**で、判定フローでは使わない（Task 3 で使う）。Task 1 の定数・純関数はコミット済み。
 
@@ -156,6 +160,8 @@ tests/test_ai_veil.py の `SPEC_DEFAULTS`（凍結した spec の既定値）の
 
 ## Task 3: 失着の層を韜晦の判定フローに組み込む（S9b・TDD）
 
+状態: 完了（`2f57c438`。資格と不変条件の食い違いは Task 3b で直した）。
+
 要件の正本: spec §13.2〜13.3。Task 1 の定数・純関数・不変条件（kind `blunder`）と Task 2 の設定4キー（SETTING_DEFAULTS・登録・テストの SPEC_DEFAULTS）はコミット済み。
 
 ### 1. sticky 状態
@@ -190,7 +196,7 @@ tests/test_ai_veil.py の `SPEC_DEFAULTS`（凍結した spec の既定値）の
 4. `hp_of = enigma9_hp_lookup(human_policy, self.game.board_size)`・`best_hp = hp_of(best_gtp)`・`max_loss = float(self._setting("blunder_max_loss"))`・
    `rows0 = veil_blunder_candidates(self._veil_candidates(cands, player), best_gtp, best_hp, hp_of, float(self._setting("blunder_hp_ratio")), cap, max_loss)`。空 → `"no_cand"`（stage_hp, True を返す）。
 5. `probes = self._veil_blunder_probe([best_gtp] + [c["gtp"] for c in rows0], player)`・`info["queries"] += 1 + len(rows0)`。best の `enigma9_verified_metrics(probes.get(best_gtp), player)` の lead_after が None → `"no_probe"`。
-6. 各候補: `lead_after, wr_after = enigma9_verified_metrics(probes.get(gtp), player)`。lead_after None の候補は捨てる（ログ）。`row = {**c, "vloss": best_lead_after - lead_after, "lead_after": lead_after, "wr_after": wr_after}`。1行ログ（`self._log(f"Blunder {gtp}: raw=.. vloss=.. hp=.. wr=.. lead_after=.. ok=..")`）。`veil_blunder_ok(row, cap, max_loss, reserve)` の手だけ集めて `pick = veil_blunder_pick(ok_rows)`。None → `"rejected"`。
+6. 各候補: `lead_after, wr_after = enigma9_verified_metrics(probes.get(gtp), player)`。lead_after None の候補は捨てる（ログ）。`row = {**c, "vloss": best_lead_after - lead_after, "lead_after": lead_after, "wr_after": wr_after}`。1行ログ（`self._log(f"Blunder {gtp}: raw=.. vloss=.. hp=.. wr=.. lead_after=.. ok=..")`）。`veil_blunder_ok(row, cap, max_loss, reserve, lead)` の手だけ集めて `pick = veil_blunder_pick(ok_rows)`。None → `"rejected"`。
 7. `fields = {"blunder_gtp": pick["gtp"], "blunder_vloss": pick["vloss"], "blunder_hp": pick["hp"], "blunder_best_hp": best_hp, "blunder_wr": pick["wr_after"], "blunder_lead_after": pick["lead_after"]}`。
    - `mode == 1`（影）: `info["blunder"] = "shadow"`・`info.update(fields)`・ログ `Blunder shadow: ...`・`return None, stage_hp, True`（上限は数えない）。
    - `mode >= 2` で `self._veil_blunder_draw() >= VEIL_BLUNDER_PROB`: `info["blunder"] = "skipped"`・`info.update(fields)`・`return None, stage_hp, True`。
@@ -241,11 +247,91 @@ tests/test_ai_veil.py の `SPEC_DEFAULTS`（凍結した spec の既定値）の
 
 ---
 
+## Task 3b: 失着の資格に root リードの条件を足す（Task 3 のレビューで追加）
+
+状態: 完了（`c23977b8`）。
+
+目的: 資格 `veil_blunder_ok` は深い読みの lead_after だけを見ていたので、root リードが深い読みより小さい（探索のゆれ）と、
+資格を通った失着が不変条件（kind `blunder`・root リード基準）で落ちて ERROR＋最善手になった。資格にも
+`lead − max(0, vloss) >= reserve + margin` を足し（シグネチャに `lead`）、候補の値（`blunder_gtp` ほか）はどの結末でも
+`Decision:` に残す。spec §13.3 手順6 も同じ条件に直した。
+
+変えたファイル: `katrain/core/ai.py`・`tests/test_ai_veil.py`・spec §13.3。
+コミット: `fix(veil): 失着の資格に root リードの条件を足し、不変条件との食い違いをなくす`
+
+---
+
 ## Task 4: 文書（後で・段階3b の校正結果を master に入れてから）
+
+状態: Task 6a・6b に分けて行った（master の校正結果は `8274ab16` で取り込み済み）。
 
 spec §13 の状態の行、`.claude/rules/ai-parameters.md` の veil の表（4キー）・定数・`Decision:` の kind / why、`.claude/rules/ai-strategies.md` の韜晦の段落、マニュアル `docs/manual/src/06d_ai_parity.html` の表と説明（`python tools/build_manual.py`）、ai.py の Veil9Strategy の docstring。
 校正結果の文書（同じファイルの別の段落）と衝突しないよう、コントローラが master の校正コミットをこのブランチに取り込んでから行う。
 
-## Task 5: 仕上げ（コントローラ）
+## Task 5: 13路の既定値を段階1b の loose にする（ユーザーの決定 2026-09-25）
 
-全体スイート（GPU が空いているとき）→ master へマージ → ユーザー設定に4キー × 3盤（メインセッション・KaTrain 停止中）→ 影の計測（spec §13.4 の 1）→ ON の計測（§13.4 の 2）→ ユーザーに報告して既定を決めてもらう。
+状態: 完了（`fe9979c3`）。
+
+目的: 13路の既定を loose の7キー（free_loss 0.4・spend_rate 1.0・max_loss 6.0・yose_max_loss 2.0・dominant_hp 1.01〈OFF〉・
+dominant_max_loss 3.0・natural_ratio 0.1）にする。安全条件（reserve 5.0・min_winrate 0.85）・失着の4キー・9路・19路は変えない。
+根拠は `docs/superpowers/specs/calibration-data/selfplay/veil13-campaign.md` の「段階1b」「段階3b」「境界線と推奨」。
+
+変えたファイル: `katrain/core/ai.py`（`Veil13Strategy.SETTING_DEFAULTS` と docstring）・`katrain/config.json`（`ai:veil13`）・
+`tests/test_ai_veil.py`（`CALIBRATED_DEFAULTS[13]`・パッケージ config.json と既定値の一致の assert）。
+コミット: `feat(veil): 13路の既定値を段階1b の loose にする（安全条件は据え置き）`
+
+---
+
+## Task 7: 決着局面の即決（S13）を打つ前に2手だけプローブで確かめる（勝ちの安全の修正）
+
+状態: 完了（`3f2cda6d`）。
+
+目的: 失着 ON の接戦ストレス（`blunder13-on-p3`・seed 1010）で、S13 が生の loss だけで打った手（生 0.36 目 → 実損 16.3 目）で
+勝ちが持碁になった。打つ前に best と候補の子局面をクリーン 500v＋hp でプローブし、純関数 `veil_decided_verified_ok`
+（vloss <= F_eff + 0.3・lead − vloss >= reserve・着手後勝率 >= min_winrate）を満たさなければ打たずに S14 以降の通常の流れへ
+進む（`decided_rejected`）。
+
+変えたファイル: `katrain/core/ai.py`・`tests/test_ai_veil.py`・spec §4 S13（と §4.1 のクエリ数・§9）。
+コミット: `fix(veil): 決着局面の即決を打つ前に2手だけプローブで確かめる`
+
+### Task 7b: Task 7 のレビューの軽微な指摘
+
+状態: 完了（`7cd69593`）。
+
+目的: 退けた即決の値（`decided_vloss`・`decided_wr`）も `Decision:` に残す。通しテストで F_eff と reserve の渡し方を境界の両側で
+固定し、13路（`Veil13Strategy`）でも事件の形の即決を打たないことを確かめる。
+
+変えたファイル: `katrain/core/ai.py`・`tests/test_ai_veil.py`。
+コミット: `test(veil): 即決の検証のフローを F_eff・reserve・13路で固定し、却下の値を記録する`
+
+---
+
+## Task 6a: 文書の仕上げ（spec・計画・開発者向けルール・INDEX）
+
+目的: 失着の層（§13）・13路の既定 loose・S13 の2手プローブを、spec（状態の行・§6.1・§13.3・§13.4・§13.5）・この計画・
+`plans/2026-09-23-veil-strategy.md`（Task 17 の追記）・`.claude/rules/ai-parameters.md`・`.claude/rules/ai-strategies.md`・
+`docs/superpowers/specs/INDEX.md` に反映する。数値は `veil13-campaign.md` から写す。
+
+コミット: `docs(veil): 失着の層・13路の既定 loose・即決の検証を spec とルールに反映`
+
+## Task 6b: 文書の仕上げ（マニュアル・GUI のヘルプ文・ai.py の docstring）
+
+目的: 同じ内容をユーザー向けの文書に反映する: マニュアル `docs/manual/src/06d_ai_parity.html`（→ `python tools/build_manual.py`）・
+jp / en の `katrain.po` の `aihelp:veil*`（→ `python tools/compile_mo.py`）・`Veil9Strategy` / `Veil13Strategy` の docstring。
+
+コミット: `docs(veil): マニュアルと GUI のヘルプに失着の層・13路の既定 loose・即決の検証を反映`
+
+---
+
+## 仕上げ（コントローラ・当初の Task 5）
+
+当初の順（全体スイート → マージ → ユーザー設定 → 影 → ON）ではなく、マージの前に計測した。実際に行った順:
+
+1. 全体スイート（Task 3b の後・`c23977b8`）: 実施済み。
+2. 影の計測（spec §13.4 の 1・`blunder13-shadow`・`c23977b8`）: 実施済み。
+3. ON の計測（§13.4 の 2・通常の相手 `blunder13-on`）: 実施済み（その前に Task 5 で 13路の既定を loose にした＝`fe9979c3`）。
+4. ON の接戦ストレス（`blunder13-on-p3`）: 実施済み。持碁の1局から Task 7・7b（S13 の検証）を足した。
+5. 結果とユーザーの決定の記録（`veil13-campaign.md`・`24576557` / `cc8cf778`）: 実施済み。続けて文書（Task 6a → 6b）。
+6. master へのマージ: **未実施**（コントローラが後で行う）。
+7. ユーザー設定（`~/.katrain/config.json` の `ai:veil*` に失着の4キー × 3盤・`ai:veil13` を loose に揃える。編集前の写しを残す。
+   メインセッション・KaTrain 停止中）: **未実施**（マージの後にコントローラが行う）。

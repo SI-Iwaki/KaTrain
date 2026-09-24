@@ -4199,6 +4199,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 （飛ばした: Task 16 で 13路の既定値を据え置いたため。コード・パッケージ config・テスト期待値・ユーザー設定は変えていない）
 
+（2026-09-25 追記: ユーザーの決定で 13路の既定を段階1b の loose に変えた＝plans/2026-09-24-veil-blunder.md の Task 5）
+
 **Files:**
 - Modify: `katrain/core/ai.py`（`Veil{9,13,19}Strategy.SETTING_DEFAULTS` の該当行だけ）
 - Modify: `katrain/config.json`（`ai:veil*` の該当キーだけ）

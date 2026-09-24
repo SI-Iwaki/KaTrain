@@ -2,7 +2,7 @@
 
 日付: 2026-09-23
 対象: `katrain/core/ai.py`（veil 純関数群 + `Veil9Strategy` / `Veil13Strategy` / `Veil19Strategy`）
-状態: 実装済み（2026-09-24）・13路は自己対局ハーネスで測定し、spec の初期値を据え置いた（`calibration-data/selfplay/veil13-campaign.md`。段階1＝既定の自分の一致率 局平均 53.1%・20/20 勝ちで目標 30% に届かず、下限は構造的＝最善手を打つしかない手番 52.7%。段階3＝接戦ストレス〈AI 不利 4 目・HumanStyle 9段・20 対〉で §10.4 (a) 勝ちの安全は既定の設定で可＝20-0・flip 0.20/局 vs 難解＋ 2.35/局・難解＋は 2 敗。段階1b・2・3b は 2026-09-24〜25 に実施＝安全条件を変えない loose で 42.4%〈同じ run の既定 49.0%〉・接戦 20-0、既定の変更はユーザーの選択待ち）・実戦校正は未実施
+状態: 実装済み（2026-09-24）・13路は自己対局ハーネスで測定し、2026-09-25 のユーザーの決定で既定を段階1b の loose に変えた（値は §6.1 の表の直後の段落。安全条件は据え置き。自分の一致率は loose の 3 run 平均 45.2%・spec の初期値 51.5% で目標 30% に届かず、下限は構造的。接戦ストレス〈AI 不利 4 目・HumanStyle 9段・20 対〉で §10.4 (a) 勝ちの安全は初期値・loose とも 20-0 で可）・失着の層（§13・2026-09-25）は既定 OFF・決着局面の即決（§4 S13）は打つ前に best と候補の2手をプローブで確かめる（2026-09-25）・9路・19路は未校正・実戦校正は未実施（詳細は `calibration-data/selfplay/veil13-campaign.md`）
 
 ## 0. 一言で
 
@@ -317,6 +317,8 @@ best プローブ欠落・全候補不合格・例外・不変条件違反。
 | trap_mode | false | **false** | false | 罠の上乗せ層（A/B 用） |
 | trap_min_delta_e | 0.5 | **0.5** | 0.7 | 罠とみなす ΔE |
 
+**13路の既定は 2026-09-25 に段階1b の loose に変えた**（ユーザーの決定。free_loss 0.4・spend_rate 1.0・max_loss 6.0・yose_max_loss 2.0・dominant_hp 1.01〈OFF〉・dominant_max_loss 3.0・natural_ratio 0.1 の7キー。安全条件 reserve 5.0・min_winrate 0.85 とほかのキー、9路・19路は表のまま）。表の 13路の列（と §6 の A_t の目安）は設計時の初期値で、`tests/test_ai_veil.py` の `SPEC_DEFAULTS` が凍結している。根拠は `calibration-data/selfplay/veil13-campaign.md` の「境界線と推奨」「ユーザーの決定（2026-09-25）」。
+
 `close_drift_cap` を既定 0 にするのは要件5（ほぼ損失ゼロの外しは互角の序盤も含めて常に）のため。1局あたりの
 累計上限は互角の序盤だけで使い切り、その後の接戦で同値外しを止めてしまう。接戦の安全は1手ごとの勝率条件
 （free_wr_drop・ヨセの 0.01）で守り、累計の影響はハーネスの接戦ストレス層で測る（悪ければこのスライダーで上限を掛ける）。
@@ -472,8 +474,8 @@ A/B で見るもの: 自分と相手の一致率・勝率・mean_ptloss・払っ
 
 1. `blunder_mode` が 0 なら何もしない（クエリ 0 本・記録も足さない）。
 2. **関門**（クエリ 0 本）: ヨセでない（`in_yose` が偽）・root 勝率 >= `VEIL_BLUNDER_MIN_WR`・
-   lead >= reserve + `VEIL_BLUNDER_MARGIN` + cap（cap＝その局面の支払い上限 `max_loss`。失着は cap を超える損失なので、
-   最小の失着でも lead_after >= reserve + margin が残る局面だけ）・ON なら今局の失着数 < `blunder_per_game`。
+   lead >= reserve + `VEIL_BLUNDER_MARGIN` + cap（cap＝その局面の支払い上限 `max_loss`。関門は必要条件: 失着は cap を超える損失なので、
+   lead < reserve + margin + cap なら手順6 の root リードの条件 lead − vloss >= reserve + margin を満たす手は無い）・ON なら今局の失着数 < `blunder_per_game`。
    通らなければ `blunder = "gate"` を記録して通常の流れへ。
 3. 親局面の humanSL（9段・8 visits）を1本撃つ（S11 と共有＝同じ手番で2回撃たない）。
 4. **候補**（純関数 `veil_blunder_candidates`・クエリ 0 本）: 通常解析の候補（`candidate_moves`）のうち best・pass 以外で、
@@ -499,8 +501,23 @@ A/B で見るもの: 自分と相手の一致率・勝率・mean_ptloss・払っ
 
 ### 13.4 測り方と採否
 
-1. **影の計測**: 通常の相手・20 seed・`--arm shadow=veil13:<16キー>,veil13_blunder_mode=1`。1局あたりの `blunder = "shadow"` の手番数、
+1. **影の計測**: 通常の相手・20 seed・`--arm shadow=veil13:<20キー>`（16キー＋`veil13_blunder_mode=1`＋失着の3キー）。1局あたりの `blunder = "shadow"` の手番数、
    その vloss・hp の分布、失着の検証で増えた戦略時間（p95）。
 2. **ON の計測**: 通常の相手（default と ON のアーム）で ≥6目の失着/局・flip・勝ち・一致率。接戦ストレス（段階3 の条件）でも
    ON のアームを流し、関門で止まる（失着 0）ことと敗局が増えないことを確かめる。
 3. 既定は OFF のまま。ON にするか・頻度（`blunder_per_game`・`VEIL_BLUNDER_PROB`）はユーザーが結果を見て決める。
+
+### 13.5 計測の結果とユーザーの決定（2026-09-25）
+
+13路で §13.4 の順に測った（§13.2 の 13路の既定・`VEIL_BLUNDER_PROB` 0.5。詳細は `calibration-data/selfplay/veil13-campaign.md` の
+「失着の層（spec §13）の計測（2026-09-25）」と「ユーザーの決定（2026-09-25）」）。
+
+- 影（mode 1・通常の相手・20 seed）: 条件を満たす手番は loose で 0.45 回/局、spec の初期値で 1.45 回/局（支払い上限 cap が高いほど
+  「cap を超える損失」の帯が狭い）。失着の手の 9段 hp はほとんどの手番で最善手の hp より高い（loose 9/9・初期値 27/29）。
+- ON（mode 2・loose・通常の相手・20局）: 0.20 回/局（4/20 局）・深い読みの損失 6.8〜9.8 目・4局とも勝ち。勝ち・flip・
+  自分の一致率は失着 OFF と差が無い。
+- ON（接戦ストレス＝段階3 の条件・20局）: 失着は1回だけ（ほかの手番は関門で止まる）・19-0-1。持碁の1局は失着ではなく
+  S13 の即決の読み落とし（生 0.36 目 → 実損 16.3 目）が原因で、S13 を打つ前に2手だけプローブで確かめる形に直した
+  （§4 S13 の 2026-09-25 追記）。
+- ユーザーの決定: 失着の条件は下限（失着の手の hp が最善手の 0.7 倍以上）だけのまま（上限〈1.43 倍以下＝ほぼ同じ〉も足すと
+  loose で 0.05 回/局）・既定は OFF（GUI の LOG／ON で使う）。
