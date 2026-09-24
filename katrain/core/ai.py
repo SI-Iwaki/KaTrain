@@ -5341,7 +5341,7 @@ class Veil13Strategy(Veil9Strategy):
     """13路専用「韜晦」戦略（Veil9Strategy の盤サイズ・設定キー・既定値差し替え版）。
 
     既定値は SETTING_DEFAULTS。13路は自己対局ハーネスの段階1（2026-09-24）で一致率を測り、spec の初期値を
-    据え置いた（接戦の安全＝段階3は未測定。値と校正状況は .claude/rules/ai-parameters.md）。
+    据え置いた（接戦の安全＝段階3は 2026-09-24 に1回測って合格。値と校正状況は .claude/rules/ai-parameters.md）。
     sticky 状態は `game._veil_state["veil13"]`。
     """
 

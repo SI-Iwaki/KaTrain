@@ -4083,8 +4083,8 @@ Run（background）:
 python -m katrain_debug.selfplay run --size 13 --pairs 20 --opp-pool docs/superpowers/specs/calibration-data/selfplay/opponent_pool_13.json --hp-audit rank_9d --no-resign --label veil13-p2 --arm default=veil13 --arm enigma=enigma13plus
 ```
 
-- [ ] **Step 6: 段階3 接戦ストレス**（AI 不利に 4 目・強めの相手＝HumanStyle 9段。段階1で trap が default より一致率を 3pt 以上下げ、敗局も増えていなければ `--arm trap=veil13:veil13_trap_mode=true` を足す）
-  （実施しなかった: ユーザー判断で段階1の後に測定を打ち切った・2026-09-24。段階3 は未実施＝spec §10.4 (a) 接戦の安全は未評価）
+- [x] **Step 6: 段階3 接戦ストレス**（AI 不利に 4 目・強めの相手＝HumanStyle 9段。段階1で trap が default より一致率を 3pt 以上下げ、敗局も増えていなければ `--arm trap=veil13:veil13_trap_mode=true` を足す）
+  （段階1の後でいったん打ち切ったが、マージ後の仕上げでユーザーの判断により1回だけ実施した・2026-09-24 13:25-14:45・master のメインのチェックアウトから・default と enigma の2アーム（trap は段階1で 3pt 以上下げなかったので足さない）。spec §10.4 (a) は合格＝結果は `calibration-data/selfplay/veil13-campaign.md` の段階3の節）
 
 相手の HumanStyle は**必ず上書きで 9段にする**（上書きが無いとハーネスはユーザー設定の `ai:human` をそのまま使う。ユーザー設定は 8級＝`human_kyu_rank: 8`・`modern_style: false` なので、接戦がほとんど生まれず、要件1の採否（spec §10.4 (a)）が意味を失う）。
 
