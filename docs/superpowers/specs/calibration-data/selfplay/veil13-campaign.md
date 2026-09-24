@@ -135,7 +135,7 @@ free は default +3.5・trap +2.8・attack +0.5 目（default は 130 手で 1�
   - user: 2026-09-24 17:58 のユーザー設定＝reserve 2.0・min_winrate 0.8・spend_rate 0.75・max_loss 6.0・trap_mode true（**安全条件を緩めている**＝既定の候補ではなく、ユーザーが実戦で使っている設定の参考測定）
   - dom090: dominant_hp 0.9 / domoff: dominant_hp 1.01（OFF）/ nat010: natural_ratio 0.1 / free040: free_loss 0.4 / drift1: close_drift_cap 1.0（計画 Step 4 の5アーム）
   - wide: max_loss 6.0・spend_rate 1.0・dominant_max_loss 3.0・yose_max_loss 2.0（段階1の「攻め」プリセットから安全条件 reserve・min_winrate を除いた部分）
-  - loose: wide＋dominant_hp 1.01＋natural_ratio 0.1＋free_loss 0.4（安全条件以外を全部ゆるめた組み合わせ）
+  - loose: wide＋dominant_hp 1.01＋natural_ratio 0.1＋free_loss 0.4（安全条件は据え置き、wide の4キーとこの3キーの計7キーをゆるめた組み合わせ。ほかのキーは default のまま）
   - user・wide・loose は計画に無いアーム。段階1の攻め（42.2%）の下げ幅のうち安全条件を緩めずに取れる分を切り分けるためと、ユーザーが使っている設定を測るために足した
 - 健全性: 全アームで fallbacks 0・humansl_errors 0・hp_audit_errors 0・shadow_errors 0・aborted 0・visits_low 0・ledger_mismatch 0。
   最善手の判定（kind best）はすべてレポートでも一致、それ以外の手はすべて不一致だった（全アーム）＝一致率はそのまま「最善手しか打てなかった手番の割合」
@@ -549,7 +549,7 @@ AI の手は 858（すべて判定情報つき・すべてレポートの分母�
 - attack でも kind = best は 361/858 = 42.1%（swap 3手を含めると 364 = 42.4%）: no_natural 18.4%・no_pool 15.5%・none_qualified 6.8%・
   dominant_closed 0.7%・pass 0.6%・terminal 0.1%。安全条件を緩めても下限は 40% 台に残る
 - trap の kind = best は 422/834 = 50.6%（none_qualified 25.4%・no_pool 13.3%・no_natural 9.6%・dominant_closed 1.7% ほか）
-- 段階1b の loose（安全条件は据え置き・それ以外を全部ゆるめた設定）でも kind = best は 366/858 = 42.7%（no_pool 18.6%・no_natural 15.5%・none_qualified 8.5%）。user（ユーザー設定・安全条件を緩めている）は 371/859 = 43.2%（none_qualified 17.7%・no_pool 15.4%・no_natural 9.5%・dominant_closed 0.6%）。どの設定でもレポートの一致はちょうど kind = best の手番で、下限は 40% 台前半に残る
+- 段階1b の loose（安全条件は据え置き・支払いの上限など7キーをゆるめた設定）でも kind = best は 366/858 = 42.7%（no_pool 18.6%・no_natural 15.5%・none_qualified 8.5%）。user（ユーザー設定・安全条件を緩めている）は 371/859 = 43.2%（none_qualified 17.7%・no_pool 15.4%・no_natural 9.5%・dominant_closed 0.6%）。どの設定でもレポートの一致はちょうど kind = best の手番で、下限は 40% 台前半に残る
 
 ## 採否（spec §10.4）
 

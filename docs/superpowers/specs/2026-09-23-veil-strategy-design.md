@@ -407,12 +407,12 @@ A/B で見るもの: 自分と相手の一致率・勝率・mean_ptloss・払っ
 - `katrain/core/ai.py`（CRLF。python パッチスクリプトで編集＝black フック回避。plan
   `2026-09-17-mimic13-strategy.md:47-72` の手順）: import に AI_VEIL_9/13/19、VEIL_* 定数・veil_* 純関数・3クラス。
 - `katrain/core/constants.py`: `AI_VEIL_9/13/19`、`AI_STRATEGIES_ENGINE`、`AI_STRATEGIES`、
-  `AI_STRATEGIES_RECOMMENDED_ORDER`（擬態の後）、`AI_STRENGTH`（nan）、`AI_OPTION_VALUES` / `AI_OPTION_ORDER`（16キー×3盤。
+  `AI_STRATEGIES_RECOMMENDED_ORDER`（擬態の後）、`AI_STRENGTH`（nan）、`AI_OPTION_VALUES` / `AI_OPTION_ORDER`（20キー×3盤＝当初の16キー＋§13.2 の失着の4キー。
   target_rate の値域は 0.15〜0.50）。
 - `katrain/gui/ai_help.py`: `_VEIL_FAMILY = re.compile(r"^(veil(?:9|13|19))_(.+)$")` で `aiopt:veil*_<suffix>` を3盤共有。
 - `katrain/config.json`（パッケージ）と `C:\Users\iwaki\.katrain\config.json`（ユーザー）: ai:veil9 / ai:veil13 / ai:veil19。
   **ユーザー側はメインセッションで、KaTrain を止めてから**編集する。
-- jp / en の `katrain.po`（ai:veilN・aihelp:veilN・`aiopt:veil*_<suffix>` 16件）→ `python tools/compile_mo.py`。
+- jp / en の `katrain.po`（ai:veilN・aihelp:veilN・`aiopt:veil*_<suffix>` 20件＝当初の16件＋§13.2 の4件）→ `python tools/compile_mo.py`。
 - `katrain_debug/runner.py`: `STRATEGY_NAME_MAP` に veil9 / veil13 / veil19。
 - ドキュメント: `.claude/rules/ai-strategies.md`（Veil の段落）、`.claude/rules/ai-parameters.md`（パラメータ表）、
   `CLAUDE.md`（戦略一覧）、`docs/manual/src/`（AI 概要と一致率の節）→ `python tools/build_manual.py`、

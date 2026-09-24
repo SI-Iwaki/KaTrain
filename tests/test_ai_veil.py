@@ -2111,8 +2111,36 @@ class TestBlunder(_Harness):
         assert any("G3" in m and "boom" in m for m in logs)
 
 
+MANUAL_PARITY_PAGE = Path(__file__).resolve().parent.parent / "docs" / "manual" / "src" / "06d_ai_parity.html"
+
+
+def _manual_veil_defaults():
+    """マニュアルの韜晦の設定の表（`veil*_…` の行）から {接尾辞: {盤: 既定欄の文字列}} を返す。
+    13路の値は既定欄の本文、9路・19路は `<span class="jp">9路 …・19路 …</span>`。"""
+    html = MANUAL_PARITY_PAGE.read_text(encoding="utf-8")
+    start = html.index('<div class="card" id="ai-veil">')
+    end = html.find('<div class="card"', start + 1)
+    card = html[start : end if end >= 0 else len(html)]
+    rows = re.findall(
+        r'<tr><td>veil\*_([a-z_]+)</td><td>([^<]*)<span class="jp">9路 ([^・<]*)・19路 ([^<]*)</span></td>', card
+    )
+    assert len(rows) == card.count("<tr><td>veil*_"), "既定欄が「13路の値＋9路 …・19路 …」の形でない行がある"
+    return {suffix: {13: c13, 9: c9, 19: c19} for suffix, c13, c9, c19 in rows}
+
+
+def _manual_cell(key, value):
+    """既定値をマニュアルの既定欄の書き方にする: 画面のラベルがあればそれ（30%・OFF・LOG など）、
+    真偽は ON / OFF、ほかは数値（6.0 → 6・0.4 → 0.4）。"""
+    from katrain.core.constants import AI_OPTION_VALUES
+
+    if isinstance(value, bool):
+        return "ON" if value else "OFF"
+    labels = dict(option for option in AI_OPTION_VALUES[key] if isinstance(option, tuple))
+    return labels.get(value, f"{value:g}")
+
+
 class TestRegistration:
-    """戦略リスト・AI_OPTION_VALUES / AI_OPTION_ORDER・パッケージ config.json・i18n・デバッグ CLI の整合。"""
+    """戦略リスト・AI_OPTION_VALUES / AI_OPTION_ORDER・パッケージ config.json・i18n・デバッグ CLI・マニュアルの整合。"""
 
     @pytest.mark.parametrize("cls,size,prefix,ai_key,const", VEILS, ids=VEIL_IDS)
     def test_listed_everywhere(self, cls, size, prefix, ai_key, const):
@@ -2225,3 +2253,13 @@ class TestRegistration:
             assert m, prefix
             bullets = [line for line in m.group(1).split("\\n") if line.startswith("* ")]
             assert len(bullets) == len(cls.SETTING_DEFAULTS), prefix
+
+    @pytest.mark.parametrize("cls,size,prefix,ai_key,const", VEILS, ids=VEIL_IDS)
+    def test_manual_defaults_table_matches_setting_defaults(self, cls, size, prefix, ai_key, const):
+        """マニュアル（06d_ai_parity.html）の韜晦の設定の表が全キーを持ち、その盤の既定欄が SETTING_DEFAULTS と一致する
+        （既定値を変えたらマニュアルの表も直す）。"""
+        documented = _manual_veil_defaults()
+        assert set(documented) == set(cls.SETTING_DEFAULTS)
+        expected = {suffix: _manual_cell(f"{prefix}_{suffix}", v) for suffix, v in cls.SETTING_DEFAULTS.items()}
+        mismatches = {s: (cells[size], expected[s]) for s, cells in documented.items() if cells[size] != expected[s]}
+        assert not mismatches, f"{size}路の既定欄がコードと違う（接尾辞: (マニュアル, 既定)）: {mismatches}"

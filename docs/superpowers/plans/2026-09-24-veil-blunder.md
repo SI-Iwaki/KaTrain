@@ -253,8 +253,8 @@ tests/test_ai_veil.py の `SPEC_DEFAULTS`（凍結した spec の既定値）の
 
 目的: 資格 `veil_blunder_ok` は深い読みの lead_after だけを見ていたので、root リードが深い読みより小さい（探索のゆれ）と、
 資格を通った失着が不変条件（kind `blunder`・root リード基準）で落ちて ERROR＋最善手になった。資格にも
-`lead − max(0, vloss) >= reserve + margin` を足し（シグネチャに `lead`）、候補の値（`blunder_gtp` ほか）はどの結末でも
-`Decision:` に残す。spec §13.3 手順6 も同じ条件に直した。
+`lead − max(0, vloss) >= reserve + margin` を足し（シグネチャに `lead`）、候補の値（`blunder_gtp` ほか）は候補を1つ選べた結末
+（shadow / skipped / invariant / played）で `Decision:` に残す。spec §13.3 手順6 も同じ条件に直した。
 
 変えたファイル: `katrain/core/ai.py`・`tests/test_ai_veil.py`・spec §13.3。
 コミット: `fix(veil): 失着の資格に root リードの条件を足し、不変条件との食い違いをなくす`
@@ -263,7 +263,7 @@ tests/test_ai_veil.py の `SPEC_DEFAULTS`（凍結した spec の既定値）の
 
 ## Task 4: 文書（後で・段階3b の校正結果を master に入れてから）
 
-状態: Task 6a・6b に分けて行った（master の校正結果は `8274ab16` で取り込み済み）。
+状態: 完了＝Task 6a（`3435ab16`）・6b（`966b0de0`）に分けて行った（master の校正結果は `8274ab16` で取り込み済み）。
 
 spec §13 の状態の行、`.claude/rules/ai-parameters.md` の veil の表（4キー）・定数・`Decision:` の kind / why、`.claude/rules/ai-strategies.md` の韜晦の段落、マニュアル `docs/manual/src/06d_ai_parity.html` の表と説明（`python tools/build_manual.py`）、ai.py の Veil9Strategy の docstring。
 校正結果の文書（同じファイルの別の段落）と衝突しないよう、コントローラが master の校正コミットをこのブランチに取り込んでから行う。
@@ -308,6 +308,8 @@ dominant_max_loss 3.0・natural_ratio 0.1）にする。安全条件（reserve 5
 
 ## Task 6a: 文書の仕上げ（spec・計画・開発者向けルール・INDEX）
 
+状態: 完了（`3435ab16`）。
+
 目的: 失着の層（§13）・13路の既定 loose・S13 の2手プローブを、spec（状態の行・§6.1・§13.3・§13.4・§13.5）・この計画・
 `plans/2026-09-23-veil-strategy.md`（Task 17 の追記）・`.claude/rules/ai-parameters.md`・`.claude/rules/ai-strategies.md`・
 `docs/superpowers/specs/INDEX.md` に反映する。数値は `veil13-campaign.md` から写す。
@@ -316,10 +318,22 @@ dominant_max_loss 3.0・natural_ratio 0.1）にする。安全条件（reserve 5
 
 ## Task 6b: 文書の仕上げ（マニュアル・GUI のヘルプ文・ai.py の docstring）
 
+状態: 完了（`966b0de0`）。
+
 目的: 同じ内容をユーザー向けの文書に反映する: マニュアル `docs/manual/src/06d_ai_parity.html`（→ `python tools/build_manual.py`）・
 jp / en の `katrain.po` の `aihelp:veil*`（→ `python tools/compile_mo.py`）・`Veil9Strategy` / `Veil13Strategy` の docstring。
 
 コミット: `docs(veil): マニュアルと GUI のヘルプに失着の層・13路の既定 loose・即決の検証を反映`
+
+## Task 8: レビューの残りの軽微な指摘（文言の正確さ・常設の整合テスト）
+
+目的: loose の説明（「安全条件以外を全部ゆるめた」など）を、実際にゆるめた7キー（free_loss・spend_rate・max_loss・
+yose_max_loss・dominant_hp・dominant_max_loss・natural_ratio）の形に直す（jp / en の `aihelp:veil*`・マニュアル・
+`.claude/rules/ai-strategies.md`・`veil13-campaign.md`・`plans/2026-09-23-veil-strategy.md`・ai.py の docstring）。
+spec §11 のキー数を20キー（§13.2 の4キーを足した数）にし、この計画の状態の行を直す。マニュアルの韜晦の設定の表の
+既定欄が `SETTING_DEFAULTS`（9/13/19）と一致することを `tests/test_ai_veil.py` の常設テストで固定する。
+
+コミット: `docs(veil): loose の説明を正確にし、マニュアルの既定値の表を常設テストで固定する`
 
 ---
 
