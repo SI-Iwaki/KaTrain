@@ -1,0 +1,1821 @@
+{
+ "subcommand": "run",
+ "created": "2026-09-24T18:13:09",
+ "command": [
+  "katrain_debug/selfplay.py",
+  "run",
+  "--size",
+  "13",
+  "--pairs",
+  "20",
+  "--opp-pool",
+  "docs/superpowers/specs/calibration-data/selfplay/opponent_pool_13.json",
+  "--hp-audit",
+  "rank_9d",
+  "--label",
+  "veil13-p1b",
+  "--arm",
+  "default=veil13:veil13_target_rate=0.3,veil13_reserve=5.0,veil13_min_winrate=0.85,veil13_free_loss=0.3,veil13_free_wr_drop=0.03,veil13_close_drift_cap=0.0,veil13_spend_rate=0.5,veil13_max_loss=4.5,veil13_yose_max_loss=1.5,veil13_dominant_hp=0.8,veil13_dominant_max_loss=2.0,veil13_min_human_policy=0.05,veil13_natural_ratio=0.2,veil13_cost_slack=0.3,veil13_trap_mode=false,veil13_trap_min_delta_e=0.5",
+  "--arm",
+  "user=veil13:veil13_target_rate=0.3,veil13_reserve=2.0,veil13_min_winrate=0.8,veil13_free_loss=0.3,veil13_free_wr_drop=0.03,veil13_close_drift_cap=0.0,veil13_spend_rate=0.75,veil13_max_loss=6.0,veil13_yose_max_loss=1.5,veil13_dominant_hp=0.8,veil13_dominant_max_loss=2.0,veil13_min_human_policy=0.05,veil13_natural_ratio=0.2,veil13_cost_slack=0.3,veil13_trap_mode=true,veil13_trap_min_delta_e=0.5",
+  "--arm",
+  "dom090=veil13:veil13_target_rate=0.3,veil13_reserve=5.0,veil13_min_winrate=0.85,veil13_free_loss=0.3,veil13_free_wr_drop=0.03,veil13_close_drift_cap=0.0,veil13_spend_rate=0.5,veil13_max_loss=4.5,veil13_yose_max_loss=1.5,veil13_dominant_hp=0.9,veil13_dominant_max_loss=2.0,veil13_min_human_policy=0.05,veil13_natural_ratio=0.2,veil13_cost_slack=0.3,veil13_trap_mode=false,veil13_trap_min_delta_e=0.5",
+  "--arm",
+  "domoff=veil13:veil13_target_rate=0.3,veil13_reserve=5.0,veil13_min_winrate=0.85,veil13_free_loss=0.3,veil13_free_wr_drop=0.03,veil13_close_drift_cap=0.0,veil13_spend_rate=0.5,veil13_max_loss=4.5,veil13_yose_max_loss=1.5,veil13_dominant_hp=1.01,veil13_dominant_max_loss=2.0,veil13_min_human_policy=0.05,veil13_natural_ratio=0.2,veil13_cost_slack=0.3,veil13_trap_mode=false,veil13_trap_min_delta_e=0.5",
+  "--arm",
+  "nat010=veil13:veil13_target_rate=0.3,veil13_reserve=5.0,veil13_min_winrate=0.85,veil13_free_loss=0.3,veil13_free_wr_drop=0.03,veil13_close_drift_cap=0.0,veil13_spend_rate=0.5,veil13_max_loss=4.5,veil13_yose_max_loss=1.5,veil13_dominant_hp=0.8,veil13_dominant_max_loss=2.0,veil13_min_human_policy=0.05,veil13_natural_ratio=0.1,veil13_cost_slack=0.3,veil13_trap_mode=false,veil13_trap_min_delta_e=0.5",
+  "--arm",
+  "free040=veil13:veil13_target_rate=0.3,veil13_reserve=5.0,veil13_min_winrate=0.85,veil13_free_loss=0.4,veil13_free_wr_drop=0.03,veil13_close_drift_cap=0.0,veil13_spend_rate=0.5,veil13_max_loss=4.5,veil13_yose_max_loss=1.5,veil13_dominant_hp=0.8,veil13_dominant_max_loss=2.0,veil13_min_human_policy=0.05,veil13_natural_ratio=0.2,veil13_cost_slack=0.3,veil13_trap_mode=false,veil13_trap_min_delta_e=0.5",
+  "--arm",
+  "drift1=veil13:veil13_target_rate=0.3,veil13_reserve=5.0,veil13_min_winrate=0.85,veil13_free_loss=0.3,veil13_free_wr_drop=0.03,veil13_close_drift_cap=1.0,veil13_spend_rate=0.5,veil13_max_loss=4.5,veil13_yose_max_loss=1.5,veil13_dominant_hp=0.8,veil13_dominant_max_loss=2.0,veil13_min_human_policy=0.05,veil13_natural_ratio=0.2,veil13_cost_slack=0.3,veil13_trap_mode=false,veil13_trap_min_delta_e=0.5",
+  "--arm",
+  "wide=veil13:veil13_target_rate=0.3,veil13_reserve=5.0,veil13_min_winrate=0.85,veil13_free_loss=0.3,veil13_free_wr_drop=0.03,veil13_close_drift_cap=0.0,veil13_spend_rate=1.0,veil13_max_loss=6.0,veil13_yose_max_loss=2.0,veil13_dominant_hp=0.8,veil13_dominant_max_loss=3.0,veil13_min_human_policy=0.05,veil13_natural_ratio=0.2,veil13_cost_slack=0.3,veil13_trap_mode=false,veil13_trap_min_delta_e=0.5",
+  "--arm",
+  "loose=veil13:veil13_target_rate=0.3,veil13_reserve=5.0,veil13_min_winrate=0.85,veil13_free_loss=0.4,veil13_free_wr_drop=0.03,veil13_close_drift_cap=0.0,veil13_spend_rate=1.0,veil13_max_loss=6.0,veil13_yose_max_loss=2.0,veil13_dominant_hp=1.01,veil13_dominant_max_loss=3.0,veil13_min_human_policy=0.05,veil13_natural_ratio=0.1,veil13_cost_slack=0.3,veil13_trap_mode=false,veil13_trap_min_delta_e=0.5"
+ ],
+ "size": 13,
+ "komi": 7.0,
+ "rules": "chinese",
+ "komi_shift": 0.0,
+ "max_moves": null,
+ "watch_flags": false,
+ "timeout": 180.0,
+ "target": 0.3,
+ "arms": [
+  {
+   "name": "default",
+   "strategy": "veil13",
+   "mode": "ai:veil13",
+   "settings": {
+    "veil13_target_rate": 0.3,
+    "veil13_reserve": 5.0,
+    "veil13_min_winrate": 0.85,
+    "veil13_free_loss": 0.3,
+    "veil13_free_wr_drop": 0.03,
+    "veil13_close_drift_cap": 0.0,
+    "veil13_spend_rate": 0.5,
+    "veil13_max_loss": 4.5,
+    "veil13_yose_max_loss": 1.5,
+    "veil13_dominant_hp": 0.8,
+    "veil13_dominant_max_loss": 2.0,
+    "veil13_min_human_policy": 0.05,
+    "veil13_natural_ratio": 0.2,
+    "veil13_cost_slack": 0.3,
+    "veil13_trap_mode": false,
+    "veil13_trap_min_delta_e": 0.5
+   },
+   "override_items": [
+    "veil13_target_rate=0.3",
+    "veil13_reserve=5.0",
+    "veil13_min_winrate=0.85",
+    "veil13_free_loss=0.3",
+    "veil13_free_wr_drop=0.03",
+    "veil13_close_drift_cap=0.0",
+    "veil13_spend_rate=0.5",
+    "veil13_max_loss=4.5",
+    "veil13_yose_max_loss=1.5",
+    "veil13_dominant_hp=0.8",
+    "veil13_dominant_max_loss=2.0",
+    "veil13_min_human_policy=0.05",
+    "veil13_natural_ratio=0.2",
+    "veil13_cost_slack=0.3",
+    "veil13_trap_mode=false",
+    "veil13_trap_min_delta_e=0.5"
+   ],
+   "strategy_class": "Veil13Strategy",
+   "settings_source": "user config",
+   "effective_settings": {
+    "veil13_target_rate": 0.3,
+    "veil13_reserve": 5.0,
+    "veil13_min_winrate": 0.85,
+    "veil13_free_loss": 0.3,
+    "veil13_free_wr_drop": 0.03,
+    "veil13_close_drift_cap": 0.0,
+    "veil13_spend_rate": 0.5,
+    "veil13_max_loss": 4.5,
+    "veil13_yose_max_loss": 1.5,
+    "veil13_dominant_hp": 0.8,
+    "veil13_dominant_max_loss": 2.0,
+    "veil13_min_human_policy": 0.05,
+    "veil13_natural_ratio": 0.2,
+    "veil13_cost_slack": 0.3,
+    "veil13_trap_mode": false,
+    "veil13_trap_min_delta_e": 0.5
+   },
+   "fingerprint": "337c824cce919a7d"
+  },
+  {
+   "name": "user",
+   "strategy": "veil13",
+   "mode": "ai:veil13",
+   "settings": {
+    "veil13_target_rate": 0.3,
+    "veil13_reserve": 2.0,
+    "veil13_min_winrate": 0.8,
+    "veil13_free_loss": 0.3,
+    "veil13_free_wr_drop": 0.03,
+    "veil13_close_drift_cap": 0.0,
+    "veil13_spend_rate": 0.75,
+    "veil13_max_loss": 6.0,
+    "veil13_yose_max_loss": 1.5,
+    "veil13_dominant_hp": 0.8,
+    "veil13_dominant_max_loss": 2.0,
+    "veil13_min_human_policy": 0.05,
+    "veil13_natural_ratio": 0.2,
+    "veil13_cost_slack": 0.3,
+    "veil13_trap_mode": true,
+    "veil13_trap_min_delta_e": 0.5
+   },
+   "override_items": [
+    "veil13_target_rate=0.3",
+    "veil13_reserve=2.0",
+    "veil13_min_winrate=0.8",
+    "veil13_free_loss=0.3",
+    "veil13_free_wr_drop=0.03",
+    "veil13_close_drift_cap=0.0",
+    "veil13_spend_rate=0.75",
+    "veil13_max_loss=6.0",
+    "veil13_yose_max_loss=1.5",
+    "veil13_dominant_hp=0.8",
+    "veil13_dominant_max_loss=2.0",
+    "veil13_min_human_policy=0.05",
+    "veil13_natural_ratio=0.2",
+    "veil13_cost_slack=0.3",
+    "veil13_trap_mode=true",
+    "veil13_trap_min_delta_e=0.5"
+   ],
+   "strategy_class": "Veil13Strategy",
+   "settings_source": "user config",
+   "effective_settings": {
+    "veil13_target_rate": 0.3,
+    "veil13_reserve": 2.0,
+    "veil13_min_winrate": 0.8,
+    "veil13_free_loss": 0.3,
+    "veil13_free_wr_drop": 0.03,
+    "veil13_close_drift_cap": 0.0,
+    "veil13_spend_rate": 0.75,
+    "veil13_max_loss": 6.0,
+    "veil13_yose_max_loss": 1.5,
+    "veil13_dominant_hp": 0.8,
+    "veil13_dominant_max_loss": 2.0,
+    "veil13_min_human_policy": 0.05,
+    "veil13_natural_ratio": 0.2,
+    "veil13_cost_slack": 0.3,
+    "veil13_trap_mode": true,
+    "veil13_trap_min_delta_e": 0.5
+   },
+   "fingerprint": "1629b7d0a2f6ab8a"
+  },
+  {
+   "name": "dom090",
+   "strategy": "veil13",
+   "mode": "ai:veil13",
+   "settings": {
+    "veil13_target_rate": 0.3,
+    "veil13_reserve": 5.0,
+    "veil13_min_winrate": 0.85,
+    "veil13_free_loss": 0.3,
+    "veil13_free_wr_drop": 0.03,
+    "veil13_close_drift_cap": 0.0,
+    "veil13_spend_rate": 0.5,
+    "veil13_max_loss": 4.5,
+    "veil13_yose_max_loss": 1.5,
+    "veil13_dominant_hp": 0.9,
+    "veil13_dominant_max_loss": 2.0,
+    "veil13_min_human_policy": 0.05,
+    "veil13_natural_ratio": 0.2,
+    "veil13_cost_slack": 0.3,
+    "veil13_trap_mode": false,
+    "veil13_trap_min_delta_e": 0.5
+   },
+   "override_items": [
+    "veil13_target_rate=0.3",
+    "veil13_reserve=5.0",
+    "veil13_min_winrate=0.85",
+    "veil13_free_loss=0.3",
+    "veil13_free_wr_drop=0.03",
+    "veil13_close_drift_cap=0.0",
+    "veil13_spend_rate=0.5",
+    "veil13_max_loss=4.5",
+    "veil13_yose_max_loss=1.5",
+    "veil13_dominant_hp=0.9",
+    "veil13_dominant_max_loss=2.0",
+    "veil13_min_human_policy=0.05",
+    "veil13_natural_ratio=0.2",
+    "veil13_cost_slack=0.3",
+    "veil13_trap_mode=false",
+    "veil13_trap_min_delta_e=0.5"
+   ],
+   "strategy_class": "Veil13Strategy",
+   "settings_source": "user config",
+   "effective_settings": {
+    "veil13_target_rate": 0.3,
+    "veil13_reserve": 5.0,
+    "veil13_min_winrate": 0.85,
+    "veil13_free_loss": 0.3,
+    "veil13_free_wr_drop": 0.03,
+    "veil13_close_drift_cap": 0.0,
+    "veil13_spend_rate": 0.5,
+    "veil13_max_loss": 4.5,
+    "veil13_yose_max_loss": 1.5,
+    "veil13_dominant_hp": 0.9,
+    "veil13_dominant_max_loss": 2.0,
+    "veil13_min_human_policy": 0.05,
+    "veil13_natural_ratio": 0.2,
+    "veil13_cost_slack": 0.3,
+    "veil13_trap_mode": false,
+    "veil13_trap_min_delta_e": 0.5
+   },
+   "fingerprint": "b6eda2b64aa9daa8"
+  },
+  {
+   "name": "domoff",
+   "strategy": "veil13",
+   "mode": "ai:veil13",
+   "settings": {
+    "veil13_target_rate": 0.3,
+    "veil13_reserve": 5.0,
+    "veil13_min_winrate": 0.85,
+    "veil13_free_loss": 0.3,
+    "veil13_free_wr_drop": 0.03,
+    "veil13_close_drift_cap": 0.0,
+    "veil13_spend_rate": 0.5,
+    "veil13_max_loss": 4.5,
+    "veil13_yose_max_loss": 1.5,
+    "veil13_dominant_hp": 1.01,
+    "veil13_dominant_max_loss": 2.0,
+    "veil13_min_human_policy": 0.05,
+    "veil13_natural_ratio": 0.2,
+    "veil13_cost_slack": 0.3,
+    "veil13_trap_mode": false,
+    "veil13_trap_min_delta_e": 0.5
+   },
+   "override_items": [
+    "veil13_target_rate=0.3",
+    "veil13_reserve=5.0",
+    "veil13_min_winrate=0.85",
+    "veil13_free_loss=0.3",
+    "veil13_free_wr_drop=0.03",
+    "veil13_close_drift_cap=0.0",
+    "veil13_spend_rate=0.5",
+    "veil13_max_loss=4.5",
+    "veil13_yose_max_loss=1.5",
+    "veil13_dominant_hp=1.01",
+    "veil13_dominant_max_loss=2.0",
+    "veil13_min_human_policy=0.05",
+    "veil13_natural_ratio=0.2",
+    "veil13_cost_slack=0.3",
+    "veil13_trap_mode=false",
+    "veil13_trap_min_delta_e=0.5"
+   ],
+   "strategy_class": "Veil13Strategy",
+   "settings_source": "user config",
+   "effective_settings": {
+    "veil13_target_rate": 0.3,
+    "veil13_reserve": 5.0,
+    "veil13_min_winrate": 0.85,
+    "veil13_free_loss": 0.3,
+    "veil13_free_wr_drop": 0.03,
+    "veil13_close_drift_cap": 0.0,
+    "veil13_spend_rate": 0.5,
+    "veil13_max_loss": 4.5,
+    "veil13_yose_max_loss": 1.5,
+    "veil13_dominant_hp": 1.01,
+    "veil13_dominant_max_loss": 2.0,
+    "veil13_min_human_policy": 0.05,
+    "veil13_natural_ratio": 0.2,
+    "veil13_cost_slack": 0.3,
+    "veil13_trap_mode": false,
+    "veil13_trap_min_delta_e": 0.5
+   },
+   "fingerprint": "14b39c3df5c86d5c"
+  },
+  {
+   "name": "nat010",
+   "strategy": "veil13",
+   "mode": "ai:veil13",
+   "settings": {
+    "veil13_target_rate": 0.3,
+    "veil13_reserve": 5.0,
+    "veil13_min_winrate": 0.85,
+    "veil13_free_loss": 0.3,
+    "veil13_free_wr_drop": 0.03,
+    "veil13_close_drift_cap": 0.0,
+    "veil13_spend_rate": 0.5,
+    "veil13_max_loss": 4.5,
+    "veil13_yose_max_loss": 1.5,
+    "veil13_dominant_hp": 0.8,
+    "veil13_dominant_max_loss": 2.0,
+    "veil13_min_human_policy": 0.05,
+    "veil13_natural_ratio": 0.1,
+    "veil13_cost_slack": 0.3,
+    "veil13_trap_mode": false,
+    "veil13_trap_min_delta_e": 0.5
+   },
+   "override_items": [
+    "veil13_target_rate=0.3",
+    "veil13_reserve=5.0",
+    "veil13_min_winrate=0.85",
+    "veil13_free_loss=0.3",
+    "veil13_free_wr_drop=0.03",
+    "veil13_close_drift_cap=0.0",
+    "veil13_spend_rate=0.5",
+    "veil13_max_loss=4.5",
+    "veil13_yose_max_loss=1.5",
+    "veil13_dominant_hp=0.8",
+    "veil13_dominant_max_loss=2.0",
+    "veil13_min_human_policy=0.05",
+    "veil13_natural_ratio=0.1",
+    "veil13_cost_slack=0.3",
+    "veil13_trap_mode=false",
+    "veil13_trap_min_delta_e=0.5"
+   ],
+   "strategy_class": "Veil13Strategy",
+   "settings_source": "user config",
+   "effective_settings": {
+    "veil13_target_rate": 0.3,
+    "veil13_reserve": 5.0,
+    "veil13_min_winrate": 0.85,
+    "veil13_free_loss": 0.3,
+    "veil13_free_wr_drop": 0.03,
+    "veil13_close_drift_cap": 0.0,
+    "veil13_spend_rate": 0.5,
+    "veil13_max_loss": 4.5,
+    "veil13_yose_max_loss": 1.5,
+    "veil13_dominant_hp": 0.8,
+    "veil13_dominant_max_loss": 2.0,
+    "veil13_min_human_policy": 0.05,
+    "veil13_natural_ratio": 0.1,
+    "veil13_cost_slack": 0.3,
+    "veil13_trap_mode": false,
+    "veil13_trap_min_delta_e": 0.5
+   },
+   "fingerprint": "fdec02e87c26e680"
+  },
+  {
+   "name": "free040",
+   "strategy": "veil13",
+   "mode": "ai:veil13",
+   "settings": {
+    "veil13_target_rate": 0.3,
+    "veil13_reserve": 5.0,
+    "veil13_min_winrate": 0.85,
+    "veil13_free_loss": 0.4,
+    "veil13_free_wr_drop": 0.03,
+    "veil13_close_drift_cap": 0.0,
+    "veil13_spend_rate": 0.5,
+    "veil13_max_loss": 4.5,
+    "veil13_yose_max_loss": 1.5,
+    "veil13_dominant_hp": 0.8,
+    "veil13_dominant_max_loss": 2.0,
+    "veil13_min_human_policy": 0.05,
+    "veil13_natural_ratio": 0.2,
+    "veil13_cost_slack": 0.3,
+    "veil13_trap_mode": false,
+    "veil13_trap_min_delta_e": 0.5
+   },
+   "override_items": [
+    "veil13_target_rate=0.3",
+    "veil13_reserve=5.0",
+    "veil13_min_winrate=0.85",
+    "veil13_free_loss=0.4",
+    "veil13_free_wr_drop=0.03",
+    "veil13_close_drift_cap=0.0",
+    "veil13_spend_rate=0.5",
+    "veil13_max_loss=4.5",
+    "veil13_yose_max_loss=1.5",
+    "veil13_dominant_hp=0.8",
+    "veil13_dominant_max_loss=2.0",
+    "veil13_min_human_policy=0.05",
+    "veil13_natural_ratio=0.2",
+    "veil13_cost_slack=0.3",
+    "veil13_trap_mode=false",
+    "veil13_trap_min_delta_e=0.5"
+   ],
+   "strategy_class": "Veil13Strategy",
+   "settings_source": "user config",
+   "effective_settings": {
+    "veil13_target_rate": 0.3,
+    "veil13_reserve": 5.0,
+    "veil13_min_winrate": 0.85,
+    "veil13_free_loss": 0.4,
+    "veil13_free_wr_drop": 0.03,
+    "veil13_close_drift_cap": 0.0,
+    "veil13_spend_rate": 0.5,
+    "veil13_max_loss": 4.5,
+    "veil13_yose_max_loss": 1.5,
+    "veil13_dominant_hp": 0.8,
+    "veil13_dominant_max_loss": 2.0,
+    "veil13_min_human_policy": 0.05,
+    "veil13_natural_ratio": 0.2,
+    "veil13_cost_slack": 0.3,
+    "veil13_trap_mode": false,
+    "veil13_trap_min_delta_e": 0.5
+   },
+   "fingerprint": "8fa31dc93e7e9474"
+  },
+  {
+   "name": "drift1",
+   "strategy": "veil13",
+   "mode": "ai:veil13",
+   "settings": {
+    "veil13_target_rate": 0.3,
+    "veil13_reserve": 5.0,
+    "veil13_min_winrate": 0.85,
+    "veil13_free_loss": 0.3,
+    "veil13_free_wr_drop": 0.03,
+    "veil13_close_drift_cap": 1.0,
+    "veil13_spend_rate": 0.5,
+    "veil13_max_loss": 4.5,
+    "veil13_yose_max_loss": 1.5,
+    "veil13_dominant_hp": 0.8,
+    "veil13_dominant_max_loss": 2.0,
+    "veil13_min_human_policy": 0.05,
+    "veil13_natural_ratio": 0.2,
+    "veil13_cost_slack": 0.3,
+    "veil13_trap_mode": false,
+    "veil13_trap_min_delta_e": 0.5
+   },
+   "override_items": [
+    "veil13_target_rate=0.3",
+    "veil13_reserve=5.0",
+    "veil13_min_winrate=0.85",
+    "veil13_free_loss=0.3",
+    "veil13_free_wr_drop=0.03",
+    "veil13_close_drift_cap=1.0",
+    "veil13_spend_rate=0.5",
+    "veil13_max_loss=4.5",
+    "veil13_yose_max_loss=1.5",
+    "veil13_dominant_hp=0.8",
+    "veil13_dominant_max_loss=2.0",
+    "veil13_min_human_policy=0.05",
+    "veil13_natural_ratio=0.2",
+    "veil13_cost_slack=0.3",
+    "veil13_trap_mode=false",
+    "veil13_trap_min_delta_e=0.5"
+   ],
+   "strategy_class": "Veil13Strategy",
+   "settings_source": "user config",
+   "effective_settings": {
+    "veil13_target_rate": 0.3,
+    "veil13_reserve": 5.0,
+    "veil13_min_winrate": 0.85,
+    "veil13_free_loss": 0.3,
+    "veil13_free_wr_drop": 0.03,
+    "veil13_close_drift_cap": 1.0,
+    "veil13_spend_rate": 0.5,
+    "veil13_max_loss": 4.5,
+    "veil13_yose_max_loss": 1.5,
+    "veil13_dominant_hp": 0.8,
+    "veil13_dominant_max_loss": 2.0,
+    "veil13_min_human_policy": 0.05,
+    "veil13_natural_ratio": 0.2,
+    "veil13_cost_slack": 0.3,
+    "veil13_trap_mode": false,
+    "veil13_trap_min_delta_e": 0.5
+   },
+   "fingerprint": "32908196ebe90da4"
+  },
+  {
+   "name": "wide",
+   "strategy": "veil13",
+   "mode": "ai:veil13",
+   "settings": {
+    "veil13_target_rate": 0.3,
+    "veil13_reserve": 5.0,
+    "veil13_min_winrate": 0.85,
+    "veil13_free_loss": 0.3,
+    "veil13_free_wr_drop": 0.03,
+    "veil13_close_drift_cap": 0.0,
+    "veil13_spend_rate": 1.0,
+    "veil13_max_loss": 6.0,
+    "veil13_yose_max_loss": 2.0,
+    "veil13_dominant_hp": 0.8,
+    "veil13_dominant_max_loss": 3.0,
+    "veil13_min_human_policy": 0.05,
+    "veil13_natural_ratio": 0.2,
+    "veil13_cost_slack": 0.3,
+    "veil13_trap_mode": false,
+    "veil13_trap_min_delta_e": 0.5
+   },
+   "override_items": [
+    "veil13_target_rate=0.3",
+    "veil13_reserve=5.0",
+    "veil13_min_winrate=0.85",
+    "veil13_free_loss=0.3",
+    "veil13_free_wr_drop=0.03",
+    "veil13_close_drift_cap=0.0",
+    "veil13_spend_rate=1.0",
+    "veil13_max_loss=6.0",
+    "veil13_yose_max_loss=2.0",
+    "veil13_dominant_hp=0.8",
+    "veil13_dominant_max_loss=3.0",
+    "veil13_min_human_policy=0.05",
+    "veil13_natural_ratio=0.2",
+    "veil13_cost_slack=0.3",
+    "veil13_trap_mode=false",
+    "veil13_trap_min_delta_e=0.5"
+   ],
+   "strategy_class": "Veil13Strategy",
+   "settings_source": "user config",
+   "effective_settings": {
+    "veil13_target_rate": 0.3,
+    "veil13_reserve": 5.0,
+    "veil13_min_winrate": 0.85,
+    "veil13_free_loss": 0.3,
+    "veil13_free_wr_drop": 0.03,
+    "veil13_close_drift_cap": 0.0,
+    "veil13_spend_rate": 1.0,
+    "veil13_max_loss": 6.0,
+    "veil13_yose_max_loss": 2.0,
+    "veil13_dominant_hp": 0.8,
+    "veil13_dominant_max_loss": 3.0,
+    "veil13_min_human_policy": 0.05,
+    "veil13_natural_ratio": 0.2,
+    "veil13_cost_slack": 0.3,
+    "veil13_trap_mode": false,
+    "veil13_trap_min_delta_e": 0.5
+   },
+   "fingerprint": "49b0b691b8dc26b5"
+  },
+  {
+   "name": "loose",
+   "strategy": "veil13",
+   "mode": "ai:veil13",
+   "settings": {
+    "veil13_target_rate": 0.3,
+    "veil13_reserve": 5.0,
+    "veil13_min_winrate": 0.85,
+    "veil13_free_loss": 0.4,
+    "veil13_free_wr_drop": 0.03,
+    "veil13_close_drift_cap": 0.0,
+    "veil13_spend_rate": 1.0,
+    "veil13_max_loss": 6.0,
+    "veil13_yose_max_loss": 2.0,
+    "veil13_dominant_hp": 1.01,
+    "veil13_dominant_max_loss": 3.0,
+    "veil13_min_human_policy": 0.05,
+    "veil13_natural_ratio": 0.1,
+    "veil13_cost_slack": 0.3,
+    "veil13_trap_mode": false,
+    "veil13_trap_min_delta_e": 0.5
+   },
+   "override_items": [
+    "veil13_target_rate=0.3",
+    "veil13_reserve=5.0",
+    "veil13_min_winrate=0.85",
+    "veil13_free_loss=0.4",
+    "veil13_free_wr_drop=0.03",
+    "veil13_close_drift_cap=0.0",
+    "veil13_spend_rate=1.0",
+    "veil13_max_loss=6.0",
+    "veil13_yose_max_loss=2.0",
+    "veil13_dominant_hp=1.01",
+    "veil13_dominant_max_loss=3.0",
+    "veil13_min_human_policy=0.05",
+    "veil13_natural_ratio=0.1",
+    "veil13_cost_slack=0.3",
+    "veil13_trap_mode=false",
+    "veil13_trap_min_delta_e=0.5"
+   ],
+   "strategy_class": "Veil13Strategy",
+   "settings_source": "user config",
+   "effective_settings": {
+    "veil13_target_rate": 0.3,
+    "veil13_reserve": 5.0,
+    "veil13_min_winrate": 0.85,
+    "veil13_free_loss": 0.4,
+    "veil13_free_wr_drop": 0.03,
+    "veil13_close_drift_cap": 0.0,
+    "veil13_spend_rate": 1.0,
+    "veil13_max_loss": 6.0,
+    "veil13_yose_max_loss": 2.0,
+    "veil13_dominant_hp": 1.01,
+    "veil13_dominant_max_loss": 3.0,
+    "veil13_min_human_policy": 0.05,
+    "veil13_natural_ratio": 0.1,
+    "veil13_cost_slack": 0.3,
+    "veil13_trap_mode": false,
+    "veil13_trap_min_delta_e": 0.5
+   },
+   "fingerprint": "8b6350f7d5743bc0"
+  }
+ ],
+ "schedule": [
+  {
+   "index": 0,
+   "seed": 1000,
+   "ai_color": "B",
+   "rank": "rank_1k",
+   "opp_seed": 1842444242,
+   "strategy_seed": 425801368,
+   "resign_lead": null,
+   "resign_len": 78
+  },
+  {
+   "index": 1,
+   "seed": 1001,
+   "ai_color": "W",
+   "rank": "rank_1k",
+   "opp_seed": 251797747,
+   "strategy_seed": 850558125,
+   "resign_lead": null,
+   "resign_len": 79
+  },
+  {
+   "index": 2,
+   "seed": 1002,
+   "ai_color": "B",
+   "rank": "rank_1d",
+   "opp_seed": 1809255817,
+   "strategy_seed": 948952291,
+   "resign_lead": null,
+   "resign_len": 70
+  },
+  {
+   "index": 3,
+   "seed": 1003,
+   "ai_color": "W",
+   "rank": "rank_1d",
+   "opp_seed": 2136065134,
+   "strategy_seed": 1546147258,
+   "resign_lead": null,
+   "resign_len": 123
+  },
+  {
+   "index": 4,
+   "seed": 1004,
+   "ai_color": "B",
+   "rank": "rank_3d",
+   "opp_seed": 1808717700,
+   "strategy_seed": 456716026,
+   "resign_lead": null,
+   "resign_len": 81
+  },
+  {
+   "index": 5,
+   "seed": 1005,
+   "ai_color": "W",
+   "rank": "rank_3d",
+   "opp_seed": 2074943336,
+   "strategy_seed": 1714290689,
+   "resign_lead": null,
+   "resign_len": 81
+  },
+  {
+   "index": 6,
+   "seed": 1006,
+   "ai_color": "B",
+   "rank": "rank_1k",
+   "opp_seed": 1488721381,
+   "strategy_seed": 239849477,
+   "resign_lead": null,
+   "resign_len": 123
+  },
+  {
+   "index": 7,
+   "seed": 1007,
+   "ai_color": "W",
+   "rank": "rank_1k",
+   "opp_seed": 138391791,
+   "strategy_seed": 747480507,
+   "resign_lead": null,
+   "resign_len": 89
+  },
+  {
+   "index": 8,
+   "seed": 1008,
+   "ai_color": "B",
+   "rank": "rank_1d",
+   "opp_seed": 1911693887,
+   "strategy_seed": 1461558634,
+   "resign_lead": null,
+   "resign_len": 79
+  },
+  {
+   "index": 9,
+   "seed": 1009,
+   "ai_color": "W",
+   "rank": "rank_1d",
+   "opp_seed": 773920557,
+   "strategy_seed": 51119787,
+   "resign_lead": null,
+   "resign_len": 116
+  },
+  {
+   "index": 10,
+   "seed": 1010,
+   "ai_color": "B",
+   "rank": "rank_3d",
+   "opp_seed": 1060776327,
+   "strategy_seed": 357237790,
+   "resign_lead": null,
+   "resign_len": 87
+  },
+  {
+   "index": 11,
+   "seed": 1011,
+   "ai_color": "W",
+   "rank": "rank_3d",
+   "opp_seed": 1575912737,
+   "strategy_seed": 1089258379,
+   "resign_lead": null,
+   "resign_len": 123
+  },
+  {
+   "index": 12,
+   "seed": 1012,
+   "ai_color": "B",
+   "rank": "rank_1k",
+   "opp_seed": 1453743460,
+   "strategy_seed": 680564964,
+   "resign_lead": null,
+   "resign_len": 70
+  },
+  {
+   "index": 13,
+   "seed": 1013,
+   "ai_color": "W",
+   "rank": "rank_1k",
+   "opp_seed": 2112563513,
+   "strategy_seed": 1095634259,
+   "resign_lead": null,
+   "resign_len": 31
+  },
+  {
+   "index": 14,
+   "seed": 1014,
+   "ai_color": "B",
+   "rank": "rank_1d",
+   "opp_seed": 24487958,
+   "strategy_seed": 1027642890,
+   "resign_lead": null,
+   "resign_len": 45
+  },
+  {
+   "index": 15,
+   "seed": 1015,
+   "ai_color": "W",
+   "rank": "rank_1d",
+   "opp_seed": 445646667,
+   "strategy_seed": 1292553110,
+   "resign_lead": null,
+   "resign_len": 116
+  },
+  {
+   "index": 16,
+   "seed": 1016,
+   "ai_color": "B",
+   "rank": "rank_3d",
+   "opp_seed": 1566947659,
+   "strategy_seed": 1676968494,
+   "resign_lead": null,
+   "resign_len": 81
+  },
+  {
+   "index": 17,
+   "seed": 1017,
+   "ai_color": "W",
+   "rank": "rank_3d",
+   "opp_seed": 2067235387,
+   "strategy_seed": 1833752245,
+   "resign_lead": null,
+   "resign_len": 63
+  },
+  {
+   "index": 18,
+   "seed": 1018,
+   "ai_color": "B",
+   "rank": "rank_1k",
+   "opp_seed": 1692101561,
+   "strategy_seed": 1694873441,
+   "resign_lead": null,
+   "resign_len": 79
+  },
+  {
+   "index": 19,
+   "seed": 1019,
+   "ai_color": "W",
+   "rank": "rank_1k",
+   "opp_seed": 147155057,
+   "strategy_seed": 1426281763,
+   "resign_lead": null,
+   "resign_len": 63
+  }
+ ],
+ "order": [
+  [
+   "default",
+   0
+  ],
+  [
+   "default",
+   1
+  ],
+  [
+   "default",
+   2
+  ],
+  [
+   "default",
+   3
+  ],
+  [
+   "default",
+   4
+  ],
+  [
+   "default",
+   5
+  ],
+  [
+   "default",
+   6
+  ],
+  [
+   "default",
+   7
+  ],
+  [
+   "default",
+   8
+  ],
+  [
+   "default",
+   9
+  ],
+  [
+   "user",
+   0
+  ],
+  [
+   "user",
+   1
+  ],
+  [
+   "user",
+   2
+  ],
+  [
+   "user",
+   3
+  ],
+  [
+   "user",
+   4
+  ],
+  [
+   "user",
+   5
+  ],
+  [
+   "user",
+   6
+  ],
+  [
+   "user",
+   7
+  ],
+  [
+   "user",
+   8
+  ],
+  [
+   "user",
+   9
+  ],
+  [
+   "dom090",
+   0
+  ],
+  [
+   "dom090",
+   1
+  ],
+  [
+   "dom090",
+   2
+  ],
+  [
+   "dom090",
+   3
+  ],
+  [
+   "dom090",
+   4
+  ],
+  [
+   "dom090",
+   5
+  ],
+  [
+   "dom090",
+   6
+  ],
+  [
+   "dom090",
+   7
+  ],
+  [
+   "dom090",
+   8
+  ],
+  [
+   "dom090",
+   9
+  ],
+  [
+   "domoff",
+   0
+  ],
+  [
+   "domoff",
+   1
+  ],
+  [
+   "domoff",
+   2
+  ],
+  [
+   "domoff",
+   3
+  ],
+  [
+   "domoff",
+   4
+  ],
+  [
+   "domoff",
+   5
+  ],
+  [
+   "domoff",
+   6
+  ],
+  [
+   "domoff",
+   7
+  ],
+  [
+   "domoff",
+   8
+  ],
+  [
+   "domoff",
+   9
+  ],
+  [
+   "nat010",
+   0
+  ],
+  [
+   "nat010",
+   1
+  ],
+  [
+   "nat010",
+   2
+  ],
+  [
+   "nat010",
+   3
+  ],
+  [
+   "nat010",
+   4
+  ],
+  [
+   "nat010",
+   5
+  ],
+  [
+   "nat010",
+   6
+  ],
+  [
+   "nat010",
+   7
+  ],
+  [
+   "nat010",
+   8
+  ],
+  [
+   "nat010",
+   9
+  ],
+  [
+   "free040",
+   0
+  ],
+  [
+   "free040",
+   1
+  ],
+  [
+   "free040",
+   2
+  ],
+  [
+   "free040",
+   3
+  ],
+  [
+   "free040",
+   4
+  ],
+  [
+   "free040",
+   5
+  ],
+  [
+   "free040",
+   6
+  ],
+  [
+   "free040",
+   7
+  ],
+  [
+   "free040",
+   8
+  ],
+  [
+   "free040",
+   9
+  ],
+  [
+   "drift1",
+   0
+  ],
+  [
+   "drift1",
+   1
+  ],
+  [
+   "drift1",
+   2
+  ],
+  [
+   "drift1",
+   3
+  ],
+  [
+   "drift1",
+   4
+  ],
+  [
+   "drift1",
+   5
+  ],
+  [
+   "drift1",
+   6
+  ],
+  [
+   "drift1",
+   7
+  ],
+  [
+   "drift1",
+   8
+  ],
+  [
+   "drift1",
+   9
+  ],
+  [
+   "wide",
+   0
+  ],
+  [
+   "wide",
+   1
+  ],
+  [
+   "wide",
+   2
+  ],
+  [
+   "wide",
+   3
+  ],
+  [
+   "wide",
+   4
+  ],
+  [
+   "wide",
+   5
+  ],
+  [
+   "wide",
+   6
+  ],
+  [
+   "wide",
+   7
+  ],
+  [
+   "wide",
+   8
+  ],
+  [
+   "wide",
+   9
+  ],
+  [
+   "loose",
+   0
+  ],
+  [
+   "loose",
+   1
+  ],
+  [
+   "loose",
+   2
+  ],
+  [
+   "loose",
+   3
+  ],
+  [
+   "loose",
+   4
+  ],
+  [
+   "loose",
+   5
+  ],
+  [
+   "loose",
+   6
+  ],
+  [
+   "loose",
+   7
+  ],
+  [
+   "loose",
+   8
+  ],
+  [
+   "loose",
+   9
+  ],
+  [
+   "loose",
+   10
+  ],
+  [
+   "loose",
+   11
+  ],
+  [
+   "loose",
+   12
+  ],
+  [
+   "loose",
+   13
+  ],
+  [
+   "loose",
+   14
+  ],
+  [
+   "loose",
+   15
+  ],
+  [
+   "loose",
+   16
+  ],
+  [
+   "loose",
+   17
+  ],
+  [
+   "loose",
+   18
+  ],
+  [
+   "loose",
+   19
+  ],
+  [
+   "wide",
+   10
+  ],
+  [
+   "wide",
+   11
+  ],
+  [
+   "wide",
+   12
+  ],
+  [
+   "wide",
+   13
+  ],
+  [
+   "wide",
+   14
+  ],
+  [
+   "wide",
+   15
+  ],
+  [
+   "wide",
+   16
+  ],
+  [
+   "wide",
+   17
+  ],
+  [
+   "wide",
+   18
+  ],
+  [
+   "wide",
+   19
+  ],
+  [
+   "drift1",
+   10
+  ],
+  [
+   "drift1",
+   11
+  ],
+  [
+   "drift1",
+   12
+  ],
+  [
+   "drift1",
+   13
+  ],
+  [
+   "drift1",
+   14
+  ],
+  [
+   "drift1",
+   15
+  ],
+  [
+   "drift1",
+   16
+  ],
+  [
+   "drift1",
+   17
+  ],
+  [
+   "drift1",
+   18
+  ],
+  [
+   "drift1",
+   19
+  ],
+  [
+   "free040",
+   10
+  ],
+  [
+   "free040",
+   11
+  ],
+  [
+   "free040",
+   12
+  ],
+  [
+   "free040",
+   13
+  ],
+  [
+   "free040",
+   14
+  ],
+  [
+   "free040",
+   15
+  ],
+  [
+   "free040",
+   16
+  ],
+  [
+   "free040",
+   17
+  ],
+  [
+   "free040",
+   18
+  ],
+  [
+   "free040",
+   19
+  ],
+  [
+   "nat010",
+   10
+  ],
+  [
+   "nat010",
+   11
+  ],
+  [
+   "nat010",
+   12
+  ],
+  [
+   "nat010",
+   13
+  ],
+  [
+   "nat010",
+   14
+  ],
+  [
+   "nat010",
+   15
+  ],
+  [
+   "nat010",
+   16
+  ],
+  [
+   "nat010",
+   17
+  ],
+  [
+   "nat010",
+   18
+  ],
+  [
+   "nat010",
+   19
+  ],
+  [
+   "domoff",
+   10
+  ],
+  [
+   "domoff",
+   11
+  ],
+  [
+   "domoff",
+   12
+  ],
+  [
+   "domoff",
+   13
+  ],
+  [
+   "domoff",
+   14
+  ],
+  [
+   "domoff",
+   15
+  ],
+  [
+   "domoff",
+   16
+  ],
+  [
+   "domoff",
+   17
+  ],
+  [
+   "domoff",
+   18
+  ],
+  [
+   "domoff",
+   19
+  ],
+  [
+   "dom090",
+   10
+  ],
+  [
+   "dom090",
+   11
+  ],
+  [
+   "dom090",
+   12
+  ],
+  [
+   "dom090",
+   13
+  ],
+  [
+   "dom090",
+   14
+  ],
+  [
+   "dom090",
+   15
+  ],
+  [
+   "dom090",
+   16
+  ],
+  [
+   "dom090",
+   17
+  ],
+  [
+   "dom090",
+   18
+  ],
+  [
+   "dom090",
+   19
+  ],
+  [
+   "user",
+   10
+  ],
+  [
+   "user",
+   11
+  ],
+  [
+   "user",
+   12
+  ],
+  [
+   "user",
+   13
+  ],
+  [
+   "user",
+   14
+  ],
+  [
+   "user",
+   15
+  ],
+  [
+   "user",
+   16
+  ],
+  [
+   "user",
+   17
+  ],
+  [
+   "user",
+   18
+  ],
+  [
+   "user",
+   19
+  ],
+  [
+   "default",
+   10
+  ],
+  [
+   "default",
+   11
+  ],
+  [
+   "default",
+   12
+  ],
+  [
+   "default",
+   13
+  ],
+  [
+   "default",
+   14
+  ],
+  [
+   "default",
+   15
+  ],
+  [
+   "default",
+   16
+  ],
+  [
+   "default",
+   17
+  ],
+  [
+   "default",
+   18
+  ],
+  [
+   "default",
+   19
+  ]
+ ],
+ "opponent": {
+  "kind": "humansl",
+  "ranks": [
+   "rank_1k",
+   "rank_1d",
+   "rank_3d"
+  ],
+  "tau": 1.0,
+  "max_loss": null,
+  "pool_file": "docs/superpowers/specs/calibration-data/selfplay/opponent_pool_13.json",
+  "pool": {
+   "board_size": 13,
+   "created": "2026-09-24T09:37:08",
+   "source_run": "experiments/selfplay/20260924_0822_calib13-len",
+   "strategy": "enigma13plus",
+   "ranks": [
+    "rank_1k",
+    "rank_1d",
+    "rank_3d"
+   ],
+   "tau": 1.0,
+   "resign_model": "length",
+   "fit": {
+    "ranks": [
+     "rank_1k",
+     "rank_1d",
+     "rank_3d"
+    ],
+    "opp_mean": 0.2251290730326312,
+    "opp_sd": 0.09367607982309506,
+    "opp_loss": 1.7499886396378148,
+    "own_mean": 0.5253546636812084,
+    "bins": {
+     "cal_opening": {
+      "opp_top1": 0.2826086956521739,
+      "opp_loss": 0.48017042806126814
+     },
+     "cal_middle": {
+      "opp_top1": 0.21430833642318625,
+      "opp_loss": 2.464481647725046
+     },
+     "cal_endgame": {
+      "opp_top1": 0.1336959336959337,
+      "opp_loss": 1.3273669801010097
+     }
+    },
+    "score": 2.406878992309807
+   },
+   "targets": {
+    "opp_mean": 0.231,
+    "opp_sd": 0.065,
+    "opp_loss": 1.77,
+    "opp_ge2": 0.28,
+    "opp_ge5": 0.1,
+    "ai_mean": 0.533,
+    "moves_median": 78.5,
+    "bins": {
+     "cal_opening": {
+      "opp_top1": 0.267,
+      "opp_loss": 0.56
+     },
+     "cal_middle": {
+      "opp_top1": 0.182,
+      "opp_loss": 2.43
+     },
+     "cal_endgame": {
+      "opp_top1": 0.291,
+      "opp_loss": 0.96
+     }
+    }
+   },
+   "per_rank": {
+    "rank_8k": {
+     "games": 8,
+     "opp_mean": 0.1575204402298692,
+     "opp_sd": 0.042747380642234614,
+     "opp_pooled": 0.1590909090909091,
+     "opp_loss": 2.228017663487976,
+     "opp_ge2": 0.37337662337662336,
+     "opp_ge5": 0.1461038961038961,
+     "own_mean": 0.42739337880666944,
+     "moves_median": 80.0,
+     "bins": {
+      "cal_opening": {
+       "opp_top1": 0.1956521739130435,
+       "opp_loss": 0.8323488012782608,
+       "n": 92
+      },
+      "cal_middle": {
+       "opp_top1": 0.13636363636363635,
+       "opp_loss": 3.048387906222727,
+       "n": 198
+      },
+      "cal_endgame": {
+       "opp_top1": 0.2222222222222222,
+       "opp_loss": 0.5543722277777776,
+       "n": 18
+      }
+     }
+    },
+    "rank_5k": {
+     "games": 8,
+     "opp_mean": 0.12883799522519035,
+     "opp_sd": 0.03831973776547116,
+     "opp_pooled": 0.12974683544303797,
+     "opp_loss": 2.787924860821788,
+     "opp_ge2": 0.4050632911392405,
+     "opp_ge5": 0.17405063291139242,
+     "own_mean": 0.3504300569021728,
+     "moves_median": 76.5,
+     "bins": {
+      "cal_opening": {
+       "opp_top1": 0.18478260869565216,
+       "opp_loss": 0.9336711548081957,
+       "n": 92
+      },
+      "cal_middle": {
+       "opp_top1": 0.0972972972972973,
+       "opp_loss": 3.83635453312,
+       "n": 185
+      },
+      "cal_endgame": {
+       "opp_top1": 0.15384615384615385,
+       "opp_loss": 1.3109452902564094,
+       "n": 39
+      }
+     }
+    },
+    "rank_3k": {
+     "games": 8,
+     "opp_mean": 0.18171280473912052,
+     "opp_sd": 0.1127791723787445,
+     "opp_pooled": 0.17210682492581603,
+     "opp_loss": 2.3439218704240963,
+     "opp_ge2": 0.34718100890207715,
+     "opp_ge5": 0.17507418397626112,
+     "own_mean": 0.488578569998943,
+     "moves_median": 83.0,
+     "bins": {
+      "cal_opening": {
+       "opp_top1": 0.1956521739130435,
+       "opp_loss": 0.6752624294456522,
+       "n": 92
+      },
+      "cal_middle": {
+       "opp_top1": 0.16517857142857142,
+       "opp_loss": 3.2728241771107145,
+       "n": 224
+      },
+      "cal_endgame": {
+       "opp_top1": 0.14285714285714285,
+       "opp_loss": 0.45849313333333375,
+       "n": 21
+      }
+     }
+    },
+    "rank_1k": {
+     "games": 8,
+     "opp_mean": 0.22161862454147713,
+     "opp_sd": 0.05971211240492509,
+     "opp_pooled": 0.21329639889196675,
+     "opp_loss": 1.5309394511577676,
+     "opp_ge2": 0.23268698060941828,
+     "opp_ge5": 0.0886426592797784,
+     "own_mean": 0.5304636292389496,
+     "moves_median": 86.5,
+     "bins": {
+      "cal_opening": {
+       "opp_top1": 0.1956521739130435,
+       "opp_loss": 0.6159543105098912,
+       "n": 92
+      },
+      "cal_middle": {
+       "opp_top1": 0.2413793103448276,
+       "opp_loss": 2.145531032670936,
+       "n": 203
+      },
+      "cal_endgame": {
+       "opp_top1": 0.15151515151515152,
+       "opp_loss": 1.1046217653030304,
+       "n": 66
+      }
+     }
+    },
+    "rank_1d": {
+     "games": 8,
+     "opp_mean": 0.1959676810390395,
+     "opp_sd": 0.10893686843269429,
+     "opp_pooled": 0.20608108108108109,
+     "opp_loss": 1.6431720735359439,
+     "opp_ge2": 0.2533783783783784,
+     "opp_ge5": 0.10135135135135136,
+     "own_mean": 0.5301076852701768,
+     "moves_median": 76.0,
+     "bins": {
+      "cal_opening": {
+       "opp_top1": 0.2717391304347826,
+       "opp_loss": 0.4888503072391304,
+       "n": 92
+      },
+      "cal_middle": {
+       "opp_top1": 0.1827956989247312,
+       "opp_loss": 2.4676364253466128,
+       "n": 186
+      },
+      "cal_endgame": {
+       "opp_top1": 0.1111111111111111,
+       "opp_loss": 0.33856061499999995,
+       "n": 18
+      }
+     }
+    },
+    "rank_3d": {
+     "games": 8,
+     "opp_mean": 0.25780091351737694,
+     "opp_sd": 0.09467146840001187,
+     "opp_pooled": 0.2440944881889764,
+     "opp_loss": 2.0758543942197325,
+     "opp_ge2": 0.30446194225721784,
+     "opp_ge5": 0.12860892388451445,
+     "own_mean": 0.5154926765344989,
+     "moves_median": 87.0,
+     "bins": {
+      "cal_opening": {
+       "opp_top1": 0.3804347826086957,
+       "opp_loss": 0.33570666643478264,
+       "n": 92
+      },
+      "cal_middle": {
+       "opp_top1": 0.21875,
+       "opp_loss": 2.7802774851575895,
+       "n": 224
+      },
+      "cal_endgame": {
+       "opp_top1": 0.13846153846153847,
+       "opp_loss": 2.538918559999999,
+       "n": 65
+      }
+     }
+    }
+   },
+   "harness_drift_ai": -0.007645336318791607
+  }
+ },
+ "resign": {
+  "no_resign": false,
+  "range": null,
+  "pool": [],
+  "lengths": [
+   123,
+   59,
+   79,
+   79,
+   70,
+   31,
+   63,
+   123,
+   45,
+   89,
+   53,
+   128,
+   78,
+   87,
+   73,
+   116,
+   67,
+   81
+  ],
+  "start_move": null,
+  "source": "docs/superpowers/specs/calibration-data/selfplay/recon",
+  "model": "length"
+ },
+ "config_path": "C:\\Users\\iwaki/.katrain\\config.json",
+ "shadow": null,
+ "hp_audit": "rank_9d",
+ "engine": {
+  "katago": "C:\\Users\\iwaki\\.katrain\\katago-v1.18.2-cuda\\katago.exe",
+  "altcommand": "",
+  "model": "C:\\Users\\iwaki\\.katrain\\b10c384h6nbttflrs.bin.gz",
+  "humanlike_model": "C:\\Users\\iwaki\\.katrain\\b18c384nbt-humanv0.bin.gz",
+  "config": "katrain/KataGo/analysis_config.cfg",
+  "max_visits": 2500,
+  "fast_visits": 200,
+  "max_time": 8.0,
+  "wide_root_noise": 0.04,
+  "_enable_ownership": true
+ },
+ "ai_file": "katrain/core/ai.py",
+ "git": {
+  "head": "cec2ee9509cc959e31566eeefdeeb3da7f2b52d4",
+  "dirty": false
+ },
+ "python": "3.12.10"
+}

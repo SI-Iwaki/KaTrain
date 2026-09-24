@@ -819,7 +819,7 @@ visits >= `VEIL_TERMINAL_MIN_VISITS`・生 loss <= 0.10（|lead| < 3 なら 0.05
 why board / no_cands / pass / no_lead / no_pool / no_hp / dominant_closed / no_natural / no_shortlist / no_best_probe / none_qualified / invariant / exception / opp_pass / terminal / terminal_finish_rejected）。
 CLI: `python -m katrain_debug --sgf <SGF> --move N --strategy veil9|veil13|veil19`。
 **校正**: 13路は自己対局ハーネスで測定し、spec の初期値を据え置いた（`docs/superpowers/specs/calibration-data/selfplay/veil13-campaign.md`・2026-09-24）。
-段階1（5アーム × 20局・相手は humanSL 1k/1d/3d のプール）と段階3（接戦ストレス・下記）を実施し、段階1b・2 は未実施（ユーザー判断で打ち切り）。
+段階1（5アーム × 20局・相手は humanSL 1k/1d/3d のプール）と段階3（接戦ストレス・下記）を実施し、2026-09-24〜25 にユーザーの指示で段階1b（安全条件以外のつまみ 9アーム）・2（投了なし）・3b（接戦ストレスの追加）も実施した。**段階1b: 安全条件を変えずに一致率を下げたのは loose だけ**（loose＝max_loss 6・spend_rate 1.0・dominant_max_loss 3・yose_max_loss 2・dominant_hp OFF・natural_ratio 0.1・free_loss 0.4、安全条件は据え置き）＝42.4%（同じ run の既定 49.0%・差 −6.5pt [t −11.3, −1.8]・損失 0.37 目/手・外した手の hp 中央値 23.7%）。単独のつまみ（dominant_hp 0.9 / OFF・natural_ratio 0.1・free_loss 0.4・close_drift_cap 1.0）は下げない（dominant_hp OFF は逆に +5.4pt）。既定の設定の再実行は 53.1% → 49.0%（同じ設定・同じ seed の A/A で 4.1pt ずれる）。段階2: 投了なしでも既定は 47.4%（終盤 45.5%）で上がらない。段階3b: loose とユーザー設定（reserve 2・min_winrate 0.8・spend 0.75・max_loss 6・罠 ON）も接戦で 20-0（flip 0.05 / 0.20 局）＝(a) 可。**既定を loose にするかはユーザーの選択待ち**（campaign md の「境界線と推奨」）。
 既定の自分の一致率 局平均 **53.1%**（相手 26.3%・20/20 勝ち・flip 0.05/局・損失 0.24 目/手）＝目標 30% に届かない。
 比較: 攻めプリセット（測定専用）42.2%・罠 ON 50.8%・難解＋13路 49.7%・HumanStyle 9段 53.2%。
 **一致率の下限は予算ではなく構造**: 最善手を打つしかなかった手番が 52.7%（no_pool 26.5%・no_natural 16.8%・

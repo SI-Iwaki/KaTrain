@@ -4067,16 +4067,16 @@ python -m katrain_debug.selfplay run --size 13 --pairs 20 --opp-pool docs/superp
 ```
 （`attack` は spec §6.1 の「攻め」プリセット＝測定専用。既定にするには要件1の再決定が要る）
 
-- [ ] **Step 4: 段階1b 安全条件以外のつまみの掃引**（spec §10.3・§12 の dominant_hp / natural_ratio / free_loss と、接戦の累計上限の感度）
-  （実施しなかった: ユーザー判断で段階1の後に測定を打ち切った・2026-09-24。段階1b は未実施）
+- [x] **Step 4: 段階1b 安全条件以外のつまみの掃引**（spec §10.3・§12 の dominant_hp / natural_ratio / free_loss と、接戦の累計上限の感度）
+  （段階1の後でいったん打ち切ったが、2026-09-24 夜にユーザーの指示で実施した・18:13〜20:58。ユーザー設定が GUI で変わっていたので全アームで16キーを上書きで渡し、計画の5アームに user（ユーザー設定）・wide（攻めの安全条件以外）・loose（安全条件以外を全部ゆるめた設定）を足した＝9アーム。結果は campaign md の段階1b の節）
 
 Run（background）:
 ```bash
 python -m katrain_debug.selfplay run --size 13 --pairs 20 --opp-pool docs/superpowers/specs/calibration-data/selfplay/opponent_pool_13.json --hp-audit rank_9d --label veil13-p1b --arm default=veil13 --arm dom090=veil13:veil13_dominant_hp=0.9 --arm domoff=veil13:veil13_dominant_hp=1.01 --arm nat010=veil13:veil13_natural_ratio=0.1 --arm free040=veil13:veil13_free_loss=0.4 --arm drift1=veil13:veil13_close_drift_cap=1.0
 ```
 
-- [ ] **Step 5: 段階2 投了なし**（投了がヨセの手数＝一致率を左右するための必須の感度アーム）
-  （実施しなかった: ユーザー判断で段階1の後に測定を打ち切った・2026-09-24。段階2 は未実施）
+- [x] **Step 5: 段階2 投了なし**（投了がヨセの手数＝一致率を左右するための必須の感度アーム）
+  （2026-09-24 夜にユーザーの指示で実施した・20:59〜22:55。default は16キーを上書き。結果は campaign md の段階2 の節。続けて段階3b＝loose とユーザー設定の接戦ストレスを足した・22:55〜翌 00:25）
 
 Run（background）:
 ```bash
@@ -4095,7 +4095,7 @@ python -m katrain_debug.selfplay run --size 13 --pairs 20 --komi-shift 4 --oppon
 完了後、出力ディレクトリの `run.json` の `opponent` が `"kind": "strategy"`・`"strategy": "human"`・`"override_items": ["human_kyu_rank=-8", "modern_style=true"]` であることを確かめ（違えば結果を使わずに止める）、結果 md の「実行条件」に写す。
 
 - [x] **Step 7: 集計と写し**（`summarize` は呼ぶたびに `summary.json` / `summary.txt` を**上書きする**＝比較ごとに実行して、その直後に写す）
-  （段階1だけ。段階1b・2・3 は実施しなかった）
+  （段階1・3 は 2026-09-24 昼、段階1b・2・3b は同日夜〜翌日に集計して写した）
 
 写し先は `docs/superpowers/specs/calibration-data/selfplay/veil13-campaign/`（以下 `CD`）。ファイル名は `<label>-<A>-vs-<B>-summary.{json,txt}` に固定し、`run.json` は各ディレクトリで1回だけ `<label>-run.json` に写す。例（段階1・`<DIR>` は veil13-p1 の出力ディレクトリ）:
 ```bash
