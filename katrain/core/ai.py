@@ -5008,7 +5008,8 @@ class Veil9Strategy(Enigma9Strategy):
         )
 
     def _generate_move(self) -> Tuple[Move, str]:
-        # ---- S0 ラッパー: 解析の破棄は上へ、それ以外の例外は最善手 ----
+        # ---- S0 ラッパー: 解析の破棄は上へ、それ以外の例外は最善手（ほかの出口と同じく Decision 行と ledger も残す）----
+        t0 = time.time()
         try:
             return self._veil_move()
         except AnalysisDiscardedException:
@@ -5017,8 +5018,22 @@ class Veil9Strategy(Enigma9Strategy):
             self.game.katrain.log(
                 f"[{type(self).__name__}] error {type(e).__name__}: {e} -> best move", OUTPUT_ERROR
             )
-            self.last_decision_info = {"tier": "failsafe", "kind": "best", "why": "error", "error": repr(e)}
-            return self._best_move(f"{self.LABEL}: internal error, playing best move.")
+            return self._veil_error(e, t0)
+
+    def _veil_error(self, error, t0):
+        """S0 の例外の手番: 最善手を打ち、ほかの出口と同じ `_veil_finish` で最小の記録を残す（tier failsafe・kind best・
+        why exception と depth / player / best / chosen / error）。記録に失敗しても最善手は打つ（ERROR ログを足す）。"""
+        result = self._best_move(f"{self.LABEL}: internal error, playing best move.")
+        try:
+            cn = self.cn
+            cands = cn.candidate_moves
+            info = {"depth": cn.depth, "player": cn.next_player, "best": cands[0]["move"] if cands else None, "t0": t0}
+            return self._veil_finish(result, info, "failsafe", "best", why="exception", error=repr(error))
+        except Exception as e:  # noqa: BLE001 記録の失敗で着手を止めない
+            self.game.katrain.log(
+                f"[{type(self).__name__}] could not record the error turn: {type(e).__name__}: {e}", OUTPUT_ERROR
+            )
+            return result
 
     def _veil_move(self) -> Tuple[Move, str]:
         # ---- S1 前処理（クエリ0本）----

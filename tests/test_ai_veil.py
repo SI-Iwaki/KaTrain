@@ -770,10 +770,32 @@ class TestFailSafes(_Harness):
             raise RuntimeError("boom")
 
         monkeypatch.setattr(ai_module, "veil_allowance", boom)
-        s, logs = self._strategy()
+        s, _ = self._strategy()
+        records = []
+        s.game.katrain.log = lambda msg, level=None, *a, **k: records.append((str(msg), level))
         assert s.generate_move()[0].gtp() == "E5"
-        assert any("error RuntimeError: boom" in m for m in logs)
-        assert s.last_decision_info["why"] == "error"
+        assert any(lv == OUTPUT_ERROR and "error RuntimeError: boom -> best move" in m for m, lv in records)
+        # ほかの出口と同じ最小の記録: last_decision_info・`Decision:` 行 1 行・ledger 1 件
+        expected = ("failsafe", "best", "exception", "E5", "E5")
+        info = s.last_decision_info
+        assert (info["tier"], info["kind"], info["why"], info["best"], info["chosen"]) == expected
+        decisions = [m for m, _lv in records if m.startswith("[Veil9Strategy] Decision: {")]
+        assert len(decisions) == 1
+        record = json.loads(decisions[0].split("Decision: ", 1)[1])
+        assert (record["tier"], record["kind"], record["why"], record["best"], record["chosen"]) == expected
+        assert (record["depth"], record["error"]) == (12, "RuntimeError('boom')")
+        assert s.game._veil_state["veil9"]["ledger"] == [(12, "E5", "E5", "best")]
+
+    def test_an_error_turn_whose_record_fails_still_plays_the_best_move(self):
+        # 壊れた sticky 状態（キーが無い）: S6 で KeyError → S0 の記録の ledger でも KeyError → それでも最善手
+        s, _ = self._strategy(_veil_state={"veil9": {}})
+        records = []
+        s.game.katrain.log = lambda msg, level=None, *a, **k: records.append((str(msg), level))
+        assert s.generate_move()[0].gtp() == "E5"
+        errors = [m for m, lv in records if lv == OUTPUT_ERROR]
+        assert len(errors) == 2
+        assert "error KeyError" in errors[0] and "could not record the error turn: KeyError" in errors[1]
+        assert not any("Decision: " in m for m, _lv in records)
 
     def test_discarded_analysis_is_not_swallowed(self, monkeypatch):
         def discarded(*a, **k):
