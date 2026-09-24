@@ -1029,7 +1029,8 @@ class TestTiersDeviating(_Harness):
         # humanSL 1本 + (クリーン + hp) × 2手
         assert (info["tier"], info["kind"], info["queries"]) == ("iii", "decided", 5)
         assert info["vloss"] == pytest.approx(0.1) and info["wr_after"] == pytest.approx(0.975)
-        assert "decided_rejected" not in info
+        # 却下の記録（decided_*）は打った手番には付けない（打った手の値は vloss / wr_after のまま）
+        assert "decided_rejected" not in info and "decided_vloss" not in info and "decided_wr" not in info
         decisions = [m for m in logs if "Decision: {" in m]
         record = json.loads(decisions[0].split("Decision: ", 1)[1])
         assert (record["kind"], record["vloss"], record["wr_after"]) == ("decided", 0.1, 0.975)
@@ -1041,7 +1042,15 @@ class TestTiersDeviating(_Harness):
 class TestDecidedProbe(_Harness):
     """S13 決着局面の即決を打つ前の2手のプローブ（2026-09-25 の接戦ストレス blunder13-on-p3 seed 1010: 親局面で
     生 0.36 目だった即決の手が実損 16.3 目で、勝ちを持碁にした）。9路・黒番・即決の候補は D4（生 0.1 目・visits 300）。
-    検証で落ちた手番は打たずに S14 以降の通常の流れへ進む（何を打つかは S14〜S18 に従う）。"""
+    検証で落ちた手番は打たずに S14 以降の通常の流れへ進む（何を打つかは S14〜S18 に従う）。却下した即決の値は
+    decided_vloss / decided_wr として Decision 行に残す（ハーネスの集計がなぜ・どれだけで却下したかを見る）。"""
+
+    @staticmethod
+    def _decision(lines):
+        """`Decision:` 行（1 行だけ）の JSON。"""
+        decisions = [m for m in lines if "Decision: {" in m]
+        assert len(decisions) == 1
+        return json.loads(decisions[0].split("Decision: ", 1)[1])
 
     def _rejected(self, probes, **kw):
         s, logs = self._strategy(probes=probes, **kw)
@@ -1063,27 +1072,71 @@ class TestDecidedProbe(_Harness):
         assert any(rejected in m for m, _lv in records)
         assert len(s.probe_calls) == 2 and s.probe_calls[1][0] == "E5"  # S15 は best も含めて改めてプローブする
         assert s.last_decision_info["queries"] == 1 + 4 + 2 * len(s.probe_calls[1])
-        decisions = [m for m, _lv in records if "Decision: {" in m]
-        assert len(decisions) == 1
-        record = json.loads(decisions[0].split("Decision: ", 1)[1])
+        record = self._decision(m for m, _lv in records)
         assert record["decided_rejected"] == "D4" and record["kind"] != "decided"
+        info = s.last_decision_info
+        assert info["decided_vloss"] == pytest.approx(16.0) and info["decided_wr"] == pytest.approx(0.31)
+        assert (record["decided_vloss"], record["decided_wr"]) == (16.0, 0.31)
 
     def test_a_low_winrate_after_the_move_is_not_played(self):
         # vloss 0.1 は小さいが、着手後勝率 0.80 < min_winrate 0.85
-        _s, records = self._rejected({"E5": _child(7.0, 0.98), "D4": _child(6.9, 0.80)}, **DECIDED)
+        s, records = self._rejected({"E5": _child(7.0, 0.98), "D4": _child(6.9, 0.80)}, **DECIDED)
         assert any("Decided: D4 rejected by the probe (raw 0.10, vloss 0.10, wr 80.0%)" in m for m, _lv in records)
+        info = s.last_decision_info
+        assert (info["decided_vloss"], info["decided_wr"]) == (pytest.approx(0.1), pytest.approx(0.80))
 
     @pytest.mark.parametrize(
-        "probes",
+        "probes,wr_after",
         [
-            pytest.param({}, id="no_probes"),
-            pytest.param({"E5": _child(7.0, 0.98)}, id="pick_missing"),
-            pytest.param({"D4": _child(6.9, 0.975)}, id="best_missing"),
+            pytest.param({}, None, id="no_probes"),
+            pytest.param({"E5": _child(7.0, 0.98)}, None, id="pick_missing"),
+            pytest.param({"D4": _child(6.9, 0.975)}, 0.975, id="best_missing"),
         ],
     )
-    def test_a_missing_probe_is_not_played(self, probes):
-        _s, records = self._rejected(probes, **DECIDED)
+    def test_a_missing_probe_is_not_played(self, probes, wr_after):
+        s, records = self._rejected(probes, **DECIDED)
         assert any("Decided: D4 rejected by the probe (raw 0.10, vloss n/a" in m for m, _lv in records)
+        # 値の無いものも None のまま記録する（Decision 行では null）
+        info = s.last_decision_info
+        assert info["decided_vloss"] is None and info["decided_wr"] == wr_after
+        record = self._decision(m for m, _lv in records)
+        assert record["decided_vloss"] is None and record["decided_wr"] == wr_after
+
+    # S13 が veil_decided_verified_ok に F_eff と reserve を正しく渡しているか（境界の両側で1つずつ。事件の形の回帰は
+    # 3条件がまとめて外れるので渡し方を確かめない）。E5 は root と同じ lead・勝率 0.98、D4 は勝率 0.975（勝率は十分）。
+    # - F_eff: DECIDED（lead 7・履歴なし → p_match 1.0）の F_eff は 9路の free_loss 0.2 → 上限は vloss 0.2 + 0.3 = 0.5。
+    #   lead − vloss は 6.5 前後で reserve 3 を十分に超える（A_t 2.0 や cap 3.0 を渡していれば 0.51 も通ってしまう）。
+    # - reserve: 既定では S13 の入口（lead >= reserve + 3）と vloss <= F_eff + 0.3 から lead − vloss >= reserve + 2.5 が
+    #   常に成り立ち、reserve の条件が単独では外れない。free_loss を 3.0 に上げ（上限 vloss 3.3）、lead 6.0（入口ちょうど）
+    #   で lead − vloss が reserve 3 ちょうど（打つ）と割る（打たない）の両側を見る。
+    @pytest.mark.parametrize(
+        "lead,d4_lead,settings,played",
+        [
+            pytest.param(7.0, 6.5, {}, True, id="f_eff_within"),
+            pytest.param(7.0, 6.49, {}, False, id="f_eff_over"),
+            pytest.param(6.0, 3.0, {"veil9_free_loss": 3.0}, True, id="reserve_kept"),
+            pytest.param(6.0, 2.8, {"veil9_free_loss": 3.0}, False, id="reserve_broken"),
+        ],
+    )
+    def test_the_probe_checks_f_eff_and_reserve(self, lead, d4_lead, settings, played):
+        probes = {"E5": _child(lead, 0.98), "D4": _child(d4_lead, 0.975)}
+        s, logs = self._strategy(lead=lead, wr=0.98, probes=probes, settings=settings)
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        vloss = lead - d4_lead
+        assert info["F"] == pytest.approx(settings.get("veil9_free_loss", 0.2)) and info["reserve"] == 3.0
+        assert s.probe_calls[0] == ["E5", "D4"]
+        assert not any("Invariant violated" in m for m in logs)
+        if played:
+            assert (move.gtp(), info["kind"]) == ("D4", "decided")
+            assert info["vloss"] == pytest.approx(vloss) and "decided_rejected" not in info
+        else:
+            assert info["kind"] != "decided" and info["decided_rejected"] == "D4"
+            rejected = f"Decided: D4 rejected by the probe (raw 0.10, vloss {vloss:.2f}, wr 97.5%) -> normal flow"
+            assert any(rejected in m for m in logs)
+            assert info["decided_vloss"] == pytest.approx(vloss) and info["decided_wr"] == pytest.approx(0.975)
+            record = self._decision(logs)
+            assert (record["decided_rejected"], record["decided_vloss"]) == ("D4", round(vloss, 3))
 
 
 class TestFreeAndPaid(_Harness):
@@ -1510,6 +1563,27 @@ class TestVeil13Flow(_Harness13):
         s, logs = self._strategy(size=9, cands=[dict(c) for c in _Harness.CANDS])
         assert s.generate_move()[0].gtp() == "E5"
         assert any("is not 13x13" in m for m in logs)
+
+    def test_a_decided_move_that_the_probe_shows_as_a_big_loss_is_not_played(self):
+        # 事件（2026-09-25・接戦ストレス blunder13-on-p3 seed 1010・黒 83 手目）の形を 13路の既定（loose）で:
+        # F2 は生 0.36 目（F_eff 0.4 以下）・visits 200・hp 0.05（loose の自然さの床 0.05 ちょうど）だが、
+        # 子局面では G7 +15.8 / F2 −0.5（vloss 16.3）・着手後勝率 30.9% → 即決で打たずに通常の流れへ
+        loose = {f"veil13_{k}": v for k, v in EXPECTED_DEFAULTS[13].items()}
+        f2 = {"move": "F2", "pointsLost": 0.36, "relativePointsLost": 0.36, "visits": 200, "winrate": 0.99}
+        cands = [dict(self.CANDS[0]), f2, dict(self.CANDS[2]), dict(self.CANDS[3])]
+        probes = {"G7": _child(15.8, 0.991, size=13), "F2": _child(-0.5, 0.309, size=13)}
+        s, logs = self._strategy(
+            lead=15.8, wr=0.991, cands=cands, hp={"G7": 0.40, "F2": 0.05, "K10": 0.15}, probes=probes, settings=loose
+        )
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert info["F"] == pytest.approx(0.4)
+        assert s.probe_calls[0] == ["G7", "F2"]
+        assert info["decided_rejected"] == "F2" and info["kind"] != "decided" and move.gtp() != "F2"
+        rejected = "Decided: F2 rejected by the probe (raw 0.36, vloss 16.30, wr 30.9%) -> normal flow"
+        assert any(rejected in m for m in logs)
+        assert not any("Invariant violated" in m for m in logs)
+        assert info["decided_vloss"] == pytest.approx(16.3) and info["decided_wr"] == pytest.approx(0.309)
 
 
 class _Harness19(_Harness):

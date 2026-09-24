@@ -5475,6 +5475,9 @@ class Veil9Strategy(Enigma9Strategy):
                     f"wr {wr_txt}) -> normal flow"
                 )
                 info["decided_rejected"] = pick["gtp"]
+                # なぜ・どれだけで却下したか（ハーネスの集計用。None ありうる＝Decision 行では null）
+                info["decided_vloss"] = vloss
+                info["decided_wr"] = wr_after
 
         # ---- S14 検証する候補 ----
         band_cap = raw_cap if (u > 0 and surplus > 0) else f_eff + VEIL_RAW_MARGIN
