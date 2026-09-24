@@ -12,7 +12,7 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 
 | 系統 | 内容 | 触る前に読む |
 |---|---|---|
-| Human-like AI 戦略 | 悪手フィルタに加え、力戦派 / 攻城 / 狩猟 / 一致率低減 / 持碁 / 一致率追随（9路）/ 難解（9・13・19路）/ 難解＋（9・13・19路＝罠探索の拡張＋ΔE 床の改良版・`EnigmaPlusMixin`）/ 擬態（13路＝相手より低い一致率で勝つ・`Mimic13Strategy`） | `.claude/rules/ai-strategies.md`（設計と実測）<br>`.claude/rules/ai-parameters.md`（全パラメータ値）<br>`.claude/rules/ai-humanstyle.md`（フィルタ実装） |
+| Human-like AI 戦略 | 悪手フィルタに加え、力戦派 / 攻城 / 狩猟 / 一致率低減 / 持碁 / 一致率追随（9路）/ 難解（9・13・19路）/ 難解＋（9・13・19路＝罠探索の拡張＋ΔE 床の改良版・`EnigmaPlusMixin`）/ 擬態（13路＝相手より低い一致率で勝つ・`Mimic13Strategy`）/ 韜晦（9・13・19路＝勝ち優先で自分の一致率を絶対目標まで下げる・`Veil9Strategy`） | `.claude/rules/ai-strategies.md`（設計と実測）<br>`.claude/rules/ai-parameters.md`（全パラメータ値）<br>`.claude/rules/ai-humanstyle.md`（フィルタ実装） |
 | 詰碁 | 画面キャプチャ→盤面認識→枠→着手選択 `ai:tsumego`→死活ソルバ（Rust df-pn）→回答帳 | `.claude/rules/tsumego.md`（設計と落とし穴）<br>`.claude/rules/tsumego-parameters.md`（パラメータ値） |
 | 盤面監視 | `board_watch.py`: BlueStacks 上の対局アプリの着手を検出して人間側の手として片方向注入（トグル `ctrl+alt+d`）。**KaTrain の AI の色は対局画面の手前（下）の対局者アイコンから自動判定**して設定中の戦略をその色へ移し、監視中にアプリで次の対局が始まれば〈2子以内の序盤形＋逆色のアイコン＋3周〉自動で新規対局に張り直す＝連続対局〈黄盤のみ・木目盤は設定どおり＝spec 追記10〉。AI の着手はアプリ盤の該当交点の真上に輪を出して示す（`screen_marker.py`・設定画面 general 節のドロップダウン〈表示しない／6色〉＝`board_watch.highlight_color`・監視の自前キャプチャからは `WDA_EXCLUDEFROMCAPTURE` で除外＝spec 追記6。対応盤は黄盤〈囲碁クエスト系〉＋明るい木目盤アプリ〈detect_board 失敗時に格子線検出へ自動フォールバック・9/13/19路〉＝spec 追記7。さらにその交点へ**マウスカーソルも運ぶ**〈`screen_cursor.py`・同じ行のチェック`board_watch.move_cursor`・既定 OFF。`SetCursorPos` だけでクリックはしない／新しい手のとき1回だけ＝毎周運ぶとカーソルが貼り付く／アプリが前面のときだけ＝前面化はしない＝spec 追記8〉。対局が5分進まなければ監視は自動停止〈`board_watch.auto_stop_sec`・相手待ちが20秒を超えたら 50ms→400ms に減速＝アプリの投了・時間切れは KaTrain に伝わらないので終局後の空回り対策・spec 追記9〉）／ `tsumego_autoloop.py`: 詰碁の自動ループ（ADB でアプリを操作。トグル `ctrl+alt+d` ではなく `ctrl+alt+a`。spec `2026-08-23-tsumego-autoloop-design.md`） | `docs/superpowers/specs/2026-08-18-board-watch-design.md` |
 
@@ -62,7 +62,7 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 katrain/
   core/               -- コアロジック（主要ファイルのみ記載）
     ai.py             -- AI着手生成（改修クラス: HumanStyle / Fighting / Siege / Hunt / HuntDivergence / Divergence /
-                         Jigo / Jigo9 / Parity9 / Enigma9 / Enigma13 / Enigma19 / EnigmaPlusMixin（Enigma9Plus / Enigma13Plus / Enigma19Plus） / Mimic13 / TsumegoOwnership / TsumegoSolver）
+                         Jigo / Jigo9 / Parity9 / Enigma9 / Enigma13 / Enigma19 / EnigmaPlusMixin（Enigma9Plus / Enigma13Plus / Enigma19Plus） / Mimic13 / Veil9（Veil13 / Veil19） / TsumegoOwnership / TsumegoSolver）
     constants.py      -- 定数、AI設定ウィジェット定義（AI_OPTION_VALUES）
     engine.py         -- KataGoエンジン管理
     game.py           -- ゲーム状態管理
@@ -183,7 +183,7 @@ python -m katrain_debug.selfplay report-sgf FILE.sgf
 
 - コミットメッセージは**日本語**で書く
 - Conventional Commits形式を使用（`feat:`, `fix:`, `refactor:` 等）
-- 改修はほぼ `katrain/core/ai.py` の戦略クラスに集中（`HumanStyleStrategy` / `FightingStrategy` / `SiegeStrategy` / `HuntStrategy` / `HuntDivergenceStrategy` / `DivergenceStrategy` / `JigoStrategy` / `Jigo9Strategy` / `Parity9Strategy` / `Enigma9Strategy`（+13/19） / `Mimic13Strategy` / `TsumegoOwnershipStrategy` / `TsumegoSolverStrategy`）
+- 改修はほぼ `katrain/core/ai.py` の戦略クラスに集中（`HumanStyleStrategy` / `FightingStrategy` / `SiegeStrategy` / `HuntStrategy` / `HuntDivergenceStrategy` / `DivergenceStrategy` / `JigoStrategy` / `Jigo9Strategy` / `Parity9Strategy` / `Enigma9Strategy`（+13/19） / `Mimic13Strategy` / `Veil9Strategy`（+13/19） / `TsumegoOwnershipStrategy` / `TsumegoSolverStrategy`）
 
 ## やってはいけないこと
 

@@ -12,7 +12,7 @@ KaTrain の AI は「戦略」を選ぶことで棋風や強さが変わりま�
   <div class="item"><b>自分の棋力に合わせた相手が欲しい</b><span>→ <a href="#ai-rank">段級位相応</a>（15級〜3段）／置碁なら <a href="#ai-handicap">Kata置碁</a></span></div>
   <div class="item"><b>人間らしい自然な手を打つ相手が欲しい</b><span>→ <a href="#ai-human">Human-like</a>（20級〜9段の人間モデル）／昔のプロ風なら <a href="#ai-pro">Historical Pro</a></span></div>
   <div class="item"><b>戦い好きの相手と打ちたい</b><span>→ <a href="#ai-fighting">力戦派</a>（接触戦・複雑化）／<a href="#ai-hunt">狩猟戦略</a>（侵入と攻め）／<a href="#ai-siege">攻城戦略</a>（序盤に譲って中盤で大石を攻める）</span></div>
-  <div class="item"><b>AI っぽさ（最善手との一致率）を下げたい</b><span>→ <a href="#ai-diverge">AI一致率低減</a>／9路なら <a href="#ai-parity9">一致率追随（9路）</a>／13路で相手より低く保つなら <a href="#ai-mimic13">擬態（13路）</a>／狩猟の棋風で下げるなら <a href="#ai-hunt-diverge">狩猟戦略（一致率低減）</a></span></div>
+  <div class="item"><b>AI っぽさ（最善手との一致率）を下げたい</b><span>→ <a href="#ai-diverge">AI一致率低減</a>／9路なら <a href="#ai-parity9">一致率追随（9路）</a>／13路で相手より低く保つなら <a href="#ai-mimic13">擬態（13路）</a>／勝ちを優先して目標の一致率まで下げるなら <a href="#ai-veil">韜晦（9/13/19路）</a>／狩猟の棋風で下げるなら <a href="#ai-hunt-diverge">狩猟戦略（一致率低減）</a></span></div>
   <div class="item"><b>僅差で勝つ・持碁を狙う相手</b><span>→ <a href="#ai-jigo">Kata持碁</a>（13/19路）／<a href="#ai-jigo9">Kata持碁（9路）</a></span></div>
   <div class="item"><b>定跡・手筋の勉強を無効化する「難しい」相手</b><span>→ <a href="#ai-enigma">難解（9路／13路／19路）</a></span></div>
   <div class="item"><b>弱い・変わった相手（練習用）</b><span>→ <a href="#ai-scoreloss">損も混ぜて</a>／<a href="#ai-policy">第一感</a>系／<a href="#ai-local">おつきあい派</a>・<a href="#ai-tenuki">手抜き派</a>・<a href="#ai-influence">勢力派</a>・<a href="#ai-territory">実利派</a>／<a href="#ai-simple">簡明派</a></span></div>
@@ -37,6 +37,9 @@ KaTrain の AI は「戦略」を選ぶことで棋風や強さが変わりま�
     <tr><th><a href="#ai-jigo9">Kata持碁（9路）</a></th><td><code>ai:jigo9</code></td><td>9</td><td>必須</td><td>同・9路専用</td></tr>
     <tr><th><a href="#ai-parity9">一致率追随（9路）</a></th><td><code>ai:parity9</code></td><td>9</td><td>必須</td><td>一致率を目標値まで下げつつ勝ち切る</td></tr>
     <tr><th><a href="#ai-mimic13">擬態（13路）</a></th><td><code>ai:mimic13</code></td><td>13</td><td>必須</td><td>相手より低い一致率を保って勝つ（人間らしい外し＋罠・ヨセは9段）</td></tr>
+    <tr><th><a href="#ai-veil">韜晦（9路）</a></th><td><code>ai:veil9</code></td><td>9</td><td>必須</td><td>勝ちを優先して自分の一致率を目標まで下げる（未校正）</td></tr>
+    <tr><th><a href="#ai-veil">韜晦（13路）</a></th><td><code>ai:veil13</code></td><td>13</td><td>必須</td><td>同・13路専用（自己対局で測定・設計時の初期値）</td></tr>
+    <tr><th><a href="#ai-veil">韜晦（19路）</a></th><td><code>ai:veil19</code></td><td>19</td><td>必須</td><td>同・19路専用（未校正）</td></tr>
     <tr><th><a href="#ai-enigma">難解（9路）</a></th><td><code>ai:enigma9</code></td><td>9</td><td>必須</td><td>相手が正しく応じにくい手を選ぶ</td></tr>
     <tr><th><a href="#ai-enigma">難解（13路）</a></th><td><code>ai:enigma13</code></td><td>13</td><td>必須</td><td>同・13路専用</td></tr>
     <tr><th><a href="#ai-enigma-plus">難解＋（9路）</a></th><td><code>ai:enigma9plus</code></td><td>9</td><td>必須</td><td>難解の改良版。高い帯まで罠を探し、E を買わない外しは打たない（未校正）</td></tr>

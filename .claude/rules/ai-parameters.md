@@ -773,3 +773,55 @@ sticky ヨセフラグ `game._mimic13_endgame`・ログタグ `[Mimic13Strategy]
 （natural・hp 9.4%・ΔE +1.07・price −0.78）／@75（lead +40.5・λ 2.00）→ **H2**（natural・**hp 60.4% ＞ 最善手 G1 の 27.8%**＝9段の第一感へ外す形・
 vloss 1.40・price 0.51・0.3 秒）／@67（λ 2.00）→ N5（trap・price 1.14。第一感 N9〈hp 60.5%〉は最善手自身が E 4.3 の罠で ΔE −1.60＝price 2.70 > λ）／
 @88（黒・lead −60）→ `Endgame check: unsettled=15 -> yose` → lead < reserve で最善手。プローブ 8〜9 手で 1.1 秒・2〜3 手で 0.2〜0.3 秒。
+
+## Veil9/13/19Strategy（`ai:veil9` / `ai:veil13` / `ai:veil19` / 韜晦（9/13/19路））
+
+9/13/19路それぞれ専用。**勝ちを最優先にしたまま、自分の AI 最善手一致率（終局レポートの値）を絶対目標まで下げる**。
+設計: `2026-09-23-veil-strategy-design.md`。`Veil9Strategy(Enigma9Strategy)` が `_generate_move` を上書きし、13/19路は
+属性（`BOARD_LEN` / `KEY_PREFIX` / `LABEL` / `SETTING_DEFAULTS` / `VEIL_BOARD`）だけのサブクラス。sticky 状態は
+`game._veil_state["veil{9,13,19}"]`（endgame・close_drift・ledger）、ログタグは `[Veil13Strategy]` 等。ponder と HumanStyle 委譲は使わない。
+
+u = clamp((p_match − target_rate) / 0.10, 0, 1)（p_match = (一致数 + 1) / (分母 + 1)・0.15 以下は 0）。
+同値外し: cons = max(vloss, 生 loss〈visits >= trusted_visits のとき〉) <= F_eff かつ勝率低下 <= free_wr_drop（勝率 97% 以上は免除・
+ヨセで着手後リード < reserve なら 0.01）。支払う外し: u > 0 かつ S = lead − reserve > 0 で cons <= A_t =
+min(S, F + u × (max(F, min(cap, spend_rate × S)) − F))（cap はヨセ前 max_loss・ヨセ中 yose_max_loss。明らかな一手は
+dominant_max_loss でも頭打ち）かつ着手後勝率 >= min_winrate。選択は最安から cost_slack 以内の帯で hp 最大。
+
+終局帯（S8＝盤上に 0.5 目以上の手が無い）: (c) 入れ替えと (d) 9段の締めの手（最善手でないとき）はどちらも `veil_terminal_swap` を通る（(d) はその1手だけ・自然さの床 0.0）＝明らかな一手のゲート（閉なら不可）・
+visits >= `VEIL_TERMINAL_MIN_VISITS`・生 loss <= 0.10（|lead| < 3 なら 0.05）・`close_drift_cap`（効くかは `veil_terminal_capped`）を共有し、打つ前の確定（不変条件・接戦の累計への加算）は
+`_veil_terminal_commit`。(d) が通らなければ why = `terminal_finish_rejected` で最善手。S8 と S10〜S12 の共通部は `_veil_candidates` / `_veil_parent_hp` /
+`_veil_dominant` / `_veil_floor`。
+
+| キー | 意味 | 候補値 | 既定 9 / **13** / 19 |
+|---|---|---|---|
+| `veil*_target_rate` | 目標一致率（この手も一致させた場合の一致率がこれを超えている間だけ、損をする外しと明らかな一手の外しを許す。超過 10pt で全開・15% 以下へは払わない） | 15%〜50% | 40% / **30%** / 30% |
+| `veil*_reserve` | 損をする外し・罠の後にも残すリード（目）＝勝ちの安全条件 | 1〜10 | 3 / **5** / 7 |
+| `veil*_min_winrate` | 損をする外し・罠の着手後勝率フロア＝勝ちの安全条件 | 50%〜95% | 85% / **85%** / 85% |
+| `veil*_free_loss` | 同値外し（一致率に関係なく常に打つ外し）の損失の上限（目）。劣勢・一致率 15% 以下では 0.1 | 0〜0.5 | 0.2 / **0.3** / 0.3 |
+| `veil*_free_wr_drop` | 同値外しで許す1手の勝率低下（着手後勝率 97% 以上は免除・ヨセで reserve を割るなら 1%） | 0%〜5% | 3% / **3%** / 3% |
+| `veil*_close_drift_cap` | 接戦中の同値外しの損失の1局あたり合計の上限（目）。OFF で上限なし | OFF／0.5〜3.0 | OFF / **OFF** / OFF |
+| `veil*_spend_rate` | 損をする外し1回に使う余剰（リード − reserve）の割合 | 0.25〜1 | 0.5 / **0.5** / 0.5 |
+| `veil*_max_loss` | 1手の支払い上限（目・ヨセ前）。罠の損失の上限も兼ねる | 9路 1〜5・13路 2〜6・19路 3〜8 | 3 / **4.5** / 6 |
+| `veil*_yose_max_loss` | 1手の支払い上限（目・ヨセ）。0 で同値外しだけ | 0〜3 | 1 / **1.5** / 2 |
+| `veil*_dominant_hp` | 9段が最善手を選ぶ確率がこれ以上＝明らかな一手（一致率が目標を超えているときだけ外す）。OFF で判定しない | 60%〜95%／OFF | 80% / **80%** / 80% |
+| `veil*_dominant_max_loss` | 明らかな一手で外すときの支払いの上限（目・通常の上限を絞るだけ） | 0.5〜4 | 1.5 / **2** / 3 |
+| `veil*_min_human_policy` | 外す先に要る 9段の humanPolicy（絶対床） | 1%〜10% | 5% / **5%** / 5% |
+| `veil*_natural_ratio` | 外す先に要る humanPolicy の第一感比（相対床・明らかな一手の局面では使わない） | 0.1〜0.5 | 0.2 / **0.2** / 0.2 |
+| `veil*_cost_slack` | 最安の外しからこの目数以内を同じ安さとみなし、その中で最も人間らしい手を打つ | 0〜1 | 0.3 / **0.3** / 0.3 |
+| `veil*_trap_mode` | 罠（相手の期待損失 E を増やす手）の上乗せ層（A/B 測定用）。値段は損失 − 0.5 × E の上積み、安全条件は割り引かない | ON/OFF | OFF / **OFF** / OFF |
+| `veil*_trap_min_delta_e` | 罠とみなす E の上積み（目） | 0.3〜1.5 | 0.5 / **0.5** / 0.7 |
+
+クラス属性 `VEIL_BOARD`（スライダーにしない）: 9路 endgame_move 30・unsettled_max 8・trusted_visits 100・probe_hp 3・probe_cheap 2 ／ 13路 endgame_move 85・unsettled_max 16・trusted_visits 50・probe_hp 3・probe_cheap 2 ／ 19路 endgame_move 150・unsettled_max 36・trusted_visits 50・probe_hp 3・probe_cheap 1。
+モジュール定数: `VEIL_BEHIND_LIMIT=-1.0`, `VEIL_CLOSE_WR=0.9`, `VEIL_DECIDED_MARGIN=3.0`, `VEIL_DECIDED_WR=0.97`, `VEIL_HP_TIE=0.02`, `VEIL_RAW_MARGIN=0.3`, `VEIL_STRICT_FREE=0.1`, `VEIL_TARGET_FLOOR=0.15`, `VEIL_TERMINAL_CLOSE_LEAD=3.0`, `VEIL_TERMINAL_CLOSE_MAX=0.05`, `VEIL_TERMINAL_MAX=0.1`, `VEIL_TERMINAL_MIN_VISITS=10`, `VEIL_TRAP_CREDIT=0.5`, `VEIL_TRAP_MIN_HP=0.02`, `VEIL_TRAP_PROBES=3`, `VEIL_TRAP_RAW_EXTRA=1.0`, `VEIL_TRAP_SWAP_MARGIN=0.3`, `VEIL_URGENCY_WIDTH=0.1`, `VEIL_YOSE_FREE_WR_DROP=0.01`。
+
+**確認**: ログの `Rate:`（mine/n・opp/n_opp・p_match・u）/ `Endgame check:`（unsettled・max）/ `Budget:` / `Natural:` / `Decided:` / `Score …` / `Deviate:` /
+`Terminal…` / `Decision: {json}`（tier i/ii/iii/terminal/failsafe・kind best/free/paid/trap/decided/swap/finish/pass・
+why board / no_cands / pass / no_lead / no_pool / no_hp / dominant_closed / no_natural / no_shortlist / no_best_probe / none_qualified / invariant / error / opp_pass / terminal / terminal_finish_rejected）。
+CLI: `python -m katrain_debug --sgf <SGF> --move N --strategy veil9|veil13|veil19`。
+**校正**: 13路は自己対局ハーネスで測定し、spec の初期値を据え置いた（`docs/superpowers/specs/calibration-data/selfplay/veil13-campaign.md`・2026-09-24）。
+段階1（5アーム × 20局・相手は humanSL 1k/1d/3d のプール）だけ実施し、段階1b・2・3 は未実施（ユーザー判断で打ち切り）。
+既定の自分の一致率 局平均 **53.1%**（相手 26.3%・20/20 勝ち・flip 0.05/局・損失 0.24 目/手）＝目標 30% に届かない。
+比較: 攻めプリセット（測定専用）42.2%・罠 ON 50.8%・難解＋13路 49.7%・HumanStyle 9段 53.2%。
+**一致率の下限は予算ではなく構造**: 最善手を打つしかなかった手番が 52.7%（no_pool 26.5%・no_natural 16.8%・
+none_qualified 8.9%）で、レポートの一致はちょうどこの手番（最終リードの中央値 +63 目＝予算は余っている）。
+接戦の安全（spec §10.4 (a)）は段階3が未実施なので未評価。9/19路は spec の初期値のままの未校正。**実戦校正は未実施**。

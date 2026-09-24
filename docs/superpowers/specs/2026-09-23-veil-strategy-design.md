@@ -2,7 +2,7 @@
 
 日付: 2026-09-23
 対象: `katrain/core/ai.py`（veil 純関数群 + `Veil9Strategy` / `Veil13Strategy` / `Veil19Strategy`）
-状態: 設計（未実装）。検証は自己対局ハーネス（spec `2026-09-23-selfplay-harness-design.md`）→実戦の順
+状態: 実装済み（2026-09-24）・13路は自己対局ハーネスで測定し、spec の初期値を据え置いた（`calibration-data/selfplay/veil13-campaign.md`。段階1だけ実施＝既定の自分の一致率 局平均 53.1%・20/20 勝ちで目標 30% に届かず、下限は構造的＝最善手を打つしかない手番 52.7%）・実戦校正は未実施
 
 ## 0. 一言で
 
@@ -169,7 +169,11 @@ Probe を1本撃ち `enigma9_board_settled` ならパス・未決着なら最善
   `VEIL_TERMINAL_MAX`(0.10)（|lead| < `VEIL_TERMINAL_CLOSE_LEAD`(3) なら `VEIL_TERMINAL_CLOSE_MAX`(0.05)）、hp >= 床、
   の手のうち hp 最大（ダメ詰めの順番入れ替え＝レポート上の不一致）。dominant かつ u == 0 なら不可。
   `close_drift_cap` > 0 かつ |lead| < 3 なら、生の loss を累計に足して上限を確かめる。
-- (d) `enigma9_terminal_move(top_gtp, cands)` の手。best でなければ (c) と同じ損失上限（0.10 / 0.05）を満たすときだけ打つ。
+- (d) `enigma9_terminal_move(top_gtp, cands)` の手。best でなければ、その1手だけを (c) と同じ `veil_terminal_swap` に通す
+  （自然さの床は 0.0＝9段の最上位は定義上自然）＝(c) と同じ安全条件（dominant かつ u == 0 なら不可・visits >=
+  `VEIL_TERMINAL_MIN_VISITS`・生の loss 上限 0.10 / 0.05・`close_drift_cap`〈効くかは `veil_terminal_capped`〉）を満たすときだけ
+  打ち、打つ前に (c) と共通の確定（`_veil_terminal_commit`＝不変条件・接戦の累計への加算）をする。通らなければ
+  why = `terminal_finish_rejected` で (e)（実装時の改訂 2026-09-24・コミット d92cd71 / 5336664）。
 - (e) 最善手。
 
 **S9 予算**: §6 の式で F_eff（同値の閾値）・S（余剰）・A_t（支払い枠）・cap_phase（ヨセ前 max_loss／ヨセ中 yose_max_loss）を出す。
