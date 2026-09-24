@@ -604,16 +604,18 @@ def _hp_array(size, values):
     return arr
 
 
-def _child(lead, wr, punish=0.0, size=9):
-    """黒番の AI が候補を打った後の子局面プローブ（scoreLead / winrate は黒視点）。
+def _child(lead, wr, punish=0.0, size=9, player="B"):
+    """AI（player・既定は黒番）が候補を打った後の子局面プローブ。lead / wr は打つ側視点で渡し、
+    KataGo と同じ黒視点に直して載せる。
 
-    白の応手は A9（人間の本命）と J1。punish > 0 なら本命 A9 が punish 目損する罠の形
+    相手の応手は A9（人間の本命）と J1。punish > 0 なら本命 A9 が punish 目損する罠の形
     （hp A9 0.9 / J1 0.1 → E = 0.9 × punish、正解 J1 の hp 0.1＝find_hp）。punish 0 なら E = 0。
     """
-    replies = [("A9", lead + punish, 300), ("J1", lead, 200)]
+    sign = 1 if player == "B" else -1
+    replies = [("A9", sign * (lead + punish), 300), ("J1", sign * lead, 200)]
     reply_hp = {"A9": 0.9, "J1": 0.1} if punish > 0 else {"A9": 0.5, "J1": 0.5}
     clean = {
-        "rootInfo": {"scoreLead": lead, "winrate": wr},
+        "rootInfo": {"scoreLead": sign * lead, "winrate": wr if player == "B" else 1.0 - wr},
         "moveInfos": [{"move": g, "scoreLead": s, "visits": v} for g, s, v in replies],
     }
     return {"clean": clean, "hp": {"humanPolicy": _hp_array(size, reply_hp)}}
@@ -634,7 +636,8 @@ def _hist(ai_player, mine, n_mine, opp=0, n_opp=0):
 
 
 class _Harness:
-    """_generate_move の通しテスト用スタブ（エンジンなし）。黒番・最善手 E5。
+    """_generate_move の通しテスト用スタブ（エンジンなし）。既定は黒番（player="W" で白番）・最善手 E5。
+    lead / wr は打つ側視点で渡す（root には KataGo と同じ黒視点に直して載せる）。
     名前が Test で始まらないので pytest には収集されない（継承した側だけが走る）。"""
 
     CLS = Veil9Strategy
@@ -665,19 +668,23 @@ class _Harness:
         last_move=None,
         ownership=None,
         size=None,
+        player="B",
         **game_attrs,
     ):
         size = size or self.SIZE
         logs = []
         katrain_ns = types.SimpleNamespace(log=lambda msg, *a, **k: logs.append(str(msg)))
+        black = player == "B"
+        root_lead = lead if (black or lead is None) else -lead
+        root_wr = wr if (black or wr is None) else 1.0 - wr
         node = types.SimpleNamespace(
-            next_player="B",
-            player="W",
+            next_player=player,
+            player="W" if black else "B",
             depth=depth,
             move=last_move,
             is_root=False,
             analysis_complete=True,
-            analysis={"root": {"scoreLead": lead, "winrate": wr}},
+            analysis={"root": {"scoreLead": root_lead, "winrate": root_wr}},
             candidate_moves=[dict(c) for c in (self.CANDS if cands is None else cands)],
             nodes_from_root=[] if hist is None else hist,
             policy_ranking=[],
@@ -692,7 +699,7 @@ class _Harness:
             s.queries.append(label)
             if label == "parent hp":
                 return {"humanPolicy": _hp_array(size, hp_values)} if hp_ok else None
-            return None if ownership is None else {"ownership": ownership, "rootInfo": {"scoreLead": lead}}
+            return None if ownership is None else {"ownership": ownership, "rootInfo": {"scoreLead": root_lead}}
 
         def probe_children(gtps, player, parent_hp=False):
             s.probe_calls.append(list(gtps))
@@ -958,6 +965,7 @@ class TestTrapLayer(_Harness):
         probes = {"E5": _child(10.0, 0.95), "D4": _child(9.9, 0.94, punish=3.0), "F6": _child(9.2, 0.93)}
         s, _ = self._strategy(hp=hp, probes=probes)
         assert s.generate_move()[0].gtp() == "D4"
+        assert s.last_decision_info["kind"] == "free"  # D4 は罠の資格もあるが、OFF では罠として選ばない
         assert s.last_decision_info["trap_shadow"] == 1
 
     def test_yose_trap_never_exceeds_yose_max_loss(self):
@@ -1251,6 +1259,230 @@ class TestVeil13Flow(_Harness13):
         s, logs = self._strategy(size=9, cands=[dict(c) for c in _Harness.CANDS])
         assert s.generate_move()[0].gtp() == "E5"
         assert any("is not 13x13" in m for m in logs)
+
+
+class _Harness19(_Harness):
+    CLS = Veil19Strategy
+    SIZE = 19
+    CANDS = [
+        {"move": "Q16", "pointsLost": 0.0, "relativePointsLost": 0.0, "visits": 600, "winrate": 0.62},
+        {"move": "D4", "pointsLost": 0.1, "relativePointsLost": 0.1, "visits": 120, "winrate": 0.61},
+        {"move": "D16", "pointsLost": 0.2, "relativePointsLost": 0.2, "visits": 100, "winrate": 0.61},
+        {"move": "Q4", "pointsLost": 0.15, "relativePointsLost": 0.15, "visits": 90, "winrate": 0.61},
+        {"move": "C3", "pointsLost": 0.05, "relativePointsLost": 0.05, "visits": 80, "winrate": 0.61},
+        {"move": "R17", "pointsLost": 0.12, "relativePointsLost": 0.12, "visits": 70, "winrate": 0.61},
+        {"move": "A1", "pointsLost": 9.0, "relativePointsLost": 9.0, "visits": 3, "winrate": 0.20},
+    ]
+    # 床 = max(0.05, 0.2 × 0.30) = 0.06 → Q16 以外の 5 手はどれも自然
+    HP = {"Q16": 0.30, "D4": 0.20, "D16": 0.17, "Q4": 0.15, "C3": 0.10, "R17": 0.09}
+
+
+class TestVeil19Flow(_Harness19):
+    def test_budget_and_one_cheap_probe_slot(self):
+        # 19路・u = 1・lead +10 → S = 3・A_t = min(3, max(0.3, min(6, 0.5 × 3))) = 1.5（spec §6）
+        drops = {"Q16": 0.0, "D4": 0.05, "D16": 0.1, "Q4": 0.08, "C3": 0.02}
+        probes = {g: _child(10.0 - d, 0.95 - d / 10, size=19) for g, d in drops.items()}
+        s, logs = self._strategy(lead=10.0, wr=0.95, probes=probes)
+        move, _ = s.generate_move()
+        assert any("Budget: lead=10.00 reserve=7.0 S=3.00 F=0.30 cap=6.00 A_t=1.50" in m for m in logs)
+        # 自然枠は hp 上位 3 手（D4 / D16 / Q4）＋ 残りの安い順 1 手（probe_cheap 1 → C3。13路の 2 なら R17 も入る）
+        assert s.probe_calls == [["Q16", "D4", "D16", "Q4", "C3"]]
+        # 4 手とも同値。余剰がある手番の最安帯（0.05 + 0.3）で hp 最大の D4（D16 は hp の同点幅 0.02 の外）
+        assert move.gtp() == "D4"
+        info = s.last_decision_info
+        assert (info["tier"], info["kind"], info["queries"]) == ("iii", "free", 11)
+        assert list(s.game._veil_state) == ["veil19"]
+
+
+class TestWhiteAI(_Harness):
+    """白番の AI。KataGo の root・子局面・候補の scoreLead / winrate は黒視点＝符号の取り違えが勝ちを負けに変える
+    典型の場所。lead / wr / _child は白視点で渡す（ハーネスが黒視点に直して載せる）。"""
+
+    PAID_HP = {**_Harness.HP, "D4": 0.01, "F6": 0.30}  # 自然な外し先は F6（生 0.8 目）だけ
+
+    def _white(self, **kw):
+        cands = [{**c, "winrate": 1.0 - c["winrate"]} for c in self.CANDS]
+        return self._strategy(player="W", cands=cands, **kw)
+
+    def _paid_probes(self):
+        return {"E5": _child(10.0, 0.95, player="W"), "F6": _child(9.0, 0.93, player="W")}
+
+    def test_paid_deviation_while_white_leads(self):
+        s, _ = self._white(hp=self.PAID_HP, probes=self._paid_probes())
+        move, _ = s.generate_move()
+        assert (move.gtp(), move.player) == ("F6", "W")
+        info = s.last_decision_info
+        assert (info["player"], info["tier"], info["kind"]) == ("W", "iii", "paid")
+        assert info["lead"] == pytest.approx(10.0) and info["root_wr"] == pytest.approx(0.95)
+        assert info["vloss"] == pytest.approx(1.0) and info["cost"] == pytest.approx(1.0)
+        assert s.game._veil_state["veil9"]["ledger"] == [(12, "E5", "F6", "paid")]
+
+    def test_white_behind_plays_the_best_move(self):
+        # 白が 10 目負け（root の黒視点 +10）: S < 0 で払わず、同値の閾値も劣勢の 0.1 → F6（生 0.8）は足切りの外
+        s, _ = self._white(lead=-10.0, wr=0.05, hp=self.PAID_HP, probes=self._paid_probes())
+        assert s.generate_move()[0].gtp() == "E5"
+        info = s.last_decision_info
+        assert info["lead"] == pytest.approx(-10.0) and info["S"] == pytest.approx(-13.0)
+        assert (info["A_t"], info["F"], info["why"]) == (0.0, pytest.approx(0.1), "no_natural")
+        assert s.probe_calls == []
+
+    def test_near_free_winrate_drop_is_measured_from_whites_side(self):
+        hist = _hist("W", 3, 9)  # p_match 0.40 = 目標 → u = 0（同値外しだけ）
+        small = {"E5": _child(0.5, 0.55, player="W"), "D4": _child(0.45, 0.545, player="W")}
+        ok, _ = self._white(**EVEN, hist=hist, probes=small)
+        assert ok.generate_move()[0].gtp() == "D4"
+        assert (ok.last_decision_info["kind"], ok.last_decision_info["u"]) == ("free", 0.0)
+        large = {"E5": _child(0.5, 0.55, player="W"), "D4": _child(0.45, 0.50, player="W")}  # 白の勝率 5% 低下
+        dropped, _ = self._white(**EVEN, hist=hist, probes=large)
+        assert dropped.generate_move()[0].gtp() == "E5"
+        assert dropped.last_decision_info["why"] == "none_qualified"
+
+
+def _boom(*a, **k):
+    raise RuntimeError("boom")
+
+
+def _never(*a):
+    return False
+
+
+def _end_cands(**g7):
+    """TestTerminal の終局帯の候補（pass 0.2 目）。g7 で G7（候補の 5 番目）の loss / visits を差し替える。"""
+    cands = [dict(c) for c in TestTerminal.END]
+    cands[4].update(g7)
+    return cands
+
+
+_G7_FINISH = dict(pointsLost=0.02, relativePointsLost=0.02, visits=50)
+_G7_DEAR = dict(pointsLost=0.3, relativePointsLost=0.3, visits=50)
+_NEAR_FREE = dict(**EVEN, hist=_hist("B", 3, 9), probes={"E5": _child(0.5, 0.55), "D4": _child(0.45, 0.545)})
+_NOT_FREE = dict(**EVEN, hist=_hist("B", 3, 9), probes={"E5": _child(0.5, 0.55), "D4": _child(0.45, 0.50)})
+_BOGUS = {"gtp": "J9", "kind": "free", "cost": 0.0, "vloss": 0.0, "hp": 0.5, "raw": 0.0, "cons": 0.0}
+_END_HP, _FLAT_HP = TestTerminal.END_HP, TestTerminal.FLAT_HP
+
+# (_strategy の引数, ai_module の差し替え, (tier, kind, why, best))。why の無い出口（外した手）は None
+EXITS = [
+    pytest.param(dict(size=13), {}, ("failsafe", "best", "board", None), id="board"),
+    pytest.param(dict(cands=[]), {}, ("failsafe", "best", "no_cands", None), id="no_cands"),
+    pytest.param(
+        dict(cands=[{**_Harness.CANDS[0], "move": "pass"}, _Harness.CANDS[1]]),
+        {},
+        ("i", "best", "pass", "pass"),
+        id="best_is_pass",
+    ),
+    pytest.param(dict(lead=None), {}, ("failsafe", "best", "no_lead", "E5"), id="no_lead"),
+    pytest.param(
+        dict(cands=_end_cands(), hp=_END_HP, last_move=Move(None, player="W")),
+        {},
+        ("terminal", "pass", "opp_pass", "E5"),
+        id="opp_pass",
+    ),
+    pytest.param(
+        dict(cands=_end_cands(), hp=_END_HP, hp_ok=False), {}, ("failsafe", "best", "no_hp", "E5"), id="terminal_no_hp"
+    ),
+    pytest.param(
+        dict(cands=_end_cands(), hp={**_END_HP, "pass": 0.6}),
+        {},
+        ("terminal", "pass", "terminal", "E5"),
+        id="terminal_pass",
+    ),
+    pytest.param(
+        dict(cands=_end_cands(), hp=_END_HP, lead=10.0), {}, ("terminal", "swap", "terminal", "E5"), id="terminal_swap"
+    ),
+    pytest.param(
+        dict(cands=_end_cands(), hp=_END_HP, lead=10.0),
+        {"veil_invariant_ok": _never},
+        ("failsafe", "best", "invariant", "E5"),
+        id="terminal_invariant",
+    ),
+    pytest.param(
+        dict(cands=_end_cands(**_G7_FINISH), hp=_FLAT_HP, lead=1.0),
+        {},
+        ("terminal", "finish", "terminal", "E5"),
+        id="terminal_finish",
+    ),
+    pytest.param(
+        dict(cands=_end_cands(**_G7_DEAR), hp=_FLAT_HP, lead=1.0),
+        {},
+        ("terminal", "best", "terminal_finish_rejected", "E5"),
+        id="terminal_finish_rejected",
+    ),
+    pytest.param(
+        dict(cands=_end_cands(**_G7_FINISH), hp={**_FLAT_HP, "A9": 0.045}, lead=1.0),
+        {},
+        ("terminal", "best", "terminal", "E5"),
+        id="terminal_best",
+    ),
+    pytest.param(dict(cands=[_Harness.CANDS[0], _Harness.CANDS[-1]]), {}, ("i", "best", "no_pool", "E5"), id="no_pool"),
+    pytest.param(dict(hp_ok=False), {}, ("failsafe", "best", "no_hp", "E5"), id="no_hp"),
+    pytest.param(
+        dict(**EVEN, hist=_hist("B", 3, 9), hp={**_Harness.HP, "E5": 0.85}),
+        {},
+        ("ii", "best", "dominant_closed", "E5"),
+        id="dominant_closed",
+    ),
+    pytest.param(
+        dict(hp={"E5": 0.40, "D4": 0.01, "F6": 0.01, "C7": 0.01, "G3": 0.01}),
+        {},
+        ("i", "best", "no_natural", "E5"),
+        id="no_natural",
+    ),
+    pytest.param(dict(lead=7.0, wr=0.98), {}, ("iii", "decided", None, "E5"), id="decided"),
+    pytest.param(
+        dict(lead=7.0, wr=0.98),
+        {"veil_invariant_ok": _never},
+        ("failsafe", "best", "invariant", "E5"),
+        id="decided_invariant",
+    ),
+    pytest.param(
+        {}, {"veil_shortlist": lambda *a, **k: ([], [])}, ("iii", "best", "no_shortlist", "E5"), id="no_shortlist"
+    ),
+    pytest.param(
+        dict(probes={"D4": _child(9.95, 0.948)}), {}, ("failsafe", "best", "no_best_probe", "E5"), id="no_best_probe"
+    ),
+    pytest.param(_NOT_FREE, {}, ("iii", "best", "none_qualified", "E5"), id="none_qualified"),
+    pytest.param(
+        _NEAR_FREE,
+        {"veil_choose": lambda *a, **k: dict(_BOGUS)},
+        ("failsafe", "best", "invariant", "E5"),
+        id="invariant",
+    ),
+    pytest.param(_NEAR_FREE, {}, ("iii", "free", None, "E5"), id="free"),
+    pytest.param(
+        dict(hp={**_Harness.HP, "D4": 0.01, "F6": 0.30}, probes={"E5": _child(10.0, 0.95), "F6": _child(9.0, 0.93)}),
+        {},
+        ("iii", "paid", None, "E5"),
+        id="paid",
+    ),
+    pytest.param(
+        dict(probes={**TestTrapLayer.PROBES, "C7": _child(9.6, 0.94, punish=3.0)}, settings={"veil9_trap_mode": True}),
+        {},
+        ("iii", "trap", None, "E5"),
+        id="trap",
+    ),
+    pytest.param({}, {"veil_allowance": _boom}, ("failsafe", "best", "exception", "E5"), id="exception"),
+]
+
+
+class TestEveryExit(_Harness):
+    """どの出口でも ledger に 1 件・`Decision:` 行が 1 行（ハーネスの ledger_mismatch と実戦のログ集計が頼る契約）。"""
+
+    @pytest.mark.parametrize("kwargs,patches,expected", EXITS)
+    def test_one_ledger_entry_and_one_decision_line(self, monkeypatch, kwargs, patches, expected):
+        for name, fn in patches.items():
+            monkeypatch.setattr(ai_module, name, fn)
+        s, logs = self._strategy(**kwargs)
+        move, _ = s.generate_move()
+        _tier, kind, _why, best = expected
+        info = s.last_decision_info
+        assert (info["tier"], info["kind"], info.get("why"), info.get("best")) == expected
+        assert info["chosen"] == move.gtp()
+        decisions = [m for m in logs if "Decision: {" in m]
+        assert len(decisions) == 1 and decisions[0].startswith("[Veil9Strategy] Decision: {")
+        record = json.loads(decisions[0].split("Decision: ", 1)[1])
+        assert (record["tier"], record["kind"], record.get("why"), record.get("best")) == expected
+        assert (record["depth"], record["chosen"]) == (12, move.gtp())
+        assert s.game._veil_state["veil9"]["ledger"] == [(12, best, move.gtp(), kind)]
 
 
 class TestRegistration:
