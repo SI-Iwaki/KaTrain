@@ -439,6 +439,7 @@ shadow_errors 0・visits_low 0・aborted 0・ledger_mismatch 0。
   hp が最善手の 0.7〜1.43 倍（「ほぼ同じ」）の手番は loose で 0.05 回/局。**ユーザーの決定（2026-09-25）: 条件は下限（0.7 倍以上）だけのまま**
 - 影なので打つ手は変わらない＝この run は既定と loose の再測定にもなる: 自分の一致率 sh_default 52.4% / sh_loose 45.8%・
   対の差（sh_default − sh_loose）+6.7pt [t −0.0, +13.4]（信頼度 0.975・Wilcoxon p 0.044）＝段階1b の −6.5pt と同じ向き・同じ大きさ
+- 影の run の ≥6目の失着（打った手はすべて通常の層の手＝判定の読み違い）は sh_default 0.00・sh_loose 0.25・sh_user 0.25 回/局（summary の `ge6_per_game`）
 
 ### ON（blunder_mode 2・通常の相手）
 

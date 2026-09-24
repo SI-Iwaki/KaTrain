@@ -5145,19 +5145,19 @@ class Veil9Strategy(Enigma9Strategy):
 
         outcome は打つときだけ (result, tier, kind, fields)、それ以外は None。stage_hp は親局面の humanSL（撃っていなければ
         None）、fetched はこの手番で親局面の humanSL を撃ったか（S11 が同じ手番で2回撃たないため）。
-        mode 0 なら何もしない（クエリ 0 本・info に何も足さない）。関門（クエリ 0 本・`blunder = "gate"`）はヨセ・
+        mode 0 なら何もしない（クエリ 0 本・info に何も足さない）。関門（クエリ 0 本・`blunder = "gate"`）はヨセ・root 勝率が無い・
         blunder_max_loss <= cap（cap < vloss <= blunder_max_loss の手が定義上無い）・root 勝率 < VEIL_BLUNDER_MIN_WR・
         lead < reserve + VEIL_BLUNDER_MARGIN + cap・ON で今局の上限に達している、のどれかで止まる。"""
         mode = int(self._setting("blunder_mode"))
         if mode <= 0:
             return None, None, False
         state = self._veil_state()
-        max_loss = float(self._setting("blunder_max_loss"))
-        # 関門（クエリ 0 本）: ヨセでなく、失着の上限が支払い上限を超え（以下なら cap < vloss <= max_loss の手は無い）、
+        blunder_max = float(self._setting("blunder_max_loss"))
+        # 関門（クエリ 0 本）: ヨセでなく、失着の上限が支払い上限を超え（以下なら cap < vloss <= blunder_max の手は無い）、
         # root 勝率と lead に失着の後も勝ちを残す余裕があり、ON なら今局の上限の内
         if (
             in_yose
-            or max_loss <= cap
+            or blunder_max <= cap
             or root_wr is None
             or root_wr < VEIL_BLUNDER_MIN_WR
             or lead < reserve + VEIL_BLUNDER_MARGIN + cap
@@ -5173,7 +5173,7 @@ class Veil9Strategy(Enigma9Strategy):
         best_hp = hp_of(best_gtp)
         rows0 = veil_blunder_candidates(
             self._veil_candidates(cands, player), best_gtp, best_hp, hp_of,
-            float(self._setting("blunder_hp_ratio")), cap, max_loss,
+            float(self._setting("blunder_hp_ratio")), cap, blunder_max,
         )
         if not rows0:
             info["blunder"] = "no_cand"
@@ -5193,7 +5193,7 @@ class Veil9Strategy(Enigma9Strategy):
                 self._log(f"Blunder {c['gtp']}: probe incomplete -> dropped")
                 continue
             row = {**c, "vloss": best_lead_after - lead_after, "lead_after": lead_after, "wr_after": wr_after}
-            ok = veil_blunder_ok(row, cap, max_loss, reserve, lead)
+            ok = veil_blunder_ok(row, cap, blunder_max, reserve, lead)
             wr_txt = "n/a" if wr_after is None else f"{wr_after:.1%}"
             self._log(
                 f"Blunder {c['gtp']}: raw={c['loss']:.2f} vloss={row['vloss']:.2f} hp={c['hp']:.3f} wr={wr_txt} "
@@ -5224,7 +5224,7 @@ class Veil9Strategy(Enigma9Strategy):
             self._log(f"Blunder skipped: {summary} (draw {draw:.2f} >= {VEIL_BLUNDER_PROB:.2f})")
             return None, stage_hp, True
         bounds = {
-            "vloss": vloss, "max_loss": max_loss, "lead": lead, "reserve": reserve, "margin": VEIL_BLUNDER_MARGIN,
+            "vloss": vloss, "max_loss": blunder_max, "lead": lead, "reserve": reserve, "margin": VEIL_BLUNDER_MARGIN,
             "wr_after": pick["wr_after"], "min_wr": VEIL_BLUNDER_MIN_WR,
         }
         if not veil_invariant_ok(gtp, best_gtp, {d["move"] for d in cands}, "blunder", bounds):
