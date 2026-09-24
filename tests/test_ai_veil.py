@@ -15,6 +15,13 @@ import katrain
 import katrain.core.ai as ai_module
 from katrain.core.ai import (
     STRATEGY_REGISTRY,
+    VEIL_BLUNDER_MARGIN,
+    VEIL_BLUNDER_MIN_HP,
+    VEIL_BLUNDER_MIN_WR,
+    VEIL_BLUNDER_PROB,
+    VEIL_BLUNDER_PROBES,
+    VEIL_BLUNDER_RAW_MARGIN,
+    VEIL_BLUNDER_VISITS,
     VEIL_TERMINAL_MIN_VISITS,
     AnalysisDiscardedException,
     Enigma9Strategy,
@@ -24,10 +31,14 @@ from katrain.core.ai import (
     VeilCtx,
     game_report,
     veil_allowance,
+    veil_blunder_candidates,
+    veil_blunder_ok,
+    veil_blunder_pick,
     veil_choose,
     veil_classify,
     veil_close_drift_ok,
     veil_cons_loss,
+    veil_decided_verified_ok,
     veil_decision_record,
     veil_free_limit,
     veil_invariant_ok,
@@ -45,7 +56,7 @@ from katrain.core.ai import (
     veil_trap_price,
     veil_urgency,
 )
-from katrain.core.constants import AI_VEIL_9, AI_VEIL_13, AI_VEIL_19, OUTPUT_ERROR
+from katrain.core.constants import AI_VEIL_9, AI_VEIL_13, AI_VEIL_19, OUTPUT_ERROR, PRIORITY_EXTRA_AI_QUERY
 from katrain.core.game_node import GameNode
 from katrain.core.sgf_parser import Move
 
@@ -256,7 +267,7 @@ class TestShortlist:
 
 
 def ctx(**kw):
-    """13路の既定に近い判定コンテキスト（lead 12・u 1・A_t' 3.5・ヨセ前・接戦でない）。"""
+    """13路の spec の既定に近い判定コンテキスト（lead 12・u 1・A_t' 3.5・ヨセ前・接戦でない）。"""
     base = dict(
         lead=12.0,
         reserve=5.0,
@@ -481,6 +492,137 @@ class TestTerminalSwap:
         assert free["gtp"] == "C3"  # |lead| >= 3 では累計を見ない
 
 
+class TestBlunderConstants:
+    def test_constants_match_the_spec(self):
+        # spec §13.2 の「スライダーにしない定数」
+        assert VEIL_BLUNDER_MIN_HP == 0.15
+        assert VEIL_BLUNDER_MIN_WR == 0.95
+        assert VEIL_BLUNDER_MARGIN == 5.0
+        assert VEIL_BLUNDER_VISITS == 1500
+        assert VEIL_BLUNDER_PROBES == 2
+        assert VEIL_BLUNDER_RAW_MARGIN == 2.0
+        assert VEIL_BLUNDER_PROB == 0.5
+
+
+class TestBlunderCandidates:
+    @staticmethod
+    def gtps(cands, best_hp=0.4, ratio=0.7, hp=None, cap=4.5, max_loss=10.0, **kw):
+        hp_of = hp if hp is not None else hp_table({c["gtp"]: 0.3 for c in cands})
+        return [c["gtp"] for c in veil_blunder_candidates(cands, "E5", best_hp, hp_of, ratio, cap, max_loss, **kw)]
+
+    def test_keeps_only_the_band_above_cap_up_to_max_loss_plus_raw_margin(self):
+        cands = [cand("A1", 4.5), cand("B2", 4.6), cand("C3", 12.0), cand("D4", 12.1)]
+        # A1 はちょうど cap（失着ではない）・C3 はちょうど max_loss + raw_margin（残る）・D4 はその外
+        assert self.gtps(cands, limit=10) == ["B2", "C3"]
+
+    def test_hp_floor_is_ratio_times_best_hp(self):
+        cands = [cand("A1", 6.0), cand("B2", 6.0)]
+        hp = hp_table({"A1": 0.28, "B2": 0.279})
+        assert self.gtps(cands, best_hp=0.4, ratio=0.7, hp=hp) == ["A1"]
+
+    def test_absolute_hp_floor_applies_when_best_hp_is_low(self):
+        cands = [cand("A1", 6.0), cand("B2", 6.0)]
+        hp = hp_table({"A1": 0.15, "B2": 0.14})
+        # 0.7 × 0.1 = 0.07 より VEIL_BLUNDER_MIN_HP（0.15）が効く
+        assert self.gtps(cands, best_hp=0.1, ratio=0.7, hp=hp) == ["A1"]
+
+    def test_excludes_the_best_move_and_pass(self):
+        cands = [cand("E5", 6.0), cand("pass", 6.0), cand("A1", 6.0)]
+        hp = hp_table({"E5": 0.9, "pass": 0.9, "A1": 0.3})
+        assert self.gtps(cands, hp=hp) == ["A1"]
+
+    def test_sorted_by_hp_then_gtp_and_cut_at_the_limit(self):
+        cands = [cand("C3", 6.0), cand("A1", 7.0), cand("B2", 8.0), cand("D4", 9.0)]
+        hp = hp_table({"C3": 0.3, "A1": 0.3, "B2": 0.5, "D4": 0.4})
+        assert self.gtps(cands, hp=hp, limit=4) == ["B2", "D4", "A1", "C3"]
+        three = [c for c in cands if c["gtp"] != "D4"]
+        assert self.gtps(three, hp=hp) == ["B2", "A1"]  # 既定の limit = VEIL_BLUNDER_PROBES
+        assert self.gtps(three, hp=hp, limit=2) == ["B2", "A1"]
+
+    def test_returns_copies_with_hp_and_leaves_the_input_alone(self):
+        cands = [cand("A1", 6.0)]
+        out = veil_blunder_candidates(cands, "E5", 0.4, hp_table({"A1": 0.3}), 0.7, 4.5, 10.0)
+        assert out == [{**cand("A1", 6.0), "hp": 0.3}]
+        assert out[0] is not cands[0]
+        assert cands == [cand("A1", 6.0)]
+
+
+class TestBlunderOk:
+    CAP, MAX_LOSS, RESERVE = 4.5, 10.0, 5.0
+
+    def ok(self, lead=30.0, **kw):
+        """lead は root リード（既定 30 はどの境界にも掛からない）。"""
+        row = {"gtp": "A1", "hp": 0.3, "vloss": 6.0, "lead_after": 15.0, "wr_after": 0.97, **kw}
+        return veil_blunder_ok(row, self.CAP, self.MAX_LOSS, self.RESERVE, lead)
+
+    def test_accepts_a_loss_above_cap_that_keeps_the_win(self):
+        assert self.ok()
+
+    def test_verified_loss_must_be_above_cap_and_within_max_loss(self):
+        assert not self.ok(vloss=4.5)  # ちょうど cap は失着ではない
+        assert self.ok(vloss=10.0)
+        assert not self.ok(vloss=10.1)
+
+    def test_lead_after_must_keep_reserve_plus_margin(self):
+        assert not self.ok(lead_after=9.9)
+        assert self.ok(lead_after=10.0)  # reserve 5 + VEIL_BLUNDER_MARGIN 5
+
+    def test_root_lead_must_also_keep_reserve_plus_margin(self):
+        # 不変条件（kind blunder）と同じ式: lead − vloss >= reserve + margin（vloss 6 → lead 16 がちょうど）。
+        # 深い読み（lead_after 15 >= 10）が通っても root リードで足りなければ資格なし
+        assert self.ok(lead=16.0)
+        assert not self.ok(lead=15.9)
+
+    def test_winrate_after_must_stay_above_the_blunder_floor(self):
+        assert not self.ok(wr_after=0.949)
+        assert self.ok(wr_after=0.95)
+
+    @pytest.mark.parametrize("key", ["vloss", "lead_after", "wr_after", "lead"])
+    def test_missing_metrics_fail(self, key):
+        assert not self.ok(**{key: None})
+
+
+class TestBlunderPick:
+    def test_most_human_move_wins(self):
+        rows = [{"gtp": "A1", "hp": 0.3, "vloss": 6.0}, {"gtp": "B2", "hp": 0.4, "vloss": 8.0}]
+        assert veil_blunder_pick(rows)["gtp"] == "B2"
+
+    def test_hp_ties_go_to_the_smaller_loss_then_gtp(self):
+        rows = [{"gtp": "A1", "hp": 0.4, "vloss": 8.0}, {"gtp": "B2", "hp": 0.4, "vloss": 6.0}]
+        assert veil_blunder_pick(rows)["gtp"] == "B2"
+        rows = [{"gtp": "B2", "hp": 0.4, "vloss": 6.0}, {"gtp": "A1", "hp": 0.4, "vloss": 6.0}]
+        assert veil_blunder_pick(rows)["gtp"] == "A1"
+
+    def test_empty_is_none(self):
+        assert veil_blunder_pick([]) is None
+
+
+class TestDecidedVerified:
+    """S13 の即決を打つ前の2手のプローブの確認。F_eff 0.3・reserve 3・min_winrate 0.85。"""
+
+    @staticmethod
+    def ok(vloss=0.2, wr_after=0.97, lead=7.0, **kw):
+        return veil_decided_verified_ok(vloss, wr_after, 0.3, lead, 3.0, 0.85, **kw)
+
+    def test_verified_loss_up_to_f_eff_plus_the_raw_margin(self):
+        assert self.ok(vloss=0.6)  # 0.3 + VEIL_RAW_MARGIN 0.3
+        assert not self.ok(vloss=0.61)
+        assert not self.ok(vloss=0.6, margin=0.2)
+
+    def test_the_lead_after_paying_keeps_the_reserve(self):
+        assert self.ok(vloss=0.5, lead=3.5)  # 3.5 − 0.5 = 3.0
+        assert not self.ok(vloss=0.5, lead=3.49)
+        assert not self.ok(vloss=-0.2, lead=2.9)  # 負の vloss は 0 として数える（リードを増やさない）
+
+    def test_winrate_after_floor(self):
+        assert self.ok(wr_after=0.85)
+        assert not self.ok(wr_after=0.849)
+
+    @pytest.mark.parametrize("vloss,wr_after", [(None, 0.97), (0.2, None), (None, None)])
+    def test_missing_probe_values_are_not_ok(self, vloss, wr_after):
+        assert not self.ok(vloss=vloss, wr_after=wr_after)
+
+
 class TestInvariant:
     GTPS = {"E5", "D4", "C3", "pass"}
 
@@ -505,6 +647,29 @@ class TestInvariant:
         assert veil_invariant_ok("D4", "E5", self.GTPS, "terminal", {"raw": 0.05, "limit": 0.05})
         assert not veil_invariant_ok("D4", "E5", self.GTPS, "terminal", {"raw": 0.06, "limit": 0.05})
 
+    def test_blunder_bounds(self):
+        b = {
+            "vloss": 8.0,
+            "max_loss": 10.0,
+            "lead": 18.0,
+            "reserve": 5.0,
+            "margin": 5.0,
+            "wr_after": 0.96,
+            "min_wr": 0.95,
+        }
+        assert veil_invariant_ok("C3", "E5", self.GTPS, "blunder", b)  # 18 − 8 = 10 = reserve + margin
+        assert not veil_invariant_ok("C3", "E5", self.GTPS, "blunder", {**b, "vloss": 10.1})
+        assert not veil_invariant_ok("C3", "E5", self.GTPS, "blunder", {**b, "lead": 17.9})
+        assert not veil_invariant_ok("C3", "E5", self.GTPS, "blunder", {**b, "wr_after": 0.949})
+        assert not veil_invariant_ok("C3", "E5", self.GTPS, "blunder", {**b, "wr_after": None})
+        # 負の vloss でリードを水増ししない（lead − max(0, vloss)）
+        assert not veil_invariant_ok("C3", "E5", self.GTPS, "blunder", {**b, "vloss": -3.0, "lead": 9.0})
+        for key in b:
+            missing = {k: v for k, v in b.items() if k != key}
+            assert not veil_invariant_ok("C3", "E5", self.GTPS, "blunder", missing), key
+        assert not veil_invariant_ok("Q16", "E5", self.GTPS, "blunder", b)  # 候補に無い
+        assert not veil_invariant_ok("E5", "E5", self.GTPS, "blunder", b)  # 最善手
+
     def test_unknown_kind_or_missing_bounds_fail(self):
         assert not veil_invariant_ok("D4", "E5", self.GTPS, "mystery", {"cost": 0.0, "f_eff": 1.0})
         assert not veil_invariant_ok("D4", "E5", self.GTPS, "paid", {"cost": 0.1})
@@ -520,7 +685,7 @@ class TestDecisionRecord:
         assert json.loads(text)["vloss"] == 0.123
 
 
-# spec §6.1 の既定値（凍結）。通しテストはこの値を明示の設定として渡す＝校正で既定値を変えてもテストの前提は動かない
+# spec §6.1・§13.2 の既定値（凍結）。通しテストはこの値を明示の設定として渡す＝校正で既定値を変えてもテストの前提は動かない
 SPEC_DEFAULTS = {
     9: {
         "target_rate": 0.40,
@@ -539,6 +704,10 @@ SPEC_DEFAULTS = {
         "cost_slack": 0.3,
         "trap_mode": False,
         "trap_min_delta_e": 0.5,
+        "blunder_mode": 0,
+        "blunder_max_loss": 6.0,
+        "blunder_per_game": 1,
+        "blunder_hp_ratio": 0.7,
     },
     13: {
         "target_rate": 0.30,
@@ -557,6 +726,10 @@ SPEC_DEFAULTS = {
         "cost_slack": 0.3,
         "trap_mode": False,
         "trap_min_delta_e": 0.5,
+        "blunder_mode": 0,
+        "blunder_max_loss": 10.0,
+        "blunder_per_game": 1,
+        "blunder_hp_ratio": 0.7,
     },
     19: {
         "target_rate": 0.30,
@@ -575,10 +748,27 @@ SPEC_DEFAULTS = {
         "cost_slack": 0.3,
         "trap_mode": False,
         "trap_min_delta_e": 0.7,
+        "blunder_mode": 0,
+        "blunder_max_loss": 15.0,
+        "blunder_per_game": 1,
+        "blunder_hp_ratio": 0.7,
     },
 }
 # 校正（Task 17）で選んだ既定値の差分。apply_veil_defaults.py が書き換える（空なら spec のまま）
-CALIBRATED_DEFAULTS = {9: {}, 13: {}, 19: {}}
+# 13路は段階1b の loose（ユーザーの決定 2026-09-25）。安全条件（reserve・min_winrate）は入れない
+CALIBRATED_DEFAULTS = {
+    9: {},
+    13: {
+        "free_loss": 0.4,
+        "spend_rate": 1.0,
+        "max_loss": 6.0,
+        "yose_max_loss": 2.0,
+        "dominant_hp": 1.01,
+        "dominant_max_loss": 3.0,
+        "natural_ratio": 0.1,
+    },
+    19: {},
+}
 # コードとパッケージ config の既定値＝spec ＋ 校正の差分
 EXPECTED_DEFAULTS = {size: {**SPEC_DEFAULTS[size], **CALIBRATED_DEFAULTS[size]} for size in SPEC_DEFAULTS}
 # 勝ちの安全条件（要件1）。変えてよいのはユーザーが要件1を再決定したときだけ（apply_veil_defaults.py --safety-redecided）
@@ -712,6 +902,9 @@ class _Harness:
 
 
 EVEN = dict(lead=0.5, wr=0.55)  # 互角・目標ちょうど（9路 T 0.40 → u = 0）の手番に _hist("B", 3, 9) と組む
+# 決着局面（lead 7・勝率 0.98）の即決の候補 D4 が2手のプローブを通る子局面（vloss 0.1・着手後勝率 97.5%）
+DECIDED = dict(lead=7.0, wr=0.98)
+DECIDED_OK = {"E5": _child(7.0, 0.98), "D4": _child(6.9, 0.975)}
 
 
 class TestStrategyClass:
@@ -827,12 +1020,123 @@ class TestTiersDeviating(_Harness):
         dear, _ = self._strategy(hp=hp, probes={"E5": _child(10.0, 0.95), "F6": _child(8.2, 0.93)})
         assert dear.generate_move()[0].gtp() == "E5"  # vloss 1.8 > dominant_max_loss 1.5
 
-    def test_decided_position_deviates_without_probes(self):
-        s, logs = self._strategy(lead=7.0, wr=0.98)
-        move, _ = s.generate_move()
+    def test_decided_position_deviates_after_a_two_move_probe(self):
+        s, logs = self._strategy(**DECIDED, probes=DECIDED_OK)
+        move, reason = s.generate_move()
         assert move.gtp() == "D4"
-        assert s.queries == ["parent hp"] and s.probe_calls == []
-        assert s.last_decision_info["kind"] == "decided"
+        assert s.queries == ["parent hp"] and s.probe_calls == [["E5", "D4"]]  # best と即決の候補の2手だけ
+        info = s.last_decision_info
+        # humanSL 1本 + (クリーン + hp) × 2手
+        assert (info["tier"], info["kind"], info["queries"]) == ("iii", "decided", 5)
+        assert info["vloss"] == pytest.approx(0.1) and info["wr_after"] == pytest.approx(0.975)
+        # 却下の記録（decided_*）は打った手番には付けない（打った手の値は vloss / wr_after のまま）
+        assert "decided_rejected" not in info and "decided_vloss" not in info and "decided_wr" not in info
+        decisions = [m for m in logs if "Decision: {" in m]
+        record = json.loads(decisions[0].split("Decision: ", 1)[1])
+        assert (record["kind"], record["vloss"], record["wr_after"]) == ("decided", 0.1, 0.975)
+        assert "(raw loss 0.10, verified loss 0.10, hp 30.0%)" in reason
+        played = "Decided: played D4 (raw 0.10, vloss 0.10, wr 97.5%, hp 0.300) after a 2-move probe"
+        assert any(played in m for m in logs)
+
+
+class TestDecidedProbe(_Harness):
+    """S13 決着局面の即決を打つ前の2手のプローブ（2026-09-25 の接戦ストレス blunder13-on-p3 seed 1010: 親局面で
+    生 0.36 目だった即決の手が実損 16.3 目で、勝ちを持碁にした）。9路・黒番・即決の候補は D4（生 0.1 目・visits 300）。
+    検証で落ちた手番は打たずに S14 以降の通常の流れへ進む（何を打つかは S14〜S18 に従う）。却下した即決の値は
+    decided_vloss / decided_wr として Decision 行に残す（ハーネスの集計がなぜ・どれだけで却下したかを見る）。"""
+
+    @staticmethod
+    def _decision(lines):
+        """`Decision:` 行（1 行だけ）の JSON。"""
+        decisions = [m for m in lines if "Decision: {" in m]
+        assert len(decisions) == 1
+        return json.loads(decisions[0].split("Decision: ", 1)[1])
+
+    def _rejected(self, probes, **kw):
+        s, logs = self._strategy(probes=probes, **kw)
+        records = []
+        s.game.katrain.log = lambda msg, level=None, *a, **k: records.append((str(msg), level))
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert info["decided_rejected"] == "D4"
+        assert move.gtp() != "D4" and info["kind"] != "decided"
+        assert not any(lv == OUTPUT_ERROR for _m, lv in records)
+        assert s.probe_calls[0] == ["E5", "D4"]
+        return s, records
+
+    def test_a_raw_loss_that_the_probe_shows_as_a_big_loss_is_not_played(self):
+        # 事件の形: 生の loss は F_eff 以下だが、子局面では best 20 / D4 4（vloss 16）・着手後勝率 0.31
+        probes = {"E5": _child(20.0, 0.99), "D4": _child(4.0, 0.31), "F6": _child(19.2, 0.99)}
+        s, records = self._rejected(probes, lead=16.0, wr=0.99)
+        rejected = "Decided: D4 rejected by the probe (raw 0.10, vloss 16.00, wr 31.0%) -> normal flow"
+        assert any(rejected in m for m, _lv in records)
+        assert len(s.probe_calls) == 2 and s.probe_calls[1][0] == "E5"  # S15 は best も含めて改めてプローブする
+        assert s.last_decision_info["queries"] == 1 + 4 + 2 * len(s.probe_calls[1])
+        record = self._decision(m for m, _lv in records)
+        assert record["decided_rejected"] == "D4" and record["kind"] != "decided"
+        info = s.last_decision_info
+        assert info["decided_vloss"] == pytest.approx(16.0) and info["decided_wr"] == pytest.approx(0.31)
+        assert (record["decided_vloss"], record["decided_wr"]) == (16.0, 0.31)
+
+    def test_a_low_winrate_after_the_move_is_not_played(self):
+        # vloss 0.1 は小さいが、着手後勝率 0.80 < min_winrate 0.85
+        s, records = self._rejected({"E5": _child(7.0, 0.98), "D4": _child(6.9, 0.80)}, **DECIDED)
+        assert any("Decided: D4 rejected by the probe (raw 0.10, vloss 0.10, wr 80.0%)" in m for m, _lv in records)
+        info = s.last_decision_info
+        assert (info["decided_vloss"], info["decided_wr"]) == (pytest.approx(0.1), pytest.approx(0.80))
+
+    @pytest.mark.parametrize(
+        "probes,wr_after",
+        [
+            pytest.param({}, None, id="no_probes"),
+            pytest.param({"E5": _child(7.0, 0.98)}, None, id="pick_missing"),
+            pytest.param({"D4": _child(6.9, 0.975)}, 0.975, id="best_missing"),
+        ],
+    )
+    def test_a_missing_probe_is_not_played(self, probes, wr_after):
+        s, records = self._rejected(probes, **DECIDED)
+        assert any("Decided: D4 rejected by the probe (raw 0.10, vloss n/a" in m for m, _lv in records)
+        # 値の無いものも None のまま記録する（Decision 行では null）
+        info = s.last_decision_info
+        assert info["decided_vloss"] is None and info["decided_wr"] == wr_after
+        record = self._decision(m for m, _lv in records)
+        assert record["decided_vloss"] is None and record["decided_wr"] == wr_after
+
+    # S13 が veil_decided_verified_ok に F_eff と reserve を正しく渡しているか（境界の両側で1つずつ。事件の形の回帰は
+    # 3条件がまとめて外れるので渡し方を確かめない）。E5 は root と同じ lead・勝率 0.98、D4 は勝率 0.975（勝率は十分）。
+    # - F_eff: DECIDED（lead 7・履歴なし → p_match 1.0）の F_eff は 9路の free_loss 0.2 → 上限は vloss 0.2 + 0.3 = 0.5。
+    #   lead − vloss は 6.5 前後で reserve 3 を十分に超える（A_t 2.0 や cap 3.0 を渡していれば 0.51 も通ってしまう）。
+    # - reserve: 既定では S13 の入口（lead >= reserve + 3）と vloss <= F_eff + 0.3 から lead − vloss >= reserve + 2.5 が
+    #   常に成り立ち、reserve の条件が単独では外れない。free_loss を 3.0 に上げ（上限 vloss 3.3）、lead 6.0（入口ちょうど）
+    #   で lead − vloss が reserve 3 ちょうど（打つ）と割る（打たない）の両側を見る。
+    @pytest.mark.parametrize(
+        "lead,d4_lead,settings,played",
+        [
+            pytest.param(7.0, 6.5, {}, True, id="f_eff_within"),
+            pytest.param(7.0, 6.49, {}, False, id="f_eff_over"),
+            pytest.param(6.0, 3.0, {"veil9_free_loss": 3.0}, True, id="reserve_kept"),
+            pytest.param(6.0, 2.8, {"veil9_free_loss": 3.0}, False, id="reserve_broken"),
+        ],
+    )
+    def test_the_probe_checks_f_eff_and_reserve(self, lead, d4_lead, settings, played):
+        probes = {"E5": _child(lead, 0.98), "D4": _child(d4_lead, 0.975)}
+        s, logs = self._strategy(lead=lead, wr=0.98, probes=probes, settings=settings)
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        vloss = lead - d4_lead
+        assert info["F"] == pytest.approx(settings.get("veil9_free_loss", 0.2)) and info["reserve"] == 3.0
+        assert s.probe_calls[0] == ["E5", "D4"]
+        assert not any("Invariant violated" in m for m in logs)
+        if played:
+            assert (move.gtp(), info["kind"]) == ("D4", "decided")
+            assert info["vloss"] == pytest.approx(vloss) and "decided_rejected" not in info
+        else:
+            assert info["kind"] != "decided" and info["decided_rejected"] == "D4"
+            rejected = f"Decided: D4 rejected by the probe (raw 0.10, vloss {vloss:.2f}, wr 97.5%) -> normal flow"
+            assert any(rejected in m for m in logs)
+            assert info["decided_vloss"] == pytest.approx(vloss) and info["decided_wr"] == pytest.approx(0.975)
+            record = self._decision(logs)
+            assert (record["decided_rejected"], record["decided_vloss"]) == ("D4", round(vloss, 3))
 
 
 class TestFreeAndPaid(_Harness):
@@ -1260,6 +1564,27 @@ class TestVeil13Flow(_Harness13):
         assert s.generate_move()[0].gtp() == "E5"
         assert any("is not 13x13" in m for m in logs)
 
+    def test_a_decided_move_that_the_probe_shows_as_a_big_loss_is_not_played(self):
+        # 事件（2026-09-25・接戦ストレス blunder13-on-p3 seed 1010・黒 83 手目）の形を 13路の既定（loose）で:
+        # F2 は生 0.36 目（F_eff 0.4 以下）・visits 200・hp 0.05（loose の自然さの床 0.05 ちょうど）だが、
+        # 子局面では G7 +15.8 / F2 −0.5（vloss 16.3）・着手後勝率 30.9% → 即決で打たずに通常の流れへ
+        loose = {f"veil13_{k}": v for k, v in EXPECTED_DEFAULTS[13].items()}
+        f2 = {"move": "F2", "pointsLost": 0.36, "relativePointsLost": 0.36, "visits": 200, "winrate": 0.99}
+        cands = [dict(self.CANDS[0]), f2, dict(self.CANDS[2]), dict(self.CANDS[3])]
+        probes = {"G7": _child(15.8, 0.991, size=13), "F2": _child(-0.5, 0.309, size=13)}
+        s, logs = self._strategy(
+            lead=15.8, wr=0.991, cands=cands, hp={"G7": 0.40, "F2": 0.05, "K10": 0.15}, probes=probes, settings=loose
+        )
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert info["F"] == pytest.approx(0.4)
+        assert s.probe_calls[0] == ["G7", "F2"]
+        assert info["decided_rejected"] == "F2" and info["kind"] != "decided" and move.gtp() != "F2"
+        rejected = "Decided: F2 rejected by the probe (raw 0.36, vloss 16.30, wr 30.9%) -> normal flow"
+        assert any(rejected in m for m in logs)
+        assert not any("Invariant violated" in m for m in logs)
+        assert info["decided_vloss"] == pytest.approx(16.3) and info["decided_wr"] == pytest.approx(0.309)
+
 
 class _Harness19(_Harness):
     CLS = Veil19Strategy
@@ -1427,9 +1752,15 @@ EXITS = [
         ("i", "best", "no_natural", "E5"),
         id="no_natural",
     ),
-    pytest.param(dict(lead=7.0, wr=0.98), {}, ("iii", "decided", None, "E5"), id="decided"),
+    pytest.param(dict(**DECIDED, probes=DECIDED_OK), {}, ("iii", "decided", None, "E5"), id="decided"),
     pytest.param(
-        dict(lead=7.0, wr=0.98),
+        dict(**DECIDED, probes={"E5": _child(7.0, 0.98), "D4": _child(6.9, 0.80)}),
+        {},
+        ("iii", "best", "none_qualified", "E5"),
+        id="decided_rejected",
+    ),
+    pytest.param(
+        dict(**DECIDED, probes=DECIDED_OK),
         {"veil_invariant_ok": _never},
         ("failsafe", "best", "invariant", "E5"),
         id="decided_invariant",
@@ -1485,8 +1816,366 @@ class TestEveryExit(_Harness):
         assert s.game._veil_state["veil9"]["ledger"] == [(12, best, move.gtp(), kind)]
 
 
+class TestBlunder(_Harness):
+    """S9b 失着の層（spec §13.3）。9路の既定（SPEC_DEFAULTS）: reserve 3・cap 3（max_loss）・blunder_max_loss 6
+    → 関門は lead >= 3 + 5 + 3 = 11・root 勝率 >= 0.95。
+
+    失着の候補は G3（生 3.8 目 > cap・hp 0.35 >= 0.7 × 最善手 E5 の 0.40）。既定の HP では C7・A1 は hp 0 なので
+    hp の床（max(0.15, 0.7 × 0.40) = 0.28）でも外れる。損失の帯（C7 の生 2.0 目は cap 以下、A1 の生 9.0 目は 6 + 2 を
+    超える）で外れることは、両方に高い hp を与える test_loss_band_keeps_c7_and_a1_out_of_the_deep_probe で確かめる。
+    深い検証（DEEP）は E5 → lead 20・G3 → lead 15.5（vloss 4.5）。失着を打たない手番の通常の流れは
+    決着局面の即決（D4・best と D4 の2手だけの子局面プローブを通る＝`_blunder` の既定の probes）。深い検証と乱数は
+    テストの中で差し替える（_strategy は変えない）。
+    """
+
+    HP = {"E5": 0.40, "G3": 0.35, "D4": 0.10, "F6": 0.08}
+    DEEP = {"E5": (20.0, 0.99), "G3": (15.5, 0.97)}
+
+    def _blunder(self, mode, *, deep=None, draw=0.0, lead=20.0, wr=0.99, player="B", settings=None, **kw):
+        """blunder_mode = mode の手番。deep は {gtp: (lead_after, wr_after) | None}（打つ側視点）。
+        s.blunder_probes に深い検証の呼び出し、s.draws に引いた乱数を残す。"""
+        if player == "W":
+            kw.setdefault("cands", [{**c, "winrate": 1.0 - c["winrate"]} for c in self.CANDS])
+        # 即決（S13）の2手のプローブ: D4 は vloss 0.1・着手後勝率 98.5% で通る
+        kw.setdefault("probes", {"E5": _child(20.0, 0.99, player=player), "D4": _child(19.9, 0.985, player=player)})
+        settings = {"veil9_blunder_mode": mode, **(settings or {})}
+        s, logs = self._strategy(lead=lead, wr=wr, player=player, settings=settings, **kw)
+        s.blunder_probes, s.draws = [], []
+        table = self.DEEP if deep is None else deep
+
+        def probe(gtps, player):
+            s.blunder_probes.append(list(gtps))
+            return {g: None if table.get(g) is None else _child(*table[g], player=player)["clean"] for g in gtps}
+
+        def draw_once():
+            s.draws.append(draw)
+            return draw
+
+        s._veil_blunder_probe = probe
+        s._veil_blunder_draw = draw_once
+        return s, logs
+
+    @staticmethod
+    def _decision(logs):
+        decisions = [m for m in logs if "Decision: {" in m]
+        assert len(decisions) == 1
+        return json.loads(decisions[0].split("Decision: ", 1)[1])
+
+    def test_mode_0_changes_nothing(self):
+        s, logs = self._blunder(0)
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert (move.gtp(), info["kind"]) == ("D4", "decided")
+        assert not any(k.startswith("blunder") for k in info)
+        assert not any(k.startswith("blunder") for k in self._decision(logs))
+        assert s.blunder_probes == [] and s.draws == []
+        assert s.queries == ["parent hp"] and info["queries"] == 5  # humanSL 1本 + 即決の2手のプローブ 4本
+        assert s.probe_calls == [["E5", "D4"]]
+        assert not any("Blunder" in m for m in logs)
+        state = s.game._veil_state["veil9"]
+        assert state == {"endgame": False, "close_drift": 0.0, "ledger": [(12, "E5", "D4", "decided")], "blunders": 0}
+
+    def test_mode_1_records_the_blunder_without_playing_it(self):
+        s, logs = self._blunder(1)
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert (move.gtp(), info["tier"], info["kind"]) == ("D4", "iii", "decided")  # 通常の流れの手
+        assert (info["blunder"], info["blunder_gtp"]) == ("shadow", "G3")
+        assert info["blunder_vloss"] == pytest.approx(4.5) and info["blunder_lead_after"] == pytest.approx(15.5)
+        assert info["blunder_hp"] == pytest.approx(0.35) and info["blunder_best_hp"] == pytest.approx(0.40)
+        assert info["blunder_wr"] == pytest.approx(0.97)
+        record = self._decision(logs)
+        assert (record["blunder"], record["blunder_gtp"], record["blunder_vloss"]) == ("shadow", "G3", 4.5)
+        assert s.blunder_probes == [["E5", "G3"]] and s.draws == []
+        # 親局面の humanSL は S11 と共有・深い検証 2 本・即決の2手のプローブ 4本
+        assert s.queries == ["parent hp"] and info["queries"] == 7
+        assert any("Blunder G3: raw=3.80 vloss=4.50 hp=0.350 wr=97.0% lead_after=15.50 ok=True" in m for m in logs)
+        assert any(m.startswith("[Veil9Strategy] Blunder shadow: G3") for m in logs)
+        assert s.game._veil_state["veil9"]["blunders"] == 0
+        # 影は今局の上限を数えない＝次の手番も記録する
+        s.generate_move()
+        assert s.last_decision_info["blunder"] == "shadow" and len(s.blunder_probes) == 2
+
+    def test_mode_1_ignores_the_per_game_limit(self):
+        state = {"veil9": {"endgame": False, "close_drift": 0.0, "ledger": [], "blunders": 1}}  # 上限 1 に達している
+        s, _ = self._blunder(1, _veil_state=state)
+        assert s.generate_move()[0].gtp() == "D4"
+        assert (s.last_decision_info["blunder"], s.last_decision_info["blunder_gtp"]) == ("shadow", "G3")
+        assert s.blunder_probes == [["E5", "G3"]] and state["veil9"]["blunders"] == 1
+
+    def test_mode_2_plays_the_blunder_up_to_the_per_game_limit(self):
+        s, logs = self._blunder(2)
+        move, reason = s.generate_move()
+        info = s.last_decision_info
+        assert (move.gtp(), move.player) == ("G3", "B")
+        assert (info["tier"], info["kind"], info["blunder"], info["chosen"]) == ("blunder", "blunder", "played", "G3")
+        assert (info["raw"], info["vloss"], info["hp"]) == (pytest.approx(3.8), pytest.approx(4.5), pytest.approx(0.35))
+        assert info["blunder_gtp"] == "G3" and "why" not in info
+        assert reason.endswith("human-like blunder G3 (verified loss 4.50, hp 35.0% vs best 40.0%) instead of E5.")
+        assert s.queries == ["parent hp"] and s.blunder_probes == [["E5", "G3"]] and s.draws == [0.0]
+        expected = ("blunder", "blunder", "played", "G3")
+        assert tuple(self._decision(logs)[k] for k in ("tier", "kind", "blunder", "chosen")) == expected
+        assert any(m.startswith("[Veil9Strategy] Blunder: played G3 (vloss 4.50") for m in logs)
+        state = s.game._veil_state["veil9"]
+        assert state["blunders"] == 1 and state["ledger"] == [(12, "E5", "G3", "blunder")]
+        # 2手目（同じ game・同じ条件）: blunder_per_game 1 に達したので関門で止まる（深い検証も乱数も使わない）
+        move, _ = s.generate_move()
+        assert (move.gtp(), s.last_decision_info["blunder"]) == ("D4", "gate")
+        assert s.blunder_probes == [["E5", "G3"]] and s.draws == [0.0]
+        assert s.queries == ["parent hp", "parent hp"]  # 2手目は S11 の1本だけ
+        assert state["blunders"] == 1
+
+    def test_per_game_limit_is_a_setting(self):
+        s, _ = self._blunder(2, settings={"veil9_blunder_per_game": 2})
+        assert [s.generate_move()[0].gtp() for _ in range(3)] == ["G3", "G3", "D4"]
+        assert s.last_decision_info["blunder"] == "gate"
+        assert s.game._veil_state["veil9"]["blunders"] == 2
+
+    @pytest.mark.parametrize("draw", [VEIL_BLUNDER_PROB, 0.99])
+    def test_mode_2_skips_the_turn_when_the_draw_is_not_below_the_probability(self, draw):
+        s, _ = self._blunder(2, draw=draw)
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert (move.gtp(), info["kind"]) == ("D4", "decided")
+        assert (info["blunder"], info["blunder_gtp"]) == ("skipped", "G3")
+        assert info["blunder_vloss"] == pytest.approx(4.5)
+        assert s.draws == [draw] and s.game._veil_state["veil9"]["blunders"] == 0
+
+    @pytest.mark.parametrize(
+        "make_kw",
+        [
+            pytest.param(lambda: dict(lead=10.9), id="lead_below_reserve_margin_cap"),
+            pytest.param(lambda: dict(wr=0.94), id="root_winrate_below_floor"),
+            pytest.param(lambda: dict(wr=None), id="root_winrate_unavailable"),
+            pytest.param(
+                lambda: dict(_veil_state={"veil9": {"endgame": True, "close_drift": 0.0, "ledger": [], "blunders": 0}}),
+                id="yose",
+            ),
+        ],
+    )
+    def test_gate_stops_the_layer_without_queries(self, make_kw):
+        s, _ = self._blunder(2, **make_kw())
+        s.generate_move()
+        info = s.last_decision_info
+        assert info["blunder"] == "gate"
+        assert not any(k.startswith("blunder_") for k in info)
+        assert s.blunder_probes == [] and s.draws == []
+        assert s.queries == ["parent hp"]  # 通常の流れ（S11）の1本だけ
+
+    @pytest.mark.parametrize("max_loss", [3.0, 2.0])
+    def test_gate_stops_the_layer_when_the_blunder_ceiling_is_not_above_cap(self, max_loss):
+        """blunder_max_loss <= cap（9路の既定 3.0）なら cap < vloss <= blunder_max_loss の手は定義上無いので、関門で止める
+        （親局面の humanSL も深い検証も撃たない。G3 は生 3.8 目 <= max_loss + 2 なので、関門が無いと深い検証まで進む）。"""
+        s, _ = self._blunder(2, settings={"veil9_blunder_max_loss": max_loss})
+        returned = []
+        layer = s._veil_blunder
+
+        def spy(*a, **k):
+            out = layer(*a, **k)
+            returned.append((list(s.queries), out))
+            return out
+
+        s._veil_blunder = spy
+        assert s.generate_move()[0].gtp() == "D4"
+        info = s.last_decision_info
+        assert info["blunder"] == "gate"
+        assert not any(k.startswith("blunder_") for k in info)
+        # 失着の層の中ではクエリ 0 本（humanSL は撃っていない＝fetched False）→ S11 が自分で1本撃つ
+        assert returned == [([], (None, None, False))]
+        assert s.queries == ["parent hp"] and info["queries"] == 5  # humanSL 1本 + 即決の2手のプローブ 4本
+        assert s.blunder_probes == [] and s.draws == []
+
+    def test_loss_band_keeps_c7_and_a1_out_of_the_deep_probe(self):
+        """損失の帯（cap < 生の loss <= blunder_max_loss + VEIL_BLUNDER_RAW_MARGIN）をフローで固定する: C7（生 2.0 目 <= cap 3）と
+        A1（生 9.0 目 > 6 + 2）に G3 より高い hp（床 0.28 を超える 0.38・0.36）を与えても、深い検証に入るのは best と G3 だけ
+        （帯が無ければ hp の高い C7・A1 が G3 を押し出す）。hp の合計が 1 を超えるのはスタブだけの都合。"""
+        s, _ = self._blunder(1, hp={**self.HP, "C7": 0.38, "A1": 0.36})
+        assert s.generate_move()[0].gtp() == "D4"
+        info = s.last_decision_info
+        assert (info["blunder"], info["blunder_gtp"]) == ("shadow", "G3")
+        assert s.blunder_probes == [["E5", "G3"]]
+
+    def test_gate_bounds_are_inclusive(self):
+        s, _ = self._blunder(1, lead=11.0, wr=0.95)
+        s.generate_move()
+        # 関門は通って深い検証まで進む。lead がちょうど reserve + margin + cap だと、cap を超える失着は root リード基準
+        # （lead − vloss >= reserve + margin）を満たせないので資格で落ちる
+        assert s.last_decision_info["blunder"] == "rejected"
+        assert s.blunder_probes == [["E5", "G3"]]
+
+    def test_humansl_failure_is_not_queried_twice(self):
+        s, _ = self._blunder(2, hp_ok=False)
+        assert s.generate_move()[0].gtp() == "E5"
+        info = s.last_decision_info
+        assert (info["blunder"], info["tier"], info["why"]) == ("no_hp", "failsafe", "no_hp")
+        assert s.queries == ["parent hp"] and info["queries"] == 1  # S11 は撃ち直さず「HumanSL unavailable」へ
+        assert s.blunder_probes == []
+
+    def test_no_candidate_when_the_blunder_is_not_human_enough(self):
+        s, _ = self._blunder(2, hp={**self.HP, "G3": 0.20})  # 0.20 < 0.7 × 0.40 = 0.28
+        assert s.generate_move()[0].gtp() == "D4"
+        assert s.last_decision_info["blunder"] == "no_cand"
+        assert s.blunder_probes == [] and s.queries == ["parent hp"]
+
+    @pytest.mark.parametrize(
+        "deep",
+        [
+            pytest.param({"E5": (20.0, 0.99), "G3": (13.5, 0.97)}, id="vloss_above_blunder_max_loss"),
+            pytest.param({"E5": (20.0, 0.99), "G3": (17.5, 0.97)}, id="vloss_within_cap"),
+            pytest.param({"E5": (20.0, 0.99), "G3": (15.5, 0.94)}, id="winrate_after_below_floor"),
+            pytest.param({"E5": (12.0, 0.99), "G3": (7.9, 0.97)}, id="lead_after_below_reserve_plus_margin"),
+            pytest.param({"E5": (20.0, 0.99), "G3": None}, id="probe_incomplete"),
+        ],
+    )
+    def test_rejected_after_the_deep_probe(self, deep):
+        s, _ = self._blunder(2, deep=deep)
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert (move.gtp(), info["blunder"]) == ("D4", "rejected")
+        assert not any(k.startswith("blunder_") for k in info)
+        assert s.blunder_probes == [["E5", "G3"]] and s.draws == []
+        assert s.game._veil_state["veil9"]["blunders"] == 0
+
+    def test_root_lead_below_the_deep_reading_is_rejected_not_an_invariant_error(self):
+        """探索のゆれで root リード 12 が best の深い読み（E5 20）より小さい手番。G3 は深い読みでは資格の形
+        （vloss 4.5・lead_after 15.5 >= 3 + 5）でも、root リードでは 12 − 4.5 = 7.5 < 3 + 5（不変条件と同じ式）なので
+        資格で落とす＝ERROR ログ＋最善手にならず、通常の流れの手（関門 12 >= 3 + 5 + 3 は通る）。"""
+        s, _ = self._blunder(2, lead=12.0)
+        records = []
+        s.game.katrain.log = lambda msg, level=None, *a, **k: records.append((str(msg), level))
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert info["blunder"] == "rejected"
+        assert (move.gtp(), info["tier"], info["kind"]) == ("D4", "iii", "decided")  # blunder でも failsafe でもない
+        assert not any(lv == OUTPUT_ERROR for _m, lv in records)
+        assert any(
+            "Blunder G3: raw=3.80 vloss=4.50 hp=0.350 wr=97.0% lead_after=15.50 ok=False" in m for m, _ in records
+        )
+        assert s.blunder_probes == [["E5", "G3"]] and s.draws == []
+        assert s.game._veil_state["veil9"]["blunders"] == 0
+
+    def test_missing_best_probe(self):
+        s, _ = self._blunder(2, deep={"E5": None, "G3": (15.5, 0.97)})
+        assert s.generate_move()[0].gtp() == "D4"
+        assert s.last_decision_info["blunder"] == "no_probe"
+        assert s.draws == [] and s.last_decision_info["queries"] == 7  # 1 + 深い検証 2 本 + 即決の2手のプローブ 4本
+
+    def test_invariant_violation_plays_the_best_move(self, monkeypatch):
+        calls, original = [], ai_module.veil_invariant_ok
+
+        def only_blunder_fails(chosen, best, cand_gtps, kind, bounds):
+            calls.append((chosen, best, cand_gtps, kind, bounds))
+            return False if kind == "blunder" else original(chosen, best, cand_gtps, kind, bounds)
+
+        monkeypatch.setattr(ai_module, "veil_invariant_ok", only_blunder_fails)
+        s, logs = self._blunder(2)
+        records = []
+        s.game.katrain.log = lambda msg, level=None, *a, **k: records.append((str(msg), level))
+        assert s.generate_move()[0].gtp() == "E5"
+        bounds = {"vloss": 4.5, "max_loss": 6.0, "lead": 20.0, "reserve": 3.0, "wr_after": 0.97}
+        bounds.update(margin=VEIL_BLUNDER_MARGIN, min_wr=VEIL_BLUNDER_MIN_WR)
+        assert calls == [("G3", "E5", {c["move"] for c in self.CANDS}, "blunder", pytest.approx(bounds))]
+        assert any(lv == OUTPUT_ERROR and "Invariant violated: chosen=G3 kind=blunder" in m for m, lv in records)
+        info = s.last_decision_info
+        assert (info["tier"], info["kind"], info["why"]) == ("failsafe", "best", "invariant")
+        assert info["blunder"] == "invariant"
+        state = s.game._veil_state["veil9"]
+        assert state["blunders"] == 0 and state["ledger"] == [(12, "E5", "E5", "best")]
+        decisions = [m for m, _lv in records if "Decision: {" in m]
+        assert len(decisions) == 1
+        # 落ちた失着の候補の値も Decision 行に残る（影・skipped・played と同じ）
+        record = json.loads(decisions[0].split("Decision: ", 1)[1])
+        assert (record["blunder"], record["blunder_gtp"], record["blunder_vloss"]) == ("invariant", "G3", 4.5)
+        assert (record["blunder_hp"], record["blunder_best_hp"]) == (pytest.approx(0.35), pytest.approx(0.40))
+        assert (record["blunder_wr"], record["blunder_lead_after"]) == (pytest.approx(0.97), pytest.approx(15.5))
+
+    def test_a_deep_probe_error_falls_back_to_the_best_move(self):
+        s, _ = self._blunder(2)
+        s._veil_blunder_probe = _boom
+        assert s.generate_move()[0].gtp() == "E5"
+        info = s.last_decision_info
+        assert (info["tier"], info["kind"], info["why"]) == ("failsafe", "best", "exception")
+        assert info["error"] == "RuntimeError('boom')"
+        assert s.game._veil_state["veil9"]["blunders"] == 0
+
+    def test_white_plays_the_same_blunder(self):
+        s, _ = self._blunder(2, player="W")
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert (move.gtp(), move.player) == ("G3", "W")
+        assert (info["player"], info["kind"], info["blunder"]) == ("W", "blunder", "played")
+        assert info["lead"] == pytest.approx(20.0) and info["root_wr"] == pytest.approx(0.99)
+        assert info["vloss"] == pytest.approx(4.5) and info["blunder_lead_after"] == pytest.approx(15.5)
+        assert info["blunder_wr"] == pytest.approx(0.97)
+
+    def test_deep_probe_batches_clean_child_queries_at_the_blunder_visits(self):
+        s, logs = self._strategy()
+        requests, pending = [], []
+
+        class Engine:
+            def request_analysis(self, node, callback=None, error_callback=None, **kwargs):
+                requests.append((node, kwargs))
+                pending.append((kwargs["next_move"].gtp(), callback, error_callback))
+
+            def check_alive(self, exception_if_dead=False):
+                assert len(requests) == 2  # 全部を発行してから待つ（1本ずつ待たない）
+                for gtp, callback, error_callback in pending:
+                    if gtp == "G3":
+                        error_callback("boom")
+                    else:
+                        callback({"rootInfo": {"scoreLead": 1.0}}, True)  # 途中経過は使わない
+                        callback({"rootInfo": {"scoreLead": 20.0, "winrate": 0.99}}, False)
+                pending.clear()
+                return True
+
+        engine = Engine()
+        s.game.engines = {"B": engine, "W": engine}
+        result = s._veil_blunder_probe(["E5", "G3"], "B")
+        assert result == {"E5": {"rootInfo": {"scoreLead": 20.0, "winrate": 0.99}}, "G3": None}
+        assert [(node, kw["next_move"].gtp(), kw["next_move"].player) for node, kw in requests] == [
+            (s.cn, "E5", "B"),
+            (s.cn, "G3", "B"),
+        ]
+        for _node, kw in requests:
+            assert {k: v for k, v in kw.items() if k != "next_move"} == {
+                "priority": PRIORITY_EXTRA_AI_QUERY,
+                "include_policy": False,
+                "visits": VEIL_BLUNDER_VISITS,
+                "extra_settings": {"ignorePreRootHistory": False},
+            }
+        assert any("G3" in m and "boom" in m for m in logs)
+
+
+MANUAL_PARITY_PAGE = Path(__file__).resolve().parent.parent / "docs" / "manual" / "src" / "06d_ai_parity.html"
+
+
+def _manual_veil_defaults():
+    """マニュアルの韜晦の設定の表（`veil*_…` の行）から {接尾辞: {盤: 既定欄の文字列}} を返す。
+    13路の値は既定欄の本文、9路・19路は `<span class="jp">9路 …・19路 …</span>`。"""
+    html = MANUAL_PARITY_PAGE.read_text(encoding="utf-8")
+    start = html.index('<div class="card" id="ai-veil">')
+    end = html.find('<div class="card"', start + 1)
+    card = html[start : end if end >= 0 else len(html)]
+    rows = re.findall(
+        r'<tr><td>veil\*_([a-z_]+)</td><td>([^<]*)<span class="jp">9路 ([^・<]*)・19路 ([^<]*)</span></td>', card
+    )
+    assert len(rows) == card.count("<tr><td>veil*_"), "既定欄が「13路の値＋9路 …・19路 …」の形でない行がある"
+    return {suffix: {13: c13, 9: c9, 19: c19} for suffix, c13, c9, c19 in rows}
+
+
+def _manual_cell(key, value):
+    """既定値をマニュアルの既定欄の書き方にする: 画面のラベルがあればそれ（30%・OFF・LOG など）、
+    真偽は ON / OFF、ほかは数値（6.0 → 6・0.4 → 0.4）。"""
+    from katrain.core.constants import AI_OPTION_VALUES
+
+    if isinstance(value, bool):
+        return "ON" if value else "OFF"
+    labels = dict(option for option in AI_OPTION_VALUES[key] if isinstance(option, tuple))
+    return labels.get(value, f"{value:g}")
+
+
 class TestRegistration:
-    """戦略リスト・AI_OPTION_VALUES / AI_OPTION_ORDER・パッケージ config.json・i18n・デバッグ CLI の整合。"""
+    """戦略リスト・AI_OPTION_VALUES / AI_OPTION_ORDER・パッケージ config.json・i18n・デバッグ CLI・マニュアルの整合。"""
 
     @pytest.mark.parametrize("cls,size,prefix,ai_key,const", VEILS, ids=VEIL_IDS)
     def test_listed_everywhere(self, cls, size, prefix, ai_key, const):
@@ -1513,6 +2202,7 @@ class TestRegistration:
         with open(Path(katrain.__file__).parent / "config.json", encoding="utf-8") as f:
             package_ai_conf = json.load(f)["ai"][ai_key]
         assert set(package_ai_conf) == {f"{prefix}_{suffix}" for suffix in cls.SETTING_DEFAULTS}
+        assert package_ai_conf == {f"{prefix}_{suffix}": v for suffix, v in EXPECTED_DEFAULTS[size].items()}
         for order, (suffix, default) in enumerate(cls.SETTING_DEFAULTS.items()):
             key = f"{prefix}_{suffix}"
             assert package_ai_conf[key] == default, key
@@ -1540,6 +2230,34 @@ class TestRegistration:
         for suffix, value in preset.items():
             plain = [v[0] if isinstance(v, tuple) else v for v in AI_OPTION_VALUES[f"veil13_{suffix}"]]
             assert value in plain, suffix
+
+    @pytest.mark.parametrize("cls,size,prefix,ai_key,const", VEILS, ids=VEIL_IDS)
+    def test_blunder_settings_are_registered(self, cls, size, prefix, ai_key, const):
+        """失着の4キー（spec §13.2）: 画面の並びは 16〜19、候補値は spec の表どおり、mode と per_game は整数、
+        jp の概要が失着の層（<prefix>_blunder_mode）を案内する。"""
+        from katrain.core.constants import AI_OPTION_ORDER, AI_OPTION_VALUES
+
+        with open(Path(katrain.__file__).parent / "config.json", encoding="utf-8") as f:
+            package_ai_conf = json.load(f)["ai"][ai_key]
+        # 13路は既定の max_loss（loose）が 6.0 なので 6.0 を候補にしない（blunder_max_loss <= max_loss は関門で止まる）
+        max_loss = {9: [4.0, 5.0, 6.0, 8.0], 13: [8.0, 10.0, 12.0, 15.0], 19: [8.0, 10.0, 12.0, 15.0, 20.0]}
+        expected = {  # 接尾辞: (画面の並び, 候補値, 型)
+            "blunder_mode": (16, [(0, "OFF"), (1, "LOG"), (2, "ON")], int),
+            "blunder_max_loss": (17, max_loss[size], float),
+            "blunder_per_game": (18, [1, 2, 3], int),
+            "blunder_hp_ratio": (19, [(0.5, "50%"), (0.7, "70%"), (0.8, "80%"), (1.0, "100%")], float),
+        }
+        for suffix, (order, values, typ) in expected.items():
+            key = f"{prefix}_{suffix}"
+            assert AI_OPTION_ORDER[key] == order, key
+            assert AI_OPTION_VALUES[key] == values, key
+            assert type(cls.SETTING_DEFAULTS[suffix]) is typ, key
+            assert type(package_ai_conf[key]) is typ, key
+        po = (Path(katrain.__file__).parent / "i18n" / "locales" / "jp" / "LC_MESSAGES" / "katrain.po").read_text(
+            encoding="utf-8"
+        )
+        m = re.search(rf'msgid "aihelp:{prefix}"\s*\nmsgstr "(.*)"', po)
+        assert m and f"{prefix}_blunder_mode" in m.group(1), prefix
 
     def test_debug_cli_names(self):
         from katrain_debug.runner import STRATEGY_NAME_MAP
@@ -1571,3 +2289,13 @@ class TestRegistration:
             assert m, prefix
             bullets = [line for line in m.group(1).split("\\n") if line.startswith("* ")]
             assert len(bullets) == len(cls.SETTING_DEFAULTS), prefix
+
+    @pytest.mark.parametrize("cls,size,prefix,ai_key,const", VEILS, ids=VEIL_IDS)
+    def test_manual_defaults_table_matches_setting_defaults(self, cls, size, prefix, ai_key, const):
+        """マニュアル（06d_ai_parity.html）の韜晦の設定の表が全キーを持ち、その盤の既定欄が SETTING_DEFAULTS と一致する
+        （既定値を変えたらマニュアルの表も直す）。"""
+        documented = _manual_veil_defaults()
+        assert set(documented) == set(cls.SETTING_DEFAULTS)
+        expected = {suffix: _manual_cell(f"{prefix}_{suffix}", v) for suffix, v in cls.SETTING_DEFAULTS.items()}
+        mismatches = {s: (cells[size], expected[s]) for s, cells in documented.items() if cells[size] != expected[s]}
+        assert not mismatches, f"{size}路の既定欄がコードと違う（接尾辞: (マニュアル, 既定)）: {mismatches}"

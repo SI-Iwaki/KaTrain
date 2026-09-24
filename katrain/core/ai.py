@@ -4437,6 +4437,13 @@ VEIL_TRAP_PROBES = 3             # 罠枠のプローブ数
 VEIL_TRAP_RAW_EXTRA = 1.0        # 罠用プールの生の loss の上乗せ（目）
 VEIL_TRAP_SWAP_MARGIN = 0.3      # 素の外し P を罠 Q に替えるのに要る値段の差（目）
 VEIL_HP_TIE = 0.02               # hp の同点幅（この差以内なら余剰がある手番は着手後勝率を優先）
+VEIL_BLUNDER_MIN_HP = 0.15       # 失着の手に要る humanPolicy の絶対床（spec §13）
+VEIL_BLUNDER_MIN_WR = 0.95       # 失着の前の root 勝率と、打った後の検証済み勝率の床（min_winrate より厳しい）
+VEIL_BLUNDER_MARGIN = 5.0        # 失着の後の検証済みリードに要る reserve の上積み（目）
+VEIL_BLUNDER_VISITS = 1500       # 失着の検証プローブ（クリーン解析）の visits
+VEIL_BLUNDER_PROBES = 2          # 深く検証する失着候補の数（hp の高い順）
+VEIL_BLUNDER_RAW_MARGIN = 2.0    # 失着候補の生の loss の上の足切りに持たせる余裕（目）
+VEIL_BLUNDER_PROB = 0.5          # ON で資格のある手番に実際に打つ確率（影の計測の後に見直す）
 _VEIL_EPS = 1e-9                 # 上限比較の浮動小数の許容誤差
 
 
@@ -4734,13 +4741,84 @@ def veil_terminal_swap(candidates, best_gtp, hp_of, floor, lead, dominant, urgen
     return min(pool, key=lambda c: (-c["hp"], c["loss"], c["gtp"]))
 
 
+def veil_blunder_candidates(candidates, best_gtp, best_hp, hp_of, ratio, cap, max_loss,
+                            min_hp=VEIL_BLUNDER_MIN_HP, raw_margin=VEIL_BLUNDER_RAW_MARGIN,
+                            limit=VEIL_BLUNDER_PROBES):
+    """失着の候補（クエリ 0 本）: 深く検証する手を hp の高い順に最大 limit 手。
+
+    spec §13.3 手順4。hp が最善手の ratio 倍以上＝9段 humanSL 自身が迷う局面なので『難しい局面』の条件を兼ねる。
+    candidates は `_veil_candidates` の {"gtp", "loss", "visits", "wr"}、hp_of は gtp → humanPolicy。
+    best_gtp・pass 以外で、hp >= max(min_hp, ratio × best_hp) かつ cap < 生の loss <= max_loss + raw_margin の手を、
+    hp の降順（同点は gtp の昇順）に並べて先頭 limit 手。返り値は候補 dict のコピーに "hp" を足したもの（元は変えない）。
+    """
+    floor = max(min_hp, ratio * best_hp)
+    pool = []
+    for c in candidates:
+        if c["gtp"] in (best_gtp, "pass"):
+            continue
+        if not cap < c["loss"] <= max_loss + raw_margin + _VEIL_EPS:
+            continue
+        hp = hp_of(c["gtp"])
+        if hp < floor:
+            continue
+        pool.append({**c, "hp": hp})
+    pool.sort(key=lambda c: (-c["hp"], c["gtp"]))
+    return pool[:limit]
+
+
+def veil_blunder_ok(row, cap, max_loss, reserve, lead, margin=VEIL_BLUNDER_MARGIN, min_wr=VEIL_BLUNDER_MIN_WR):
+    """失着の資格（spec §13.3 手順6）。row は深い検証の {"vloss", "lead_after", "wr_after", ...}、lead は root リード
+    （通常の解析・打つ側視点）。
+
+    cap < vloss <= max_loss（通常の支払い上限を超え、失着の上限以内）かつ lead_after >= reserve + margin かつ
+    lead − max(0, vloss) >= reserve + margin（root リード基準・不変条件 kind blunder と同じ式）かつ wr_after >= min_wr。
+    深い読みと root リードの両方で reserve + margin が残る手だけ（root リードが深い読みより小さい探索のゆれで、
+    資格を通った手が不変条件で落ちないように）。lead かどれかの値が None なら False。
+    """
+    vloss, lead_after, wr_after = row.get("vloss"), row.get("lead_after"), row.get("wr_after")
+    if lead is None or vloss is None or lead_after is None or wr_after is None:
+        return False
+    return (
+        cap < vloss <= max_loss + _VEIL_EPS
+        and lead_after >= reserve + margin - _VEIL_EPS
+        and lead - max(0.0, vloss) >= reserve + margin - _VEIL_EPS
+        and wr_after >= min_wr - _VEIL_EPS
+    )
+
+
+def veil_blunder_pick(rows):
+    """資格のある失着から1手（spec §13.3 手順6）: hp 最大、同点は vloss の小さい方、さらに同点は gtp の昇順。空なら None。"""
+    if not rows:
+        return None
+    return min(rows, key=lambda r: (-r["hp"], r["vloss"], r["gtp"]))
+
+
+def veil_decided_verified_ok(vloss, wr_after, f_eff, lead, reserve, min_winrate, margin=VEIL_RAW_MARGIN):
+    """S13 の即決を打つ前の確認（2手のプローブ）。生の loss だけを信じると親局面の読み落としを打つ
+    （2026-09-25・生 0.36 目 → 実損 16.3 目で持碁）。margin はプローブのノイズ（±0.2〜0.3 目）の分。
+
+    vloss は best と候補の子局面リードの差（検証済み損失）、wr_after は候補の着手後勝率（どちらも打つ側視点）、
+    lead は root リード。vloss <= f_eff + margin かつ lead − max(0, vloss) >= reserve かつ wr_after >= min_winrate
+    なら True。vloss か wr_after が None（プローブ欠落）なら False。
+    """
+    if vloss is None or wr_after is None:
+        return False
+    return (
+        vloss <= f_eff + margin + _VEIL_EPS
+        and lead - max(0.0, vloss) >= reserve - _VEIL_EPS
+        and wr_after >= min_winrate - _VEIL_EPS
+    )
+
+
 def veil_invariant_ok(chosen, best, cand_gtps, kind, bounds):
     """選んだ手の最終確認（S19）。違反なら False（呼び出し側は ERROR ログ＋最善手）。
 
     共通: chosen が通常解析の候補 cand_gtps に含まれ、best でも pass でもないこと。種類ごとの上限（bounds のキー）:
     free / decided: cost <= f_eff。paid: cost <= allowance かつ lead − cost >= reserve。
     trap: price <= allow かつ max(0, vloss) <= trap_cap かつ lead − max(0, vloss) >= reserve。
-    terminal: raw <= limit。それ以外の kind・キー欠落は False。
+    terminal: raw <= limit。
+    blunder: vloss <= max_loss かつ lead − max(0, vloss) >= reserve + margin かつ wr_after >= min_wr。
+    それ以外の kind・キー欠落・None は False。
     """
     if chosen is None or chosen == best or chosen == "pass" or chosen not in cand_gtps:
         return False
@@ -4761,6 +4839,13 @@ def veil_invariant_ok(chosen, best, cand_gtps, kind, bounds):
             )
         if kind == "terminal":
             return bounds["raw"] <= bounds["limit"] + _VEIL_EPS
+        if kind == "blunder":
+            paid = max(0.0, bounds["vloss"])
+            return (
+                bounds["vloss"] <= bounds["max_loss"] + _VEIL_EPS
+                and bounds["lead"] - paid >= bounds["reserve"] + bounds["margin"] - _VEIL_EPS
+                and bounds["wr_after"] >= bounds["min_wr"] - _VEIL_EPS
+            )
     except (KeyError, TypeError):
         return False
     return False
@@ -4791,13 +4876,16 @@ class Veil9Strategy(Enigma9Strategy):
     (i) 候補が最善手しか無い → 最善手、(ii) 最善手の humanPolicy が dominant_hp 以上（明らかな一手）→
     一致率が目標を超えているとき（u > 0）だけ dominant_max_loss までで外す、(iii) それ以外 → ほぼ損失ゼロの
     外し（free）は常に、損をする外し（paid）は u > 0 のときだけ余剰 S = lead − reserve の範囲で払う。
-    外し（決着局面の即決と終局帯の手を除く）は子局面プローブ（clean 500v + humanSL 8v）で検証し、最安帯の中で
-    humanPolicy 最大を選ぶ。
+    外し（終局帯の手を除く）は子局面プローブ（clean 500v + humanSL 8v）で検証し、最安帯の中で
+    humanPolicy 最大を選ぶ（決着局面の即決は生の loss で選んだ1手を best と2手だけプローブして確かめる）。
     罠（trap_mode）は ΔE の上乗せ層。ヨセは委譲しない・ponder は起動しない。全分岐のフェイルセーフは最善手。
+    失着の層（blunder_mode・spec §13・既定 OFF）は S9b で、9段でも迷う局面で支払い上限 max_loss を超える候補を
+    深い読み（クリーン VEIL_BLUNDER_VISITS）で確かめ、LOG（1）は `Decision:` に記録するだけ、ON（2）は資格のある手番の
+    VEIL_BLUNDER_PROB の割合で1局 blunder_per_game 回まで打つ（勝ちの安全条件 reserve・min_winrate は緩めない）。
 
     難解（Enigma9Strategy）からは generate_move（時間ログ）・_setting・_log・_best_move・_run_query・
     _probe_children・_cancel_ponder・_terminal_band_move を継承して使う。13/19路は属性だけ差し替えたサブクラス。
-    sticky な状態は `game._veil_state[KEY_PREFIX]`（endgame・close_drift・ledger）。
+    sticky な状態は `game._veil_state[KEY_PREFIX]`（endgame・close_drift・ledger・blunders）。
     設計: docs/superpowers/specs/2026-09-23-veil-strategy-design.md
     """
 
@@ -4821,6 +4909,10 @@ class Veil9Strategy(Enigma9Strategy):
         "cost_slack": 0.3,          # 最安帯の幅（目）
         "trap_mode": False,         # 罠の上乗せ層（A/B 用）
         "trap_min_delta_e": 0.5,    # 罠とみなす ΔE（目）
+        "blunder_mode": 0,          # 失着の層（spec §13）: 0 OFF / 1 記録のみ（影）/ 2 ON
+        "blunder_max_loss": 6.0,    # 失着の上限（検証済み損失・目）
+        "blunder_per_game": 1,      # 1局で打つ失着の上限（ON のとき）
+        "blunder_hp_ratio": 0.7,    # 失着の手の hp ÷ 最善手の hp の下限（9段 humanSL）
     }
     # スライダーにしない盤サイズ別の値（spec §6.1）
     VEIL_BOARD = {"endgame_move": 30, "unsettled_max": 8, "trusted_visits": 100, "probe_hp": 3, "probe_cheap": 2}
@@ -4831,7 +4923,7 @@ class Veil9Strategy(Enigma9Strategy):
         if not isinstance(state, dict):
             state = {}
             setattr(self.game, "_veil_state", state)
-        return state.setdefault(self.KEY_PREFIX, {"endgame": False, "close_drift": 0.0, "ledger": []})
+        return state.setdefault(self.KEY_PREFIX, {"endgame": False, "close_drift": 0.0, "ledger": [], "blunders": 0})
 
     def _veil_punish(self, probe, opponent):
         """子局面プローブから (E, find_hp) を返す（不完全なら (None, None)）。"""
@@ -5008,6 +5100,154 @@ class Veil9Strategy(Enigma9Strategy):
             "terminal", "best", fields,
         )
 
+    def _veil_blunder_draw(self):
+        """ON で資格のある手番に打つかの乱数（テストで差し替える）。"""
+        return random.random()
+
+    def _veil_blunder_probe(self, gtps, player):
+        """失着の深い検証（spec §13.3 手順5）: 各手を1手進めた子局面のクリーン解析を VEIL_BLUNDER_VISITS で1バッチ撃ち、
+        {gtp: analysis|None} を返す。_probe_children（クリーン 500v＋hp）を変えずに visits だけ深くするための別経路。
+
+        全部を発行してから待つ（`_probe_children` と同じ方式）。エラーの手は None。"""
+        engine = self.game.engines[self.cn.player]
+        results = {}
+
+        def start(gtp):
+            def on_result(a, partial_result):
+                if not partial_result:
+                    results[gtp] = a
+
+            def on_error(a):
+                self.game.katrain.log(f"[{type(self).__name__}] blunder probe {gtp} error: {a}", OUTPUT_ERROR)
+                results[gtp] = None
+
+            engine.request_analysis(
+                self.cn,
+                callback=on_result,
+                error_callback=on_error,
+                priority=PRIORITY_EXTRA_AI_QUERY,
+                next_move=Move.from_gtp(gtp, player=player),
+                include_policy=False,
+                visits=VEIL_BLUNDER_VISITS,
+                extra_settings={"ignorePreRootHistory": False},
+            )
+
+        for gtp in gtps:
+            start(gtp)
+        while not all(gtp in results for gtp in gtps):
+            self.raise_if_discarded()
+            time.sleep(0.01)
+            engine.check_alive(exception_if_dead=True)
+        return {gtp: results.get(gtp) for gtp in gtps}
+
+    def _veil_blunder(self, cands, player, best_gtp, lead, root_wr, in_yose, reserve, cap, info):
+        """S9b 失着の層（spec §13.3）。返り値 (outcome, stage_hp, fetched)。
+
+        outcome は打つときだけ (result, tier, kind, fields)、それ以外は None。stage_hp は親局面の humanSL（撃っていなければ
+        None）、fetched はこの手番で親局面の humanSL を撃ったか（S11 が同じ手番で2回撃たないため）。
+        mode 0 なら何もしない（クエリ 0 本・info に何も足さない）。関門（クエリ 0 本・`blunder = "gate"`）はヨセ・root 勝率が無い・
+        blunder_max_loss <= cap（cap < vloss <= blunder_max_loss の手が定義上無い）・root 勝率 < VEIL_BLUNDER_MIN_WR・
+        lead < reserve + VEIL_BLUNDER_MARGIN + cap・ON で今局の上限に達している、のどれかで止まる。"""
+        mode = int(self._setting("blunder_mode"))
+        if mode <= 0:
+            return None, None, False
+        state = self._veil_state()
+        blunder_max = float(self._setting("blunder_max_loss"))
+        # 関門（クエリ 0 本）: ヨセでなく、失着の上限が支払い上限を超え（以下なら cap < vloss <= blunder_max の手は無い）、
+        # root 勝率と lead に失着の後も勝ちを残す余裕があり、ON なら今局の上限の内
+        if (
+            in_yose
+            or blunder_max <= cap
+            or root_wr is None
+            or root_wr < VEIL_BLUNDER_MIN_WR
+            or lead < reserve + VEIL_BLUNDER_MARGIN + cap
+            or (mode >= 2 and state["blunders"] >= int(self._setting("blunder_per_game")))
+        ):
+            info["blunder"] = "gate"
+            return None, None, False
+        stage_hp = self._veil_parent_hp(info)
+        if not stage_hp or "humanPolicy" not in stage_hp:
+            info["blunder"] = "no_hp"
+            return None, stage_hp, True
+        hp_of = enigma9_hp_lookup(stage_hp["humanPolicy"], self.game.board_size)
+        best_hp = hp_of(best_gtp)
+        rows0 = veil_blunder_candidates(
+            self._veil_candidates(cands, player), best_gtp, best_hp, hp_of,
+            float(self._setting("blunder_hp_ratio")), cap, blunder_max,
+        )
+        if not rows0:
+            info["blunder"] = "no_cand"
+            return None, stage_hp, True
+        # 深い検証（best + 候補を1バッチ）
+        probes = self._veil_blunder_probe([best_gtp] + [c["gtp"] for c in rows0], player)
+        info["queries"] += 1 + len(rows0)
+        best_lead_after, _best_wr_after = enigma9_verified_metrics(probes.get(best_gtp), player)
+        if best_lead_after is None:
+            self._log("Blunder: best-move probe unavailable -> no blunder")
+            info["blunder"] = "no_probe"
+            return None, stage_hp, True
+        ok_rows = []
+        for c in rows0:
+            lead_after, wr_after = enigma9_verified_metrics(probes.get(c["gtp"]), player)
+            if lead_after is None:
+                self._log(f"Blunder {c['gtp']}: probe incomplete -> dropped")
+                continue
+            row = {**c, "vloss": best_lead_after - lead_after, "lead_after": lead_after, "wr_after": wr_after}
+            ok = veil_blunder_ok(row, cap, blunder_max, reserve, lead)
+            wr_txt = "n/a" if wr_after is None else f"{wr_after:.1%}"
+            self._log(
+                f"Blunder {c['gtp']}: raw={c['loss']:.2f} vloss={row['vloss']:.2f} hp={c['hp']:.3f} wr={wr_txt} "
+                f"lead_after={lead_after:.2f} ok={ok}"
+            )
+            if ok:
+                ok_rows.append(row)
+        pick = veil_blunder_pick(ok_rows)
+        if pick is None:
+            info["blunder"] = "rejected"
+            return None, stage_hp, True
+        gtp, vloss, hp = pick["gtp"], pick["vloss"], pick["hp"]
+        fields = {
+            "blunder_gtp": gtp, "blunder_vloss": vloss, "blunder_hp": hp, "blunder_best_hp": best_hp,
+            "blunder_wr": pick["wr_after"], "blunder_lead_after": pick["lead_after"],
+        }
+        info.update(fields)
+        summary = f"{gtp} (vloss {vloss:.2f}, hp {hp:.3f}, best hp {best_hp:.3f}) instead of {best_gtp}"
+        # 影（mode 1）: 記録だけして通常の流れへ。今局の上限は数えない（頻度を測るため）
+        if mode == 1:
+            info["blunder"] = "shadow"
+            self._log(f"Blunder shadow: {summary} -> not played (mode 1)")
+            return None, stage_hp, True
+        # ON（mode 2）: 資格のある手番のうち VEIL_BLUNDER_PROB の割合だけ打つ（打つ手番を読めなくする）
+        draw = self._veil_blunder_draw()
+        if draw >= VEIL_BLUNDER_PROB:
+            info["blunder"] = "skipped"
+            self._log(f"Blunder skipped: {summary} (draw {draw:.2f} >= {VEIL_BLUNDER_PROB:.2f})")
+            return None, stage_hp, True
+        bounds = {
+            "vloss": vloss, "max_loss": blunder_max, "lead": lead, "reserve": reserve, "margin": VEIL_BLUNDER_MARGIN,
+            "wr_after": pick["wr_after"], "min_wr": VEIL_BLUNDER_MIN_WR,
+        }
+        if not veil_invariant_ok(gtp, best_gtp, {d["move"] for d in cands}, "blunder", bounds):
+            info["blunder"] = "invariant"
+            return (
+                (self._veil_violation(gtp, "blunder", bounds), "failsafe", "best", {"why": "invariant"}),
+                stage_hp, True,
+            )
+        state["blunders"] += 1
+        info["blunder"] = "played"
+        self._log(f"Blunder: played {summary}")
+        return (
+            (
+                (
+                    Move.from_gtp(gtp, player=player),
+                    f"{self.LABEL}: human-like blunder {gtp} (verified loss {vloss:.2f}, "
+                    f"hp {hp:.1%} vs best {best_hp:.1%}) instead of {best_gtp}.",
+                ),
+                "blunder", "blunder", {**fields, "raw": pick["loss"], "vloss": vloss, "hp": hp},
+            ),
+            stage_hp, True,
+        )
+
     def _generate_move(self) -> Tuple[Move, str]:
         # ---- S0 ラッパー: 解析の破棄は上へ、それ以外の例外は最善手（ほかの出口と同じく Decision 行と ledger も残す）----
         t0 = time.time()
@@ -5134,6 +5374,14 @@ class Veil9Strategy(Enigma9Strategy):
             f"cap={cap_phase:.2f} A_t={allowance:.2f} yose={in_yose}"
         )
 
+        # ---- S9b 失着（spec §13。blunder_mode 0 なら何もしない）----
+        blunder, stage_hp, hp_fetched = self._veil_blunder(
+            cands, player, best_gtp, lead, root_wr, in_yose, reserve, cap_phase, info
+        )
+        if blunder is not None:
+            result, tier, kind, fields = blunder
+            return finish(result, tier, kind, **fields)
+
         # ---- S10 生の候補プール（クエリ0本）----
         trap_on = bool(self._setting("trap_mode"))
         candidates = self._veil_candidates(cands, player)
@@ -5148,8 +5396,9 @@ class Veil9Strategy(Enigma9Strategy):
                 "i", "best", why="no_pool",
             )
 
-        # ---- S11 親局面の humanSL（1本）----
-        stage_hp = self._veil_parent_hp(info)
+        # ---- S11 親局面の humanSL（1本。S9b が撃っていればそれを使う＝同じ手番で2回撃たない）----
+        if not hp_fetched:
+            stage_hp = self._veil_parent_hp(info)
         if not stage_hp or "humanPolicy" not in stage_hp:
             self._log("HumanSL unavailable -> best move")
             return finish(
@@ -5189,7 +5438,7 @@ class Veil9Strategy(Enigma9Strategy):
                 self._best_move(f"{self.LABEL}: no natural alternative, playing best move."), "i", "best", why="no_natural"
             )
 
-        # ---- S13 決着局面の即決（プローブ0本）----
+        # ---- S13 決着局面の即決（best と候補の2手だけプローブ）----
         slack = float(self._setting("cost_slack"))
         if root_wr is not None and root_wr >= VEIL_DECIDED_WR and lead >= reserve + VEIL_DECIDED_MARGIN and not dominant:
             quick = [
@@ -5199,20 +5448,43 @@ class Veil9Strategy(Enigma9Strategy):
             ]
             pick = veil_choose(quick, slack, prefer_safe=False)
             if pick is not None:
-                bounds = {"cost": pick["cost"], "f_eff": f_eff}
-                if not veil_invariant_ok(pick["gtp"], best_gtp, cand_gtps, "decided", bounds):
-                    return finish(
-                        self._veil_violation(pick["gtp"], "decided", bounds), "failsafe", "best", why="invariant"
+                # 生の loss だけで打つと親局面の読み落としを打つ（2026-09-25・生 0.36 目 → 実損 16.3 目で持碁）
+                probes, _unused = self._probe_children([best_gtp, pick["gtp"]], player, parent_hp=False)
+                info["queries"] += 4  # クリーン＋hp × 2手
+                best_lead_after, _ = enigma9_verified_metrics((probes.get(best_gtp) or {}).get("clean"), player)
+                lead_after, wr_after = enigma9_verified_metrics((probes.get(pick["gtp"]) or {}).get("clean"), player)
+                vloss = None if (best_lead_after is None or lead_after is None) else best_lead_after - lead_after
+                vloss_txt = "n/a" if vloss is None else f"{vloss:.2f}"
+                wr_txt = "n/a" if wr_after is None else f"{wr_after:.1%}"
+                if veil_decided_verified_ok(vloss, wr_after, f_eff, lead, reserve, float(self._setting("min_winrate"))):
+                    bounds = {"cost": pick["cost"], "f_eff": f_eff}
+                    if not veil_invariant_ok(pick["gtp"], best_gtp, cand_gtps, "decided", bounds):
+                        return finish(
+                            self._veil_violation(pick["gtp"], "decided", bounds), "failsafe", "best", why="invariant"
+                        )
+                    self._log(
+                        f"Decided: played {pick['gtp']} (raw {pick['loss']:.2f}, vloss {vloss_txt}, wr {wr_txt}, "
+                        f"hp {pick['hp']:.3f}) after a 2-move probe"
                     )
-                self._log(f"Decided: played {pick['gtp']} (raw {pick['loss']:.2f}, hp {pick['hp']:.3f}) without probes")
-                return finish(
-                    (
-                        Move.from_gtp(pick["gtp"], player=player),
-                        f"{self.LABEL}: decided position, near-free deviation to {pick['gtp']} "
-                        f"(raw loss {pick['loss']:.2f}, hp {pick['hp']:.1%}) instead of {best_gtp}.",
-                    ),
-                    tier, "decided", raw=pick["loss"], cost=pick["cost"], hp=pick["hp"],
+                    return finish(
+                        (
+                            Move.from_gtp(pick["gtp"], player=player),
+                            f"{self.LABEL}: decided position, near-free deviation to {pick['gtp']} "
+                            f"(raw loss {pick['loss']:.2f}, verified loss {vloss:.2f}, hp {pick['hp']:.1%}) "
+                            f"instead of {best_gtp}.",
+                        ),
+                        tier, "decided", raw=pick["loss"], cost=pick["cost"], hp=pick["hp"], vloss=vloss,
+                        wr_after=wr_after,
+                    )
+                # 打たずに S14 以降の通常の流れへ（S15 は best を含めて改めてプローブする＝まれな経路なので再利用しない）
+                self._log(
+                    f"Decided: {pick['gtp']} rejected by the probe (raw {pick['loss']:.2f}, vloss {vloss_txt}, "
+                    f"wr {wr_txt}) -> normal flow"
                 )
+                info["decided_rejected"] = pick["gtp"]
+                # なぜ・どれだけで却下したか（ハーネスの集計用。None ありうる＝Decision 行では null）
+                info["decided_vloss"] = vloss
+                info["decided_wr"] = wr_after
 
         # ---- S14 検証する候補 ----
         band_cap = raw_cap if (u > 0 and surplus > 0) else f_eff + VEIL_RAW_MARGIN
@@ -5340,9 +5612,10 @@ class Veil9Strategy(Enigma9Strategy):
 class Veil13Strategy(Veil9Strategy):
     """13路専用「韜晦」戦略（Veil9Strategy の盤サイズ・設定キー・既定値差し替え版）。
 
-    既定値は SETTING_DEFAULTS。13路は自己対局ハーネスの段階1（2026-09-24）で一致率を測り、spec の初期値を
-    据え置いた（接戦の安全＝段階3は 2026-09-24 に1回測って合格。値と校正状況は .claude/rules/ai-parameters.md）。
-    sticky 状態は `game._veil_state["veil13"]`。
+    既定値は SETTING_DEFAULTS。13路は自己対局ハーネスの段階1b（2026-09-24）で選んだ loose（安全条件と他のキーは
+    spec のまま、free_loss・spend_rate・max_loss・yose_max_loss・dominant_hp・dominant_max_loss・natural_ratio の
+    7キーをゆるめた設定）で、一致率 42.4%（同じ run の spec の初期値は 49.0%。3 run の平均は 45.2% と 51.5%）。
+    接戦の安全は段階3b で確かめた（20-0）。値と校正状況は .claude/rules/ai-parameters.md。sticky 状態は `game._veil_state["veil13"]`。
     """
 
     BOARD_LEN = 13
@@ -5352,19 +5625,23 @@ class Veil13Strategy(Veil9Strategy):
         "target_rate": 0.30,
         "reserve": 5.0,
         "min_winrate": 0.85,
-        "free_loss": 0.3,
+        "free_loss": 0.4,
         "free_wr_drop": 0.03,
         "close_drift_cap": 0.0,
-        "spend_rate": 0.5,
-        "max_loss": 4.5,
-        "yose_max_loss": 1.5,
-        "dominant_hp": 0.8,
-        "dominant_max_loss": 2.0,
+        "spend_rate": 1.0,
+        "max_loss": 6.0,
+        "yose_max_loss": 2.0,
+        "dominant_hp": 1.01,
+        "dominant_max_loss": 3.0,
         "min_human_policy": 0.05,
-        "natural_ratio": 0.2,
+        "natural_ratio": 0.1,
         "cost_slack": 0.3,
         "trap_mode": False,
         "trap_min_delta_e": 0.5,
+        "blunder_mode": 0,
+        "blunder_max_loss": 10.0,
+        "blunder_per_game": 1,
+        "blunder_hp_ratio": 0.7,
     }
     VEIL_BOARD = {"endgame_move": 85, "unsettled_max": 16, "trusted_visits": 50, "probe_hp": 3, "probe_cheap": 2}
 
@@ -5397,6 +5674,10 @@ class Veil19Strategy(Veil9Strategy):
         "cost_slack": 0.3,
         "trap_mode": False,
         "trap_min_delta_e": 0.7,
+        "blunder_mode": 0,
+        "blunder_max_loss": 15.0,
+        "blunder_per_game": 1,
+        "blunder_hp_ratio": 0.7,
     }
     VEIL_BOARD = {"endgame_move": 150, "unsettled_max": 36, "trusted_visits": 50, "probe_hp": 3, "probe_cheap": 1}
 

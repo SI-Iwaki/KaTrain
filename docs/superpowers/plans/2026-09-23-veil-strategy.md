@@ -4068,7 +4068,7 @@ python -m katrain_debug.selfplay run --size 13 --pairs 20 --opp-pool docs/superp
 （`attack` は spec §6.1 の「攻め」プリセット＝測定専用。既定にするには要件1の再決定が要る）
 
 - [x] **Step 4: 段階1b 安全条件以外のつまみの掃引**（spec §10.3・§12 の dominant_hp / natural_ratio / free_loss と、接戦の累計上限の感度）
-  （段階1の後でいったん打ち切ったが、2026-09-24 夜にユーザーの指示で実施した・18:13〜20:58。ユーザー設定が GUI で変わっていたので全アームで16キーを上書きで渡し、計画の5アームに user（ユーザー設定）・wide（攻めの安全条件以外）・loose（安全条件以外を全部ゆるめた設定）を足した＝9アーム。結果は campaign md の段階1b の節）
+  （段階1の後でいったん打ち切ったが、2026-09-24 夜にユーザーの指示で実施した・18:13〜20:58。ユーザー設定が GUI で変わっていたので全アームで16キーを上書きで渡し、計画の5アームに user（ユーザー設定）・wide（攻めの安全条件以外）・loose（wide＋dominant_hp OFF・natural_ratio 0.1・free_loss 0.4＝安全条件は据え置きで7キーをゆるめた設定）を足した＝9アーム。結果は campaign md の段階1b の節）
 
 Run（background）:
 ```bash
@@ -4198,6 +4198,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 17: 選んだ既定値の反映（コード・パッケージ config・テスト期待値・ユーザー設定）
 
 （飛ばした: Task 16 で 13路の既定値を据え置いたため。コード・パッケージ config・テスト期待値・ユーザー設定は変えていない）
+
+（2026-09-25 追記: ユーザーの決定で 13路の既定を段階1b の loose に変えた＝plans/2026-09-24-veil-blunder.md の Task 5）
 
 **Files:**
 - Modify: `katrain/core/ai.py`（`Veil{9,13,19}Strategy.SETTING_DEFAULTS` の該当行だけ）

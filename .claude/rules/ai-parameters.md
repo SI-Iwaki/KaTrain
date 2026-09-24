@@ -779,7 +779,7 @@ vloss 1.40・price 0.51・0.3 秒）／@67（λ 2.00）→ N5（trap・price 1.1
 9/13/19路それぞれ専用。**勝ちを最優先にしたまま、自分の AI 最善手一致率（終局レポートの値）を絶対目標まで下げる**。
 設計: `2026-09-23-veil-strategy-design.md`。`Veil9Strategy(Enigma9Strategy)` が `_generate_move` を上書きし、13/19路は
 属性（`BOARD_LEN` / `KEY_PREFIX` / `LABEL` / `SETTING_DEFAULTS` / `VEIL_BOARD`）だけのサブクラス。sticky 状態は
-`game._veil_state["veil{9,13,19}"]`（endgame・close_drift・ledger）、ログタグは `[Veil13Strategy]` 等。ponder と HumanStyle 委譲は使わない。
+`game._veil_state["veil{9,13,19}"]`（endgame・close_drift・ledger・blunders＝今局の失着の数）、ログタグは `[Veil13Strategy]` 等。ponder と HumanStyle 委譲は使わない。
 
 u = clamp((p_match − target_rate) / 0.10, 0, 1)（p_match = (一致数 + 1) / (分母 + 1)・0.15 以下は 0）。
 同値外し: cons = max(vloss, 生 loss〈visits >= trusted_visits のとき〉) <= F_eff かつ勝率低下 <= free_wr_drop（勝率 97% 以上は免除・
@@ -797,34 +797,40 @@ visits >= `VEIL_TERMINAL_MIN_VISITS`・生 loss <= 0.10（|lead| < 3 なら 0.05
 | `veil*_target_rate` | 目標一致率（この手も一致させた場合の一致率がこれを超えている間だけ、損をする外しと明らかな一手の外しを許す。超過 10pt で全開・15% 以下へは払わない） | 15%〜50% | 40% / **30%** / 30% |
 | `veil*_reserve` | 損をする外し・罠の後にも残すリード（目）＝勝ちの安全条件 | 1〜10 | 3 / **5** / 7 |
 | `veil*_min_winrate` | 損をする外し・罠の着手後勝率フロア＝勝ちの安全条件 | 50%〜95% | 85% / **85%** / 85% |
-| `veil*_free_loss` | 同値外し（一致率に関係なく常に打つ外し）の損失の上限（目）。劣勢・一致率 15% 以下では 0.1 | 0〜0.5 | 0.2 / **0.3** / 0.3 |
+| `veil*_free_loss` | 同値外し（一致率に関係なく常に打つ外し）の損失の上限（目）。劣勢・一致率 15% 以下では 0.1 | 0〜0.5 | 0.2 / **0.4** / 0.3 |
 | `veil*_free_wr_drop` | 同値外しで許す1手の勝率低下（着手後勝率 97% 以上は免除・ヨセで reserve を割るなら 1%） | 0%〜5% | 3% / **3%** / 3% |
 | `veil*_close_drift_cap` | 接戦中の同値外しの損失の1局あたり合計の上限（目）。OFF で上限なし | OFF／0.5〜3.0 | OFF / **OFF** / OFF |
-| `veil*_spend_rate` | 損をする外し1回に使う余剰（リード − reserve）の割合 | 0.25〜1 | 0.5 / **0.5** / 0.5 |
-| `veil*_max_loss` | 1手の支払い上限（目・ヨセ前）。罠の損失の上限も兼ねる | 9路 1〜5・13路 2〜6・19路 3〜8 | 3 / **4.5** / 6 |
-| `veil*_yose_max_loss` | 1手の支払い上限（目・ヨセ）。0 で同値外しだけ | 0〜3 | 1 / **1.5** / 2 |
-| `veil*_dominant_hp` | 9段が最善手を選ぶ確率がこれ以上＝明らかな一手（一致率が目標を超えているときだけ外す）。OFF で判定しない | 60%〜95%／OFF | 80% / **80%** / 80% |
-| `veil*_dominant_max_loss` | 明らかな一手で外すときの支払いの上限（目・通常の上限を絞るだけ） | 0.5〜4 | 1.5 / **2** / 3 |
+| `veil*_spend_rate` | 損をする外し1回に使う余剰（リード − reserve）の割合 | 0.25〜1 | 0.5 / **1** / 0.5 |
+| `veil*_max_loss` | 1手の支払い上限（目・ヨセ前）。罠の損失の上限も兼ねる | 9路 1〜5・13路 2〜6・19路 3〜8 | 3 / **6** / 6 |
+| `veil*_yose_max_loss` | 1手の支払い上限（目・ヨセ）。0 で同値外しだけ | 0〜3 | 1 / **2** / 2 |
+| `veil*_dominant_hp` | 9段が最善手を選ぶ確率がこれ以上＝明らかな一手（一致率が目標を超えているときだけ外す）。OFF で判定しない | 60%〜95%／OFF | 80% / **OFF** / 80% |
+| `veil*_dominant_max_loss` | 明らかな一手で外すときの支払いの上限（目・通常の上限を絞るだけ） | 0.5〜4 | 1.5 / **3** / 3 |
 | `veil*_min_human_policy` | 外す先に要る 9段の humanPolicy（絶対床） | 1%〜10% | 5% / **5%** / 5% |
-| `veil*_natural_ratio` | 外す先に要る humanPolicy の第一感比（相対床・明らかな一手の局面では使わない） | 0.1〜0.5 | 0.2 / **0.2** / 0.2 |
+| `veil*_natural_ratio` | 外す先に要る humanPolicy の第一感比（相対床・明らかな一手の局面では使わない） | 0.1〜0.5 | 0.2 / **0.1** / 0.2 |
 | `veil*_cost_slack` | 最安の外しからこの目数以内を同じ安さとみなし、その中で最も人間らしい手を打つ | 0〜1 | 0.3 / **0.3** / 0.3 |
 | `veil*_trap_mode` | 罠（相手の期待損失 E を増やす手）の上乗せ層（A/B 測定用）。値段は損失 − 0.5 × E の上積み、安全条件は割り引かない | ON/OFF | OFF / **OFF** / OFF |
 | `veil*_trap_min_delta_e` | 罠とみなす E の上積み（目） | 0.3〜1.5 | 0.5 / **0.5** / 0.7 |
+| `veil*_blunder_mode` | 失着の層（spec §13）: 9段でも迷う局面（失着の手の 9段 hp >= max(15%, blunder_hp_ratio × 最善手の hp)）で、支払い上限（max_loss）を超える損失の手をまれに打つ。LOG は条件を満たす手を探して `Decision:` に書くだけ（影）、ON は資格のある手番の半分（`VEIL_BLUNDER_PROB`）で打つ。関門: ヨセでない・blunder_max_loss > max_loss・root 勝率 >= 95%・lead >= reserve + 5 + max_loss。資格: 深い読み（1500 visits）で max_loss < vloss <= blunder_max_loss・着手後リード（深い読みと root リード − vloss の両方）>= reserve + 5・着手後勝率 >= 95% | OFF/LOG/ON | OFF / **OFF** / OFF |
+| `veil*_blunder_max_loss` | 失着の上限（深い読みの検証済み損失・目）。max_loss 以下なら失着は出ない（関門で止まる） | 9路 4〜8・13路 8〜15・19路 8〜20 | 6 / **10** / 15 |
+| `veil*_blunder_per_game` | ON のとき1局で打つ失着の上限（LOG では数えない） | 1〜3 | 1 / **1** / 1 |
+| `veil*_blunder_hp_ratio` | 失着の手の 9段 hp ÷ 最善手の hp の下限（9段自身が迷う局面の条件） | 50%〜100% | 70% / **70%** / 70% |
 
 クラス属性 `VEIL_BOARD`（スライダーにしない）: 9路 endgame_move 30・unsettled_max 8・trusted_visits 100・probe_hp 3・probe_cheap 2 ／ 13路 endgame_move 85・unsettled_max 16・trusted_visits 50・probe_hp 3・probe_cheap 2 ／ 19路 endgame_move 150・unsettled_max 36・trusted_visits 50・probe_hp 3・probe_cheap 1。
-モジュール定数: `VEIL_BEHIND_LIMIT=-1.0`, `VEIL_CLOSE_WR=0.9`, `VEIL_DECIDED_MARGIN=3.0`, `VEIL_DECIDED_WR=0.97`, `VEIL_HP_TIE=0.02`, `VEIL_RAW_MARGIN=0.3`, `VEIL_STRICT_FREE=0.1`, `VEIL_TARGET_FLOOR=0.15`, `VEIL_TERMINAL_CLOSE_LEAD=3.0`, `VEIL_TERMINAL_CLOSE_MAX=0.05`, `VEIL_TERMINAL_MAX=0.1`, `VEIL_TERMINAL_MIN_VISITS=10`, `VEIL_TRAP_CREDIT=0.5`, `VEIL_TRAP_MIN_HP=0.02`, `VEIL_TRAP_PROBES=3`, `VEIL_TRAP_RAW_EXTRA=1.0`, `VEIL_TRAP_SWAP_MARGIN=0.3`, `VEIL_URGENCY_WIDTH=0.1`, `VEIL_YOSE_FREE_WR_DROP=0.01`。
+モジュール定数: `VEIL_BEHIND_LIMIT=-1.0`, `VEIL_BLUNDER_MARGIN=5.0`, `VEIL_BLUNDER_MIN_HP=0.15`, `VEIL_BLUNDER_MIN_WR=0.95`, `VEIL_BLUNDER_PROB=0.5`, `VEIL_BLUNDER_PROBES=2`, `VEIL_BLUNDER_RAW_MARGIN=2.0`, `VEIL_BLUNDER_VISITS=1500`, `VEIL_CLOSE_WR=0.9`, `VEIL_DECIDED_MARGIN=3.0`, `VEIL_DECIDED_WR=0.97`, `VEIL_HP_TIE=0.02`, `VEIL_RAW_MARGIN=0.3`, `VEIL_STRICT_FREE=0.1`, `VEIL_TARGET_FLOOR=0.15`, `VEIL_TERMINAL_CLOSE_LEAD=3.0`, `VEIL_TERMINAL_CLOSE_MAX=0.05`, `VEIL_TERMINAL_MAX=0.1`, `VEIL_TERMINAL_MIN_VISITS=10`, `VEIL_TRAP_CREDIT=0.5`, `VEIL_TRAP_MIN_HP=0.02`, `VEIL_TRAP_PROBES=3`, `VEIL_TRAP_RAW_EXTRA=1.0`, `VEIL_TRAP_SWAP_MARGIN=0.3`, `VEIL_URGENCY_WIDTH=0.1`, `VEIL_YOSE_FREE_WR_DROP=0.01`。
 
-**確認**: ログの `Rate:`（mine/n・opp/n_opp・p_match・u）/ `Endgame check:`（unsettled・max）/ `Budget:` / `Natural:` / `Decided:` / `Score …` / `Deviate:` /
-`Terminal…` / `Decision: {json}`（tier i/ii/iii/terminal/failsafe・kind best/free/paid/trap/decided/swap/finish/pass・
-why board / no_cands / pass / no_lead / no_pool / no_hp / dominant_closed / no_natural / no_shortlist / no_best_probe / none_qualified / invariant / exception / opp_pass / terminal / terminal_finish_rejected）。
+**確認**: ログの `Rate:`（mine/n・opp/n_opp・p_match・u）/ `Endgame check:`（unsettled・max）/ `Budget:` / `Blunder…` / `Natural:` / `Decided:` / `Score …` / `Deviate:` /
+`Terminal…` / `Decision: {json}`（tier i/ii/iii/terminal/blunder/failsafe・kind best/free/paid/trap/decided/swap/finish/pass/blunder・
+why board / no_cands / pass / no_lead / no_pool / no_hp / dominant_closed / no_natural / no_shortlist / no_best_probe / none_qualified / invariant / exception / opp_pass / terminal / terminal_finish_rejected。失着の層が LOG／ON の手番はフィールド `blunder`＝gate / no_hp / no_cand / no_probe / rejected / shadow / skipped / played / invariant と、候補を選べたら `blunder_gtp` `blunder_vloss` `blunder_hp` `blunder_best_hp` `blunder_wr` `blunder_lead_after`。S13 の即決をプローブで退けた手番は `decided_rejected` `decided_vloss` `decided_wr`）。
 CLI: `python -m katrain_debug --sgf <SGF> --move N --strategy veil9|veil13|veil19`。
-**校正**: 13路は自己対局ハーネスで測定し、spec の初期値を据え置いた（`docs/superpowers/specs/calibration-data/selfplay/veil13-campaign.md`・2026-09-24）。
-段階1（5アーム × 20局・相手は humanSL 1k/1d/3d のプール）と段階3（接戦ストレス・下記）を実施し、2026-09-24〜25 にユーザーの指示で段階1b（安全条件以外のつまみ 9アーム）・2（投了なし）・3b（接戦ストレスの追加）も実施した。**段階1b: 安全条件を変えずに一致率を下げたのは loose だけ**（loose＝max_loss 6・spend_rate 1.0・dominant_max_loss 3・yose_max_loss 2・dominant_hp OFF・natural_ratio 0.1・free_loss 0.4、安全条件は据え置き）＝42.4%（同じ run の既定 49.0%・差 −6.5pt [t −11.3, −1.8]・損失 0.37 目/手・外した手の hp 中央値 23.7%）。単独のつまみ（dominant_hp 0.9 / OFF・natural_ratio 0.1・free_loss 0.4・close_drift_cap 1.0）は下げない（dominant_hp OFF は逆に +5.4pt）。既定の設定の再実行は 53.1% → 49.0%（同じ設定・同じ seed の A/A で 4.1pt ずれる）。段階2: 投了なしでも既定は 47.4%（終盤 45.5%）で上がらない。段階3b: loose とユーザー設定（reserve 2・min_winrate 0.8・spend 0.75・max_loss 6・罠 ON）も接戦で 20-0（flip 0.05 / 0.20 局）＝(a) 可。**既定を loose にするかはユーザーの選択待ち**（campaign md の「境界線と推奨」）。
-既定の自分の一致率 局平均 **53.1%**（相手 26.3%・20/20 勝ち・flip 0.05/局・損失 0.24 目/手）＝目標 30% に届かない。
+**校正**: 13路は自己対局ハーネスで測定し（`docs/superpowers/specs/calibration-data/selfplay/veil13-campaign.md`）、**2026-09-25 のユーザーの決定で既定を段階1b の loose に変えた**（上の表の 13路の値。安全条件 reserve 5・min_winrate 0.85 は据え置き。spec §6.1 の表の 13路の列は設計時の初期値＝以下「spec の初期値」。9/19路は変えていない）。
+段階1（5アーム × 20局・相手は humanSL 1k/1d/3d のプール）と段階3（接戦ストレス・下記）を実施し、2026-09-24〜25 にユーザーの指示で段階1b（安全条件以外のつまみ 9アーム）・2（投了なし）・3b（接戦ストレスの追加）も実施した。**段階1b: 安全条件を変えずに一致率を下げたのは loose だけ**（loose＝max_loss 6・spend_rate 1.0・dominant_max_loss 3・yose_max_loss 2・dominant_hp OFF・natural_ratio 0.1・free_loss 0.4、安全条件は据え置き）＝42.4%（同じ run の spec の初期値 49.0%・差 −6.5pt [t −11.3, −1.8]・損失 0.37 目/手・外した手の hp 中央値 23.7%）。単独のつまみ（dominant_hp 0.9 / OFF・natural_ratio 0.1・free_loss 0.4・close_drift_cap 1.0）は下げない（dominant_hp OFF は逆に +5.4pt）。spec の初期値の再実行は 53.1% → 49.0%（同じ設定・同じ seed の A/A で 4.1pt ずれる）。段階2: 投了なしでも spec の初期値は 47.4%（終盤 45.5%）で上がらない。段階3b: loose とユーザー設定（reserve 2・min_winrate 0.8・spend 0.75・max_loss 6・罠 ON）も接戦で 20-0（flip 0.05 / 0.20 局）＝(a) 可。失着の層の計測（下）で loose と spec の初期値を測り直した: 自分の一致率は loose 42.4% / 45.8% / 47.4%（段階1b・影・ON の OFF 側＝3 run 平均 **45.2%**）、spec の初期値 53.1% / 49.0% / 52.4%（段階1・1b・影＝平均 **51.5%**）、同じ run の中の差は −6.5pt / −6.7pt＝水準は「loose で 45% 前後」。
+段階1の spec の初期値の自分の一致率 局平均 **53.1%**（相手 26.3%・20/20 勝ち・flip 0.05/局・損失 0.24 目/手）＝目標 30% に届かない。
 比較: 攻めプリセット（測定専用）42.2%・罠 ON 50.8%・難解＋13路 49.7%・HumanStyle 9段 53.2%。
 **一致率の下限は予算ではなく構造**: 最善手を打つしかなかった手番が 52.7%（no_pool 26.5%・no_natural 16.8%・
 none_qualified 8.9%・dominant_closed 0.5%・terminal 0.1%。割合は個別に四捨五入）で、レポートの一致はちょうどこの手番（最終リードの中央値 +63 目＝予算は余っている）。
 接戦の安全（spec §10.4 (a)）は段階3（2026-09-24・AI 不利 4 目・相手 HumanStyle 9段〈`human_kyu_rank=-8`・`modern_style=true`〉・難解＋13路との 20 対・信頼度 0.95）で**可**:
 default 20-0（難解＋ 17-2-1）・flip_moves 0.20/局（難解＋ 2.35/局・対の差 −2.15 の 95% 上限 −1.39 <= 0.1）・≥6目の失着 0（難解＋ 1.30/局）・lead < reserve での同値でない外し 0。
-既定の設定だけの 20 対のハーネス測定で、攻めプリセットは接戦で測っていない。接戦では lead < reserve の手番で損をする外しをしないので、自分の一致率は局平均 70.5% に上がる。
+段階3 は spec の初期値・段階3b は loose とユーザー設定の 20 対のハーネス測定で、攻めプリセットは接戦で測っていない。接戦では lead < reserve の手番で損をする外しをしないので、自分の一致率は局平均 70.5%（spec の初期値。loose は 65.4%）に上がる。
+**失着の層（spec §13・既定 OFF）の計測**（2026-09-25・13路・blunder_max_loss 10・per_game 1・hp_ratio 0.7・`VEIL_BLUNDER_PROB` 0.5）: 影で条件を満たす手番は loose 0.45 回/局（spec の初期値 1.45 回/局＝支払い上限が低いほど多い）。ON（loose・通常の相手 20局）で 0.20 回/局（4/20 局）・深い読みの損失 6.8〜9.8 目・4局とも勝ちで、勝ち・flip・一致率は OFF と差が無い。接戦ストレス（段階3 の条件）では1回だけ（ほかの手番は関門で止まるか〈849〉、候補なし〈50〉・資格なし〈6〉で打たなかった）・19-0-1。**ユーザーの決定（2026-09-25）: 条件は下限（hp が最善手の 0.7 倍以上）だけのまま・既定 OFF**。
+**S13 の修正（2026-09-25）**: 失着 ON の接戦ストレスの持碁の1局の直接の原因は、83 手目の決着局面の即決の読み落とし（生 0.36 目 → 実損 16.3 目・リード +15.8 → −0.5 目）。57 手目の失着（レポート 4.8 目・+23.6 → +18.7 目）が無ければ 83 手目の時点のリードは約 +20.6 目で、同じ読み落としでも約 +4 目残って勝っていた計算＝失着も重なった。S13 を、打つ前に best と候補の2手をクリーン 500v＋hp でプローブし `veil_decided_verified_ok`（vloss <= F_eff + 0.3・lead − vloss >= reserve・着手後勝率 >= min_winrate）を満たさなければ打たずに通常の流れへ進む形に直した。直した後の接戦ストレスは流していない（事件の形は `tests/test_ai_veil.py` の回帰テストで固定）。
 9/19路は spec の初期値のままの未校正。**実戦校正は未実施**。
