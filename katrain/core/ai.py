@@ -5565,9 +5565,9 @@ class Veil9Strategy(Enigma9Strategy):
 class Veil13Strategy(Veil9Strategy):
     """13路専用「韜晦」戦略（Veil9Strategy の盤サイズ・設定キー・既定値差し替え版）。
 
-    既定値は SETTING_DEFAULTS。13路は自己対局ハーネスの段階1（2026-09-24）で一致率を測り、spec の初期値を
-    据え置いた（接戦の安全＝段階3は 2026-09-24 に1回測って合格。値と校正状況は .claude/rules/ai-parameters.md）。
-    sticky 状態は `game._veil_state["veil13"]`。
+    既定値は SETTING_DEFAULTS。13路は自己対局ハーネスの段階1b（2026-09-24）で選んだ loose（安全条件以外をゆるめた
+    設定・一致率 42.4%＝同じ run の spec の初期値 49.0%）。接戦の安全は段階3b で確かめた（20-0。値と校正状況は
+    .claude/rules/ai-parameters.md）。sticky 状態は `game._veil_state["veil13"]`。
     """
 
     BOARD_LEN = 13
@@ -5577,16 +5577,16 @@ class Veil13Strategy(Veil9Strategy):
         "target_rate": 0.30,
         "reserve": 5.0,
         "min_winrate": 0.85,
-        "free_loss": 0.3,
+        "free_loss": 0.4,
         "free_wr_drop": 0.03,
         "close_drift_cap": 0.0,
-        "spend_rate": 0.5,
-        "max_loss": 4.5,
-        "yose_max_loss": 1.5,
-        "dominant_hp": 0.8,
-        "dominant_max_loss": 2.0,
+        "spend_rate": 1.0,
+        "max_loss": 6.0,
+        "yose_max_loss": 2.0,
+        "dominant_hp": 1.01,
+        "dominant_max_loss": 3.0,
         "min_human_policy": 0.05,
-        "natural_ratio": 0.2,
+        "natural_ratio": 0.1,
         "cost_slack": 0.3,
         "trap_mode": False,
         "trap_min_delta_e": 0.5,

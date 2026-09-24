@@ -266,7 +266,7 @@ class TestShortlist:
 
 
 def ctx(**kw):
-    """13路の既定に近い判定コンテキスト（lead 12・u 1・A_t' 3.5・ヨセ前・接戦でない）。"""
+    """13路の spec の既定に近い判定コンテキスト（lead 12・u 1・A_t' 3.5・ヨセ前・接戦でない）。"""
     base = dict(
         lead=12.0,
         reserve=5.0,
@@ -728,7 +728,20 @@ SPEC_DEFAULTS = {
     },
 }
 # 校正（Task 17）で選んだ既定値の差分。apply_veil_defaults.py が書き換える（空なら spec のまま）
-CALIBRATED_DEFAULTS = {9: {}, 13: {}, 19: {}}
+# 13路は段階1b の loose（ユーザーの決定 2026-09-25）。安全条件（reserve・min_winrate）は入れない
+CALIBRATED_DEFAULTS = {
+    9: {},
+    13: {
+        "free_loss": 0.4,
+        "spend_rate": 1.0,
+        "max_loss": 6.0,
+        "yose_max_loss": 2.0,
+        "dominant_hp": 1.01,
+        "dominant_max_loss": 3.0,
+        "natural_ratio": 0.1,
+    },
+    19: {},
+}
 # コードとパッケージ config の既定値＝spec ＋ 校正の差分
 EXPECTED_DEFAULTS = {size: {**SPEC_DEFAULTS[size], **CALIBRATED_DEFAULTS[size]} for size in SPEC_DEFAULTS}
 # 勝ちの安全条件（要件1）。変えてよいのはユーザーが要件1を再決定したときだけ（apply_veil_defaults.py --safety-redecided）
@@ -1953,6 +1966,7 @@ class TestRegistration:
         with open(Path(katrain.__file__).parent / "config.json", encoding="utf-8") as f:
             package_ai_conf = json.load(f)["ai"][ai_key]
         assert set(package_ai_conf) == {f"{prefix}_{suffix}" for suffix in cls.SETTING_DEFAULTS}
+        assert package_ai_conf == {f"{prefix}_{suffix}": v for suffix, v in EXPECTED_DEFAULTS[size].items()}
         for order, (suffix, default) in enumerate(cls.SETTING_DEFAULTS.items()):
             key = f"{prefix}_{suffix}"
             assert package_ai_conf[key] == default, key
