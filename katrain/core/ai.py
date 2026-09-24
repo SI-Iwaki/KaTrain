@@ -4437,6 +4437,13 @@ VEIL_TRAP_PROBES = 3             # 罠枠のプローブ数
 VEIL_TRAP_RAW_EXTRA = 1.0        # 罠用プールの生の loss の上乗せ（目）
 VEIL_TRAP_SWAP_MARGIN = 0.3      # 素の外し P を罠 Q に替えるのに要る値段の差（目）
 VEIL_HP_TIE = 0.02               # hp の同点幅（この差以内なら余剰がある手番は着手後勝率を優先）
+VEIL_BLUNDER_MIN_HP = 0.15       # 失着の手に要る humanPolicy の絶対床（spec §13）
+VEIL_BLUNDER_MIN_WR = 0.95       # 失着の前の root 勝率と、打った後の検証済み勝率の床（min_winrate より厳しい）
+VEIL_BLUNDER_MARGIN = 5.0        # 失着の後の検証済みリードに要る reserve の上積み（目）
+VEIL_BLUNDER_VISITS = 1500       # 失着の検証プローブ（クリーン解析）の visits
+VEIL_BLUNDER_PROBES = 2          # 深く検証する失着候補の数（hp の高い順）
+VEIL_BLUNDER_RAW_MARGIN = 2.0    # 失着候補の生の loss の上の足切りに持たせる余裕（目）
+VEIL_BLUNDER_PROB = 0.5          # ON で資格のある手番に実際に打つ確率（影の計測の後に見直す）
 _VEIL_EPS = 1e-9                 # 上限比較の浮動小数の許容誤差
 
 
@@ -4734,13 +4741,63 @@ def veil_terminal_swap(candidates, best_gtp, hp_of, floor, lead, dominant, urgen
     return min(pool, key=lambda c: (-c["hp"], c["loss"], c["gtp"]))
 
 
+def veil_blunder_candidates(candidates, best_gtp, best_hp, hp_of, ratio, cap, max_loss,
+                            min_hp=VEIL_BLUNDER_MIN_HP, raw_margin=VEIL_BLUNDER_RAW_MARGIN,
+                            limit=VEIL_BLUNDER_PROBES):
+    """失着の候補（クエリ 0 本）: 深く検証する手を hp の高い順に最大 limit 手。
+
+    spec §13.3 手順4。hp が最善手の ratio 倍以上＝9段 humanSL 自身が迷う局面なので『難しい局面』の条件を兼ねる。
+    candidates は `_veil_candidates` の {"gtp", "loss", "visits", "wr"}、hp_of は gtp → humanPolicy。
+    best_gtp・pass 以外で、hp >= max(min_hp, ratio × best_hp) かつ cap < 生の loss <= max_loss + raw_margin の手を、
+    hp の降順（同点は gtp の昇順）に並べて先頭 limit 手。返り値は候補 dict のコピーに "hp" を足したもの（元は変えない）。
+    """
+    floor = max(min_hp, ratio * best_hp)
+    pool = []
+    for c in candidates:
+        if c["gtp"] in (best_gtp, "pass"):
+            continue
+        if not cap < c["loss"] <= max_loss + raw_margin + _VEIL_EPS:
+            continue
+        hp = hp_of(c["gtp"])
+        if hp < floor:
+            continue
+        pool.append({**c, "hp": hp})
+    pool.sort(key=lambda c: (-c["hp"], c["gtp"]))
+    return pool[:limit]
+
+
+def veil_blunder_ok(row, cap, max_loss, reserve, margin=VEIL_BLUNDER_MARGIN, min_wr=VEIL_BLUNDER_MIN_WR):
+    """失着の資格（spec §13.3 手順6）。row は深い検証の {"vloss", "lead_after", "wr_after", ...}。
+
+    cap < vloss <= max_loss（通常の支払い上限を超え、失着の上限以内）かつ lead_after >= reserve + margin かつ
+    wr_after >= min_wr。どれかの値が None なら False。
+    """
+    vloss, lead_after, wr_after = row.get("vloss"), row.get("lead_after"), row.get("wr_after")
+    if vloss is None or lead_after is None or wr_after is None:
+        return False
+    return (
+        cap < vloss <= max_loss + _VEIL_EPS
+        and lead_after >= reserve + margin - _VEIL_EPS
+        and wr_after >= min_wr - _VEIL_EPS
+    )
+
+
+def veil_blunder_pick(rows):
+    """資格のある失着から1手（spec §13.3 手順6）: hp 最大、同点は vloss の小さい方、さらに同点は gtp の昇順。空なら None。"""
+    if not rows:
+        return None
+    return min(rows, key=lambda r: (-r["hp"], r["vloss"], r["gtp"]))
+
+
 def veil_invariant_ok(chosen, best, cand_gtps, kind, bounds):
     """選んだ手の最終確認（S19）。違反なら False（呼び出し側は ERROR ログ＋最善手）。
 
     共通: chosen が通常解析の候補 cand_gtps に含まれ、best でも pass でもないこと。種類ごとの上限（bounds のキー）:
     free / decided: cost <= f_eff。paid: cost <= allowance かつ lead − cost >= reserve。
     trap: price <= allow かつ max(0, vloss) <= trap_cap かつ lead − max(0, vloss) >= reserve。
-    terminal: raw <= limit。それ以外の kind・キー欠落は False。
+    terminal: raw <= limit。
+    blunder: vloss <= max_loss かつ lead − max(0, vloss) >= reserve + margin かつ wr_after >= min_wr。
+    それ以外の kind・キー欠落・None は False。
     """
     if chosen is None or chosen == best or chosen == "pass" or chosen not in cand_gtps:
         return False
@@ -4761,6 +4818,13 @@ def veil_invariant_ok(chosen, best, cand_gtps, kind, bounds):
             )
         if kind == "terminal":
             return bounds["raw"] <= bounds["limit"] + _VEIL_EPS
+        if kind == "blunder":
+            paid = max(0.0, bounds["vloss"])
+            return (
+                bounds["vloss"] <= bounds["max_loss"] + _VEIL_EPS
+                and bounds["lead"] - paid >= bounds["reserve"] + bounds["margin"] - _VEIL_EPS
+                and bounds["wr_after"] >= bounds["min_wr"] - _VEIL_EPS
+            )
     except (KeyError, TypeError):
         return False
     return False

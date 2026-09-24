@@ -15,6 +15,13 @@ import katrain
 import katrain.core.ai as ai_module
 from katrain.core.ai import (
     STRATEGY_REGISTRY,
+    VEIL_BLUNDER_MARGIN,
+    VEIL_BLUNDER_MIN_HP,
+    VEIL_BLUNDER_MIN_WR,
+    VEIL_BLUNDER_PROB,
+    VEIL_BLUNDER_PROBES,
+    VEIL_BLUNDER_RAW_MARGIN,
+    VEIL_BLUNDER_VISITS,
     VEIL_TERMINAL_MIN_VISITS,
     AnalysisDiscardedException,
     Enigma9Strategy,
@@ -24,6 +31,9 @@ from katrain.core.ai import (
     VeilCtx,
     game_report,
     veil_allowance,
+    veil_blunder_candidates,
+    veil_blunder_ok,
+    veil_blunder_pick,
     veil_choose,
     veil_classify,
     veil_close_drift_ok,
@@ -481,6 +491,104 @@ class TestTerminalSwap:
         assert free["gtp"] == "C3"  # |lead| >= 3 では累計を見ない
 
 
+class TestBlunderConstants:
+    def test_constants_match_the_spec(self):
+        # spec §13.2 の「スライダーにしない定数」
+        assert VEIL_BLUNDER_MIN_HP == 0.15
+        assert VEIL_BLUNDER_MIN_WR == 0.95
+        assert VEIL_BLUNDER_MARGIN == 5.0
+        assert VEIL_BLUNDER_VISITS == 1500
+        assert VEIL_BLUNDER_PROBES == 2
+        assert VEIL_BLUNDER_RAW_MARGIN == 2.0
+        assert VEIL_BLUNDER_PROB == 0.5
+
+
+class TestBlunderCandidates:
+    @staticmethod
+    def gtps(cands, best_hp=0.4, ratio=0.7, hp=None, cap=4.5, max_loss=10.0, **kw):
+        hp_of = hp if hp is not None else hp_table({c["gtp"]: 0.3 for c in cands})
+        return [c["gtp"] for c in veil_blunder_candidates(cands, "E5", best_hp, hp_of, ratio, cap, max_loss, **kw)]
+
+    def test_keeps_only_the_band_above_cap_up_to_max_loss_plus_raw_margin(self):
+        cands = [cand("A1", 4.5), cand("B2", 4.6), cand("C3", 12.0), cand("D4", 12.1)]
+        # A1 はちょうど cap（失着ではない）・C3 はちょうど max_loss + raw_margin（残る）・D4 はその外
+        assert self.gtps(cands, limit=10) == ["B2", "C3"]
+
+    def test_hp_floor_is_ratio_times_best_hp(self):
+        cands = [cand("A1", 6.0), cand("B2", 6.0)]
+        hp = hp_table({"A1": 0.28, "B2": 0.279})
+        assert self.gtps(cands, best_hp=0.4, ratio=0.7, hp=hp) == ["A1"]
+
+    def test_absolute_hp_floor_applies_when_best_hp_is_low(self):
+        cands = [cand("A1", 6.0), cand("B2", 6.0)]
+        hp = hp_table({"A1": 0.15, "B2": 0.14})
+        # 0.7 × 0.1 = 0.07 より VEIL_BLUNDER_MIN_HP（0.15）が効く
+        assert self.gtps(cands, best_hp=0.1, ratio=0.7, hp=hp) == ["A1"]
+
+    def test_excludes_the_best_move_and_pass(self):
+        cands = [cand("E5", 6.0), cand("pass", 6.0), cand("A1", 6.0)]
+        hp = hp_table({"E5": 0.9, "pass": 0.9, "A1": 0.3})
+        assert self.gtps(cands, hp=hp) == ["A1"]
+
+    def test_sorted_by_hp_then_gtp_and_cut_at_the_limit(self):
+        cands = [cand("C3", 6.0), cand("A1", 7.0), cand("B2", 8.0), cand("D4", 9.0)]
+        hp = hp_table({"C3": 0.3, "A1": 0.3, "B2": 0.5, "D4": 0.4})
+        assert self.gtps(cands, hp=hp, limit=4) == ["B2", "D4", "A1", "C3"]
+        three = [c for c in cands if c["gtp"] != "D4"]
+        assert self.gtps(three, hp=hp) == ["B2", "A1"]  # 既定の limit = VEIL_BLUNDER_PROBES
+        assert self.gtps(three, hp=hp, limit=2) == ["B2", "A1"]
+
+    def test_returns_copies_with_hp_and_leaves_the_input_alone(self):
+        cands = [cand("A1", 6.0)]
+        out = veil_blunder_candidates(cands, "E5", 0.4, hp_table({"A1": 0.3}), 0.7, 4.5, 10.0)
+        assert out == [{**cand("A1", 6.0), "hp": 0.3}]
+        assert out[0] is not cands[0]
+        assert cands == [cand("A1", 6.0)]
+
+
+class TestBlunderOk:
+    CAP, MAX_LOSS, RESERVE = 4.5, 10.0, 5.0
+
+    def ok(self, **kw):
+        row = {"gtp": "A1", "hp": 0.3, "vloss": 6.0, "lead_after": 15.0, "wr_after": 0.97, **kw}
+        return veil_blunder_ok(row, self.CAP, self.MAX_LOSS, self.RESERVE)
+
+    def test_accepts_a_loss_above_cap_that_keeps_the_win(self):
+        assert self.ok()
+
+    def test_verified_loss_must_be_above_cap_and_within_max_loss(self):
+        assert not self.ok(vloss=4.5)  # ちょうど cap は失着ではない
+        assert self.ok(vloss=10.0)
+        assert not self.ok(vloss=10.1)
+
+    def test_lead_after_must_keep_reserve_plus_margin(self):
+        assert not self.ok(lead_after=9.9)
+        assert self.ok(lead_after=10.0)  # reserve 5 + VEIL_BLUNDER_MARGIN 5
+
+    def test_winrate_after_must_stay_above_the_blunder_floor(self):
+        assert not self.ok(wr_after=0.949)
+        assert self.ok(wr_after=0.95)
+
+    @pytest.mark.parametrize("key", ["vloss", "lead_after", "wr_after"])
+    def test_missing_metrics_fail(self, key):
+        assert not self.ok(**{key: None})
+
+
+class TestBlunderPick:
+    def test_most_human_move_wins(self):
+        rows = [{"gtp": "A1", "hp": 0.3, "vloss": 6.0}, {"gtp": "B2", "hp": 0.4, "vloss": 8.0}]
+        assert veil_blunder_pick(rows)["gtp"] == "B2"
+
+    def test_hp_ties_go_to_the_smaller_loss_then_gtp(self):
+        rows = [{"gtp": "A1", "hp": 0.4, "vloss": 8.0}, {"gtp": "B2", "hp": 0.4, "vloss": 6.0}]
+        assert veil_blunder_pick(rows)["gtp"] == "B2"
+        rows = [{"gtp": "B2", "hp": 0.4, "vloss": 6.0}, {"gtp": "A1", "hp": 0.4, "vloss": 6.0}]
+        assert veil_blunder_pick(rows)["gtp"] == "A1"
+
+    def test_empty_is_none(self):
+        assert veil_blunder_pick([]) is None
+
+
 class TestInvariant:
     GTPS = {"E5", "D4", "C3", "pass"}
 
@@ -504,6 +612,29 @@ class TestInvariant:
         assert not veil_invariant_ok("C3", "E5", self.GTPS, "trap", {**trap_b, "price": 0.1})
         assert veil_invariant_ok("D4", "E5", self.GTPS, "terminal", {"raw": 0.05, "limit": 0.05})
         assert not veil_invariant_ok("D4", "E5", self.GTPS, "terminal", {"raw": 0.06, "limit": 0.05})
+
+    def test_blunder_bounds(self):
+        b = {
+            "vloss": 8.0,
+            "max_loss": 10.0,
+            "lead": 18.0,
+            "reserve": 5.0,
+            "margin": 5.0,
+            "wr_after": 0.96,
+            "min_wr": 0.95,
+        }
+        assert veil_invariant_ok("C3", "E5", self.GTPS, "blunder", b)  # 18 − 8 = 10 = reserve + margin
+        assert not veil_invariant_ok("C3", "E5", self.GTPS, "blunder", {**b, "vloss": 10.1})
+        assert not veil_invariant_ok("C3", "E5", self.GTPS, "blunder", {**b, "lead": 17.9})
+        assert not veil_invariant_ok("C3", "E5", self.GTPS, "blunder", {**b, "wr_after": 0.949})
+        assert not veil_invariant_ok("C3", "E5", self.GTPS, "blunder", {**b, "wr_after": None})
+        # 負の vloss でリードを水増ししない（lead − max(0, vloss)）
+        assert not veil_invariant_ok("C3", "E5", self.GTPS, "blunder", {**b, "vloss": -3.0, "lead": 9.0})
+        for key in b:
+            missing = {k: v for k, v in b.items() if k != key}
+            assert not veil_invariant_ok("C3", "E5", self.GTPS, "blunder", missing), key
+        assert not veil_invariant_ok("Q16", "E5", self.GTPS, "blunder", b)  # 候補に無い
+        assert not veil_invariant_ok("E5", "E5", self.GTPS, "blunder", b)  # 最善手
 
     def test_unknown_kind_or_missing_bounds_fail(self):
         assert not veil_invariant_ok("D4", "E5", self.GTPS, "mystery", {"cost": 0.0, "f_eff": 1.0})
