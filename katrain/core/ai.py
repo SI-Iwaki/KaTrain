@@ -4899,7 +4899,7 @@ class Veil9Strategy(Enigma9Strategy):
         if not isinstance(state, dict):
             state = {}
             setattr(self.game, "_veil_state", state)
-        return state.setdefault(self.KEY_PREFIX, {"endgame": False, "close_drift": 0.0, "ledger": []})
+        return state.setdefault(self.KEY_PREFIX, {"endgame": False, "close_drift": 0.0, "ledger": [], "blunders": 0})
 
     def _veil_punish(self, probe, opponent):
         """子局面プローブから (E, find_hp) を返す（不完全なら (None, None)）。"""
@@ -5076,6 +5076,151 @@ class Veil9Strategy(Enigma9Strategy):
             "terminal", "best", fields,
         )
 
+    def _veil_blunder_draw(self):
+        """ON で資格のある手番に打つかの乱数（テストで差し替える）。"""
+        return random.random()
+
+    def _veil_blunder_probe(self, gtps, player):
+        """失着の深い検証（spec §13.3 手順5）: 各手を1手進めた子局面のクリーン解析を VEIL_BLUNDER_VISITS で1バッチ撃ち、
+        {gtp: analysis|None} を返す。_probe_children（クリーン 500v＋hp）を変えずに visits だけ深くするための別経路。
+
+        全部を発行してから待つ（`_probe_children` と同じ方式）。エラーの手は None。"""
+        engine = self.game.engines[self.cn.player]
+        results = {}
+
+        def start(gtp):
+            def on_result(a, partial_result):
+                if not partial_result:
+                    results[gtp] = a
+
+            def on_error(a):
+                self.game.katrain.log(f"[{type(self).__name__}] blunder probe {gtp} error: {a}", OUTPUT_ERROR)
+                results[gtp] = None
+
+            engine.request_analysis(
+                self.cn,
+                callback=on_result,
+                error_callback=on_error,
+                priority=PRIORITY_EXTRA_AI_QUERY,
+                next_move=Move.from_gtp(gtp, player=player),
+                include_policy=False,
+                visits=VEIL_BLUNDER_VISITS,
+                extra_settings={"ignorePreRootHistory": False},
+            )
+
+        for gtp in gtps:
+            start(gtp)
+        while not all(gtp in results for gtp in gtps):
+            self.raise_if_discarded()
+            time.sleep(0.01)
+            engine.check_alive(exception_if_dead=True)
+        return {gtp: results.get(gtp) for gtp in gtps}
+
+    def _veil_blunder(self, cands, player, best_gtp, lead, root_wr, in_yose, reserve, cap, info):
+        """S9b 失着の層（spec §13.3）。返り値 (outcome, stage_hp, fetched)。
+
+        outcome は打つときだけ (result, tier, kind, fields)、それ以外は None。stage_hp は親局面の humanSL（撃っていなければ
+        None）、fetched はこの手番で親局面の humanSL を撃ったか（S11 が同じ手番で2回撃たないため）。
+        mode 0 なら何もしない（クエリ 0 本・info に何も足さない）。"""
+        mode = int(self._setting("blunder_mode"))
+        if mode <= 0:
+            return None, None, False
+        state = self._veil_state()
+        # 関門（クエリ 0 本）: ヨセでなく、root 勝率と lead に失着の後も勝ちを残す余裕があり、ON なら今局の上限の内
+        if (
+            in_yose
+            or root_wr is None
+            or root_wr < VEIL_BLUNDER_MIN_WR
+            or lead < reserve + VEIL_BLUNDER_MARGIN + cap
+            or (mode >= 2 and state["blunders"] >= int(self._setting("blunder_per_game")))
+        ):
+            info["blunder"] = "gate"
+            return None, None, False
+        stage_hp = self._veil_parent_hp(info)
+        if not stage_hp or "humanPolicy" not in stage_hp:
+            info["blunder"] = "no_hp"
+            return None, stage_hp, True
+        hp_of = enigma9_hp_lookup(stage_hp["humanPolicy"], self.game.board_size)
+        best_hp = hp_of(best_gtp)
+        max_loss = float(self._setting("blunder_max_loss"))
+        rows0 = veil_blunder_candidates(
+            self._veil_candidates(cands, player), best_gtp, best_hp, hp_of,
+            float(self._setting("blunder_hp_ratio")), cap, max_loss,
+        )
+        if not rows0:
+            info["blunder"] = "no_cand"
+            return None, stage_hp, True
+        # 深い検証（best + 候補を1バッチ）
+        probes = self._veil_blunder_probe([best_gtp] + [c["gtp"] for c in rows0], player)
+        info["queries"] += 1 + len(rows0)
+        best_lead_after, _best_wr_after = enigma9_verified_metrics(probes.get(best_gtp), player)
+        if best_lead_after is None:
+            self._log("Blunder: best-move probe unavailable -> no blunder")
+            info["blunder"] = "no_probe"
+            return None, stage_hp, True
+        ok_rows = []
+        for c in rows0:
+            lead_after, wr_after = enigma9_verified_metrics(probes.get(c["gtp"]), player)
+            if lead_after is None:
+                self._log(f"Blunder {c['gtp']}: probe incomplete -> dropped")
+                continue
+            row = {**c, "vloss": best_lead_after - lead_after, "lead_after": lead_after, "wr_after": wr_after}
+            ok = veil_blunder_ok(row, cap, max_loss, reserve)
+            wr_txt = "n/a" if wr_after is None else f"{wr_after:.1%}"
+            self._log(
+                f"Blunder {c['gtp']}: raw={c['loss']:.2f} vloss={row['vloss']:.2f} hp={c['hp']:.3f} wr={wr_txt} "
+                f"lead_after={lead_after:.2f} ok={ok}"
+            )
+            if ok:
+                ok_rows.append(row)
+        pick = veil_blunder_pick(ok_rows)
+        if pick is None:
+            info["blunder"] = "rejected"
+            return None, stage_hp, True
+        gtp, vloss, hp = pick["gtp"], pick["vloss"], pick["hp"]
+        fields = {
+            "blunder_gtp": gtp, "blunder_vloss": vloss, "blunder_hp": hp, "blunder_best_hp": best_hp,
+            "blunder_wr": pick["wr_after"], "blunder_lead_after": pick["lead_after"],
+        }
+        summary = f"{gtp} (vloss {vloss:.2f}, hp {hp:.3f}, best hp {best_hp:.3f}) instead of {best_gtp}"
+        # 影（mode 1）: 記録だけして通常の流れへ。今局の上限は数えない（頻度を測るため）
+        if mode == 1:
+            info["blunder"] = "shadow"
+            info.update(fields)
+            self._log(f"Blunder shadow: {summary} -> not played (mode 1)")
+            return None, stage_hp, True
+        # ON（mode 2）: 資格のある手番のうち VEIL_BLUNDER_PROB の割合だけ打つ（打つ手番を読めなくする）
+        draw = self._veil_blunder_draw()
+        if draw >= VEIL_BLUNDER_PROB:
+            info["blunder"] = "skipped"
+            info.update(fields)
+            self._log(f"Blunder skipped: {summary} (draw {draw:.2f} >= {VEIL_BLUNDER_PROB:.2f})")
+            return None, stage_hp, True
+        bounds = {
+            "vloss": vloss, "max_loss": max_loss, "lead": lead, "reserve": reserve, "margin": VEIL_BLUNDER_MARGIN,
+            "wr_after": pick["wr_after"], "min_wr": VEIL_BLUNDER_MIN_WR,
+        }
+        if not veil_invariant_ok(gtp, best_gtp, {d["move"] for d in cands}, "blunder", bounds):
+            info["blunder"] = "invariant"
+            return (
+                (self._veil_violation(gtp, "blunder", bounds), "failsafe", "best", {"why": "invariant"}),
+                stage_hp, True,
+            )
+        state["blunders"] += 1
+        info["blunder"] = "played"
+        self._log(f"Blunder: played {summary}")
+        return (
+            (
+                (
+                    Move.from_gtp(gtp, player=player),
+                    f"{self.LABEL}: human-like blunder {gtp} (verified loss {vloss:.2f}, "
+                    f"hp {hp:.1%} vs best {best_hp:.1%}) instead of {best_gtp}.",
+                ),
+                "blunder", "blunder", {**fields, "raw": pick["loss"], "vloss": vloss, "hp": hp},
+            ),
+            stage_hp, True,
+        )
+
     def _generate_move(self) -> Tuple[Move, str]:
         # ---- S0 ラッパー: 解析の破棄は上へ、それ以外の例外は最善手（ほかの出口と同じく Decision 行と ledger も残す）----
         t0 = time.time()
@@ -5202,6 +5347,14 @@ class Veil9Strategy(Enigma9Strategy):
             f"cap={cap_phase:.2f} A_t={allowance:.2f} yose={in_yose}"
         )
 
+        # ---- S9b 失着（spec §13。blunder_mode 0 なら何もしない）----
+        blunder, stage_hp, hp_fetched = self._veil_blunder(
+            cands, player, best_gtp, lead, root_wr, in_yose, reserve, cap_phase, info
+        )
+        if blunder is not None:
+            result, tier, kind, fields = blunder
+            return finish(result, tier, kind, **fields)
+
         # ---- S10 生の候補プール（クエリ0本）----
         trap_on = bool(self._setting("trap_mode"))
         candidates = self._veil_candidates(cands, player)
@@ -5216,8 +5369,9 @@ class Veil9Strategy(Enigma9Strategy):
                 "i", "best", why="no_pool",
             )
 
-        # ---- S11 親局面の humanSL（1本）----
-        stage_hp = self._veil_parent_hp(info)
+        # ---- S11 親局面の humanSL（1本。S9b が撃っていればそれを使う＝同じ手番で2回撃たない）----
+        if not hp_fetched:
+            stage_hp = self._veil_parent_hp(info)
         if not stage_hp or "humanPolicy" not in stage_hp:
             self._log("HumanSL unavailable -> best move")
             return finish(

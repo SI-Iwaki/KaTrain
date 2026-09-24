@@ -55,7 +55,7 @@ from katrain.core.ai import (
     veil_trap_price,
     veil_urgency,
 )
-from katrain.core.constants import AI_VEIL_9, AI_VEIL_13, AI_VEIL_19, OUTPUT_ERROR
+from katrain.core.constants import AI_VEIL_9, AI_VEIL_13, AI_VEIL_19, OUTPUT_ERROR, PRIORITY_EXTRA_AI_QUERY
 from katrain.core.game_node import GameNode
 from katrain.core.sgf_parser import Move
 
@@ -1626,6 +1626,262 @@ class TestEveryExit(_Harness):
         assert (record["tier"], record["kind"], record.get("why"), record.get("best")) == expected
         assert (record["depth"], record["chosen"]) == (12, move.gtp())
         assert s.game._veil_state["veil9"]["ledger"] == [(12, best, move.gtp(), kind)]
+
+
+class TestBlunder(_Harness):
+    """S9b 失着の層（spec §13.3）。9路の既定（SPEC_DEFAULTS）: reserve 3・cap 3（max_loss）・blunder_max_loss 6
+    → 関門は lead >= 3 + 5 + 3 = 11・root 勝率 >= 0.95。
+
+    失着の候補は G3（生 3.8 目 > cap・hp 0.35 >= 0.7 × 最善手 E5 の 0.40）。C7（生 2.0）は cap 以下、A1（生 9.0）は
+    6 + 2 を超える。深い検証（DEEP）は E5 → lead 20・G3 → lead 15.5（vloss 4.5）。失着を打たない手番の通常の流れは
+    決着局面の即決（D4・通常の子局面プローブなし）。深い検証と乱数はテストの中で差し替える（_strategy は変えない）。
+    """
+
+    HP = {"E5": 0.40, "G3": 0.35, "D4": 0.10, "F6": 0.08}
+    DEEP = {"E5": (20.0, 0.99), "G3": (15.5, 0.97)}
+
+    def _blunder(self, mode, *, deep=None, draw=0.0, lead=20.0, wr=0.99, player="B", settings=None, **kw):
+        """blunder_mode = mode の手番。deep は {gtp: (lead_after, wr_after) | None}（打つ側視点）。
+        s.blunder_probes に深い検証の呼び出し、s.draws に引いた乱数を残す。"""
+        if player == "W":
+            kw.setdefault("cands", [{**c, "winrate": 1.0 - c["winrate"]} for c in self.CANDS])
+        settings = {"veil9_blunder_mode": mode, **(settings or {})}
+        s, logs = self._strategy(lead=lead, wr=wr, player=player, settings=settings, **kw)
+        s.blunder_probes, s.draws = [], []
+        table = self.DEEP if deep is None else deep
+
+        def probe(gtps, player):
+            s.blunder_probes.append(list(gtps))
+            return {g: None if table.get(g) is None else _child(*table[g], player=player)["clean"] for g in gtps}
+
+        def draw_once():
+            s.draws.append(draw)
+            return draw
+
+        s._veil_blunder_probe = probe
+        s._veil_blunder_draw = draw_once
+        return s, logs
+
+    @staticmethod
+    def _decision(logs):
+        decisions = [m for m in logs if "Decision: {" in m]
+        assert len(decisions) == 1
+        return json.loads(decisions[0].split("Decision: ", 1)[1])
+
+    def test_mode_0_changes_nothing(self):
+        s, logs = self._blunder(0)
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert (move.gtp(), info["kind"]) == ("D4", "decided")
+        assert not any(k.startswith("blunder") for k in info)
+        assert not any(k.startswith("blunder") for k in self._decision(logs))
+        assert s.blunder_probes == [] and s.draws == []
+        assert s.queries == ["parent hp"] and info["queries"] == 1
+        assert not any("Blunder" in m for m in logs)
+        state = s.game._veil_state["veil9"]
+        assert state == {"endgame": False, "close_drift": 0.0, "ledger": [(12, "E5", "D4", "decided")], "blunders": 0}
+
+    def test_mode_1_records_the_blunder_without_playing_it(self):
+        s, logs = self._blunder(1)
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert (move.gtp(), info["tier"], info["kind"]) == ("D4", "iii", "decided")  # 通常の流れの手
+        assert (info["blunder"], info["blunder_gtp"]) == ("shadow", "G3")
+        assert info["blunder_vloss"] == pytest.approx(4.5) and info["blunder_lead_after"] == pytest.approx(15.5)
+        assert info["blunder_hp"] == pytest.approx(0.35) and info["blunder_best_hp"] == pytest.approx(0.40)
+        assert info["blunder_wr"] == pytest.approx(0.97)
+        record = self._decision(logs)
+        assert (record["blunder"], record["blunder_gtp"], record["blunder_vloss"]) == ("shadow", "G3", 4.5)
+        assert s.blunder_probes == [["E5", "G3"]] and s.draws == []
+        assert s.queries == ["parent hp"] and info["queries"] == 3  # 親局面の humanSL は S11 と共有・深い検証 2 本
+        assert any("Blunder G3: raw=3.80 vloss=4.50 hp=0.350 wr=97.0% lead_after=15.50 ok=True" in m for m in logs)
+        assert any(m.startswith("[Veil9Strategy] Blunder shadow: G3") for m in logs)
+        assert s.game._veil_state["veil9"]["blunders"] == 0
+        # 影は今局の上限を数えない＝次の手番も記録する
+        s.generate_move()
+        assert s.last_decision_info["blunder"] == "shadow" and len(s.blunder_probes) == 2
+
+    def test_mode_2_plays_the_blunder_up_to_the_per_game_limit(self):
+        s, logs = self._blunder(2)
+        move, reason = s.generate_move()
+        info = s.last_decision_info
+        assert (move.gtp(), move.player) == ("G3", "B")
+        assert (info["tier"], info["kind"], info["blunder"], info["chosen"]) == ("blunder", "blunder", "played", "G3")
+        assert (info["raw"], info["vloss"], info["hp"]) == (pytest.approx(3.8), pytest.approx(4.5), pytest.approx(0.35))
+        assert info["blunder_gtp"] == "G3" and "why" not in info
+        assert reason.endswith("human-like blunder G3 (verified loss 4.50, hp 35.0% vs best 40.0%) instead of E5.")
+        assert s.queries == ["parent hp"] and s.blunder_probes == [["E5", "G3"]] and s.draws == [0.0]
+        expected = ("blunder", "blunder", "played", "G3")
+        assert tuple(self._decision(logs)[k] for k in ("tier", "kind", "blunder", "chosen")) == expected
+        assert any(m.startswith("[Veil9Strategy] Blunder: played G3 (vloss 4.50") for m in logs)
+        state = s.game._veil_state["veil9"]
+        assert state["blunders"] == 1 and state["ledger"] == [(12, "E5", "G3", "blunder")]
+        # 2手目（同じ game・同じ条件）: blunder_per_game 1 に達したので関門で止まる（深い検証も乱数も使わない）
+        move, _ = s.generate_move()
+        assert (move.gtp(), s.last_decision_info["blunder"]) == ("D4", "gate")
+        assert s.blunder_probes == [["E5", "G3"]] and s.draws == [0.0]
+        assert s.queries == ["parent hp", "parent hp"]  # 2手目は S11 の1本だけ
+        assert state["blunders"] == 1
+
+    def test_per_game_limit_is_a_setting(self):
+        s, _ = self._blunder(2, settings={"veil9_blunder_per_game": 2})
+        assert [s.generate_move()[0].gtp() for _ in range(3)] == ["G3", "G3", "D4"]
+        assert s.last_decision_info["blunder"] == "gate"
+        assert s.game._veil_state["veil9"]["blunders"] == 2
+
+    @pytest.mark.parametrize("draw", [VEIL_BLUNDER_PROB, 0.99])
+    def test_mode_2_skips_the_turn_when_the_draw_is_not_below_the_probability(self, draw):
+        s, _ = self._blunder(2, draw=draw)
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert (move.gtp(), info["kind"]) == ("D4", "decided")
+        assert (info["blunder"], info["blunder_gtp"]) == ("skipped", "G3")
+        assert info["blunder_vloss"] == pytest.approx(4.5)
+        assert s.draws == [draw] and s.game._veil_state["veil9"]["blunders"] == 0
+
+    @pytest.mark.parametrize(
+        "make_kw",
+        [
+            pytest.param(lambda: dict(lead=10.9), id="lead_below_reserve_margin_cap"),
+            pytest.param(lambda: dict(wr=0.94), id="root_winrate_below_floor"),
+            pytest.param(lambda: dict(wr=None), id="root_winrate_unavailable"),
+            pytest.param(
+                lambda: dict(_veil_state={"veil9": {"endgame": True, "close_drift": 0.0, "ledger": [], "blunders": 0}}),
+                id="yose",
+            ),
+        ],
+    )
+    def test_gate_stops_the_layer_without_queries(self, make_kw):
+        s, _ = self._blunder(2, **make_kw())
+        s.generate_move()
+        info = s.last_decision_info
+        assert info["blunder"] == "gate"
+        assert not any(k.startswith("blunder_") for k in info)
+        assert s.blunder_probes == [] and s.draws == []
+        assert s.queries == ["parent hp"]  # 通常の流れ（S11）の1本だけ
+
+    def test_gate_bounds_are_inclusive(self):
+        s, _ = self._blunder(1, lead=11.0, wr=0.95)
+        s.generate_move()
+        assert s.last_decision_info["blunder"] == "shadow"
+
+    def test_humansl_failure_is_not_queried_twice(self):
+        s, _ = self._blunder(2, hp_ok=False)
+        assert s.generate_move()[0].gtp() == "E5"
+        info = s.last_decision_info
+        assert (info["blunder"], info["tier"], info["why"]) == ("no_hp", "failsafe", "no_hp")
+        assert s.queries == ["parent hp"] and info["queries"] == 1  # S11 は撃ち直さず「HumanSL unavailable」へ
+        assert s.blunder_probes == []
+
+    def test_no_candidate_when_the_blunder_is_not_human_enough(self):
+        s, _ = self._blunder(2, hp={**self.HP, "G3": 0.20})  # 0.20 < 0.7 × 0.40 = 0.28
+        assert s.generate_move()[0].gtp() == "D4"
+        assert s.last_decision_info["blunder"] == "no_cand"
+        assert s.blunder_probes == [] and s.queries == ["parent hp"]
+
+    @pytest.mark.parametrize(
+        "deep",
+        [
+            pytest.param({"E5": (20.0, 0.99), "G3": (13.5, 0.97)}, id="vloss_above_blunder_max_loss"),
+            pytest.param({"E5": (20.0, 0.99), "G3": (17.5, 0.97)}, id="vloss_within_cap"),
+            pytest.param({"E5": (20.0, 0.99), "G3": (15.5, 0.94)}, id="winrate_after_below_floor"),
+            pytest.param({"E5": (12.0, 0.99), "G3": (7.9, 0.97)}, id="lead_after_below_reserve_plus_margin"),
+            pytest.param({"E5": (20.0, 0.99), "G3": None}, id="probe_incomplete"),
+        ],
+    )
+    def test_rejected_after_the_deep_probe(self, deep):
+        s, _ = self._blunder(2, deep=deep)
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert (move.gtp(), info["blunder"]) == ("D4", "rejected")
+        assert not any(k.startswith("blunder_") for k in info)
+        assert s.blunder_probes == [["E5", "G3"]] and s.draws == []
+        assert s.game._veil_state["veil9"]["blunders"] == 0
+
+    def test_missing_best_probe(self):
+        s, _ = self._blunder(2, deep={"E5": None, "G3": (15.5, 0.97)})
+        assert s.generate_move()[0].gtp() == "D4"
+        assert s.last_decision_info["blunder"] == "no_probe"
+        assert s.draws == [] and s.last_decision_info["queries"] == 3
+
+    def test_invariant_violation_plays_the_best_move(self, monkeypatch):
+        calls, original = [], ai_module.veil_invariant_ok
+
+        def only_blunder_fails(chosen, best, cand_gtps, kind, bounds):
+            calls.append((chosen, best, cand_gtps, kind, bounds))
+            return False if kind == "blunder" else original(chosen, best, cand_gtps, kind, bounds)
+
+        monkeypatch.setattr(ai_module, "veil_invariant_ok", only_blunder_fails)
+        s, logs = self._blunder(2)
+        records = []
+        s.game.katrain.log = lambda msg, level=None, *a, **k: records.append((str(msg), level))
+        assert s.generate_move()[0].gtp() == "E5"
+        bounds = {"vloss": 4.5, "max_loss": 6.0, "lead": 20.0, "reserve": 3.0, "wr_after": 0.97}
+        bounds.update(margin=VEIL_BLUNDER_MARGIN, min_wr=VEIL_BLUNDER_MIN_WR)
+        assert calls == [("G3", "E5", {c["move"] for c in self.CANDS}, "blunder", pytest.approx(bounds))]
+        assert any(lv == OUTPUT_ERROR and "Invariant violated: chosen=G3 kind=blunder" in m for m, lv in records)
+        info = s.last_decision_info
+        assert (info["tier"], info["kind"], info["why"]) == ("failsafe", "best", "invariant")
+        assert info["blunder"] == "invariant"
+        state = s.game._veil_state["veil9"]
+        assert state["blunders"] == 0 and state["ledger"] == [(12, "E5", "E5", "best")]
+        assert len([m for m, _lv in records if "Decision: {" in m]) == 1
+
+    def test_a_deep_probe_error_falls_back_to_the_best_move(self):
+        s, _ = self._blunder(2)
+        s._veil_blunder_probe = _boom
+        assert s.generate_move()[0].gtp() == "E5"
+        info = s.last_decision_info
+        assert (info["tier"], info["kind"], info["why"]) == ("failsafe", "best", "exception")
+        assert info["error"] == "RuntimeError('boom')"
+        assert s.game._veil_state["veil9"]["blunders"] == 0
+
+    def test_white_plays_the_same_blunder(self):
+        s, _ = self._blunder(2, player="W")
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert (move.gtp(), move.player) == ("G3", "W")
+        assert (info["player"], info["kind"], info["blunder"]) == ("W", "blunder", "played")
+        assert info["lead"] == pytest.approx(20.0) and info["root_wr"] == pytest.approx(0.99)
+        assert info["vloss"] == pytest.approx(4.5) and info["blunder_lead_after"] == pytest.approx(15.5)
+        assert info["blunder_wr"] == pytest.approx(0.97)
+
+    def test_deep_probe_batches_clean_child_queries_at_the_blunder_visits(self):
+        s, logs = self._strategy()
+        requests, pending = [], []
+
+        class Engine:
+            def request_analysis(self, node, callback=None, error_callback=None, **kwargs):
+                requests.append((node, kwargs))
+                pending.append((kwargs["next_move"].gtp(), callback, error_callback))
+
+            def check_alive(self, exception_if_dead=False):
+                assert len(requests) == 2  # 全部を発行してから待つ（1本ずつ待たない）
+                for gtp, callback, error_callback in pending:
+                    if gtp == "G3":
+                        error_callback("boom")
+                    else:
+                        callback({"rootInfo": {"scoreLead": 1.0}}, True)  # 途中経過は使わない
+                        callback({"rootInfo": {"scoreLead": 20.0, "winrate": 0.99}}, False)
+                pending.clear()
+                return True
+
+        engine = Engine()
+        s.game.engines = {"B": engine, "W": engine}
+        result = s._veil_blunder_probe(["E5", "G3"], "B")
+        assert result == {"E5": {"rootInfo": {"scoreLead": 20.0, "winrate": 0.99}}, "G3": None}
+        assert [(node, kw["next_move"].gtp(), kw["next_move"].player) for node, kw in requests] == [
+            (s.cn, "E5", "B"),
+            (s.cn, "G3", "B"),
+        ]
+        for _node, kw in requests:
+            assert {k: v for k, v in kw.items() if k != "next_move"} == {
+                "priority": PRIORITY_EXTRA_AI_QUERY,
+                "include_policy": False,
+                "visits": VEIL_BLUNDER_VISITS,
+                "extra_settings": {"ignorePreRootHistory": False},
+            }
+        assert any("G3" in m and "boom" in m for m in logs)
 
 
 class TestRegistration:
