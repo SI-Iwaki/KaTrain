@@ -549,9 +549,10 @@ class TestBlunderCandidates:
 class TestBlunderOk:
     CAP, MAX_LOSS, RESERVE = 4.5, 10.0, 5.0
 
-    def ok(self, **kw):
+    def ok(self, lead=30.0, **kw):
+        """lead は root リード（既定 30 はどの境界にも掛からない）。"""
         row = {"gtp": "A1", "hp": 0.3, "vloss": 6.0, "lead_after": 15.0, "wr_after": 0.97, **kw}
-        return veil_blunder_ok(row, self.CAP, self.MAX_LOSS, self.RESERVE)
+        return veil_blunder_ok(row, self.CAP, self.MAX_LOSS, self.RESERVE, lead)
 
     def test_accepts_a_loss_above_cap_that_keeps_the_win(self):
         assert self.ok()
@@ -565,11 +566,17 @@ class TestBlunderOk:
         assert not self.ok(lead_after=9.9)
         assert self.ok(lead_after=10.0)  # reserve 5 + VEIL_BLUNDER_MARGIN 5
 
+    def test_root_lead_must_also_keep_reserve_plus_margin(self):
+        # 不変条件（kind blunder）と同じ式: lead − vloss >= reserve + margin（vloss 6 → lead 16 がちょうど）。
+        # 深い読み（lead_after 15 >= 10）が通っても root リードで足りなければ資格なし
+        assert self.ok(lead=16.0)
+        assert not self.ok(lead=15.9)
+
     def test_winrate_after_must_stay_above_the_blunder_floor(self):
         assert not self.ok(wr_after=0.949)
         assert self.ok(wr_after=0.95)
 
-    @pytest.mark.parametrize("key", ["vloss", "lead_after", "wr_after"])
+    @pytest.mark.parametrize("key", ["vloss", "lead_after", "wr_after", "lead"])
     def test_missing_metrics_fail(self, key):
         assert not self.ok(**{key: None})
 
@@ -1701,6 +1708,13 @@ class TestBlunder(_Harness):
         s.generate_move()
         assert s.last_decision_info["blunder"] == "shadow" and len(s.blunder_probes) == 2
 
+    def test_mode_1_ignores_the_per_game_limit(self):
+        state = {"veil9": {"endgame": False, "close_drift": 0.0, "ledger": [], "blunders": 1}}  # 上限 1 に達している
+        s, _ = self._blunder(1, _veil_state=state)
+        assert s.generate_move()[0].gtp() == "D4"
+        assert (s.last_decision_info["blunder"], s.last_decision_info["blunder_gtp"]) == ("shadow", "G3")
+        assert s.blunder_probes == [["E5", "G3"]] and state["veil9"]["blunders"] == 1
+
     def test_mode_2_plays_the_blunder_up_to_the_per_game_limit(self):
         s, logs = self._blunder(2)
         move, reason = s.generate_move()
@@ -1763,7 +1777,10 @@ class TestBlunder(_Harness):
     def test_gate_bounds_are_inclusive(self):
         s, _ = self._blunder(1, lead=11.0, wr=0.95)
         s.generate_move()
-        assert s.last_decision_info["blunder"] == "shadow"
+        # 関門は通って深い検証まで進む。lead がちょうど reserve + margin + cap だと、cap を超える失着は root リード基準
+        # （lead − vloss >= reserve + margin）を満たせないので資格で落ちる
+        assert s.last_decision_info["blunder"] == "rejected"
+        assert s.blunder_probes == [["E5", "G3"]]
 
     def test_humansl_failure_is_not_queried_twice(self):
         s, _ = self._blunder(2, hp_ok=False)
@@ -1798,6 +1815,24 @@ class TestBlunder(_Harness):
         assert s.blunder_probes == [["E5", "G3"]] and s.draws == []
         assert s.game._veil_state["veil9"]["blunders"] == 0
 
+    def test_root_lead_below_the_deep_reading_is_rejected_not_an_invariant_error(self):
+        """探索のゆれで root リード 12 が best の深い読み（E5 20）より小さい手番。G3 は深い読みでは資格の形
+        （vloss 4.5・lead_after 15.5 >= 3 + 5）でも、root リードでは 12 − 4.5 = 7.5 < 3 + 5（不変条件と同じ式）なので
+        資格で落とす＝ERROR ログ＋最善手にならず、通常の流れの手（関門 12 >= 3 + 5 + 3 は通る）。"""
+        s, _ = self._blunder(2, lead=12.0)
+        records = []
+        s.game.katrain.log = lambda msg, level=None, *a, **k: records.append((str(msg), level))
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert info["blunder"] == "rejected"
+        assert (move.gtp(), info["tier"], info["kind"]) == ("D4", "iii", "decided")  # blunder でも failsafe でもない
+        assert not any(lv == OUTPUT_ERROR for _m, lv in records)
+        assert any(
+            "Blunder G3: raw=3.80 vloss=4.50 hp=0.350 wr=97.0% lead_after=15.50 ok=False" in m for m, _ in records
+        )
+        assert s.blunder_probes == [["E5", "G3"]] and s.draws == []
+        assert s.game._veil_state["veil9"]["blunders"] == 0
+
     def test_missing_best_probe(self):
         s, _ = self._blunder(2, deep={"E5": None, "G3": (15.5, 0.97)})
         assert s.generate_move()[0].gtp() == "D4"
@@ -1825,7 +1860,13 @@ class TestBlunder(_Harness):
         assert info["blunder"] == "invariant"
         state = s.game._veil_state["veil9"]
         assert state["blunders"] == 0 and state["ledger"] == [(12, "E5", "E5", "best")]
-        assert len([m for m, _lv in records if "Decision: {" in m]) == 1
+        decisions = [m for m, _lv in records if "Decision: {" in m]
+        assert len(decisions) == 1
+        # 落ちた失着の候補の値も Decision 行に残る（影・skipped・played と同じ）
+        record = json.loads(decisions[0].split("Decision: ", 1)[1])
+        assert (record["blunder"], record["blunder_gtp"], record["blunder_vloss"]) == ("invariant", "G3", 4.5)
+        assert (record["blunder_hp"], record["blunder_best_hp"]) == (pytest.approx(0.35), pytest.approx(0.40))
+        assert (record["blunder_wr"], record["blunder_lead_after"]) == (pytest.approx(0.97), pytest.approx(15.5))
 
     def test_a_deep_probe_error_falls_back_to_the_best_move(self):
         s, _ = self._blunder(2)

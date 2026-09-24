@@ -4766,18 +4766,22 @@ def veil_blunder_candidates(candidates, best_gtp, best_hp, hp_of, ratio, cap, ma
     return pool[:limit]
 
 
-def veil_blunder_ok(row, cap, max_loss, reserve, margin=VEIL_BLUNDER_MARGIN, min_wr=VEIL_BLUNDER_MIN_WR):
-    """失着の資格（spec §13.3 手順6）。row は深い検証の {"vloss", "lead_after", "wr_after", ...}。
+def veil_blunder_ok(row, cap, max_loss, reserve, lead, margin=VEIL_BLUNDER_MARGIN, min_wr=VEIL_BLUNDER_MIN_WR):
+    """失着の資格（spec §13.3 手順6）。row は深い検証の {"vloss", "lead_after", "wr_after", ...}、lead は root リード
+    （通常の解析・打つ側視点）。
 
     cap < vloss <= max_loss（通常の支払い上限を超え、失着の上限以内）かつ lead_after >= reserve + margin かつ
-    wr_after >= min_wr。どれかの値が None なら False。
+    lead − max(0, vloss) >= reserve + margin（root リード基準・不変条件 kind blunder と同じ式）かつ wr_after >= min_wr。
+    深い読みと root リードの両方で reserve + margin が残る手だけ（root リードが深い読みより小さい探索のゆれで、
+    資格を通った手が不変条件で落ちないように）。lead かどれかの値が None なら False。
     """
     vloss, lead_after, wr_after = row.get("vloss"), row.get("lead_after"), row.get("wr_after")
-    if vloss is None or lead_after is None or wr_after is None:
+    if lead is None or vloss is None or lead_after is None or wr_after is None:
         return False
     return (
         cap < vloss <= max_loss + _VEIL_EPS
         and lead_after >= reserve + margin - _VEIL_EPS
+        and lead - max(0.0, vloss) >= reserve + margin - _VEIL_EPS
         and wr_after >= min_wr - _VEIL_EPS
     )
 
@@ -5165,7 +5169,7 @@ class Veil9Strategy(Enigma9Strategy):
                 self._log(f"Blunder {c['gtp']}: probe incomplete -> dropped")
                 continue
             row = {**c, "vloss": best_lead_after - lead_after, "lead_after": lead_after, "wr_after": wr_after}
-            ok = veil_blunder_ok(row, cap, max_loss, reserve)
+            ok = veil_blunder_ok(row, cap, max_loss, reserve, lead)
             wr_txt = "n/a" if wr_after is None else f"{wr_after:.1%}"
             self._log(
                 f"Blunder {c['gtp']}: raw={c['loss']:.2f} vloss={row['vloss']:.2f} hp={c['hp']:.3f} wr={wr_txt} "
@@ -5182,18 +5186,17 @@ class Veil9Strategy(Enigma9Strategy):
             "blunder_gtp": gtp, "blunder_vloss": vloss, "blunder_hp": hp, "blunder_best_hp": best_hp,
             "blunder_wr": pick["wr_after"], "blunder_lead_after": pick["lead_after"],
         }
+        info.update(fields)
         summary = f"{gtp} (vloss {vloss:.2f}, hp {hp:.3f}, best hp {best_hp:.3f}) instead of {best_gtp}"
         # 影（mode 1）: 記録だけして通常の流れへ。今局の上限は数えない（頻度を測るため）
         if mode == 1:
             info["blunder"] = "shadow"
-            info.update(fields)
             self._log(f"Blunder shadow: {summary} -> not played (mode 1)")
             return None, stage_hp, True
         # ON（mode 2）: 資格のある手番のうち VEIL_BLUNDER_PROB の割合だけ打つ（打つ手番を読めなくする）
         draw = self._veil_blunder_draw()
         if draw >= VEIL_BLUNDER_PROB:
             info["blunder"] = "skipped"
-            info.update(fields)
             self._log(f"Blunder skipped: {summary} (draw {draw:.2f} >= {VEIL_BLUNDER_PROB:.2f})")
             return None, stage_hp, True
         bounds = {

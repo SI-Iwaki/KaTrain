@@ -477,7 +477,10 @@ A/B で見るもの: 自分と相手の一致率・勝率・mean_ptloss・払っ
    0.7 × 0.8 = 0.56 以上の手は hp の合計から存在しえない）。
 5. **深い検証**: best と候補を `VEIL_BLUNDER_VISITS` のクリーン解析で1バッチ（1 + k 本）。vloss = best の lead_after − 候補の lead_after。
 6. **資格**（純関数 `veil_blunder_ok`）: cap < vloss <= `blunder_max_loss`・lead_after >= reserve + `VEIL_BLUNDER_MARGIN`・
-   wr_after >= `VEIL_BLUNDER_MIN_WR`。資格のある手のうち hp 最大（`veil_blunder_pick`）。無ければ `blunder = "rejected"`。
+   lead − vloss >= reserve + `VEIL_BLUNDER_MARGIN`（root リード基準・不変条件と同じ式）・
+   wr_after >= `VEIL_BLUNDER_MIN_WR`。lead_after（深い読み）と root リードの両方で reserve + margin が残る手だけ
+   （root リードが深い読みより小さい探索のゆれで、資格を通った手が不変条件の ERROR＋最善手にならないように）。
+   資格のある手のうち hp 最大（`veil_blunder_pick`）。無ければ `blunder = "rejected"`。
 7. **影（mode 1）**: `blunder = "shadow"` と候補の値（`blunder_gtp` `blunder_vloss` `blunder_hp` `blunder_best_hp`
    `blunder_wr` `blunder_lead_after`）を記録して通常の流れへ（打たない）。今局の上限は数えない（頻度を測るため）。
 8. **ON（mode 2）**: 乱数 >= `VEIL_BLUNDER_PROB` なら `blunder = "skipped"` を記録して通常の流れへ。打つなら不変条件
