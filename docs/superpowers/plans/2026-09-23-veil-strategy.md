@@ -99,7 +99,7 @@ def patch(path, edits):
 - Consumes: 先行計画の成果 `katrain_debug/selfplay.py` / `katrain_debug/selfplay_stats.py`（`python -m katrain_debug.selfplay run|calibrate|summarize|report-sgf`）
 - Produces: `crlf_patch.patch(path, edits)`（以降のパッチスクリプトが `from crlf_patch import patch` で使う）
 
-- [ ] **Step 1: 前提（ハーネス計画が完了している）を確かめる**
+- [x] **Step 1: 前提（ハーネス計画が完了している）を確かめる**
 
 Run:
 ```bash
@@ -109,7 +109,8 @@ python -m katrain_debug.selfplay --help
 ```
 Expected: `True` と、`run` / `calibrate` / `summarize` / `report-sgf` が並ぶヘルプ。`False` かヘルプが出なければ**ここで止める**（ハーネス計画を先に実行する）。
 
-- [ ] **Step 2: 作業ブランチを切る**（ハーネスの成果が入っているブランチから。master にマージ済みなら master から）
+- [x] **Step 2: 作業ブランチを切る**（ハーネスの成果が入っているブランチから。master にマージ済みなら master から）
+  （ブランチは `git worktree add -b feature/veil-strategy` で作成済み＝確認だけ）
 
 ```bash
 git status --short
@@ -118,16 +119,16 @@ SP="$(cygpath -m '<スクラッチパッドの Windows パス>')"; git rev-parse
 ```
 （最後の行＝計画のコミット前の HEAD＝この計画の差分の基準。Task 19 Step 2 はこれを Step 5 の計画コミットの親としてコミット履歴から取り直すので、セッションが変わっても失われない。`veil_base.txt` は同じセッションでの突き合わせ用）
 
-- [ ] **Step 3: `<scratchpad>/crlf_patch.py` を Write**（内容は File Structure 節のとおり）
+- [x] **Step 3: `<scratchpad>/crlf_patch.py` を Write**（内容は File Structure 節のとおり）
 
-- [ ] **Step 4: 触る前の既存テストが緑であることを確かめる**
+- [x] **Step 4: 触る前の既存テストが緑であることを確かめる**
 
 Run: `pytest tests/test_ai_mimic13.py tests/test_ai_enigma_plus.py tests/test_ai_enigma9.py tests/test_ai_help_text.py tests/test_ai.py::TestAI::test_order -q`
 Expected: 全 PASS（落ちるなら韜晦とは無関係の既存の問題＝先に報告して止める）
 Run: `pytest tests/test_ai.py::TestAI::test_ai_rank_estimation -q`
 Expected: `1 failed`（`assert -20 <= nan`）＝**既知の失敗**。HEAD `3f4c4a00` の時点で、`AI_STRENGTH` が nan の戦略（parity9・enigma9/9plus/13/13plus/19/19plus・mimic13・siege・hunt・hunt_diverge・tsumego・tsumego_solver）で `ai_rank_estimation` が nan を返すので落ちている。この計画では直さない（veil9/13/19 も同じく nan）。落ち方がこれと違えば報告する。
 
-- [ ] **Step 5: 計画をコミット**
+- [x] **Step 5: 計画をコミット**
 
 ```bash
 git add docs/superpowers/plans/2026-09-23-veil-strategy.md
@@ -152,7 +153,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Produces: 定数 `VEIL_TARGET_FLOOR=0.15` `VEIL_URGENCY_WIDTH=0.10` `VEIL_STRICT_FREE=0.1` `VEIL_BEHIND_LIMIT=-1.0` `VEIL_YOSE_FREE_WR_DROP=0.01` `VEIL_CLOSE_WR=0.9` `VEIL_DECIDED_WR=0.97` `VEIL_DECIDED_MARGIN=3.0` `VEIL_TERMINAL_MAX=0.10` `VEIL_TERMINAL_CLOSE_MAX=0.05` `VEIL_TERMINAL_CLOSE_LEAD=3.0` `VEIL_TERMINAL_MIN_VISITS=10` `VEIL_RAW_MARGIN=0.3` `VEIL_TRAP_CREDIT=0.5` `VEIL_TRAP_MIN_HP=0.02` `VEIL_TRAP_PROBES=3` `VEIL_TRAP_RAW_EXTRA=1.0` `VEIL_TRAP_SWAP_MARGIN=0.3` `VEIL_HP_TIE=0.02` と内部用 `_VEIL_EPS=1e-9`（上限比較の許容誤差）。
   `veil_tally(nodes, ai_player) -> (mine: int, n_mine: int, opp: int, n_opp: int)`（nodes は `cn.nodes_from_root`・root 込みでよい）
 
-- [ ] **Step 1: 失敗するテストを書く** — `tests/test_ai_veil.py` を Write（本物の `GameNode` で木を作り、本物の `game_report` と数を突き合わせる。未完了の親・パス・未解析のノード・白番で相手が1手多い・ランダムな木 40 本）
+- [x] **Step 1: 失敗するテストを書く** — `tests/test_ai_veil.py` を Write（本物の `GameNode` で木を作り、本物の `game_report` と数を突き合わせる。未完了の親・パス・未解析のノード・白番で相手が1手多い・ランダムな木 40 本）
 
 ```python
 # tests/test_ai_veil.py
@@ -256,12 +257,12 @@ class TestTally:
         assert veil_tally(root.nodes_from_root, "B") == (0, 0, 0, 0)
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: 収集エラー `ImportError: cannot import name 'veil_tally' from 'katrain.core.ai'`
 
-- [ ] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t1.py`
+- [x] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t1.py`
 
 ```python
 import os
@@ -332,22 +333,22 @@ def veil_tally(nodes, ai_player):
 patch("katrain/core/ai.py", [(ANCHOR, "\n\n\n" + BLOCK.strip("\n") + ANCHOR, 1)])
 ```
 
-- [ ] **Step 4: パッチを当てる**
+- [x] **Step 4: パッチを当てる**
 
 Run: `python "$SP/patch_veil_t1.py"`
 Expected: `patched katrain/core/ai.py (CRLF, 1 edit(s))`
 
-- [ ] **Step 5: テストが通ることを確認**
+- [x] **Step 5: テストが通ることを確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: `4 passed`
 
-- [ ] **Step 6: 差分の健全性**
+- [x] **Step 6: 差分の健全性**
 
 Run: `git diff --stat`
 Expected: `katrain/core/ai.py | 56 +++…`（削除 0 行）
 
-- [ ] **Step 7: コミット**
+- [x] **Step 7: コミット**
 
 ```bash
 git add katrain/core/ai.py tests/test_ai_veil.py
@@ -374,7 +375,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `veil_free_limit(free_loss, lead, p_match, behind_limit=VEIL_BEHIND_LIMIT, floor=VEIL_TARGET_FLOOR, strict=VEIL_STRICT_FREE) -> float`（F_eff）
   - `veil_allowance(lead, reserve, spend_rate, free, cap, u) -> (A_t: float, S: float)`
 
-- [ ] **Step 1: 失敗するテストを書く** — `tests/test_ai_veil.py` の `from katrain.core.ai import (` 〜 `)` のブロックを次に置き換え（Edit）
+- [x] **Step 1: 失敗するテストを書く** — `tests/test_ai_veil.py` の `from katrain.core.ai import (` 〜 `)` のブロックを次に置き換え（Edit）
 
 ```python
 from katrain.core.ai import (
@@ -458,12 +459,12 @@ class TestAllowance:
                 assert a_t <= surplus + 1e-12
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: 収集エラー `ImportError: cannot import name 'veil_allowance' from 'katrain.core.ai'`
 
-- [ ] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t2.py`
+- [x] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t2.py`
 
 ```python
 import os
@@ -515,22 +516,22 @@ def veil_allowance(lead, reserve, spend_rate, free, cap, u):
 patch("katrain/core/ai.py", [(ANCHOR, "\n\n\n" + BLOCK.strip("\n") + ANCHOR, 1)])
 ```
 
-- [ ] **Step 4: パッチを当てる**
+- [x] **Step 4: パッチを当てる**
 
 Run: `python "$SP/patch_veil_t2.py"`
 Expected: `patched katrain/core/ai.py (CRLF, 1 edit(s))`
 
-- [ ] **Step 5: テストが通ることを確認**
+- [x] **Step 5: テストが通ることを確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: `29 passed`
 
-- [ ] **Step 6: 差分の健全性**
+- [x] **Step 6: 差分の健全性**
 
 Run: `git diff --stat`
 Expected: `katrain/core/ai.py | 37 +++…`・`tests/test_ai_veil.py` は追加のみ（削除はテストの import ブロックの置き換え分だけ）
 
-- [ ] **Step 7: コミット**
+- [x] **Step 7: コミット**
 
 ```bash
 git add katrain/core/ai.py tests/test_ai_veil.py
@@ -557,7 +558,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `veil_prefilter(pool0, raw_cap) -> list`（pool0 は `parity9_build_candidates` の `{"gtp","loss","visits","wr"}`）
   - `veil_shortlist(naturals, trap_cands, hp_of, band_cap, probe_hp, probe_cheap, trap_probes, trusted_visits=ENIGMA9_TRUSTED_VISITS) -> (nat: list, traps: list)`
 
-- [ ] **Step 1: 失敗するテストを書く** — import ブロックを次に置き換え（Edit）
+- [x] **Step 1: 失敗するテストを書く** — import ブロックを次に置き換え（Edit）
 
 ```python
 from katrain.core.ai import (
@@ -631,12 +632,12 @@ class TestShortlist:
         assert [c["gtp"] for c in traps_on] == ["T1", "T3", "T5"]
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: 収集エラー `ImportError: cannot import name 'veil_natural_floor' from 'katrain.core.ai'`
 
-- [ ] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t3.py`
+- [x] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t3.py`
 
 ```python
 import os
@@ -691,22 +692,22 @@ def veil_shortlist(naturals, trap_cands, hp_of, band_cap, probe_hp, probe_cheap,
 patch("katrain/core/ai.py", [(ANCHOR, "\n\n\n" + BLOCK.strip("\n") + ANCHOR, 1)])
 ```
 
-- [ ] **Step 4: パッチを当てる**
+- [x] **Step 4: パッチを当てる**
 
 Run: `python "$SP/patch_veil_t3.py"`
 Expected: `patched katrain/core/ai.py (CRLF, 1 edit(s))`
 
-- [ ] **Step 5: テストが通ることを確認**
+- [x] **Step 5: テストが通ることを確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: `35 passed`
 
-- [ ] **Step 6: 差分の健全性**
+- [x] **Step 6: 差分の健全性**
 
 Run: `git diff --stat`
 Expected: `katrain/core/ai.py | 40 +++…`（削除 0 行）
 
-- [ ] **Step 7: コミット**
+- [x] **Step 7: コミット**
 
 ```bash
 git add katrain/core/ai.py tests/test_ai_veil.py
@@ -735,7 +736,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `veil_close_drift_ok(close, drift, vloss, cap) -> bool`
   - `veil_classify(c, ctx) -> (kind: "free"|"paid"|None, cost: float)`（c は `{"cons","vloss","wr_drop","wr_after","lead_after"}`）
 
-- [ ] **Step 1: 失敗するテストを書く** — import ブロックを次に置き換え（Edit）
+- [x] **Step 1: 失敗するテストを書く** — import ブロックを次に置き換え（Edit）
 
 ```python
 from katrain.core.ai import (
@@ -861,12 +862,12 @@ class TestClassify:
         assert veil_classify(row(0.1), closed) == (None, 0.1)
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: 収集エラー `ImportError: cannot import name 'VeilCtx' from 'katrain.core.ai'`
 
-- [ ] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t4.py`
+- [x] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t4.py`
 
 ```python
 import os
@@ -968,22 +969,22 @@ patch(
 )
 ```
 
-- [ ] **Step 4: パッチを当てる**
+- [x] **Step 4: パッチを当てる**
 
 Run: `python "$SP/patch_veil_t4.py"`
 Expected: `patched katrain/core/ai.py (CRLF, 2 edit(s))`
 
-- [ ] **Step 5: テストが通ることを確認**
+- [x] **Step 5: テストが通ることを確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: `50 passed`
 
-- [ ] **Step 6: 差分の健全性**
+- [x] **Step 6: 差分の健全性**
 
 Run: `git diff --stat`
 Expected: `katrain/core/ai.py | 82 +++…`（削除 0 行・import 1 行の追加を含む）
 
-- [ ] **Step 7: コミット**
+- [x] **Step 7: コミット**
 
 ```bash
 git add katrain/core/ai.py tests/test_ai_veil.py
@@ -1007,7 +1008,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Consumes: `VEIL_HP_TIE` / `_VEIL_EPS`
 - Produces: `veil_choose(scored, slack, prefer_safe, hp_tie=VEIL_HP_TIE) -> dict | None`（scored は `{"gtp","kind","cost","hp","wr_after"}`・kind が真の行だけが対象）
 
-- [ ] **Step 1: 失敗するテストを書く** — import ブロックを次に置き換え（Edit）
+- [x] **Step 1: 失敗するテストを書く** — import ブロックを次に置き換え（Edit）
 
 ```python
 from katrain.core.ai import (
@@ -1065,12 +1066,12 @@ class TestChoose:
         assert veil_choose(scored, 0.3, prefer_safe=True)["gtp"] == "A"
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: 収集エラー `ImportError: cannot import name 'veil_choose' from 'katrain.core.ai'`
 
-- [ ] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t5.py`
+- [x] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t5.py`
 
 ```python
 import os
@@ -1108,22 +1109,22 @@ def veil_choose(scored, slack, prefer_safe, hp_tie=VEIL_HP_TIE):
 patch("katrain/core/ai.py", [(ANCHOR, "\n\n\n" + BLOCK.strip("\n") + ANCHOR, 1)])
 ```
 
-- [ ] **Step 4: パッチを当てる**
+- [x] **Step 4: パッチを当てる**
 
 Run: `python "$SP/patch_veil_t5.py"`
 Expected: `patched katrain/core/ai.py (CRLF, 1 edit(s))`
 
-- [ ] **Step 5: テストが通ることを確認**
+- [x] **Step 5: テストが通ることを確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: `56 passed`
 
-- [ ] **Step 6: 差分の健全性**
+- [x] **Step 6: 差分の健全性**
 
 Run: `git diff --stat`
 Expected: `katrain/core/ai.py | 23 +++…`（削除 0 行）
 
-- [ ] **Step 7: コミット**
+- [x] **Step 7: コミット**
 
 ```bash
 git add katrain/core/ai.py tests/test_ai_veil.py
@@ -1149,7 +1150,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `veil_trap_ok(t, ctx) -> (ok: bool, price: float | None)`（t は `{"vloss","d_e","find","hp","wr_after"}`）
   - `veil_merge_trap(plain, traps, swap_margin=VEIL_TRAP_SWAP_MARGIN) -> dict | None`（plain は `veil_choose` の結果・traps は `"price"` 付きの行）
 
-- [ ] **Step 1: 失敗するテストを書く** — import ブロックを次に置き換え（Edit）
+- [x] **Step 1: 失敗するテストを書く** — import ブロックを次に置き換え（Edit）
 
 ```python
 from katrain.core.ai import (
@@ -1227,12 +1228,12 @@ class TestTrap:
         assert veil_merge_trap(None, [a, b, c])["gtp"] == "A1"
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: 収集エラー `ImportError: cannot import name 'veil_merge_trap' from 'katrain.core.ai'`
 
-- [ ] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t6.py`
+- [x] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t6.py`
 
 ```python
 import os
@@ -1294,22 +1295,22 @@ def veil_merge_trap(plain, traps, swap_margin=VEIL_TRAP_SWAP_MARGIN):
 patch("katrain/core/ai.py", [(ANCHOR, "\n\n\n" + BLOCK.strip("\n") + ANCHOR, 1)])
 ```
 
-- [ ] **Step 4: パッチを当てる**
+- [x] **Step 4: パッチを当てる**
 
 Run: `python "$SP/patch_veil_t6.py"`
 Expected: `patched katrain/core/ai.py (CRLF, 1 edit(s))`
 
-- [ ] **Step 5: テストが通ることを確認**
+- [x] **Step 5: テストが通ることを確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: `63 passed`
 
-- [ ] **Step 6: 差分の健全性**
+- [x] **Step 6: 差分の健全性**
 
 Run: `git diff --stat`
 Expected: `katrain/core/ai.py | 47 +++…`（削除 0 行）
 
-- [ ] **Step 7: コミット**
+- [x] **Step 7: コミット**
 
 ```bash
 git add katrain/core/ai.py tests/test_ai_veil.py
@@ -1335,7 +1336,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `veil_terminal_limit(lead) -> float`（|lead| < 3 なら 0.05、それ以外 0.10）
   - `veil_terminal_swap(candidates, best_gtp, hp_of, floor, lead, dominant, urgency, close_drift=0.0, close_drift_cap=0.0) -> dict | None`（返り値は候補 dict に `"hp"` を足したもの）
 
-- [ ] **Step 1: 失敗するテストを書く** — import ブロックを次に置き換え（Edit）
+- [x] **Step 1: 失敗するテストを書く** — import ブロックを次に置き換え（Edit）
 
 ```python
 from katrain.core.ai import (
@@ -1401,12 +1402,12 @@ class TestTerminalSwap:
         assert free["gtp"] == "C3"  # |lead| >= 3 では累計を見ない
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: 収集エラー `ImportError: cannot import name 'veil_terminal_limit' from 'katrain.core.ai'`
 
-- [ ] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t7.py`
+- [x] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t7.py`
 
 ```python
 import os
@@ -1457,22 +1458,22 @@ def veil_terminal_swap(candidates, best_gtp, hp_of, floor, lead, dominant, urgen
 patch("katrain/core/ai.py", [(ANCHOR, "\n\n\n" + BLOCK.strip("\n") + ANCHOR, 1)])
 ```
 
-- [ ] **Step 4: パッチを当てる**
+- [x] **Step 4: パッチを当てる**
 
 Run: `python "$SP/patch_veil_t7.py"`
 Expected: `patched katrain/core/ai.py (CRLF, 1 edit(s))`
 
-- [ ] **Step 5: テストが通ることを確認**
+- [x] **Step 5: テストが通ることを確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: `69 passed`
 
-- [ ] **Step 6: 差分の健全性**
+- [x] **Step 6: 差分の健全性**
 
 Run: `git diff --stat`
 Expected: `katrain/core/ai.py | 36 +++…`（削除 0 行）
 
-- [ ] **Step 7: コミット**
+- [x] **Step 7: コミット**
 
 ```bash
 git add katrain/core/ai.py tests/test_ai_veil.py
@@ -1497,7 +1498,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - `veil_invariant_ok(chosen, best, cand_gtps, kind, bounds) -> bool`（bounds のキー: free / decided `{"cost","f_eff"}`・paid `{"cost","allowance","lead","reserve"}`・trap `{"price","allow","vloss","trap_cap","lead","reserve"}`・terminal `{"raw","limit"}`）
   - `veil_decision_record(**fields) -> str`（ASCII の JSON・`sort_keys`・float は小数3桁・NaN/inf は null）
 
-- [ ] **Step 1: 失敗するテストを書く** — import ブロックを次に置き換え（Edit）
+- [x] **Step 1: 失敗するテストを書く** — import ブロックを次に置き換え（Edit）
 
 ```python
 from katrain.core.ai import (
@@ -1568,12 +1569,12 @@ class TestDecisionRecord:
         assert json.loads(text)["vloss"] == 0.123
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: 収集エラー `ImportError: cannot import name 'veil_decision_record' from 'katrain.core.ai'`
 
-- [ ] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t8.py`
+- [x] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t8.py`
 
 ```python
 import os
@@ -1643,22 +1644,22 @@ patch(
 )
 ```
 
-- [ ] **Step 4: パッチを当てる**
+- [x] **Step 4: パッチを当てる**
 
 Run: `python "$SP/patch_veil_t8.py"`
 Expected: `patched katrain/core/ai.py (CRLF, 2 edit(s))`
 
-- [ ] **Step 5: テストが通ることを確認**
+- [x] **Step 5: テストが通ることを確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: `73 passed`
 
-- [ ] **Step 6: 差分の健全性**
+- [x] **Step 6: 差分の健全性**
 
 Run: `git diff --stat`
 Expected: `katrain/core/ai.py | 50 +++…`（削除 0 行・`import json` 1 行を含む）
 
-- [ ] **Step 7: コミット**
+- [x] **Step 7: コミット**
 
 ```bash
 git add katrain/core/ai.py tests/test_ai_veil.py
@@ -1688,7 +1689,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
   - 共有インターフェース節の `last_decision_info` / `Decision:` / `game._veil_state` / `Rate:`、S6 の `Endgame check:` 行と `info["unsettled"]`
   - テスト側: `SPEC_DEFAULTS` / `CALIBRATED_DEFAULTS` / `EXPECTED_DEFAULTS` / `SAFETY_DEFAULTS`・`_hp_array` / `_child` / `_hist` / `_Harness` / `EVEN`（Task 9b〜12・17 が使う）
 
-- [ ] **Step 1: 失敗するテストを書く** — import ブロック（`from katrain.core.ai import (` 〜 `)`）を次に置き換え（Edit。constants の import 行が増える）
+- [x] **Step 1: 失敗するテストを書く** — import ブロック（`from katrain.core.ai import (` 〜 `)`）を次に置き換え（Edit。constants の import 行が増える）
 
 ```python
 from katrain.core.ai import (
@@ -1990,12 +1991,12 @@ class TestFailSafes(_Harness):
             s.generate_move()
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: 収集エラー `ImportError: cannot import name 'Veil9Strategy' from 'katrain.core.ai'`
 
-- [ ] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t9a.py`（constants.py に3定数、ai.py の import 行とクラス。`_veil_move` は S12 の後に仮の末尾4行を置く）
+- [x] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t9a.py`（constants.py に3定数、ai.py の import 行とクラス。`_veil_move` は S12 の後に仮の末尾4行を置く）
 
 ```python
 import os
@@ -2298,7 +2299,7 @@ patch(
 )
 ```
 
-- [ ] **Step 4: パッチを当てる**
+- [x] **Step 4: パッチを当てる**
 
 Run: `python "$SP/patch_veil_t9a.py"`
 Expected:
@@ -2307,22 +2308,22 @@ patched katrain/core/constants.py (CRLF, 1 edit(s))
 patched katrain/core/ai.py (CRLF, 2 edit(s))
 ```
 
-- [ ] **Step 5: テストが通ることを確認**
+- [x] **Step 5: テストが通ることを確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: `84 passed`
 
-- [ ] **Step 6: 既存戦略が無変更で通ることを確認**（登録の衝突・import の破損の検知）
+- [x] **Step 6: 既存戦略が無変更で通ることを確認**（登録の衝突・import の破損の検知）
 
 Run: `pytest tests/test_ai_mimic13.py tests/test_ai_enigma9.py tests/test_ai_enigma_plus.py tests/test_ai_enigma_gamble.py tests/test_ai_enigma_overdraft.py tests/test_ai_enigma_opening.py tests/test_ai_parity9.py -q`
 Expected: 全 PASS
 
-- [ ] **Step 7: 差分の健全性**
+- [x] **Step 7: 差分の健全性**
 
 Run: `git diff --stat`
 Expected: `katrain/core/ai.py | 270 +++…-`（+269 / −1。削除は import 行の置き換え 1 行だけ）・`katrain/core/constants.py | 6 +`（削除 0 行）
 
-- [ ] **Step 8: コミット**
+- [x] **Step 8: コミット**
 
 ```bash
 git add katrain/core/ai.py katrain/core/constants.py tests/test_ai_veil.py
@@ -2346,7 +2347,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Consumes: Task 9a の `_veil_move`（S12 までの局所変数 `tier` / `naturals` / `trap_cands` / `allowance2` / `trap_cap` / `floor` ほか）と仮の末尾4行・`_veil_punish` / `_veil_violation`・Task 3〜5・8 の純関数・既存の `enigma9_verified_metrics`
 - Produces: `_veil_move` の S13〜S20。kind は `"decided"` / `"free"` / `"paid"`（罠の判定と合流は Task 9c）、why は `"no_shortlist"` / `"no_best_probe"` / `"none_qualified"` / `"invariant"`。罠 ON なら S14 の検証候補に罠枠が入るが、このタスクではまだ罠として選ばない。
 
-- [ ] **Step 1: 失敗するテストを書く** — ファイル末尾に追記（import は変えない）
+- [x] **Step 1: 失敗するテストを書く** — ファイル末尾に追記（import は変えない）
 
 ```python
 class TestTiersDeviating(_Harness):
@@ -2470,12 +2471,12 @@ class TestFailSafesDeviating(_Harness):
         assert s.ponders == []
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: `9 failed, 90 passed`（仮の末尾は常に最善手なので、外すはずの手番と `no_best_probe` / `Invariant violated` を見るテストが落ちる。最善手のままで正しい手番のテストは通る）
 
-- [ ] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t9b.py`（仮の末尾4行を丸ごと置き換える）
+- [x] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t9b.py`（仮の末尾4行を丸ごと置き換える）
 
 ```python
 import os
@@ -2637,22 +2638,22 @@ REAL = r'''
 patch("katrain/core/ai.py", [(STUB, REAL.strip("\n") + "\n", 1)])
 ```
 
-- [ ] **Step 4: パッチを当てる**
+- [x] **Step 4: パッチを当てる**
 
 Run: `python "$SP/patch_veil_t9b.py"`
 Expected: `patched katrain/core/ai.py (CRLF, 1 edit(s))`
 
-- [ ] **Step 5: テストが通ることを確認**
+- [x] **Step 5: テストが通ることを確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: `99 passed`
 
-- [ ] **Step 6: 差分の健全性**
+- [x] **Step 6: 差分の健全性**
 
 Run: `git diff --stat`
 Expected: `katrain/core/ai.py | 141 +++…--`（+139 / −2。置き換えるのは仮の末尾4行だが、そのうち `        return finish(` と `        )` の2行は新しいコードの行と一致するので git の数える削除は 2 行。これより多ければ再整形の混入）
 
-- [ ] **Step 7: コミット**
+- [x] **Step 7: コミット**
 
 ```bash
 git add katrain/core/ai.py tests/test_ai_veil.py
@@ -2676,7 +2677,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Consumes: Task 6 の `veil_trap_ok` / `veil_merge_trap`・Task 9b の S16 のループ（`row` / `ctx` / `vloss` / `trap_on`）
 - Produces: 罠 ON なら合格した罠を素の外しと合流（kind `"trap"`・`price` / `E` / `d_e` / `find_hp` を Decision に残す）、罠 OFF でも使えたはずの罠の数を `last_decision_info["trap_shadow"]` に残す。`Score …` 行に `trap=` の列。
 
-- [ ] **Step 1: 失敗するテストを書く** — ファイル末尾に追記（import は変えない）
+- [x] **Step 1: 失敗するテストを書く** — ファイル末尾に追記（import は変えない）
 
 ```python
 class TestTrapLayer(_Harness):
@@ -2730,12 +2731,12 @@ class TestTrapLayer(_Harness):
         assert s.last_decision_info["tier"] == "ii"
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: `4 failed, 101 passed`（罠を選ぶはずの手番と `trap_shadow` を見るテストが落ちる。罠枠のプローブ列と「高い罠に素の外しを奪われない」テストは Task 9b の時点で通る）
 
-- [ ] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t9c.py`
+- [x] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t9c.py`
 
 ```python
 import os
@@ -2793,27 +2794,27 @@ EDITS = [
 patch("katrain/core/ai.py", [(old, new, 1) for old, new in EDITS])
 ```
 
-- [ ] **Step 4: パッチを当てる**
+- [x] **Step 4: パッチを当てる**
 
 Run: `python "$SP/patch_veil_t9c.py"`
 Expected: `patched katrain/core/ai.py (CRLF, 5 edit(s))`
 
-- [ ] **Step 5: テストが通ることを確認**
+- [x] **Step 5: テストが通ることを確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: `105 passed`
 
-- [ ] **Step 6: 既存戦略が無変更で通ることを確認**
+- [x] **Step 6: 既存戦略が無変更で通ることを確認**
 
 Run: `pytest tests/test_ai_mimic13.py tests/test_ai_enigma9.py tests/test_ai_enigma_plus.py tests/test_ai_enigma_gamble.py tests/test_ai_enigma_overdraft.py tests/test_ai_enigma_opening.py tests/test_ai_parity9.py -q`
 Expected: 全 PASS
 
-- [ ] **Step 7: 差分の健全性**
+- [x] **Step 7: 差分の健全性**
 
 Run: `git diff --stat`
 Expected: `katrain/core/ai.py | 10 +++++++---`（+7 / −3。削除は置き換えた 3 行だけ）
 
-- [ ] **Step 8: コミット**
+- [x] **Step 8: コミット**
 
 ```bash
 git add katrain/core/ai.py tests/test_ai_veil.py
@@ -2837,7 +2838,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Consumes: 継承した `_terminal_band_move(cands, player)`（相手の直前パスでは必ず非 None）・既存の `enigma9_pass_loss` / `enigma9_human_top` / `enigma9_terminal_pass` / `enigma9_terminal_move` / `_AREA_PASS_MARGIN`・Task 7 の `veil_terminal_limit` / `veil_terminal_swap`・Task 8 の `veil_invariant_ok`
 - Produces: `_veil_terminal(cands, player, best_gtp, lead, u, info) -> None | (result, "terminal"|"failsafe", kind, fields)`（kind は `"pass"` / `"best"` / `"swap"` / `"finish"`、`fields["why"]` は `"opp_pass"` / `"terminal"` / `"no_hp"` / `"invariant"`）
 
-- [ ] **Step 1: 失敗するテストを書く** — ファイル末尾に追記（import は変えない）
+- [x] **Step 1: 失敗するテストを書く** — ファイル末尾に追記（import は変えない）
 
 ```python
 class TestTerminal(_Harness):
@@ -2923,12 +2924,12 @@ class TestTerminal(_Harness):
         assert s.last_decision_info["why"] == "no_hp"
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: `9 failed, 107 passed`（仮の `_veil_terminal` は常に None なので、相手の直前パスでも `parent hp` を撃って外しに進む等）
 
-- [ ] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t10.py`（仮の実装の3行を丸ごと置き換える）
+- [x] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t10.py`（仮の実装の3行を丸ごと置き換える）
 
 ```python
 import os
@@ -3040,22 +3041,22 @@ REAL = r'''
 patch("katrain/core/ai.py", [(STUB, REAL.strip("\n") + "\n", 1)])
 ```
 
-- [ ] **Step 4: パッチを当てる**
+- [x] **Step 4: パッチを当てる**
 
 Run: `python "$SP/patch_veil_t10.py"`
 Expected: `patched katrain/core/ai.py (CRLF, 1 edit(s))`
 
-- [ ] **Step 5: テストが通ることを確認**
+- [x] **Step 5: テストが通ることを確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: `116 passed`
 
-- [ ] **Step 6: 差分の健全性**
+- [x] **Step 6: 差分の健全性**
 
 Run: `git diff --stat`
 Expected: `katrain/core/ai.py | 91 +++…-`（削除は仮の `return None` の 1 行だけ）
 
-- [ ] **Step 7: コミット**
+- [x] **Step 7: コミット**
 
 ```bash
 git add katrain/core/ai.py tests/test_ai_veil.py
@@ -3079,7 +3080,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Consumes: `Veil9Strategy`（Task 9a〜9c・10）・`AI_VEIL_13` / `AI_VEIL_19`（Task 9a で constants.py に追加済み）
 - Produces: `@register_strategy(AI_VEIL_13) class Veil13Strategy(Veil9Strategy)`（`BOARD_LEN = 13`・`KEY_PREFIX = "veil13"`・`LABEL = "Veil13"`・13路の `SETTING_DEFAULTS`・`VEIL_BOARD`）、`@register_strategy(AI_VEIL_19) class Veil19Strategy(Veil9Strategy)`（同 19路）。テスト側の `VEILS`（(クラス, 盤, 接頭辞, ai キー, 定数) の表）は Task 12 も使う。
 
-- [ ] **Step 1: 失敗するテストを書く** — import ブロック（`from katrain.core.ai import (` から、その直後の `from katrain.core.constants import AI_VEIL_9` の行まで＝Task 9a で置いた2つの import 文）を次に置き換え（Edit。constants の行も新しいブロックの1行に置き換わる＝constants の import が2本にならないこと）
+- [x] **Step 1: 失敗するテストを書く** — import ブロック（`from katrain.core.ai import (` から、その直後の `from katrain.core.constants import AI_VEIL_9` の行まで＝Task 9a で置いた2つの import 文）を次に置き換え（Edit。constants の行も新しいブロックの1行に置き換わる＝constants の import が2本にならないこと）
 
 ```python
 from katrain.core.ai import (
@@ -3205,12 +3206,12 @@ class TestVeil13Flow(_Harness13):
         assert any("is not 13x13" in m for m in logs)
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: 収集エラー `ImportError: cannot import name 'Veil13Strategy' from 'katrain.core.ai'`
 
-- [ ] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t11.py`
+- [x] **Step 3: パッチスクリプトを Write** — `<scratchpad>/patch_veil_t11.py`
 
 ```python
 import os
@@ -3289,22 +3290,22 @@ class Veil19Strategy(Veil9Strategy):
 patch("katrain/core/ai.py", [(ANCHOR, "\n\n\n" + BLOCK.strip("\n") + ANCHOR, 1)])
 ```
 
-- [ ] **Step 4: パッチを当てる**
+- [x] **Step 4: パッチを当てる**
 
 Run: `python "$SP/patch_veil_t11.py"`
 Expected: `patched katrain/core/ai.py (CRLF, 1 edit(s))`
 
-- [ ] **Step 5: テストが通ることを確認**
+- [x] **Step 5: テストが通ることを確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: `129 passed`
 
-- [ ] **Step 6: 差分の健全性**
+- [x] **Step 6: 差分の健全性**
 
 Run: `git diff --stat`
 Expected: `katrain/core/ai.py | 64 +++…`（削除 0 行）
 
-- [ ] **Step 7: コミット**
+- [x] **Step 7: コミット**
 
 ```bash
 git add katrain/core/ai.py tests/test_ai_veil.py
@@ -3332,7 +3333,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Consumes: `Veil9/13/19Strategy.SETTING_DEFAULTS`（Task 9a・11）・`AI_VEIL_*`
 - Produces: GUI の戦略一覧に「韜晦（9路）／（13路）／（19路）」、AI 設定画面の 16 スライダー（説明欄の【各項目】は `aiopt:veil*_<suffix>` から自動で並ぶ）、`python -m katrain_debug --strategy veil9|veil13|veil19`、ハーネスのアーム指定 `veil13[:key=val,...]`。表示順は `SETTING_DEFAULTS` の並び（target_rate 0 〜 trap_min_delta_e 15）。
 
-- [ ] **Step 1: 失敗するテストを書く** — `tests/test_ai_veil.py` の先頭の import 群（`import json` 〜 `import katrain.core.ai as ai_module`）を次に置き換え（Edit）
+- [x] **Step 1: 失敗するテストを書く** — `tests/test_ai_veil.py` の先頭の import 群（`import json` 〜 `import katrain.core.ai as ai_module`）を次に置き換え（Edit）
 
 ```python
 import json
@@ -3438,12 +3439,12 @@ class TestRegistration:
             assert len(bullets) == len(cls.SETTING_DEFAULTS), prefix
 ```
 
-- [ ] **Step 2: 失敗を確認**
+- [x] **Step 2: 失敗を確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: `16 failed, 129 passed`（`AI_VEIL_9 not in AI_STRATEGIES_ENGINE`・`KeyError: 'ai:veil9'`・`KeyError: 'veil9'` 等）
 
-- [ ] **Step 3: constants.py・runner.py・パッケージ config のパッチスクリプトを Write** — `<scratchpad>/patch_veil_t12.py`（`AI_OPTION_VALUES` / `AI_OPTION_ORDER` の 48 行はループで生成する）
+- [x] **Step 3: constants.py・runner.py・パッケージ config のパッチスクリプトを Write** — `<scratchpad>/patch_veil_t12.py`（`AI_OPTION_VALUES` / `AI_OPTION_ORDER` の 48 行はループで生成する）
 
 ```python
 import os
@@ -3610,7 +3611,7 @@ CONFIG_BLOCKS = '''        "ai:veil9": {
 patch("katrain/config.json", [('        "ai:scoreloss": {\n', CONFIG_BLOCKS + '        "ai:scoreloss": {\n', 1)])
 ```
 
-- [ ] **Step 4: パッチを当てる**
+- [x] **Step 4: パッチを当てる**
 
 Run: `python "$SP/patch_veil_t12.py"`
 Expected:
@@ -3622,7 +3623,7 @@ patched katrain/config.json (CRLF, 1 edit(s))
 Run: `python -c "import json;json.load(open('katrain/config.json',encoding='utf-8'));print('ok')"`
 Expected: `ok`
 
-- [ ] **Step 5: i18n のパッチスクリプトを Write** — `<scratchpad>/patch_veil_t12po.py`（jp: 戦略名・概要・16 項目の共通解説 `aiopt:veil*_<suffix>`（1 行目＝日本語名・2 行目以降＝解説・`{p}` は接頭辞に置き換わる）。en: 戦略名・概要（16 スライダーの `* ` 行つき。en には aiopt の訳文が無いので概要に書く））
+- [x] **Step 5: i18n のパッチスクリプトを Write** — `<scratchpad>/patch_veil_t12po.py`（jp: 戦略名・概要・16 項目の共通解説 `aiopt:veil*_<suffix>`（1 行目＝日本語名・2 行目以降＝解説・`{p}` は接頭辞に置き換わる）。en: 戦略名・概要（16 スライダーの `* ` 行つき。en には aiopt の訳文が無いので概要に書く））
 
 ```python
 import os
@@ -3785,7 +3786,7 @@ patch(
 patch("katrain/i18n/locales/en/LC_MESSAGES/katrain.po", [('msgid "ai:enigma19"\n', en_names + 'msgid "ai:enigma19"\n', 1)])
 ```
 
-- [ ] **Step 6: i18n を当ててコンパイル**
+- [x] **Step 6: i18n を当ててコンパイル**
 
 Run: `python "$SP/patch_veil_t12po.py"`
 Expected:
@@ -3796,17 +3797,17 @@ patched katrain/i18n/locales/en/LC_MESSAGES/katrain.po (CRLF, 1 edit(s))
 Run: `python tools/compile_mo.py`
 Expected: `OK: …en…katrain.mo (N entries)` と `OK: …jp…katrain.mo (M entries)`（エラーなし）
 
-- [ ] **Step 7: 韜晦のテストが通ることを確認**
+- [x] **Step 7: 韜晦のテストが通ることを確認**
 
 Run: `pytest tests/test_ai_veil.py -q`
 Expected: `145 passed`
 
-- [ ] **Step 8: 説明欄の失敗を確認**（共通文面の検索がまだ enigma だけ）
+- [x] **Step 8: 説明欄の失敗を確認**（共通文面の検索がまだ enigma だけ）
 
 Run: `pytest tests/test_ai_help_text.py -q`
 Expected: `3 failed`（`TestJapaneseCoverage::test_every_setting_has_a_japanese_name_and_explanation[ai:veil9]` / `[ai:veil13]` / `[ai:veil19]`）
 
-- [ ] **Step 9: `tests/test_ai_help_text.py` にテストを足す**（Edit ツール・LF・black 整形済み）
+- [x] **Step 9: `tests/test_ai_help_text.py` にテストを足す**（Edit ツール・LF・black 整形済み）
 
 (a) `test_board_specific_entry_beats_the_family_text` の後ろ＝`test_missing_translation_returns_none` の前に追加。old:
 
@@ -3842,7 +3843,7 @@ new:
 Run: `pytest tests/test_ai_help_text.py -q`
 Expected: `4 failed`（上の3件と `test_veil_family_text_gets_the_real_key_prefix`）
 
-- [ ] **Step 10: `katrain/gui/ai_help.py` を直す**（Edit ツール・LF・black 整形済み）
+- [x] **Step 10: `katrain/gui/ai_help.py` を直す**（Edit ツール・LF・black 整形済み）
 
 (a) モジュール docstring。old:
 ```
@@ -3886,19 +3887,19 @@ new:
             break
 ```
 
-- [ ] **Step 11: 登録まわりのテストを通す**
+- [x] **Step 11: 登録まわりのテストを通す**
 
 Run: `pytest tests/test_ai_veil.py tests/test_ai_help_text.py tests/test_ai_options_grid.py tests/test_ai_mimic13.py tests/test_ai_enigma_plus.py tests/test_ai_enigma9.py tests/test_debug_runner.py::TestStrategyNameMapping tests/test_ai.py::TestAI::test_order -q`
 Expected: 全 PASS（`test_ai_options_grid.py` は `test_collapsable_panel.py` と順序依存のフレークがある＝単体で落ちたら単体再実行で切り分ける）
 Run: `python -m black --check katrain/gui/ai_help.py tests/test_ai_help_text.py tests/test_ai_veil.py`
 Expected: `3 files would be left unchanged.`
 
-- [ ] **Step 12: 差分の健全性**
+- [x] **Step 12: 差分の健全性**
 
 Run: `git diff --stat`
 Expected（行数の目安）: `katrain/config.json | 54 +`・`katrain/core/constants.py | 129 +…-`（削除 1 行＝`AI_STRATEGIES_ENGINE` の行の置き換え）・`katrain_debug/runner.py | 5 +-`（削除 1 行）・`katrain/i18n/locales/jp/…/katrain.po | 98 +`・`en/…/katrain.po | 18 +`・`.mo` 2 本（Bin）・`katrain/gui/ai_help.py`（+12 −5）・`tests/test_ai_help_text.py`（+12 −1）・`tests/test_ai_veil.py`
 
-- [ ] **Step 13: コミット**
+- [x] **Step 13: コミット**
 
 ```bash
 git add katrain/core/constants.py katrain/config.json katrain_debug/runner.py katrain/i18n katrain/gui/ai_help.py tests/test_ai_help_text.py tests/test_ai_veil.py
@@ -3924,13 +3925,13 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Consumes: Task 12 のパッケージ `katrain/config.json` の `ai:veil9` / `ai:veil13` / `ai:veil19` ブロック
 - Produces: ユーザー設定に同じ3ブロック（GUI は保存済みキーしか表示しない・ハーネスとデバッグ CLI はユーザー設定を読む）
 
-- [ ] **Step 1: KaTrain が起動していないことを確かめる**（ウィンドウ名の前方一致で判定。ソースから起動した版も別にインストールした版も、同じ `~/.katrain` を使い、ウィンドウ名は `KaTrain v<版>`）
+- [x] **Step 1: KaTrain が起動していないことを確かめる**（ウィンドウ名の前方一致で判定。ソースから起動した版も別にインストールした版も、同じ `~/.katrain` を使い、ウィンドウ名は `KaTrain v<版>`）
 
 Run: `powershell -NoProfile -Command 'if (Get-Process | Where-Object { $_.MainWindowTitle -clike "KaTrain v*" }) { "running" } else { "not-running" }'`
 Expected: `not-running`（`running` ならユーザーに終了を頼み、終わるまで進まない）。`-clike`（大文字小文字を区別）にしてあるのは、`-like` だと VS Code のウィンドウ名 `katrain-1.17.1.1 - Visual Studio Code` まで拾うため。Bash ツールでは全体を単引用符で囲む（二重引用符だと `$_` を bash が展開して壊れる）。PowerShell ツールで実行するなら外側の `powershell -NoProfile -Command '…'` を外して中身だけを渡す。
 続けて、**ユーザーに KaTrain を閉じたことをチャットで確かめる**（必須。上の判定はウィンドウを持たない状態の KaTrain を拾えない。返事が来るまで Step 3 を実行しない）。
 
-- [ ] **Step 2: スクリプトを Write** — `<scratchpad>/patch_user_config_veil.py`（パッケージの3ブロックをそのまま写す・編集前のコピーをスクラッチパッドに残す）
+- [x] **Step 2: スクリプトを Write** — `<scratchpad>/patch_user_config_veil.py`（パッケージの3ブロックをそのまま写す・編集前のコピーをスクラッチパッドに残す）
 
 ```python
 """ユーザー設定 ~/.katrain/config.json に ai:veil9 / ai:veil13 / ai:veil19 を足す（メインセッション専用・KaTrain 停止中）。
@@ -3959,12 +3960,12 @@ shutil.copyfile(USER_CONFIG, os.path.join(os.path.dirname(os.path.abspath(__file
 patch(USER_CONFIG, [(ANCHOR, blocks + ANCHOR, 1)])
 ```
 
-- [ ] **Step 3: 実行**（リポジトリのルートで）
+- [x] **Step 3: 実行**（リポジトリのルートで）
 
 Run: `python "$SP/patch_user_config_veil.py"`
 Expected: `patched C:\Users\iwaki\.katrain\config.json (CRLF, 1 edit(s))`
 
-- [ ] **Step 4: JSON とキーの検算**
+- [x] **Step 4: JSON とキーの検算**
 
 Run: `python -c "import json,os;c=json.load(open(os.path.expanduser('~/.katrain/config.json'),encoding='utf-8'));print({k: len(c['ai'][k]) for k in ('ai:veil9','ai:veil13','ai:veil19')})"`
 Expected: `{'ai:veil9': 16, 'ai:veil13': 16, 'ai:veil19': 16}`
@@ -3983,7 +3984,7 @@ Expected: `{'ai:veil9': 16, 'ai:veil13': 16, 'ai:veil19': 16}`
 
 `--move N` は「N 手打った後の局面」（runner の `load_sgf_to_move`）。使う SGF は 13路・AI 黒番の実戦 `docs/superpowers/specs/calibration-data/enigma13/enigma13plus-vs-app-20260911-184025-black.sgf`（125 手）なので、黒番＝AI の手番は N が偶数。ハーネス計画で移設した実戦の SGF（`docs/superpowers/specs/calibration-data/selfplay/recon/`）も1本使う。KaTrain・ハーネスと同時に走らせない。
 
-- [ ] **Step 1: 序盤・中盤・ヨセの3局面**
+- [x] **Step 1: 序盤・中盤・ヨセの3局面**
 
 Run:
 ```bash
@@ -3995,7 +3996,7 @@ python -m katrain_debug --sgf docs/superpowers/specs/calibration-data/enigma13/e
 Expected（各ファイル）: `=== Strategy Debug: Veil13Strategy ===`、Decision Log に `[Veil13Strategy] Rate: mine=…`（履歴の局面は runner が解析しないので、SGF に解析が保存されていなければ `0/0`・`u=1.00`）と `[Veil13Strategy] Decision: {` の行、`[Veil13Strategy] 着手決定に X.X 秒`（13路の目安 0.0〜3 秒）、`ERROR:` の行なし、Result の Move が盤上の手。
 `--move 90`（手数は 13路の endgame_move 85 以上）は、runner の通常解析に ownership が入る（ユーザー設定 `engine._enable_ownership: true`）ので、手数に加えて未確定点（|ownership| < 0.5）の数も見る: `[Veil13Strategy] Endgame check: depth=90 thr=85 unsettled=N max=16 -> …` の行が出て、Decision に `"unsettled": N`。N <= 16 なら `-> yose (sticky)`・`"in_yose": true`・`"cap": 1.5`、N > 16 なら `-> not yet`・`"in_yose": false`・`"cap": 4.5`（**どちらも正常**＝N で判別する。デバッグの対象にしない）。ownership が取れていなければ `unsettled=None` で手数だけでヨセ入り（`true`・`1.5`）。S9 より前で終わった手番（相手の直前パス・終局帯・best が pass）は `cap` キーが無くてよい。
 
-- [ ] **Step 2: 罠 ON と盤サイズ違い**
+- [x] **Step 2: 罠 ON と盤サイズ違い**
 
 Run:
 ```bash
@@ -4005,14 +4006,15 @@ python -m katrain_debug --sgf docs/superpowers/specs/calibration-data/enigma13/e
 ```
 Expected: 罠 ON は `Score …` 行に `trap=` の列があり、Decision の `queries` が罠 OFF（Step 1 の @40）以上。`veil9` は `board size (13, 13) is not 9x9` の行と `"why": "board"`、Move は KataGo の最善手。
 
-- [ ] **Step 3: 移設した実戦 SGF でも1局面**
+- [x] **Step 3: 移設した実戦 SGF でも1局面**
 
 Run: `python -c "import glob;print(sorted(glob.glob('docs/superpowers/specs/calibration-data/selfplay/recon/*.sgf'))[:3])"`
 先頭の SGF で、AI 側の手番になる N（黒なら偶数・白なら奇数。SGF の PB/PW を見て決める）を1つ選んで実行:
 `python -m katrain_debug --sgf <その SGF> --move <N> --strategy veil13 > "$SP/veil_smoke_recon.txt" 2>&1`
 Expected: Step 1 と同じ形（エラーなし）。recon が無ければこの Step は飛ばしてよい（Step 1 の SGF も実戦）。
 
-- [ ] **Step 4: 異常があれば直す**
+- [x] **Step 4: 異常があれば直す**
+  （該当なし: 6 本のスモークで ERROR 行・例外・遅い着手は出なかった）
 
 `ERROR:` 行・例外・3 秒を大きく超える手番があれば superpowers:systematic-debugging で原因を調べ、`tests/test_ai_veil.py` に再現テストを足してから ai.py をパッチスクリプトで直す（Task 1〜10 と同じ手順・同じコミット形式 `fix(veil): …`）。`--move 90` の `in_yose` が false なのは未確定点が多いだけなら異常ではない（Step 1）。
 
@@ -4030,7 +4032,7 @@ Expected: Step 1 と同じ形（エラーなし）。recon が無ければこの
 
 所要（ハーネス spec §6・13路）: 段階1 約4時間・1b 約5時間（6 アーム）・2 約3時間・3 約2〜3時間。**必ず1本ずつ順に**、`run_in_background: true` で流して完了通知を待つ（並列にしない・KaTrain やデバッグ CLI と同時に走らせない）。途中で落ちたら同じコマンドに `--resume <出力ディレクトリ>` を付けて再開する。
 
-- [ ] **Step 0: USER CHECKPOINT（メインセッション）— 走らせてよいか聞く**
+- [x] **Step 0: USER CHECKPOINT（メインセッション）— 走らせてよいか聞く**
 
 ユーザーに次を伝え、開始してよいか・どの時間帯に流すか・段階の間で止めて結果を見るかを聞く。**返事が来るまで Step 2 以降を始めない**（Step 1 の確認だけは先にしてよい）:
 - 段階ごとの所要: スモーク 約10分・段階1 約4時間・1b 約5時間・2 約3時間・3 約2〜3時間＝**合計 約14〜15時間**（GPU を使い続ける。1本ずつ順に流す）。
@@ -4038,7 +4040,7 @@ Expected: Step 1 と同じ形（エラーなし）。recon が無ければこの
 - 途中で止めても、同じコマンドに `--resume <出力ディレクトリ>` を付ければ続きから再開できる。
 段階の間で止めると言われたら、各段階の完了後に Step 7 の集計を見せて、次の段階を始めてよいか聞き直す。
 
-- [ ] **Step 1: 前提の確認**
+- [x] **Step 1: 前提の確認**
 
 Run:
 ```bash
@@ -4049,7 +4051,7 @@ python -m katrain_debug.selfplay run --help
 ```
 Expected: `not-running`（判定の仕方は Task 13 Step 1）・`True`・`True True {…}`、ヘルプに `--arm` `--size` `--pairs` `--opp-pool` `--hp-audit` `--label` `--no-resign` `--komi-shift` `--opponent` `--resume` がある。3行目の最後はユーザー設定の `ai:human`（段階1・3 の HumanStyle は上書きで 9段にするので、ここの段位は何でもよい＝記録用）。相手プールが無ければ**ここで止めてユーザーに報告する**（ハーネス計画の校正が済んでいない。校正は**ハーネス計画の作業なので、この計画では実行しない**。参考までにプールを書き出すコマンドは `python -m katrain_debug.selfplay calibrate --size 13 --strategy enigma13plus --ranks rank_8k,rank_5k,rank_3k,rank_1k,rank_1d,rank_3d --games 8 --write-pool docs/superpowers/specs/calibration-data/selfplay/opponent_pool_13.json`＝`--write-pool` が無いと何時間走ってもプールは書かれない）。フラグ名がハーネスの実装と違うときは、同じ意味のハーネス側のフラグに読み替え、その対応を結果 md の「実行条件」に書く。
 
-- [ ] **Step 2: 1 seed のスモーク**（約 10 分・パイプラインと判定情報の確認）
+- [x] **Step 2: 1 seed のスモーク**（約 10 分・パイプラインと判定情報の確認）
 
 Run（background）:
 ```bash
@@ -4057,7 +4059,7 @@ python -m katrain_debug.selfplay run --size 13 --pairs 1 --opp-pool docs/superpo
 ```
 Expected: 完了後の `experiments/selfplay/<日時>_veil13-smoke/` に `run.json` / `games.jsonl` / `moves.jsonl` / `summary.txt`。`games.jsonl` の default アームの行の `veil` に `tiers`（i / ii / iii / terminal / failsafe の数）と `kinds`（free / paid / best ほか）が入り（`last_decision_info` の `tier` / `kind` から）、`veil.ledger_mismatch`（外したつもりの手がレポートで一致になった数）が 0。enigma アームの `veil` は null。null ガード・綴りチェックで止まらない。
 
-- [ ] **Step 3: 段階1 主比較**（5 アーム × 20 seed・通常の相手プール・投了あり）
+- [x] **Step 3: 段階1 主比較**（5 アーム × 20 seed・通常の相手プール・投了あり）
 
 Run（background）:
 ```bash
@@ -4066,6 +4068,7 @@ python -m katrain_debug.selfplay run --size 13 --pairs 20 --opp-pool docs/superp
 （`attack` は spec §6.1 の「攻め」プリセット＝測定専用。既定にするには要件1の再決定が要る）
 
 - [ ] **Step 4: 段階1b 安全条件以外のつまみの掃引**（spec §10.3・§12 の dominant_hp / natural_ratio / free_loss と、接戦の累計上限の感度）
+  （実施しなかった: ユーザー判断で段階1の後に測定を打ち切った・2026-09-24。段階1b は未実施）
 
 Run（background）:
 ```bash
@@ -4073,6 +4076,7 @@ python -m katrain_debug.selfplay run --size 13 --pairs 20 --opp-pool docs/superp
 ```
 
 - [ ] **Step 5: 段階2 投了なし**（投了がヨセの手数＝一致率を左右するための必須の感度アーム）
+  （実施しなかった: ユーザー判断で段階1の後に測定を打ち切った・2026-09-24。段階2 は未実施）
 
 Run（background）:
 ```bash
@@ -4080,6 +4084,7 @@ python -m katrain_debug.selfplay run --size 13 --pairs 20 --opp-pool docs/superp
 ```
 
 - [ ] **Step 6: 段階3 接戦ストレス**（AI 不利に 4 目・強めの相手＝HumanStyle 9段。段階1で trap が default より一致率を 3pt 以上下げ、敗局も増えていなければ `--arm trap=veil13:veil13_trap_mode=true` を足す）
+  （実施しなかった: ユーザー判断で段階1の後に測定を打ち切った・2026-09-24。段階3 は未実施＝spec §10.4 (a) 接戦の安全は未評価）
 
 相手の HumanStyle は**必ず上書きで 9段にする**（上書きが無いとハーネスはユーザー設定の `ai:human` をそのまま使う。ユーザー設定は 8級＝`human_kyu_rank: 8`・`modern_style: false` なので、接戦がほとんど生まれず、要件1の採否（spec §10.4 (a)）が意味を失う）。
 
@@ -4089,7 +4094,8 @@ python -m katrain_debug.selfplay run --size 13 --pairs 20 --komi-shift 4 --oppon
 ```
 完了後、出力ディレクトリの `run.json` の `opponent` が `"kind": "strategy"`・`"strategy": "human"`・`"override_items": ["human_kyu_rank=-8", "modern_style=true"]` であることを確かめ（違えば結果を使わずに止める）、結果 md の「実行条件」に写す。
 
-- [ ] **Step 7: 集計と写し**（`summarize` は呼ぶたびに `summary.json` / `summary.txt` を**上書きする**＝比較ごとに実行して、その直後に写す）
+- [x] **Step 7: 集計と写し**（`summarize` は呼ぶたびに `summary.json` / `summary.txt` を**上書きする**＝比較ごとに実行して、その直後に写す）
+  （段階1だけ。段階1b・2・3 は実施しなかった）
 
 写し先は `docs/superpowers/specs/calibration-data/selfplay/veil13-campaign/`（以下 `CD`）。ファイル名は `<label>-<A>-vs-<B>-summary.{json,txt}` に固定し、`run.json` は各ディレクトリで1回だけ `<label>-run.json` に写す。例（段階1・`<DIR>` は veil13-p1 の出力ディレクトリ）:
 ```bash
@@ -4106,7 +4112,7 @@ cp <DIR>/summary.json "$CD/veil13-p1-default-vs-trap-summary.json"; cp <DIR>/sum
 - 段階2（veil13-p2）: `default enigma`
 - 段階3（veil13-p3）: `default enigma`（既定の信頼度 0.975）と、**採否用に `--conf 0.95`**: `python -m katrain_debug.selfplay summarize <DIR> --compare default enigma --conf 0.95` → `veil13-p3-default-vs-enigma-conf95-summary.{json,txt}`（spec §10.4 (a) は flip_moves の対の差の **95%** 上限。`summarize` の既定 0.975 はハーネスの2回見る停止規則用）。段階3に trap アームを足したら `default trap` も同じく2通り。
 
-- [ ] **Step 8: 結果 md を書く** — `docs/superpowers/specs/calibration-data/selfplay/veil13-campaign.md`（数値はすべて summary から写す。局平均と 95% 区間は summary の局単位クラスタ bootstrap の値）
+- [x] **Step 8: 結果 md を書く** — `docs/superpowers/specs/calibration-data/selfplay/veil13-campaign.md`（数値はすべて summary から写す。局平均と 95% 区間は summary の局単位クラスタ bootstrap の値）
 
 構成（この見出しと列で書く。括弧内は games.jsonl / summary の元の値＝ハーネス計画 Task 2 の `selfplay_game_summary` のキー）:
 
@@ -4119,7 +4125,7 @@ cp <DIR>/summary.json "$CD/veil13-p1-default-vs-trap-summary.json"; cp <DIR>/sum
 7. `## 採否（spec §10.4）` — (a) 勝ちの安全: 段階3の flip の対の差の 95% 上限 <= 0.1/局 かつ 敗局数が enigma より 2 局を超えて多くない → 可／否、(b) 人間らしさ: default の外した手の hp 中央値 >= 5% → 可／否、(c) 一致率: P(own <= 0.35) と P(own < 0.15)（前者が高く後者が低いほど良い）
 8. `## 境界線と推奨` — 段階1・1b の各アームを「自分の一致率（横）× 勝ち・flip・hp 中央値」で並べた表と、安全条件（reserve・min_winrate）を変えずに (a)(b) を満たすアームのうち P(own <= 0.35) が最大のものを推奨として1行（attack は「要件1の再決定が要る」と明記して参考に並べる）
 
-- [ ] **Step 9: コミット**
+- [x] **Step 9: コミット**
 
 ```bash
 git add docs/superpowers/specs/calibration-data/selfplay/veil13-campaign.md docs/superpowers/specs/calibration-data/selfplay/veil13-campaign
@@ -4145,7 +4151,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Consumes: Task 15 の `veil13-campaign.md`（境界線・採否・推奨）
 - Produces: `<scratchpad>/veil_defaults.json`（Task 17 の入力）、要件1を再決定したかどうか、進み方（変える＝Task 17・18 へ／据え置き＝Task 18 へ／設計に戻る＝ここで止める）。決定は `veil13-campaign.md` にコミットして残す
 
-- [ ] **Step 1: 提示する**
+- [x] **Step 1: 提示する**
 
 `veil13-campaign.md` の「境界線と推奨」「採否」「罠 A/B」を要約してユーザーに見せる（表はそのまま貼る）。聞くこと:
 1. 安全条件以外のつまみ（`target_rate` `free_loss` `free_wr_drop` `close_drift_cap` `spend_rate` `max_loss` `yose_max_loss` `dominant_hp` `dominant_max_loss` `min_human_policy` `natural_ratio` `cost_slack` `trap_mode` `trap_min_delta_e`）の 13路の既定値をどうするか（推奨アームの値・現状維持・個別指定）。値はスライダーの候補値から選ぶ（`katrain/core/constants.py` の `_VEIL_*`）。
@@ -4153,7 +4159,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 3. 安全条件（`reserve` / `min_winrate`）は**変えない**。ユーザーが「攻め」の結果を見て変えたいと言った場合だけ、要件1（勝ちが最優先・安全条件は緩めない）を再決定するのかを明示的に確認する。
 4. 採否の基準を満たさない項目があれば、それを先に伝え、「既定値を据え置いて実戦確認へ進む」か「設計に戻る」かを聞く。
 
-- [ ] **Step 2: 返事を記録する**
+- [x] **Step 2: 返事を記録する**
 
 ユーザーが選んだ**変える項目だけ**を `<scratchpad>/veil_defaults.json` に書く（盤サイズの文字列 → {接尾辞: 値}）。形の例（ユーザーが 13路の free_loss を 0.4・dominant_hp を 0.9 にした場合）:
 
@@ -4166,7 +4172,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - **据え置いて実戦確認へ進む**（何も変えない）: ファイルを作らず、Task 17 を飛ばして Task 18 へ進む。Task 18 のスクリプトは `tests/test_ai_veil.py` の `CALIBRATED_DEFAULTS[13]` が空であることから「据え置き」と判断し、マニュアルの校正状況・`ai-parameters.md` の「校正」行・INDEX・spec の状態を「ハーネスで測定し、spec の初期値を据え置いた」の文面で書く（「校正して選んだ」とは書かない）。
 - **設計に戻る**: Task 17・18・19 は実行しない。下の Step 3 で決定をコミットし、INDEX は 📝 のまま、**ここで計画を止めてユーザーに報告する**（何が採否の基準を満たさなかったか・`veil13-campaign.md` の場所）。
 
-- [ ] **Step 3: 決定を記録してコミットする**（どの選択でも必ず行う）
+- [x] **Step 3: 決定を記録してコミットする**（どの選択でも必ず行う）
 
 `veil13-campaign.md` の末尾に次の節を足す（Task 15 で Write した LF の新規ファイルなので Edit ツールで追記してよい）:
 
@@ -4190,6 +4196,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ---
 
 ### Task 17: 選んだ既定値の反映（コード・パッケージ config・テスト期待値・ユーザー設定）
+
+（飛ばした: Task 16 で 13路の既定値を据え置いたため。コード・パッケージ config・テスト期待値・ユーザー設定は変えていない）
 
 **Files:**
 - Modify: `katrain/core/ai.py`（`Veil{9,13,19}Strategy.SETTING_DEFAULTS` の該当行だけ）
@@ -4419,7 +4427,7 @@ Expected: 変えたキーごとの行と `ok`（リポジトリ外なのでコ�
 
 Task 16 で「設計に戻る」を選んだ場合はこのタスクを実行しない。
 
-- [ ] **Step 1: スクリプトを Write** — `<scratchpad>/patch_veil_docs.py`（CRLF を保つ。`.claude/rules/*.md` も Edit ツールでなくこのスクリプトで書く）
+- [x] **Step 1: スクリプトを Write** — `<scratchpad>/patch_veil_docs.py`（CRLF を保つ。`.claude/rules/*.md` も Edit ツールでなくこのスクリプトで書く）
 
 ```python
 """韜晦のドキュメント（rules 2 本・CLAUDE.md・マニュアル・INDEX・spec の状態）を更新する。
@@ -4727,7 +4735,7 @@ patch(
 )
 ```
 
-- [ ] **Step 2: 実行してマニュアルを再生成**
+- [x] **Step 2: 実行してマニュアルを再生成**
 
 Run: `python "$SP/patch_veil_docs.py"`
 Expected（1行目は Task 16 の選択どおりか確かめる: 何も変えなかったなら `kept`、Task 17 で 13路を変えたなら `calibrated`）:
@@ -4745,21 +4753,21 @@ patched docs/superpowers/specs/2026-09-23-veil-strategy-design.md (LF, 1 edit(s)
 Run: `python tools/build_manual.py`
 Expected: `missing images: none` / `broken anchors: none`（exit 0）
 
-- [ ] **Step 3: 目視確認**
+- [x] **Step 3: 目視確認**
 
 Run: `git diff .claude/rules/ai-parameters.md | head -60`
 Expected: 16 行の表の「既定 9 / **13** / 19」列が現在のコードの値（Task 17 で変えた値を含む）、`veil*_dominant_hp` の候補値が `60%〜95%／OFF`、`veil*_close_drift_cap` が `OFF／0.5〜3.0`、末尾の「**校正**:」行が Task 16 の選択と合っている（据え置きなら「測定し、spec の初期値を据え置いた」）。
 Run: `git diff docs/manual/src/06d_ai_parity.html | grep -A2 "校正状況"`
 Expected: 9路・19路は「設計時の初期値のままの未校正の値」、13路は Task 16 の選択どおりの文面。
 
-- [ ] **Step 4: 差分の健全性**
+- [x] **Step 4: 差分の健全性**
 
 Run: `git diff --stat`
 Expected: `.claude/rules/ai-parameters.md`（+40 前後）・`.claude/rules/ai-strategies.md`（+2）・`CLAUDE.md`（3 +/3 −）・`docs/manual/src/06_ai_overview.html`（+4/−1）・`docs/manual/src/06d_ai_parity.html`（+42 前後）・`docs/manual/index.html`・`INDEX.md`（1 +/1 −）・spec（1 +/1 −）。これ以外のファイルや、既存行の大量の削除（再整形）が出たら止める。
 Run: `git ls-files --eol .claude/rules/ai-parameters.md .claude/rules/ai-strategies.md CLAUDE.md docs/manual/src/06_ai_overview.html docs/manual/src/06d_ai_parity.html docs/manual/index.html docs/superpowers/specs/INDEX.md docs/superpowers/specs/2026-09-23-veil-strategy-design.md`
 Expected: 2列目が spec md だけ `w/lf`、それ以外はすべて `w/crlf`（`core.autocrlf=true` なので改行コードの反転は `git diff` に出ない＝ここで確かめる。違えば止める）。
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```bash
 git add .claude/rules/ai-parameters.md .claude/rules/ai-strategies.md CLAUDE.md docs/manual docs/superpowers/specs/INDEX.md docs/superpowers/specs/2026-09-23-veil-strategy-design.md
@@ -4774,7 +4782,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ### Task 19: 最終検証
 
-- [ ] **Step 1: 全テスト**（KataGo・ハーネスと並走させない）
+- [x] **Step 1: 全テスト**（KataGo・ハーネスと並走させない）
+  （2026-09-24: `--ignore=tests/test_ai.py` は 1918 passed。test_ai.py の test_ai_strategies はワークツリーにエンジン本体が無い既知の失敗、test_ai_rank_estimation は既知の `-20 <= nan`）
 
 Run: `pytest --ignore=tests/test_ai.py -q`
 Expected: 全 PASS。`test_collapsable_panel.py` の 6 件が落ちたら既知の順序依存フレーク＝`pytest tests/test_collapsable_panel.py -q` 単体で PASS を確認。`tests/test_debug_runner.py` の結合テストは実 KataGo を起動するので数十秒かかる。ソルバの時間閾値系が落ちたら KataGo と並走していないか確かめて単体再実行。
@@ -4784,7 +4793,7 @@ Expected: 全 PASS（veil9 / veil13 は 19路で最善手のフェイルセー�
 Run: `pytest tests/test_ai.py::TestAI::test_ai_rank_estimation -q`
 Expected: `1 failed`・`assert -20 <= nan`（Task 0 Step 4 と同じ落ち方。違う落ち方なら報告する）
 
-- [ ] **Step 2: 差分の健全性**（この計画のコミット前の HEAD との比較）
+- [x] **Step 2: 差分の健全性**（この計画のコミット前の HEAD との比較）
 
 Run:
 ```bash
@@ -4797,10 +4806,11 @@ Run: `git ls-files --eol katrain/core/ai.py katrain/core/constants.py katrain_de
 Expected: 2列目が `ai_help.py`・`test_ai_help_text.py`・`test_ai_veil.py` だけ `w/lf`、それ以外は `w/crlf`。
 
 - [ ] **Step 3: GUI 確認の依頼**（ユーザー作業・メインセッションが依頼する）
+  （保留: ユーザーの GUI 確認待ち。ワークツリーから起動するか master へのマージ後に行う）
 
 KaTrain を起動 → 対局設定で AI に「韜晦（9路）／（13路）／（19路）」が選べること、AI 設定画面に 16 スライダーが並び説明欄の【各項目】に `veil13_target_rate` 〜 `veil13_trap_min_delta_e` の日本語名と解説が出ること、13路で数手打たせて `~/.katrain/logs/game_*.log` に `[Veil13Strategy] 着手決定に` が出ること（`debug_level: 1` なら `Rate:` / `Decision:` 行も）を確かめてもらう。
 
-- [ ] **Step 4: 計画を完了済みに更新してコミット**
+- [x] **Step 4: 計画を完了済みに更新してコミット**
 
 この計画の `- [ ]` を、実施したステップだけ `- [x]` にする。飛ばしたタスク・ステップ（例: Task 16 で据え置いたので Task 17 を飛ばした・recon が無く Task 14 Step 3 を飛ばした）は `- [ ]` のまま、その見出しの直後に理由を1行添える（例「（飛ばした: Task 16 で既定値を据え置いたため）」）。計画 md は LF で作ってある（python の `b"\r\n" in open(p, "rb").read()` が False）ので Edit ツールでよい（CRLF になっていたら crlf_patch で書き換える）。
 
