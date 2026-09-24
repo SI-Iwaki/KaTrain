@@ -14,7 +14,7 @@ Spec: `docs/superpowers/specs/2026-09-23-veil-strategy-design.md` §13（この�
    - 例外: `tests/test_ai_veil.py` は black 整形済み（CRLF）なので Edit ツールで直接変えてよい（black フックが走っても差分は出ない）。
 2. 触ってよいのは韜晦（veil 純関数群・Veil9/13/19）とその登録・文書・テストだけ。**難解（Enigma*）・擬態（Mimic13）・その他の戦略のコードは変えない**（`_probe_children` などの共有メソッドも変えない＝シグネチャの追加も不可）。
 3. KataGo を起動しない（テストはすべてスタブ）。`C:/Users/iwaki/.katrain/config.json`（ユーザー設定）は触らない（メインセッションの仕事）。
-4. 既存のテストを弱めない。既存の韜晦の挙動（blunder_mode 0＝既定）は1バイトも変えない＝mode 0 ではクエリ数・`Decision:` の中身・選ぶ手が今と同じ（`blunder` キーも足さない）。
+4. 既存のテストを弱めない。既存の韜晦の挙動（blunder_mode 0＝既定）は1バイトも変えない＝mode 0 ではクエリ数・`Decision:` の中身・選ぶ手が今と同じ（`blunder` キーも足さない）（例外: Task 7 の S13 の2手プローブは mode 0 でも挙動を変える＝意図した安全の修正）。
 5. コミットは日本語の Conventional Commits、末尾に `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`。
 6. テスト: 自分のタスクの focused テスト（`python -m pytest tests/test_ai_veil.py -q` など）と、brief が挙げる関連テスト。**全体スイートはコントローラが後で流す**（別の GPU ジョブが走っていて時間系のテストが揺れるため）。
 7. i18n を変えたら `python tools/compile_mo.py`、マニュアルの src を変えたら `python tools/build_manual.py`（どちらも worktree のルートで）。
@@ -327,6 +327,8 @@ jp / en の `katrain.po` の `aihelp:veil*`（→ `python tools/compile_mo.py`�
 
 ## Task 8: レビューの残りの軽微な指摘（文言の正確さ・常設の整合テスト）
 
+状態: 完了（`3832a62c`）。
+
 目的: loose の説明（「安全条件以外を全部ゆるめた」など）を、実際にゆるめた7キー（free_loss・spend_rate・max_loss・
 yose_max_loss・dominant_hp・dominant_max_loss・natural_ratio）の形に直す（jp / en の `aihelp:veil*`・マニュアル・
 `.claude/rules/ai-strategies.md`・`veil13-campaign.md`・`plans/2026-09-23-veil-strategy.md`・ai.py の docstring）。
@@ -334,6 +336,16 @@ spec §11 のキー数を20キー（§13.2 の4キーを足した数）にし、
 既定欄が `SETTING_DEFAULTS`（9/13/19）と一致することを `tests/test_ai_veil.py` の常設テストで固定する。
 
 コミット: `docs(veil): loose の説明を正確にし、マニュアルの既定値の表を常設テストで固定する`
+
+## Task 9: ブランチ全体のレビューで確かめられた軽微な指摘
+
+目的: 失着の上限が支払い上限以下（`blunder_max_loss <= cap`＝資格のある手が定義上無い）なら関門で止める（humanSL と深い検証を
+撃たない）。13路の失着の上限の候補から 6.0 を外す（`[8.0, 10.0, 12.0, 15.0]`・13路の既定の max_loss が loose で 6.0 のため）。
+損失の帯の渡し方を `TestBlunder` のフローで固定する。文言: spec §13.1（6目以上の損は判定の読み違いのときだけ）・§13.3 の関門・
+接戦ストレスの記述（打たなかった手番の内訳・持碁の直接の原因と失着の重なり）・jp / en の `aihelp:veil13`・
+`aiopt:veil*_blunder_max_loss`・この計画の Global Constraints の例外。
+
+コミット: `fix(veil): 失着の上限が支払い上限以下なら関門で止め、レビューの指摘の文言を正確にする`
 
 ---
 

@@ -5145,14 +5145,19 @@ class Veil9Strategy(Enigma9Strategy):
 
         outcome は打つときだけ (result, tier, kind, fields)、それ以外は None。stage_hp は親局面の humanSL（撃っていなければ
         None）、fetched はこの手番で親局面の humanSL を撃ったか（S11 が同じ手番で2回撃たないため）。
-        mode 0 なら何もしない（クエリ 0 本・info に何も足さない）。"""
+        mode 0 なら何もしない（クエリ 0 本・info に何も足さない）。関門（クエリ 0 本・`blunder = "gate"`）はヨセ・
+        blunder_max_loss <= cap（cap < vloss <= blunder_max_loss の手が定義上無い）・root 勝率 < VEIL_BLUNDER_MIN_WR・
+        lead < reserve + VEIL_BLUNDER_MARGIN + cap・ON で今局の上限に達している、のどれかで止まる。"""
         mode = int(self._setting("blunder_mode"))
         if mode <= 0:
             return None, None, False
         state = self._veil_state()
-        # 関門（クエリ 0 本）: ヨセでなく、root 勝率と lead に失着の後も勝ちを残す余裕があり、ON なら今局の上限の内
+        max_loss = float(self._setting("blunder_max_loss"))
+        # 関門（クエリ 0 本）: ヨセでなく、失着の上限が支払い上限を超え（以下なら cap < vloss <= max_loss の手は無い）、
+        # root 勝率と lead に失着の後も勝ちを残す余裕があり、ON なら今局の上限の内
         if (
             in_yose
+            or max_loss <= cap
             or root_wr is None
             or root_wr < VEIL_BLUNDER_MIN_WR
             or lead < reserve + VEIL_BLUNDER_MARGIN + cap
@@ -5166,7 +5171,6 @@ class Veil9Strategy(Enigma9Strategy):
             return None, stage_hp, True
         hp_of = enigma9_hp_lookup(stage_hp["humanPolicy"], self.game.board_size)
         best_hp = hp_of(best_gtp)
-        max_loss = float(self._setting("blunder_max_loss"))
         rows0 = veil_blunder_candidates(
             self._veil_candidates(cands, player), best_gtp, best_hp, hp_of,
             float(self._setting("blunder_hp_ratio")), cap, max_loss,

@@ -1820,8 +1820,10 @@ class TestBlunder(_Harness):
     """S9b 失着の層（spec §13.3）。9路の既定（SPEC_DEFAULTS）: reserve 3・cap 3（max_loss）・blunder_max_loss 6
     → 関門は lead >= 3 + 5 + 3 = 11・root 勝率 >= 0.95。
 
-    失着の候補は G3（生 3.8 目 > cap・hp 0.35 >= 0.7 × 最善手 E5 の 0.40）。C7（生 2.0）は cap 以下、A1（生 9.0）は
-    6 + 2 を超える。深い検証（DEEP）は E5 → lead 20・G3 → lead 15.5（vloss 4.5）。失着を打たない手番の通常の流れは
+    失着の候補は G3（生 3.8 目 > cap・hp 0.35 >= 0.7 × 最善手 E5 の 0.40）。既定の HP では C7・A1 は hp 0 なので
+    hp の床（max(0.15, 0.7 × 0.40) = 0.28）でも外れる。損失の帯（C7 の生 2.0 目は cap 以下、A1 の生 9.0 目は 6 + 2 を
+    超える）で外れることは、両方に高い hp を与える test_loss_band_keeps_c7_and_a1_out_of_the_deep_probe で確かめる。
+    深い検証（DEEP）は E5 → lead 20・G3 → lead 15.5（vloss 4.5）。失着を打たない手番の通常の流れは
     決着局面の即決（D4・best と D4 の2手だけの子局面プローブを通る＝`_blunder` の既定の probes）。深い検証と乱数は
     テストの中で差し替える（_strategy は変えない）。
     """
@@ -1959,6 +1961,39 @@ class TestBlunder(_Harness):
         assert not any(k.startswith("blunder_") for k in info)
         assert s.blunder_probes == [] and s.draws == []
         assert s.queries == ["parent hp"]  # 通常の流れ（S11）の1本だけ
+
+    @pytest.mark.parametrize("max_loss", [3.0, 2.0])
+    def test_gate_stops_the_layer_when_the_blunder_ceiling_is_not_above_cap(self, max_loss):
+        """blunder_max_loss <= cap（9路の既定 3.0）なら cap < vloss <= blunder_max_loss の手は定義上無いので、関門で止める
+        （親局面の humanSL も深い検証も撃たない。G3 は生 3.8 目 <= max_loss + 2 なので、関門が無いと深い検証まで進む）。"""
+        s, _ = self._blunder(2, settings={"veil9_blunder_max_loss": max_loss})
+        returned = []
+        layer = s._veil_blunder
+
+        def spy(*a, **k):
+            out = layer(*a, **k)
+            returned.append((list(s.queries), out))
+            return out
+
+        s._veil_blunder = spy
+        assert s.generate_move()[0].gtp() == "D4"
+        info = s.last_decision_info
+        assert info["blunder"] == "gate"
+        assert not any(k.startswith("blunder_") for k in info)
+        # 失着の層の中ではクエリ 0 本（humanSL は撃っていない＝fetched False）→ S11 が自分で1本撃つ
+        assert returned == [([], (None, None, False))]
+        assert s.queries == ["parent hp"] and info["queries"] == 5  # humanSL 1本 + 即決の2手のプローブ 4本
+        assert s.blunder_probes == [] and s.draws == []
+
+    def test_loss_band_keeps_c7_and_a1_out_of_the_deep_probe(self):
+        """損失の帯（cap < 生の loss <= blunder_max_loss + VEIL_BLUNDER_RAW_MARGIN）をフローで固定する: C7（生 2.0 目 <= cap 3）と
+        A1（生 9.0 目 > 6 + 2）に G3 より高い hp（床 0.28 を超える 0.38・0.36）を与えても、深い検証に入るのは best と G3 だけ
+        （帯が無ければ hp の高い C7・A1 が G3 を押し出す）。hp の合計が 1 を超えるのはスタブだけの都合。"""
+        s, _ = self._blunder(1, hp={**self.HP, "C7": 0.38, "A1": 0.36})
+        assert s.generate_move()[0].gtp() == "D4"
+        info = s.last_decision_info
+        assert (info["blunder"], info["blunder_gtp"]) == ("shadow", "G3")
+        assert s.blunder_probes == [["E5", "G3"]]
 
     def test_gate_bounds_are_inclusive(self):
         s, _ = self._blunder(1, lead=11.0, wr=0.95)
@@ -2204,7 +2239,8 @@ class TestRegistration:
 
         with open(Path(katrain.__file__).parent / "config.json", encoding="utf-8") as f:
             package_ai_conf = json.load(f)["ai"][ai_key]
-        max_loss = {9: [4.0, 5.0, 6.0, 8.0], 13: [6.0, 8.0, 10.0, 12.0, 15.0], 19: [8.0, 10.0, 12.0, 15.0, 20.0]}
+        # 13路は既定の max_loss（loose）が 6.0 なので 6.0 を候補にしない（blunder_max_loss <= max_loss は関門で止まる）
+        max_loss = {9: [4.0, 5.0, 6.0, 8.0], 13: [8.0, 10.0, 12.0, 15.0], 19: [8.0, 10.0, 12.0, 15.0, 20.0]}
         expected = {  # 接尾辞: (画面の並び, 候補値, 型)
             "blunder_mode": (16, [(0, "OFF"), (1, "LOG"), (2, "ON")], int),
             "blunder_max_loss": (17, max_loss[size], float),
