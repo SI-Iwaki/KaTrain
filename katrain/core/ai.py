@@ -4879,10 +4879,13 @@ class Veil9Strategy(Enigma9Strategy):
     外し（終局帯の手を除く）は子局面プローブ（clean 500v + humanSL 8v）で検証し、最安帯の中で
     humanPolicy 最大を選ぶ（決着局面の即決は生の loss で選んだ1手を best と2手だけプローブして確かめる）。
     罠（trap_mode）は ΔE の上乗せ層。ヨセは委譲しない・ponder は起動しない。全分岐のフェイルセーフは最善手。
+    失着の層（blunder_mode・spec §13・既定 OFF）は S9b で、9段でも迷う局面で支払い上限 max_loss を超える候補を
+    深い読み（クリーン VEIL_BLUNDER_VISITS）で確かめ、LOG（1）は `Decision:` に記録するだけ、ON（2）は資格のある手番の
+    VEIL_BLUNDER_PROB の割合で1局 blunder_per_game 回まで打つ（勝ちの安全条件 reserve・min_winrate は緩めない）。
 
     難解（Enigma9Strategy）からは generate_move（時間ログ）・_setting・_log・_best_move・_run_query・
     _probe_children・_cancel_ponder・_terminal_band_move を継承して使う。13/19路は属性だけ差し替えたサブクラス。
-    sticky な状態は `game._veil_state[KEY_PREFIX]`（endgame・close_drift・ledger）。
+    sticky な状態は `game._veil_state[KEY_PREFIX]`（endgame・close_drift・ledger・blunders）。
     設計: docs/superpowers/specs/2026-09-23-veil-strategy-design.md
     """
 
@@ -5606,8 +5609,8 @@ class Veil13Strategy(Veil9Strategy):
     """13路専用「韜晦」戦略（Veil9Strategy の盤サイズ・設定キー・既定値差し替え版）。
 
     既定値は SETTING_DEFAULTS。13路は自己対局ハーネスの段階1b（2026-09-24）で選んだ loose（安全条件以外をゆるめた
-    設定・一致率 42.4%＝同じ run の spec の初期値 49.0%）。接戦の安全は段階3b で確かめた（20-0。値と校正状況は
-    .claude/rules/ai-parameters.md）。sticky 状態は `game._veil_state["veil13"]`。
+    設定）で、一致率 42.4%（同じ run の spec の初期値は 49.0%。3 run の平均は 45.2% と 51.5%）。接戦の安全は
+    段階3b で確かめた（20-0）。値と校正状況は .claude/rules/ai-parameters.md。sticky 状態は `game._veil_state["veil13"]`。
     """
 
     BOARD_LEN = 13
