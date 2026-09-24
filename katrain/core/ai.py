@@ -4885,6 +4885,10 @@ class Veil9Strategy(Enigma9Strategy):
         "cost_slack": 0.3,          # 最安帯の幅（目）
         "trap_mode": False,         # 罠の上乗せ層（A/B 用）
         "trap_min_delta_e": 0.5,    # 罠とみなす ΔE（目）
+        "blunder_mode": 0,          # 失着の層（spec §13）: 0 OFF / 1 記録のみ（影）/ 2 ON
+        "blunder_max_loss": 6.0,    # 失着の上限（検証済み損失・目）
+        "blunder_per_game": 1,      # 1局で打つ失着の上限（ON のとき）
+        "blunder_hp_ratio": 0.7,    # 失着の手の hp ÷ 最善手の hp の下限（9段 humanSL）
     }
     # スライダーにしない盤サイズ別の値（spec §6.1）
     VEIL_BOARD = {"endgame_move": 30, "unsettled_max": 8, "trusted_visits": 100, "probe_hp": 3, "probe_cheap": 2}
@@ -5429,6 +5433,10 @@ class Veil13Strategy(Veil9Strategy):
         "cost_slack": 0.3,
         "trap_mode": False,
         "trap_min_delta_e": 0.5,
+        "blunder_mode": 0,
+        "blunder_max_loss": 10.0,
+        "blunder_per_game": 1,
+        "blunder_hp_ratio": 0.7,
     }
     VEIL_BOARD = {"endgame_move": 85, "unsettled_max": 16, "trusted_visits": 50, "probe_hp": 3, "probe_cheap": 2}
 
@@ -5461,6 +5469,10 @@ class Veil19Strategy(Veil9Strategy):
         "cost_slack": 0.3,
         "trap_mode": False,
         "trap_min_delta_e": 0.7,
+        "blunder_mode": 0,
+        "blunder_max_loss": 15.0,
+        "blunder_per_game": 1,
+        "blunder_hp_ratio": 0.7,
     }
     VEIL_BOARD = {"endgame_move": 150, "unsettled_max": 36, "trusted_visits": 50, "probe_hp": 3, "probe_cheap": 1}
 

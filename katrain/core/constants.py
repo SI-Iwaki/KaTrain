@@ -242,6 +242,15 @@ _VEIL_MIN_HUMAN_POLICY = [(0.01, "1%"), (0.02, "2%"), (0.03, "3%"), (0.05, "5%")
 _VEIL_NATURAL_RATIO = [0.1, 0.2, 0.3, 0.5]
 _VEIL_COST_SLACK = [0.0, 0.2, 0.3, 0.5, 1.0]
 _VEIL_TRAP_MIN_DELTA_E = [0.3, 0.5, 0.7, 1.0, 1.5]
+# 韜晦の失着の層（veil*_blunder_*・spec §13.2）。上限だけ盤サイズ別。mode は 0 OFF / 1 記録のみ（影）/ 2 ON
+_VEIL_BLUNDER_MODE = [(0, "OFF"), (1, "LOG"), (2, "ON")]
+_VEIL_BLUNDER_MAX_LOSS = {
+    9: [4.0, 5.0, 6.0, 8.0],
+    13: [6.0, 8.0, 10.0, 12.0, 15.0],
+    19: [8.0, 10.0, 12.0, 15.0, 20.0],
+}
+_VEIL_BLUNDER_PER_GAME = [1, 2, 3]
+_VEIL_BLUNDER_HP_RATIO = [(0.5, "50%"), (0.7, "70%"), (0.8, "80%"), (1.0, "100%")]
 
 AI_OPTION_VALUES = {
     "kyu_rank": [(k, f"{k}[strength:kyu]") for k in range(15, 0, -1)]
@@ -542,6 +551,10 @@ AI_OPTION_VALUES = {
     "veil9_cost_slack": _VEIL_COST_SLACK,
     "veil9_trap_mode": "bool",
     "veil9_trap_min_delta_e": _VEIL_TRAP_MIN_DELTA_E,
+    "veil9_blunder_mode": _VEIL_BLUNDER_MODE,
+    "veil9_blunder_max_loss": _VEIL_BLUNDER_MAX_LOSS[9],
+    "veil9_blunder_per_game": _VEIL_BLUNDER_PER_GAME,
+    "veil9_blunder_hp_ratio": _VEIL_BLUNDER_HP_RATIO,
     "veil13_target_rate": _VEIL_TARGET_RATE,
     "veil13_reserve": _VEIL_RESERVE,
     "veil13_min_winrate": _VEIL_MIN_WINRATE,
@@ -558,6 +571,10 @@ AI_OPTION_VALUES = {
     "veil13_cost_slack": _VEIL_COST_SLACK,
     "veil13_trap_mode": "bool",
     "veil13_trap_min_delta_e": _VEIL_TRAP_MIN_DELTA_E,
+    "veil13_blunder_mode": _VEIL_BLUNDER_MODE,
+    "veil13_blunder_max_loss": _VEIL_BLUNDER_MAX_LOSS[13],
+    "veil13_blunder_per_game": _VEIL_BLUNDER_PER_GAME,
+    "veil13_blunder_hp_ratio": _VEIL_BLUNDER_HP_RATIO,
     "veil19_target_rate": _VEIL_TARGET_RATE,
     "veil19_reserve": _VEIL_RESERVE,
     "veil19_min_winrate": _VEIL_MIN_WINRATE,
@@ -574,6 +591,10 @@ AI_OPTION_VALUES = {
     "veil19_cost_slack": _VEIL_COST_SLACK,
     "veil19_trap_mode": "bool",
     "veil19_trap_min_delta_e": _VEIL_TRAP_MIN_DELTA_E,
+    "veil19_blunder_mode": _VEIL_BLUNDER_MODE,
+    "veil19_blunder_max_loss": _VEIL_BLUNDER_MAX_LOSS[19],
+    "veil19_blunder_per_game": _VEIL_BLUNDER_PER_GAME,
+    "veil19_blunder_hp_ratio": _VEIL_BLUNDER_HP_RATIO,
     # ===== TsumegoOwnershipStrategy（ai:tsumego）の ON/OFF 項目: チェックボックスで出す =====
     "gain_verify": "bool",
     "ko_win_assumption": "bool",
@@ -817,6 +838,10 @@ AI_OPTION_ORDER = {
     "veil9_cost_slack": 13,
     "veil9_trap_mode": 14,
     "veil9_trap_min_delta_e": 15,
+    "veil9_blunder_mode": 16,
+    "veil9_blunder_max_loss": 17,
+    "veil9_blunder_per_game": 18,
+    "veil9_blunder_hp_ratio": 19,
     "veil13_target_rate": 0,
     "veil13_reserve": 1,
     "veil13_min_winrate": 2,
@@ -833,6 +858,10 @@ AI_OPTION_ORDER = {
     "veil13_cost_slack": 13,
     "veil13_trap_mode": 14,
     "veil13_trap_min_delta_e": 15,
+    "veil13_blunder_mode": 16,
+    "veil13_blunder_max_loss": 17,
+    "veil13_blunder_per_game": 18,
+    "veil13_blunder_hp_ratio": 19,
     "veil19_target_rate": 0,
     "veil19_reserve": 1,
     "veil19_min_winrate": 2,
@@ -849,6 +878,10 @@ AI_OPTION_ORDER = {
     "veil19_cost_slack": 13,
     "veil19_trap_mode": 14,
     "veil19_trap_min_delta_e": 15,
+    "veil19_blunder_mode": 16,
+    "veil19_blunder_max_loss": 17,
+    "veil19_blunder_per_game": 18,
+    "veil19_blunder_hp_ratio": 19,
 }
 
 AI_KEY_PROPERTIES = {

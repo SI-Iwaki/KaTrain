@@ -651,7 +651,7 @@ class TestDecisionRecord:
         assert json.loads(text)["vloss"] == 0.123
 
 
-# spec §6.1 の既定値（凍結）。通しテストはこの値を明示の設定として渡す＝校正で既定値を変えてもテストの前提は動かない
+# spec §6.1・§13.2 の既定値（凍結）。通しテストはこの値を明示の設定として渡す＝校正で既定値を変えてもテストの前提は動かない
 SPEC_DEFAULTS = {
     9: {
         "target_rate": 0.40,
@@ -670,6 +670,10 @@ SPEC_DEFAULTS = {
         "cost_slack": 0.3,
         "trap_mode": False,
         "trap_min_delta_e": 0.5,
+        "blunder_mode": 0,
+        "blunder_max_loss": 6.0,
+        "blunder_per_game": 1,
+        "blunder_hp_ratio": 0.7,
     },
     13: {
         "target_rate": 0.30,
@@ -688,6 +692,10 @@ SPEC_DEFAULTS = {
         "cost_slack": 0.3,
         "trap_mode": False,
         "trap_min_delta_e": 0.5,
+        "blunder_mode": 0,
+        "blunder_max_loss": 10.0,
+        "blunder_per_game": 1,
+        "blunder_hp_ratio": 0.7,
     },
     19: {
         "target_rate": 0.30,
@@ -706,6 +714,10 @@ SPEC_DEFAULTS = {
         "cost_slack": 0.3,
         "trap_mode": False,
         "trap_min_delta_e": 0.7,
+        "blunder_mode": 0,
+        "blunder_max_loss": 15.0,
+        "blunder_per_game": 1,
+        "blunder_hp_ratio": 0.7,
     },
 }
 # 校正（Task 17）で選んだ既定値の差分。apply_veil_defaults.py が書き換える（空なら spec のまま）
@@ -1671,6 +1683,33 @@ class TestRegistration:
         for suffix, value in preset.items():
             plain = [v[0] if isinstance(v, tuple) else v for v in AI_OPTION_VALUES[f"veil13_{suffix}"]]
             assert value in plain, suffix
+
+    @pytest.mark.parametrize("cls,size,prefix,ai_key,const", VEILS, ids=VEIL_IDS)
+    def test_blunder_settings_are_registered(self, cls, size, prefix, ai_key, const):
+        """失着の4キー（spec §13.2）: 画面の並びは 16〜19、候補値は spec の表どおり、mode と per_game は整数、
+        jp の概要が失着の層（<prefix>_blunder_mode）を案内する。"""
+        from katrain.core.constants import AI_OPTION_ORDER, AI_OPTION_VALUES
+
+        with open(Path(katrain.__file__).parent / "config.json", encoding="utf-8") as f:
+            package_ai_conf = json.load(f)["ai"][ai_key]
+        max_loss = {9: [4.0, 5.0, 6.0, 8.0], 13: [6.0, 8.0, 10.0, 12.0, 15.0], 19: [8.0, 10.0, 12.0, 15.0, 20.0]}
+        expected = {  # 接尾辞: (画面の並び, 候補値, 型)
+            "blunder_mode": (16, [(0, "OFF"), (1, "LOG"), (2, "ON")], int),
+            "blunder_max_loss": (17, max_loss[size], float),
+            "blunder_per_game": (18, [1, 2, 3], int),
+            "blunder_hp_ratio": (19, [(0.5, "50%"), (0.7, "70%"), (0.8, "80%"), (1.0, "100%")], float),
+        }
+        for suffix, (order, values, typ) in expected.items():
+            key = f"{prefix}_{suffix}"
+            assert AI_OPTION_ORDER[key] == order, key
+            assert AI_OPTION_VALUES[key] == values, key
+            assert type(cls.SETTING_DEFAULTS[suffix]) is typ, key
+            assert type(package_ai_conf[key]) is typ, key
+        po = (Path(katrain.__file__).parent / "i18n" / "locales" / "jp" / "LC_MESSAGES" / "katrain.po").read_text(
+            encoding="utf-8"
+        )
+        m = re.search(rf'msgid "aihelp:{prefix}"\s*\nmsgstr "(.*)"', po)
+        assert m and f"{prefix}_blunder_mode" in m.group(1), prefix
 
     def test_debug_cli_names(self):
         from katrain_debug.runner import STRATEGY_NAME_MAP

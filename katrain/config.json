@@ -383,7 +383,11 @@
             "veil9_natural_ratio": 0.2,
             "veil9_cost_slack": 0.3,
             "veil9_trap_mode": false,
-            "veil9_trap_min_delta_e": 0.5
+            "veil9_trap_min_delta_e": 0.5,
+            "veil9_blunder_mode": 0,
+            "veil9_blunder_max_loss": 6.0,
+            "veil9_blunder_per_game": 1,
+            "veil9_blunder_hp_ratio": 0.7
         },
         "ai:veil13": {
             "veil13_target_rate": 0.3,
@@ -401,7 +405,11 @@
             "veil13_natural_ratio": 0.2,
             "veil13_cost_slack": 0.3,
             "veil13_trap_mode": false,
-            "veil13_trap_min_delta_e": 0.5
+            "veil13_trap_min_delta_e": 0.5,
+            "veil13_blunder_mode": 0,
+            "veil13_blunder_max_loss": 10.0,
+            "veil13_blunder_per_game": 1,
+            "veil13_blunder_hp_ratio": 0.7
         },
         "ai:veil19": {
             "veil19_target_rate": 0.3,
@@ -419,7 +427,11 @@
             "veil19_natural_ratio": 0.2,
             "veil19_cost_slack": 0.3,
             "veil19_trap_mode": false,
-            "veil19_trap_min_delta_e": 0.7
+            "veil19_trap_min_delta_e": 0.7,
+            "veil19_blunder_mode": 0,
+            "veil19_blunder_max_loss": 15.0,
+            "veil19_blunder_per_game": 1,
+            "veil19_blunder_hp_ratio": 0.7
         },
         "ai:scoreloss": {
             "strength": 0.2
