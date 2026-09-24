@@ -129,7 +129,7 @@ game.py:620-660）。相手が温め完了前に応じると、**相手の手が
 ## 4. 1手の決定フロー（`Veil9Strategy._generate_move`）
 
 **S0 ラッパー**: 本体を try/except で包む。`AnalysisDiscardedException`（ai.py:505-507）は再送出、
-それ以外は OUTPUT_ERROR をログして `_best_move`。
+それ以外は OUTPUT_ERROR をログして `_best_move`（実装時の改訂 2026-09-24: ほかの出口と同じく `Decision:` 行〈tier failsafe・kind best・why `exception`〉と ledger も残す。記録に失敗しても最善手は打つ）。
 
 **S1 前処理（クエリ0本）**
 - `self._cancel_ponder()`（前に動いていた難解の ponder の後始末。走っていなければ何もしない）。

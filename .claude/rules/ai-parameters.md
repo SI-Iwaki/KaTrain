@@ -816,12 +816,12 @@ visits >= `VEIL_TERMINAL_MIN_VISITS`・生 loss <= 0.10（|lead| < 3 なら 0.05
 
 **確認**: ログの `Rate:`（mine/n・opp/n_opp・p_match・u）/ `Endgame check:`（unsettled・max）/ `Budget:` / `Natural:` / `Decided:` / `Score …` / `Deviate:` /
 `Terminal…` / `Decision: {json}`（tier i/ii/iii/terminal/failsafe・kind best/free/paid/trap/decided/swap/finish/pass・
-why board / no_cands / pass / no_lead / no_pool / no_hp / dominant_closed / no_natural / no_shortlist / no_best_probe / none_qualified / invariant / error / opp_pass / terminal / terminal_finish_rejected）。
+why board / no_cands / pass / no_lead / no_pool / no_hp / dominant_closed / no_natural / no_shortlist / no_best_probe / none_qualified / invariant / exception / opp_pass / terminal / terminal_finish_rejected）。
 CLI: `python -m katrain_debug --sgf <SGF> --move N --strategy veil9|veil13|veil19`。
 **校正**: 13路は自己対局ハーネスで測定し、spec の初期値を据え置いた（`docs/superpowers/specs/calibration-data/selfplay/veil13-campaign.md`・2026-09-24）。
 段階1（5アーム × 20局・相手は humanSL 1k/1d/3d のプール）だけ実施し、段階1b・2・3 は未実施（ユーザー判断で打ち切り）。
 既定の自分の一致率 局平均 **53.1%**（相手 26.3%・20/20 勝ち・flip 0.05/局・損失 0.24 目/手）＝目標 30% に届かない。
 比較: 攻めプリセット（測定専用）42.2%・罠 ON 50.8%・難解＋13路 49.7%・HumanStyle 9段 53.2%。
 **一致率の下限は予算ではなく構造**: 最善手を打つしかなかった手番が 52.7%（no_pool 26.5%・no_natural 16.8%・
-none_qualified 8.9%・dominant_closed 0.5%・terminal 0.1%）で、レポートの一致はちょうどこの手番（最終リードの中央値 +63 目＝予算は余っている）。
+none_qualified 8.9%・dominant_closed 0.5%・terminal 0.1%。割合は個別に四捨五入）で、レポートの一致はちょうどこの手番（最終リードの中央値 +63 目＝予算は余っている）。
 接戦の安全（spec §10.4 (a)）は段階3が未実施なので未評価。9/19路は spec の初期値のままの未校正。**実戦校正は未実施**。

@@ -80,7 +80,7 @@ if not star_moves:
 - [ ] `katrain/core/ai.py` — 対象Strategyクラスにロジック追加
 - [ ] `katrain/config.json` — 対象戦略セクションにデフォルト値追加
 - [ ] `C:\Users\iwaki\.katrain\config.json` — 同じキー追加（GUIに表示するため）
-- [ ] `katrain/i18n/locales/jp/LC_MESSAGES/katrain.po` — `msgid "aiopt:<param_name>"` に「1 行目＝日本語名、2 行目以降＝解説（意味と上げる／下げるとどうなるか）」を足す（**無いと `tests/test_ai_help_text.py` が落ちる**）。同じキーでも戦略で意味が違うときは `aiopt:<strategy>/<key>`、難解系（enigma9/13/19 と＋版）は共通文面 `aiopt:enigma*_<suffix>`（文中の `{p}` が `enigma13plus` 等の接頭辞に置き換わる）。`aihelp:<strategy>` には項目の解説を書かない（概要だけ・二重になる）。※旧来の短ラベル `msgid "<param_name>"` は画面に出ていない
+- [ ] `katrain/i18n/locales/jp/LC_MESSAGES/katrain.po` — `msgid "aiopt:<param_name>"` に「1 行目＝日本語名、2 行目以降＝解説（意味と上げる／下げるとどうなるか）」を足す（**無いと `tests/test_ai_help_text.py` が落ちる**）。同じキーでも戦略で意味が違うときは `aiopt:<strategy>/<key>`、難解系（enigma9/13/19 と＋版）は共通文面 `aiopt:enigma*_<suffix>`、韜晦系（veil9/13/19）は `aiopt:veil*_<suffix>`（文中の `{p}` が `enigma13plus` / `veil13` 等の接頭辞に置き換わる）。`aihelp:<strategy>` には項目の解説を書かない（概要だけ・二重になる）。※旧来の短ラベル `msgid "<param_name>"` は画面に出ていない
 - [ ] `python tools/compile_mo.py` で `.mo` 再コンパイル
 - [ ] CLAUDE.md を更新（新機能の説明、パラメータ等）
 - [ ] 起動時リセットが必要な場合は `base_katrain.py` の `_load_config` 末尾に追加

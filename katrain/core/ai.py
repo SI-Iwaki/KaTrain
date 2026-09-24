@@ -4791,7 +4791,8 @@ class Veil9Strategy(Enigma9Strategy):
     (i) 候補が最善手しか無い → 最善手、(ii) 最善手の humanPolicy が dominant_hp 以上（明らかな一手）→
     一致率が目標を超えているとき（u > 0）だけ dominant_max_loss までで外す、(iii) それ以外 → ほぼ損失ゼロの
     外し（free）は常に、損をする外し（paid）は u > 0 のときだけ余剰 S = lead − reserve の範囲で払う。
-    外しはすべて子局面プローブ（clean 500v + humanSL 8v）で検証し、最安帯の中で humanPolicy 最大を選ぶ。
+    外し（決着局面の即決と終局帯の手を除く）は子局面プローブ（clean 500v + humanSL 8v）で検証し、最安帯の中で
+    humanPolicy 最大を選ぶ。
     罠（trap_mode）は ΔE の上乗せ層。ヨセは委譲しない・ponder は起動しない。全分岐のフェイルセーフは最善手。
 
     難解（Enigma9Strategy）からは generate_move（時間ログ）・_setting・_log・_best_move・_run_query・
@@ -5339,8 +5340,9 @@ class Veil9Strategy(Enigma9Strategy):
 class Veil13Strategy(Veil9Strategy):
     """13路専用「韜晦」戦略（Veil9Strategy の盤サイズ・設定キー・既定値差し替え版）。
 
-    既定値は SETTING_DEFAULTS（13路は自己対局ハーネスで測って選ぶ・値と校正状況は
-    .claude/rules/ai-parameters.md）。sticky 状態は `game._veil_state["veil13"]`。
+    既定値は SETTING_DEFAULTS。13路は自己対局ハーネスの段階1（2026-09-24）で一致率を測り、spec の初期値を
+    据え置いた（接戦の安全＝段階3は未測定。値と校正状況は .claude/rules/ai-parameters.md）。
+    sticky 状態は `game._veil_state["veil13"]`。
     """
 
     BOARD_LEN = 13
