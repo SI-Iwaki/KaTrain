@@ -423,3 +423,75 @@ A/B で見るもの: 自分と相手の一致率・勝率・mean_ptloss・払っ
 - ponder なしの遅延（13路 1〜2秒・19路 2〜3秒）が持ち時間に効くか。
 - 盤サイズが合わない戦略を選ぶと毎手最善手（一致率 100%）。自動切替は範囲外。
 - 19路は未校正、9路は相手の一致率の実測が無い。
+
+## 13. 失着オプション（`<prefix>_blunder_mode`・既定 OFF）— 2026-09-24 追記
+
+### 13.1 ねらいと根拠
+
+「9段でも間違えうる難しい局面で、人間らしい大きな失着をまれに打つ」層（ユーザー提案・2026-09-24）。韜晦は1手あたりの支払いを
+`max_loss`（13路 4.5目）で切っているので、6目以上の失着が一度も出ない。ハーネスの実測（1局あたりの ≥6目の失着）:
+
+| 打ち手 | ≥6目/局 |
+|---|---|
+| ハーネスの相手（humanSL rank_1k / 1d / 3d・悪手フィルタなし） | 2.75 / 2.00 / 1.97 |
+| HumanStyle 9段（悪手フィルタ 3.6・段階3 の接戦ストレスの相手） | 0.65 |
+| HumanStyle 9段（段階1 の AI アーム・通常の相手） | 0.10 |
+| 韜晦（段階1・1b・2 の韜晦のアームすべて） | 0 〜 0.10 |
+
+**一致率を下げる手段ではない**: 失着1回は一致率の計算上は外し1手と同じ（13路で1局40手なら最大 2.5pt）。損失の分布の裾を人間に
+近づけるための層。勝ちの安全条件（reserve・min_winrate）は緩めない＝要件1は変えない。
+
+### 13.2 設定（4キー × 3盤）
+
+| 接尾辞 | 意味 | 9路 | 13路 | 19路 | スライダー |
+|---|---|---|---|---|---|
+| `blunder_mode` | 0 = OFF・1 = 記録のみ（影＝条件を満たす手を探して `Decision:` に書くが打たない）・2 = ON | 0 | 0 | 0 | OFF / LOG / ON |
+| `blunder_max_loss` | 失着の上限（検証済み損失・目） | 6.0 | 10.0 | 15.0 | 9路 4/5/6/8・13路 6/8/10/12/15・19路 8/10/12/15/20 |
+| `blunder_per_game` | 1局で打つ失着の上限（ON のとき） | 1 | 1 | 1 | 1 / 2 / 3 |
+| `blunder_hp_ratio` | 失着の手の hp ÷ 最善手の hp の下限（9段 humanSL） | 0.7 | 0.7 | 0.7 | 0.5 / 0.7 / 0.8 / 1.0 |
+
+スライダーにしない定数（ai.py）:
+
+| 定数 | 値 | 意味 |
+|---|---|---|
+| `VEIL_BLUNDER_MIN_HP` | 0.15 | 失着の手に要る hp の絶対床（第一感に近い手だけ） |
+| `VEIL_BLUNDER_MIN_WR` | 0.95 | 着手前の root 勝率と、失着を打った後の検証済み勝率の両方の床（min_winrate 0.85 より厳しい） |
+| `VEIL_BLUNDER_MARGIN` | 5.0 | 失着を打った後の検証済みリードに要る reserve の上積み（目）＝lead_after >= reserve + 5 |
+| `VEIL_BLUNDER_VISITS` | 1500 | 失着の検証プローブの visits（通常の子局面プローブ 500 より深い。難しい局面ほど浅い読みの損失は外れる） |
+| `VEIL_BLUNDER_PROBES` | 2 | 深く検証する失着候補の数（hp の高い順） |
+| `VEIL_BLUNDER_RAW_MARGIN` | 2.0 | 生の loss の上の足切りに持たせる余裕（目） |
+| `VEIL_BLUNDER_PROB` | 0.5 | ON で条件を満たした手番に実際に打つ確率（打つ手番を読めなくする。影の計測の後に見直す） |
+
+### 13.3 流れ（S9b＝S9 予算の直後・S10 の前）
+
+1. `blunder_mode` が 0 なら何もしない（クエリ 0 本・記録も足さない）。
+2. **関門**（クエリ 0 本）: ヨセでない（`in_yose` が偽）・root 勝率 >= `VEIL_BLUNDER_MIN_WR`・
+   lead >= reserve + `VEIL_BLUNDER_MARGIN` + cap（cap＝その局面の支払い上限 `max_loss`。失着は cap を超える損失なので、
+   最小の失着でも lead_after >= reserve + margin が残る局面だけ）・ON なら今局の失着数 < `blunder_per_game`。
+   通らなければ `blunder = "gate"` を記録して通常の流れへ。
+3. 親局面の humanSL（9段・8 visits）を1本撃つ（S11 と共有＝同じ手番で2回撃たない）。
+4. **候補**（純関数 `veil_blunder_candidates`・クエリ 0 本）: 通常解析の候補（`candidate_moves`）のうち best・pass 以外で、
+   hp >= max(`VEIL_BLUNDER_MIN_HP`, `blunder_hp_ratio` × best の hp) かつ cap < 生の loss <= `blunder_max_loss` + `VEIL_BLUNDER_RAW_MARGIN`。
+   hp の高い順に `VEIL_BLUNDER_PROBES` 手まで。無ければ `blunder = "no_cand"` で通常の流れへ。
+   hp が最善手の 0.7 倍以上＝9段 humanSL 自身が迷う局面なので、「難しい局面」の条件はこれで兼ねる（best が明らかな一手なら
+   0.7 × 0.8 = 0.56 以上の手は hp の合計から存在しえない）。
+5. **深い検証**: best と候補を `VEIL_BLUNDER_VISITS` のクリーン解析で1バッチ（1 + k 本）。vloss = best の lead_after − 候補の lead_after。
+6. **資格**（純関数 `veil_blunder_ok`）: cap < vloss <= `blunder_max_loss`・lead_after >= reserve + `VEIL_BLUNDER_MARGIN`・
+   wr_after >= `VEIL_BLUNDER_MIN_WR`。資格のある手のうち hp 最大（`veil_blunder_pick`）。無ければ `blunder = "rejected"`。
+7. **影（mode 1）**: `blunder = "shadow"` と候補の値（`blunder_gtp` `blunder_vloss` `blunder_hp` `blunder_best_hp`
+   `blunder_wr` `blunder_lead_after`）を記録して通常の流れへ（打たない）。今局の上限は数えない（頻度を測るため）。
+8. **ON（mode 2）**: 乱数 >= `VEIL_BLUNDER_PROB` なら `blunder = "skipped"` を記録して通常の流れへ。打つなら不変条件
+   （`veil_invariant_ok` の kind `blunder`: 候補が通常解析の候補に含まれ best・pass でない、vloss <= blunder_max_loss、
+   lead − vloss >= reserve + margin、wr_after >= MIN_WR）を確かめ、今局の失着数を1つ増やして tier `blunder`・kind `blunder` で打つ。
+   違反なら ERROR ログ＋最善手（他の kind と同じ）。
+9. どの分岐の例外も S0 のフェイルセーフ（最善手）に落ちる。
+
+失着の後の手番は、下がった lead からふつうに予算を計算し直す（S = lead − reserve）ので、後の支払いは自動で減る。
+
+### 13.4 測り方と採否
+
+1. **影の計測**: 通常の相手・20 seed・`--arm shadow=veil13:<16キー>,veil13_blunder_mode=1`。1局あたりの `blunder = "shadow"` の手番数、
+   その vloss・hp の分布、失着の検証で増えた戦略時間（p95）。
+2. **ON の計測**: 通常の相手（default と ON のアーム）で ≥6目の失着/局・flip・勝ち・一致率。接戦ストレス（段階3 の条件）でも
+   ON のアームを流し、関門で止まる（失着 0）ことと敗局が増えないことを確かめる。
+3. 既定は OFF のまま。ON にするか・頻度（`blunder_per_game`・`VEIL_BLUNDER_PROB`）はユーザーが結果を見て決める。
