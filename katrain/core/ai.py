@@ -4793,6 +4793,23 @@ def veil_blunder_pick(rows):
     return min(rows, key=lambda r: (-r["hp"], r["vloss"], r["gtp"]))
 
 
+def veil_decided_verified_ok(vloss, wr_after, f_eff, lead, reserve, min_winrate, margin=VEIL_RAW_MARGIN):
+    """S13 の即決を打つ前の確認（2手のプローブ）。生の loss だけを信じると親局面の読み落としを打つ
+    （2026-09-25・生 0.36 目 → 実損 16.3 目で持碁）。margin はプローブのノイズ（±0.2〜0.3 目）の分。
+
+    vloss は best と候補の子局面リードの差（検証済み損失）、wr_after は候補の着手後勝率（どちらも打つ側視点）、
+    lead は root リード。vloss <= f_eff + margin かつ lead − max(0, vloss) >= reserve かつ wr_after >= min_winrate
+    なら True。vloss か wr_after が None（プローブ欠落）なら False。
+    """
+    if vloss is None or wr_after is None:
+        return False
+    return (
+        vloss <= f_eff + margin + _VEIL_EPS
+        and lead - max(0.0, vloss) >= reserve - _VEIL_EPS
+        and wr_after >= min_winrate - _VEIL_EPS
+    )
+
+
 def veil_invariant_ok(chosen, best, cand_gtps, kind, bounds):
     """選んだ手の最終確認（S19）。違反なら False（呼び出し側は ERROR ログ＋最善手）。
 
@@ -4859,8 +4876,8 @@ class Veil9Strategy(Enigma9Strategy):
     (i) 候補が最善手しか無い → 最善手、(ii) 最善手の humanPolicy が dominant_hp 以上（明らかな一手）→
     一致率が目標を超えているとき（u > 0）だけ dominant_max_loss までで外す、(iii) それ以外 → ほぼ損失ゼロの
     外し（free）は常に、損をする外し（paid）は u > 0 のときだけ余剰 S = lead − reserve の範囲で払う。
-    外し（決着局面の即決と終局帯の手を除く）は子局面プローブ（clean 500v + humanSL 8v）で検証し、最安帯の中で
-    humanPolicy 最大を選ぶ。
+    外し（終局帯の手を除く）は子局面プローブ（clean 500v + humanSL 8v）で検証し、最安帯の中で
+    humanPolicy 最大を選ぶ（決着局面の即決は生の loss で選んだ1手を best と2手だけプローブして確かめる）。
     罠（trap_mode）は ΔE の上乗せ層。ヨセは委譲しない・ponder は起動しない。全分岐のフェイルセーフは最善手。
 
     難解（Enigma9Strategy）からは generate_move（時間ログ）・_setting・_log・_best_move・_run_query・
@@ -5414,7 +5431,7 @@ class Veil9Strategy(Enigma9Strategy):
                 self._best_move(f"{self.LABEL}: no natural alternative, playing best move."), "i", "best", why="no_natural"
             )
 
-        # ---- S13 決着局面の即決（プローブ0本）----
+        # ---- S13 決着局面の即決（best と候補の2手だけプローブ）----
         slack = float(self._setting("cost_slack"))
         if root_wr is not None and root_wr >= VEIL_DECIDED_WR and lead >= reserve + VEIL_DECIDED_MARGIN and not dominant:
             quick = [
@@ -5424,20 +5441,40 @@ class Veil9Strategy(Enigma9Strategy):
             ]
             pick = veil_choose(quick, slack, prefer_safe=False)
             if pick is not None:
-                bounds = {"cost": pick["cost"], "f_eff": f_eff}
-                if not veil_invariant_ok(pick["gtp"], best_gtp, cand_gtps, "decided", bounds):
-                    return finish(
-                        self._veil_violation(pick["gtp"], "decided", bounds), "failsafe", "best", why="invariant"
+                # 生の loss だけで打つと親局面の読み落としを打つ（2026-09-25・生 0.36 目 → 実損 16.3 目で持碁）
+                probes, _unused = self._probe_children([best_gtp, pick["gtp"]], player, parent_hp=False)
+                info["queries"] += 4  # クリーン＋hp × 2手
+                best_lead_after, _ = enigma9_verified_metrics((probes.get(best_gtp) or {}).get("clean"), player)
+                lead_after, wr_after = enigma9_verified_metrics((probes.get(pick["gtp"]) or {}).get("clean"), player)
+                vloss = None if (best_lead_after is None or lead_after is None) else best_lead_after - lead_after
+                vloss_txt = "n/a" if vloss is None else f"{vloss:.2f}"
+                wr_txt = "n/a" if wr_after is None else f"{wr_after:.1%}"
+                if veil_decided_verified_ok(vloss, wr_after, f_eff, lead, reserve, float(self._setting("min_winrate"))):
+                    bounds = {"cost": pick["cost"], "f_eff": f_eff}
+                    if not veil_invariant_ok(pick["gtp"], best_gtp, cand_gtps, "decided", bounds):
+                        return finish(
+                            self._veil_violation(pick["gtp"], "decided", bounds), "failsafe", "best", why="invariant"
+                        )
+                    self._log(
+                        f"Decided: played {pick['gtp']} (raw {pick['loss']:.2f}, vloss {vloss_txt}, wr {wr_txt}, "
+                        f"hp {pick['hp']:.3f}) after a 2-move probe"
                     )
-                self._log(f"Decided: played {pick['gtp']} (raw {pick['loss']:.2f}, hp {pick['hp']:.3f}) without probes")
-                return finish(
-                    (
-                        Move.from_gtp(pick["gtp"], player=player),
-                        f"{self.LABEL}: decided position, near-free deviation to {pick['gtp']} "
-                        f"(raw loss {pick['loss']:.2f}, hp {pick['hp']:.1%}) instead of {best_gtp}.",
-                    ),
-                    tier, "decided", raw=pick["loss"], cost=pick["cost"], hp=pick["hp"],
+                    return finish(
+                        (
+                            Move.from_gtp(pick["gtp"], player=player),
+                            f"{self.LABEL}: decided position, near-free deviation to {pick['gtp']} "
+                            f"(raw loss {pick['loss']:.2f}, verified loss {vloss:.2f}, hp {pick['hp']:.1%}) "
+                            f"instead of {best_gtp}.",
+                        ),
+                        tier, "decided", raw=pick["loss"], cost=pick["cost"], hp=pick["hp"], vloss=vloss,
+                        wr_after=wr_after,
+                    )
+                # 打たずに S14 以降の通常の流れへ（S15 は best を含めて改めてプローブする＝まれな経路なので再利用しない）
+                self._log(
+                    f"Decided: {pick['gtp']} rejected by the probe (raw {pick['loss']:.2f}, vloss {vloss_txt}, "
+                    f"wr {wr_txt}) -> normal flow"
                 )
+                info["decided_rejected"] = pick["gtp"]
 
         # ---- S14 検証する候補 ----
         band_cap = raw_cap if (u > 0 and surplus > 0) else f_eff + VEIL_RAW_MARGIN

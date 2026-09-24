@@ -38,6 +38,7 @@ from katrain.core.ai import (
     veil_classify,
     veil_close_drift_ok,
     veil_cons_loss,
+    veil_decided_verified_ok,
     veil_decision_record,
     veil_free_limit,
     veil_invariant_ok,
@@ -596,6 +597,32 @@ class TestBlunderPick:
         assert veil_blunder_pick([]) is None
 
 
+class TestDecidedVerified:
+    """S13 の即決を打つ前の2手のプローブの確認。F_eff 0.3・reserve 3・min_winrate 0.85。"""
+
+    @staticmethod
+    def ok(vloss=0.2, wr_after=0.97, lead=7.0, **kw):
+        return veil_decided_verified_ok(vloss, wr_after, 0.3, lead, 3.0, 0.85, **kw)
+
+    def test_verified_loss_up_to_f_eff_plus_the_raw_margin(self):
+        assert self.ok(vloss=0.6)  # 0.3 + VEIL_RAW_MARGIN 0.3
+        assert not self.ok(vloss=0.61)
+        assert not self.ok(vloss=0.6, margin=0.2)
+
+    def test_the_lead_after_paying_keeps_the_reserve(self):
+        assert self.ok(vloss=0.5, lead=3.5)  # 3.5 − 0.5 = 3.0
+        assert not self.ok(vloss=0.5, lead=3.49)
+        assert not self.ok(vloss=-0.2, lead=2.9)  # 負の vloss は 0 として数える（リードを増やさない）
+
+    def test_winrate_after_floor(self):
+        assert self.ok(wr_after=0.85)
+        assert not self.ok(wr_after=0.849)
+
+    @pytest.mark.parametrize("vloss,wr_after", [(None, 0.97), (0.2, None), (None, None)])
+    def test_missing_probe_values_are_not_ok(self, vloss, wr_after):
+        assert not self.ok(vloss=vloss, wr_after=wr_after)
+
+
 class TestInvariant:
     GTPS = {"E5", "D4", "C3", "pass"}
 
@@ -875,6 +902,9 @@ class _Harness:
 
 
 EVEN = dict(lead=0.5, wr=0.55)  # 互角・目標ちょうど（9路 T 0.40 → u = 0）の手番に _hist("B", 3, 9) と組む
+# 決着局面（lead 7・勝率 0.98）の即決の候補 D4 が2手のプローブを通る子局面（vloss 0.1・着手後勝率 97.5%）
+DECIDED = dict(lead=7.0, wr=0.98)
+DECIDED_OK = {"E5": _child(7.0, 0.98), "D4": _child(6.9, 0.975)}
 
 
 class TestStrategyClass:
@@ -990,12 +1020,70 @@ class TestTiersDeviating(_Harness):
         dear, _ = self._strategy(hp=hp, probes={"E5": _child(10.0, 0.95), "F6": _child(8.2, 0.93)})
         assert dear.generate_move()[0].gtp() == "E5"  # vloss 1.8 > dominant_max_loss 1.5
 
-    def test_decided_position_deviates_without_probes(self):
-        s, logs = self._strategy(lead=7.0, wr=0.98)
-        move, _ = s.generate_move()
+    def test_decided_position_deviates_after_a_two_move_probe(self):
+        s, logs = self._strategy(**DECIDED, probes=DECIDED_OK)
+        move, reason = s.generate_move()
         assert move.gtp() == "D4"
-        assert s.queries == ["parent hp"] and s.probe_calls == []
-        assert s.last_decision_info["kind"] == "decided"
+        assert s.queries == ["parent hp"] and s.probe_calls == [["E5", "D4"]]  # best と即決の候補の2手だけ
+        info = s.last_decision_info
+        # humanSL 1本 + (クリーン + hp) × 2手
+        assert (info["tier"], info["kind"], info["queries"]) == ("iii", "decided", 5)
+        assert info["vloss"] == pytest.approx(0.1) and info["wr_after"] == pytest.approx(0.975)
+        assert "decided_rejected" not in info
+        decisions = [m for m in logs if "Decision: {" in m]
+        record = json.loads(decisions[0].split("Decision: ", 1)[1])
+        assert (record["kind"], record["vloss"], record["wr_after"]) == ("decided", 0.1, 0.975)
+        assert "(raw loss 0.10, verified loss 0.10, hp 30.0%)" in reason
+        played = "Decided: played D4 (raw 0.10, vloss 0.10, wr 97.5%, hp 0.300) after a 2-move probe"
+        assert any(played in m for m in logs)
+
+
+class TestDecidedProbe(_Harness):
+    """S13 決着局面の即決を打つ前の2手のプローブ（2026-09-25 の接戦ストレス blunder13-on-p3 seed 1010: 親局面で
+    生 0.36 目だった即決の手が実損 16.3 目で、勝ちを持碁にした）。9路・黒番・即決の候補は D4（生 0.1 目・visits 300）。
+    検証で落ちた手番は打たずに S14 以降の通常の流れへ進む（何を打つかは S14〜S18 に従う）。"""
+
+    def _rejected(self, probes, **kw):
+        s, logs = self._strategy(probes=probes, **kw)
+        records = []
+        s.game.katrain.log = lambda msg, level=None, *a, **k: records.append((str(msg), level))
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert info["decided_rejected"] == "D4"
+        assert move.gtp() != "D4" and info["kind"] != "decided"
+        assert not any(lv == OUTPUT_ERROR for _m, lv in records)
+        assert s.probe_calls[0] == ["E5", "D4"]
+        return s, records
+
+    def test_a_raw_loss_that_the_probe_shows_as_a_big_loss_is_not_played(self):
+        # 事件の形: 生の loss は F_eff 以下だが、子局面では best 20 / D4 4（vloss 16）・着手後勝率 0.31
+        probes = {"E5": _child(20.0, 0.99), "D4": _child(4.0, 0.31), "F6": _child(19.2, 0.99)}
+        s, records = self._rejected(probes, lead=16.0, wr=0.99)
+        rejected = "Decided: D4 rejected by the probe (raw 0.10, vloss 16.00, wr 31.0%) -> normal flow"
+        assert any(rejected in m for m, _lv in records)
+        assert len(s.probe_calls) == 2 and s.probe_calls[1][0] == "E5"  # S15 は best も含めて改めてプローブする
+        assert s.last_decision_info["queries"] == 1 + 4 + 2 * len(s.probe_calls[1])
+        decisions = [m for m, _lv in records if "Decision: {" in m]
+        assert len(decisions) == 1
+        record = json.loads(decisions[0].split("Decision: ", 1)[1])
+        assert record["decided_rejected"] == "D4" and record["kind"] != "decided"
+
+    def test_a_low_winrate_after_the_move_is_not_played(self):
+        # vloss 0.1 は小さいが、着手後勝率 0.80 < min_winrate 0.85
+        _s, records = self._rejected({"E5": _child(7.0, 0.98), "D4": _child(6.9, 0.80)}, **DECIDED)
+        assert any("Decided: D4 rejected by the probe (raw 0.10, vloss 0.10, wr 80.0%)" in m for m, _lv in records)
+
+    @pytest.mark.parametrize(
+        "probes",
+        [
+            pytest.param({}, id="no_probes"),
+            pytest.param({"E5": _child(7.0, 0.98)}, id="pick_missing"),
+            pytest.param({"D4": _child(6.9, 0.975)}, id="best_missing"),
+        ],
+    )
+    def test_a_missing_probe_is_not_played(self, probes):
+        _s, records = self._rejected(probes, **DECIDED)
+        assert any("Decided: D4 rejected by the probe (raw 0.10, vloss n/a" in m for m, _lv in records)
 
 
 class TestFreeAndPaid(_Harness):
@@ -1590,9 +1678,15 @@ EXITS = [
         ("i", "best", "no_natural", "E5"),
         id="no_natural",
     ),
-    pytest.param(dict(lead=7.0, wr=0.98), {}, ("iii", "decided", None, "E5"), id="decided"),
+    pytest.param(dict(**DECIDED, probes=DECIDED_OK), {}, ("iii", "decided", None, "E5"), id="decided"),
     pytest.param(
-        dict(lead=7.0, wr=0.98),
+        dict(**DECIDED, probes={"E5": _child(7.0, 0.98), "D4": _child(6.9, 0.80)}),
+        {},
+        ("iii", "best", "none_qualified", "E5"),
+        id="decided_rejected",
+    ),
+    pytest.param(
+        dict(**DECIDED, probes=DECIDED_OK),
         {"veil_invariant_ok": _never},
         ("failsafe", "best", "invariant", "E5"),
         id="decided_invariant",
@@ -1654,7 +1748,8 @@ class TestBlunder(_Harness):
 
     失着の候補は G3（生 3.8 目 > cap・hp 0.35 >= 0.7 × 最善手 E5 の 0.40）。C7（生 2.0）は cap 以下、A1（生 9.0）は
     6 + 2 を超える。深い検証（DEEP）は E5 → lead 20・G3 → lead 15.5（vloss 4.5）。失着を打たない手番の通常の流れは
-    決着局面の即決（D4・通常の子局面プローブなし）。深い検証と乱数はテストの中で差し替える（_strategy は変えない）。
+    決着局面の即決（D4・best と D4 の2手だけの子局面プローブを通る＝`_blunder` の既定の probes）。深い検証と乱数は
+    テストの中で差し替える（_strategy は変えない）。
     """
 
     HP = {"E5": 0.40, "G3": 0.35, "D4": 0.10, "F6": 0.08}
@@ -1665,6 +1760,8 @@ class TestBlunder(_Harness):
         s.blunder_probes に深い検証の呼び出し、s.draws に引いた乱数を残す。"""
         if player == "W":
             kw.setdefault("cands", [{**c, "winrate": 1.0 - c["winrate"]} for c in self.CANDS])
+        # 即決（S13）の2手のプローブ: D4 は vloss 0.1・着手後勝率 98.5% で通る
+        kw.setdefault("probes", {"E5": _child(20.0, 0.99, player=player), "D4": _child(19.9, 0.985, player=player)})
         settings = {"veil9_blunder_mode": mode, **(settings or {})}
         s, logs = self._strategy(lead=lead, wr=wr, player=player, settings=settings, **kw)
         s.blunder_probes, s.draws = [], []
@@ -1696,7 +1793,8 @@ class TestBlunder(_Harness):
         assert not any(k.startswith("blunder") for k in info)
         assert not any(k.startswith("blunder") for k in self._decision(logs))
         assert s.blunder_probes == [] and s.draws == []
-        assert s.queries == ["parent hp"] and info["queries"] == 1
+        assert s.queries == ["parent hp"] and info["queries"] == 5  # humanSL 1本 + 即決の2手のプローブ 4本
+        assert s.probe_calls == [["E5", "D4"]]
         assert not any("Blunder" in m for m in logs)
         state = s.game._veil_state["veil9"]
         assert state == {"endgame": False, "close_drift": 0.0, "ledger": [(12, "E5", "D4", "decided")], "blunders": 0}
@@ -1713,7 +1811,8 @@ class TestBlunder(_Harness):
         record = self._decision(logs)
         assert (record["blunder"], record["blunder_gtp"], record["blunder_vloss"]) == ("shadow", "G3", 4.5)
         assert s.blunder_probes == [["E5", "G3"]] and s.draws == []
-        assert s.queries == ["parent hp"] and info["queries"] == 3  # 親局面の humanSL は S11 と共有・深い検証 2 本
+        # 親局面の humanSL は S11 と共有・深い検証 2 本・即決の2手のプローブ 4本
+        assert s.queries == ["parent hp"] and info["queries"] == 7
         assert any("Blunder G3: raw=3.80 vloss=4.50 hp=0.350 wr=97.0% lead_after=15.50 ok=True" in m for m in logs)
         assert any(m.startswith("[Veil9Strategy] Blunder shadow: G3") for m in logs)
         assert s.game._veil_state["veil9"]["blunders"] == 0
@@ -1850,7 +1949,7 @@ class TestBlunder(_Harness):
         s, _ = self._blunder(2, deep={"E5": None, "G3": (15.5, 0.97)})
         assert s.generate_move()[0].gtp() == "D4"
         assert s.last_decision_info["blunder"] == "no_probe"
-        assert s.draws == [] and s.last_decision_info["queries"] == 3
+        assert s.draws == [] and s.last_decision_info["queries"] == 7  # 1 + 深い検証 2 本 + 即決の2手のプローブ 4本
 
     def test_invariant_violation_plays_the_best_move(self, monkeypatch):
         calls, original = [], ai_module.veil_invariant_ok

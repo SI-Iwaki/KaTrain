@@ -198,10 +198,14 @@ visits=ENIGMA9_HP_CHILD_VISITS, extra_settings={"humanSLProfile": ENIGMA9_HUMAN_
 - 罠用の候補: 罠プールのうち hp >= `VEIL_TRAP_MIN_HP`(0.02) の手（自然さの床は免除＝要件8）。
 - 自然な候補も罠用の候補も無ければ段(i)＝最善手。
 
-**S13 決着局面の即決（プローブ0本）**: root 勝率 >= `VEIL_DECIDED_WR`(0.97) かつ
+**S13 決着局面の即決（best と候補の2手だけプローブ）**: root 勝率 >= `VEIL_DECIDED_WR`(0.97) かつ
 lead >= reserve + `VEIL_DECIDED_MARGIN`(3) かつ dominant でないとき、自然な候補のうち生の loss <= F_eff かつ
 visits >= trusted_visits の手があれば、生の loss を cost として S18 と同じ帯の規則で打つ（同点は hp → 生の loss → gtp）。
 接戦ではこの経路を使わない（生の ≤0.3目の手のうち検証後の勝率低下 ≤3% を満たすのは 44% しかない）。
+打つ前に best と候補の子局面をクリーン 500v＋hp でプローブし、`veil_decided_verified_ok`（vloss <= F_eff + 0.3・
+lead − vloss >= reserve・着手後勝率 >= min_winrate）を満たさなければ打たずに S14 へ進む（2026-09-25 追記:
+生の loss だけで打っていたため、生 0.36 目 → 実損 16.3 目の手で勝ちを持碁にした＝接戦ストレス blunder13-on-p3
+seed 1010）。
 
 **S14 検証する候補（`veil_shortlist`）**
 - 自然枠: その手番で合格しうる帯（u > 0 かつ S > 0 なら raw_cap 以内、それ以外は F_eff + VEIL_RAW_MARGIN 以内）の
@@ -255,7 +259,8 @@ best プローブ欠落・全候補不合格・例外・不変条件違反。
 | 段(i)（候補なし） | 0本 | 約 0.0秒 |
 | 相手の直前パス（pass_loss < 0.5 → 即パス／それ以外 → ownership Probe 1本） | 0〜1本 | 0〜約 1.1秒 |
 | 終局帯（パスでない） | humanSL 1本 | 0.05〜0.27秒 |
-| 段(ii) 閉・自然な候補なし・決着局面の即決 | humanSL 1本 | 0.05〜0.27秒 |
+| 段(ii) 閉・自然な候補なし | humanSL 1本 | 0.05〜0.27秒 |
+| 決着局面の即決（best と候補の2手だけプローブ。検証で退けた手番は下の「プローブあり」を足す） | humanSL 1本 + 1バッチ（4本） | プローブありの行以下（4本を1バッチで並列） |
 | プローブあり（best + 最大5手。19路は最大4手） | humanSL 1本 + 1バッチ（2×手数 本） | 約 0.5〜0.8秒 |
 | 罠 ON のプローブ（上に最大3手を追加） | humanSL 1本 + 1バッチ（最大 2×9 本） | 約 0.6〜1.0秒 |
 
@@ -372,7 +377,8 @@ A/B で見るもの: 自分と相手の一致率・勝率・mean_ptloss・払っ
 - `veil_allowance` が §6 の目安どおり（ヨセ前・ヨセ中・cap_phase < F_eff）。
 - 3盤ぶんの登録・既定値・両 config・`AI_OPTION_VALUES` / `AI_OPTION_ORDER` の整合。
 - 擬態の `_Harness` パターン（tests/test_ai_mimic13.py:242-358）で `_generate_move` を通しで:
-  段(i) クエリ0本、段(ii) 閉で1本、決着局面の即決（プローブなし）、reserve と勝率フロアでの拒否、
+  段(i) クエリ0本、段(ii) 閉で1本、決着局面の即決（best と候補の2手だけプローブ＝4本・検証で退けた手は打たずに
+  通常の流れ）、reserve と勝率フロアでの拒否、
   ヨセの 0.01 ガード、`close_drift_cap` の ON/OFF、**相手の直前パスで pass_loss >= 0.5 のとき外しに進まない**、
   終局帯入れ替えの 0.05 / 0.10、終局帯 (d) の損失上限、罠 ON/OFF で罠枠以外のクエリ列が同一、素の外しが罠で消えない、
   **ヨセの罠が yose_max_loss を超えない**、dominant の罠が dominant_max_loss を超えない、全フェイルセーフと
