@@ -84,6 +84,20 @@ class TestSchedule:
             s["resign_lead"] is None for s in S.selfplay_schedule(5, ["r"], 1, resign_leads=pool, no_resign=True)
         )
 
+    def test_length_model_draws_a_target_length_per_seed(self):
+        lens = [59, 79, 123]
+        a = S.selfplay_schedule(12, ["rank_3k", "rank_1d"], 1000, resign_lens=lens)
+        assert a == S.selfplay_schedule(12, ["rank_3k", "rank_1d"], 1000, resign_lens=lens)  # seed ごとに決まる
+        assert all(s["resign_len"] in lens and s["resign_lead"] is None for s in a)
+        assert len({s["resign_len"] for s in a}) > 1  # 局ごとに引き直す
+        lead = S.selfplay_schedule(12, ["rank_3k", "rank_1d"], 1000, resign_leads=[3.9, 28.9])
+        assert [(s["opp_seed"], s["strategy_seed"]) for s in a] == [(s["opp_seed"], s["strategy_seed"]) for s in lead]
+        assert all(s["resign_len"] is None for s in lead)
+        assert all(
+            s["resign_len"] is None and s["resign_lead"] is None
+            for s in S.selfplay_schedule(4, ["r"], 1, resign_lens=lens, no_resign=True)
+        )
+
     def test_unbalanced_strata_are_warned(self):
         ranks = ["rank_3k", "rank_1k", "rank_1d"]
         warn = S.schedule_balance_warning(S.selfplay_schedule(20, ranks, 1), ranks)
@@ -182,6 +196,39 @@ class TestResignAndOutcome:
         ]
         assert S.resign_pool_from_summaries(summaries, 13) == [3.9, 28.9]
         assert S.resign_pool_from_summaries(summaries, 9) == [round(3.9 * 81 / 169, 2), round(28.9 * 81 / 169, 2)]
+
+    def test_resign_lengths_from_real_game_summaries(self):
+        summaries = [
+            {"ai": "W", "n_moves": 123, "final_score": -3.9},
+            {"ai": "W", "n_moves": 31, "final_score": -2.7},  # 長さのモデルは短い局も含める（実戦の手数の分布そのもの）
+            {"ai": "B", "final_score": 1.0},  # 手数の無い summary は捨てる
+        ]
+        assert S.resign_lengths_from_summaries(summaries, 13) == [123, 31]
+        assert S.resign_lengths_from_summaries(summaries, 9) == [round(123 * 81 / 169), round(31 * 81 / 169)]
+        assert S.resign_lengths_from_summaries(summaries, 19) == [round(123 * 361 / 169), round(31 * 361 / 169)]
+
+    def test_length_model_resigns_at_or_after_the_target_length_when_clearly_winning(self):
+        assert S.selfplay_should_resign_at_length(59, 20.0, 0.99, 1, 60) == (False, 0)  # L より前は数えない
+        ok, streak = S.selfplay_should_resign_at_length(60, 2.5, 0.90, 0, 60)
+        assert (ok, streak) == (False, 1)
+        assert S.selfplay_should_resign_at_length(62, 2.5, 0.90, streak, 60) == (True, 2)
+
+    def test_length_model_keeps_checking_after_the_target_length(self):
+        assert S.selfplay_should_resign_at_length(70, 2.4, 0.99, 1, 60) == (False, 0)  # リード 2.5 未満
+        assert S.selfplay_should_resign_at_length(72, 20.0, 0.89, 1, 60) == (False, 0)  # 勝率 0.90 未満
+        ok, streak = S.selfplay_should_resign_at_length(90, 8.0, 0.97, 0, 60)
+        assert S.selfplay_should_resign_at_length(92, 8.0, 0.97, streak, 60) == (True, 2)
+        assert S.selfplay_should_resign_at_length(92, None, 0.97, 1, 60) == (False, 0)
+        assert S.selfplay_should_resign_at_length(200, 50.0, 1.0, 5, None) == (False, 0)
+
+    def test_resign_check_dispatches_on_the_scheduled_model(self):
+        length = {"resign_len": 60, "resign_lead": None}
+        lead = {"resign_lead": 10.0}  # 長さの列の無い古い日程（run.json）も lead として読む
+        assert S.resign_model_of(length) == "length" and S.resign_model_of(lead) == "lead"
+        assert S.resign_model_of({"resign_len": None, "resign_lead": None}) == "none"
+        assert S.selfplay_resign_check(length, 60, 3.0, 0.91, 1, 13) == (True, 2)
+        assert S.selfplay_resign_check(lead, 60, 3.0, 0.91, 1, 13) == (False, 0)  # lead は R 10 と勝率 0.95
+        assert S.selfplay_resign_check(lead, 60, 12.0, 0.96, 1, 13) == (True, 2)
 
     def test_ai_view(self):
         assert S.ai_view_lead(3.0, "W") == -3.0 and S.ai_view_winrate(0.8, "W") == pytest.approx(0.2)
@@ -499,6 +546,13 @@ class TestArmSummary:
         d2 = S.selfplay_paired_diff(a, a, "win", n_boot=100)
         assert d2["n"] == 10 and d2["mean"] == 0.0
 
+    def test_verdict_only_for_rate_metrics(self):
+        a = [_rec("A", s, 0.30, 0.2, flip_moves=s % 3) for s in range(6)]
+        b = [_rec("B", s, 0.40, 0.2, flip_moves=0) for s in range(6)]
+        assert S.selfplay_paired_diff(a, b, "own_top1", n_boot=100)["verdict"] == "lower"
+        for metric in ("flip_moves", "win", "own_mean_ptloss", "ge6"):  # 率でない指標に ±3pt の判定線は無意味
+            assert S.selfplay_paired_diff(a, b, metric, n_boot=100)["verdict"] is None
+
 
 class TestArmsAndParsing:
     def test_null_guard_detects_identical_resolved_settings(self):
@@ -510,11 +564,30 @@ class TestArmsAndParsing:
         assert S.arms_null_guard(arms) == [("A", "B")]
         assert S.settings_fingerprint("ai:x", {"a": 1, "b": 2}) == S.settings_fingerprint("ai:x", {"b": 2, "a": 1})
 
+    def test_effective_settings_overlay_code_defaults_and_normalise_numbers(self):
+        settings = {"veil13_reserve": 4, "other": 2, "flag": True}
+        eff = S.effective_settings(settings, "veil13", {"reserve": 3.0, "tau": 1})
+        assert eff == {"veil13_reserve": 4.0, "veil13_tau": 1.0, "other": 2.0, "flag": True}
+        assert type(eff["flag"]) is bool and type(eff["other"]) is float  # bool は数値にしない
+        assert S.effective_settings({"a": 6}) == {"a": 6.0}
+        arms = [
+            {"name": "A", "mode": "ai:x", "settings": {"k": 6}, "effective_settings": {"k": 6, "d": 1.0}},
+            {"name": "B", "mode": "ai:x", "settings": {"k": 6.0, "d": 1}, "effective_settings": {"k": 6.0, "d": 1}},
+        ]
+        assert S.arms_null_guard(arms) == [("A", "B")]
+
     def test_unknown_override_keys(self):
         assert S.unknown_override_keys({"veil13_reserv": 4}, {"veil13_reserve": 5}, {"veil13_trap_mode"}) == [
             "veil13_reserv"
         ]
         assert S.unknown_override_keys({"veil13_trap_mode": True}, {}, {"veil13_trap_mode"}) == []
+
+    def test_humansl_profiles_are_stripped_and_validated(self):
+        assert S.parse_profiles(" rank_3k, rank_1d ,") == ["rank_3k", "rank_1d"]
+        good = ["rank_20k", "rank_1k", "rank_9d", "preaz_5k", "preaz_2d", "proyear_1990"]
+        assert S.invalid_humansl_profiles(good) == []
+        bad = ["rank3k", "rank_3x", "9d", "rank_3k ", "proyear_90", "strategy:x"]
+        assert S.invalid_humansl_profiles(good + bad) == bad
 
     def test_parse_arm_and_range(self):
         assert S.parse_arm("A=veil13") == ("A", "veil13", [])

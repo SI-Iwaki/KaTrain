@@ -17,6 +17,7 @@ os.environ.setdefault("KIVY_NO_ARGS", "1")
 from katrain.core import ai as ai_module  # noqa: E402
 from katrain_debug import selfplay_stats as S  # noqa: E402
 from katrain_debug.selfplay_game import (  # noqa: E402
+    ENGINE_STALL_S,
     EngineWatchdog,
     Harness,
     make_opponent,
@@ -36,12 +37,39 @@ def default_pool_path(size):
     return os.path.join(SELFPLAY_DATA, f"opponent_pool_{size}.json")
 
 
-def load_resign_pool(size, recon_dir=RECON_DIR):
+def repo_relpath(path):
+    """記録に残すパス: リポジトリの中ならリポジトリ相対（スラッシュ区切り）、外なら絶対パス（スラッシュ区切り）。
+
+    コミットする成果物（プールの source_run・校正の md）に作業ツリーやマシンの絶対パスを埋め込まないため。
+    """
+    if path is None:
+        return None
+    full = os.path.abspath(path)
+    try:
+        rel = os.path.relpath(full, REPO_ROOT)
+    except ValueError:  # Windows で別ドライブ
+        rel = None
+    if rel is None or rel == os.pardir or rel.startswith(os.pardir + os.sep):
+        return full.replace(os.sep, "/")
+    return rel.replace(os.sep, "/")
+
+
+def _recon_summaries(recon_dir):
     summaries = []
     for path in sorted(glob.glob(os.path.join(recon_dir, "report_game_*.json"))):
         with open(path, encoding="utf-8") as f:
             summaries.append(json.load(f)["summary"])
-    return S.resign_pool_from_summaries(summaries, size)
+    return summaries
+
+
+def load_resign_pool(size, recon_dir=RECON_DIR):
+    """lead モデルの投了閾値 R の標本（実戦の投了局の最終リード）。"""
+    return S.resign_pool_from_summaries(_recon_summaries(recon_dir), size)
+
+
+def load_resign_lengths(size, recon_dir=RECON_DIR):
+    """length モデルの目標の手数 L の標本（実戦 13路 18局の手数を盤面積で比例）。"""
+    return S.resign_lengths_from_summaries(_recon_summaries(recon_dir), size)
 
 
 def git_info(path):
@@ -52,19 +80,50 @@ def git_info(path):
             return None
         return r.stdout.strip() if r.returncode == 0 else None
 
-    status = git("status", "--porcelain")
+    status = git("status", "--porcelain", "--untracked-files=no")  # 追跡外のファイル（計画のメモ等）は dirty にしない
     return {"head": git("rev-parse", "HEAD"), "dirty": None if status is None else bool(status)}
 
 
 def run_meta(stub):
-    """run.json の実行環境: エンジン設定・ai.py の場所・git HEAD と dirty（worktree の取り違え対策）。"""
+    """run.json の実行環境: エンジン設定・ai.py の場所（リポジトリ相対）・git HEAD と dirty（worktree の取り違え対策）。"""
     ai_dir = os.path.dirname(os.path.abspath(ai_module.__file__))
     return {
         "engine": dict(stub.config("engine") or {}),
-        "ai_file": os.path.abspath(ai_module.__file__),
+        "ai_file": repo_relpath(ai_module.__file__),
         "git": git_info(ai_dir),
         "python": sys.version.split()[0],
     }
+
+
+# 計測の基準（spec §5・§11 設定の取り違え）: 再開と複数の実行の要約で run.json どうし・run.json と今の環境を突き合わせる
+BASELINE_ENGINE_KEYS = ("katago", "model", "humanlike_model", "max_visits", "max_time", "wide_root_noise")
+
+
+def measurement_baseline(meta):
+    """run.json（か run_meta）の計測の基準: エンジン設定の6項目・git HEAD・ai.py の場所（数値は 6 == 6.0 に正規化）。"""
+    engine = meta.get("engine") or {}
+    return {
+        **{f"engine.{k}": S.normalize_setting(engine.get(k)) for k in BASELINE_ENGINE_KEYS},
+        "git.head": (meta.get("git") or {}).get("head"),
+        "ai_file": repo_relpath(meta["ai_file"]) if meta.get("ai_file") else None,
+    }
+
+
+def baseline_differences(recorded, current):
+    """違う項目を `key: 記録 vs 今` の文字列のリストで返す（同じなら空）。"""
+    a, b = measurement_baseline(recorded), measurement_baseline(current)
+    return [f"{k}: {a[k]!r} vs {b[k]!r}" for k in a if a[k] != b[k]]
+
+
+def check_baseline(recorded, current, where, allow_mixed=False, log=print):
+    """計測の基準が違えば止まる（allow_mixed なら WARN を出して続ける）。違いの中身をそのまま出す。"""
+    diffs = baseline_differences(recorded, current)
+    if not diffs:
+        return
+    text = f"measurement baseline differs ({where}): " + "; ".join(diffs)
+    if not allow_mixed:
+        raise SystemExit(f"{text}. Start a new run, or pass --allow-mixed to mix them anyway.")
+    log(f"WARN {text} (--allow-mixed)")
 
 
 def make_plan(
@@ -88,7 +147,7 @@ def make_plan(
     return {
         "subcommand": subcommand,
         "created": datetime.datetime.now().isoformat(timespec="seconds"),
-        "command": list(sys.argv),
+        "command": [repo_relpath(sys.argv[0])] + sys.argv[1:] if sys.argv and sys.argv[0] else list(sys.argv),
         "size": size,
         "komi": komi,
         "rules": rules,
@@ -133,37 +192,76 @@ class OutputDir:
         with open(self.file(name), encoding="utf-8") as f:
             return json.load(f)
 
-    def records(self):
-        path = self.file("games.jsonl")
+    def _jsonl(self, name, log=print):
+        """jsonl の (行の文字列, dict) のリスト。最後の行だけが壊れている（書いている途中で止まった）なら捨てて warning を
+        log に出す。途中の行が壊れていれば止まる（手で直す）。"""
+        return self._read_jsonl(name, log)[0]
+
+    def _read_jsonl(self, name, log=print):
+        """-> (rows, 手を入れるべきか)。手を入れるべき＝書きかけの最後の行を捨てたか、最後の行に改行が無い。"""
+        path = self.file(name)
         if not os.path.exists(path):
-            return []
+            return [], False
         with open(path, encoding="utf-8") as f:
-            return [json.loads(line) for line in f if line.strip()]
+            text = f.read()
+        lines = [line for line in text.split("\n") if line.strip()]
+        rows = []
+        for i, line in enumerate(lines, 1):
+            try:
+                rows.append((line, json.loads(line)))
+            except json.JSONDecodeError as e:
+                if i < len(lines):
+                    raise SystemExit(f"{path}: {name} line {i} is broken ({e}); only a torn last line is skipped")
+                log(f"warning: {repo_relpath(path)}: skipped a torn last line ({len(line)} chars, {e.msg})")
+        return rows, len(rows) < len(lines) or bool(text) and not text.endswith("\n")
+
+    def _rewrite(self, name, lines):
+        """一時ファイルに書いてから os.replace で置き換える（途中で止まっても元のファイルは無傷）。"""
+        path = self.file(name)
+        tmp = path + ".tmp"
+        try:
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.writelines(line if line.endswith("\n") else line + "\n" for line in lines)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, path)
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+
+    def records(self, log=print):
+        return [row for _, row in self._jsonl("games.jsonl", log)]
 
     def done_keys(self):
         return {(r["arm"], r["seed"]) for r in self.records()}
 
+    def repair_torn_tails(self, log=print):
+        """再開の前に: games.jsonl / moves.jsonl の書きかけの最後の行（改行の無い行を含む）を取り除く。
+
+        そのまま追記すると書きかけの行に次の行がつながり、途中の壊れた行になる。取り除いた行は warning で log に出す。
+        """
+        for name in ("games.jsonl", "moves.jsonl"):
+            rows, needs_repair = self._read_jsonl(name, log)
+            if needs_repair:
+                self._rewrite(name, [line for line, _ in rows])
+
     def drop_aborted(self):
         """--retry-aborted: games.jsonl から aborted の行を aborted.jsonl へ移す（次の再開で打ち直す）。移した数を返す。"""
-        records = self.records()
-        aborted = [r for r in records if r.get("result") == "aborted"]
+        rows = self._jsonl("games.jsonl")
+        aborted = [r for _, r in rows if r.get("result") == "aborted"]
         if not aborted:
             return 0
         with open(self.file("aborted.jsonl"), "a", encoding="utf-8") as f:
             f.writelines(json.dumps(r, ensure_ascii=False, default=str) + "\n" for r in aborted)
-        with open(self.file("games.jsonl"), "w", encoding="utf-8") as f:
-            f.writelines(json.dumps(r, ensure_ascii=False, default=str) + "\n" for r in records if r not in aborted)
+        self._rewrite("games.jsonl", [line for line, r in rows if r.get("result") != "aborted"])
         return len(aborted)
 
     def prune_moves(self, done):
         """再開時: games.jsonl に無い局（落ちた局の書きかけ）の moves.jsonl の行を捨てる。"""
-        path = self.file("moves.jsonl")
-        if not os.path.exists(path):
+        if not os.path.exists(self.file("moves.jsonl")):
             return
-        with open(path, encoding="utf-8") as f:
-            keep = [line for line in f if line.strip() and tuple(json.loads(line)[k] for k in ("arm", "seed")) in done]
-        with open(path, "w", encoding="utf-8") as f:
-            f.writelines(keep)
+        rows = self._jsonl("moves.jsonl")
+        self._rewrite("moves.jsonl", [line for line, r in rows if (r["arm"], r["seed"]) in done])
 
     def write_game(self, result, trainer_config):
         """SGF（KT 解析つき）・ログ・moves.jsonl・games.jsonl の順に書く（games.jsonl の行が完了の印）。"""
@@ -210,14 +308,19 @@ def execute_plan(
     watchdog_interval=2.0,
     hooks_builder=None,
     retry_aborted=False,
+    allow_mixed=False,
     log=print,
 ):
     """計画の未完了の局を順に打つ。アームの解決済み設定が計画時と違えば中止（config を途中で変えた）。
 
+    plan が run.json（再開: 実行環境の engine / git / ai_file を含む）なら、計測の基準（エンジン設定・コードの版）を
+    今の config とコードと突き合わせ、違えば1局も打たずに止まる（allow_mixed なら WARN を出して続ける）。
     各局の前にエンジンの死活を見て、落ちていれば再起動する（spec §2: 落ちた局だけ aborted にして続行）。
     hooks_builder(plan, arms) -> factory(arm_name) -> [hook]（hp 監査・影判定。selfplay_hooks.make_hooks_factory）。
     retry_aborted: 再開のとき aborted の局も打ち直す（OutputDir.drop_aborted）。
     """
+    if "engine" in plan:
+        check_baseline(plan, run_meta(stub), f"resume {repo_relpath(out.path)}", allow_mixed, log)
     arms = {}
     for entry in plan["arms"]:
         arm = resolve_arm(stub, entry["name"], entry["strategy"], entry["override_items"])
@@ -231,6 +334,7 @@ def execute_plan(
         o = plan["opponent"]
         opponent_arm = resolve_arm(stub, "opponent", o["strategy"], o["override_items"])
     hooks_for = hooks_builder(plan, arms) if hooks_builder else (lambda name: [])
+    out.repair_torn_tails(log)  # 前の実行が行の途中で止まっていたら、その行を捨ててから追記する
     if retry_aborted:
         n = out.drop_aborted()
         if n:
@@ -238,7 +342,10 @@ def execute_plan(
     done = out.done_keys()
     out.prune_moves(done)
     engine = engine_factory(stub)
-    watchdog = EngineWatchdog(engine, watchdog_interval).start() if watchdog_interval else None
+    watchdog = None
+    if watchdog_interval:  # 返事の無い KataGo の検出は、待ちの上限（--timeout）と 180 秒の長い方
+        stall_timeout = max(ENGINE_STALL_S, plan["timeout"])
+        watchdog = EngineWatchdog(engine, watchdog_interval, stall_timeout=stall_timeout).start()
     h = Harness(stub, engine, plan["size"], plan["komi"], plan["rules"], watchdog, plan["timeout"], plan["watch_flags"])
     try:
         for arm_name, idx in plan["order"]:
@@ -332,12 +439,19 @@ def format_summary_text(summary):
             lines.append(
                 f"{m:<16} n={d['n']:>3} mean={fmt_num(d['mean'], '+.4f')} t={fmt_num(d['t_ci'][0], '+.4f')}.."
                 f"{fmt_num(d['t_ci'][1], '+.4f')} boot={fmt_num(d['boot_ci'][0], '+.4f')}..{fmt_num(d['boot_ci'][1], '+.4f')} "
-                f"wilcoxon_p={fmt_num(d['wilcoxon_p'], '.4f')} verdict(+-3pt)={d['verdict']}"
+                f"wilcoxon_p={fmt_num(d['wilcoxon_p'], '.4f')} verdict(+-3pt)={d['verdict'] or '-'}"
             )
     if len(summary.get("sources") or []) > 1:
         lines += ["", "## sources"] + summary["sources"]
     text = "\n".join(lines) + "\n"
     return text.encode("ascii", "replace").decode("ascii")
+
+
+def resign_model_of_plan(resign):
+    """計画の投了モデル（length / lead / none）。model の無い古い run.json は lead か none（--no-resign）。"""
+    if resign.get("model"):
+        return resign["model"]
+    return "none" if resign.get("no_resign") else "lead"
 
 
 def plan_conditions(plan):
@@ -347,17 +461,18 @@ def plan_conditions(plan):
     return {
         **{k: plan.get(k) for k in ("size", "komi", "komi_shift", "rules", "max_moves", "watch_flags", "target")},
         "opponent": {k: opp.get(k) for k in ("kind", "ranks", "tau", "max_loss", "strategy", "override_items")},
-        "resign": {k: resign.get(k) for k in ("no_resign", "range")},
+        "resign": {"model": resign_model_of_plan(resign), **{k: resign.get(k) for k in ("no_resign", "range")}},
     }
 
 
-def load_records(outs):
+def load_records(outs, allow_mixed=False, log=print):
     """複数の実行の games.jsonl を合わせる（spec §6 停止規則の延長: 20 ペアの後の --seed-base 1020 の実行など）。
 
-    同じ (arm, seed) が2回現れる・同じ名前のアームの設定の指紋が違う・対局条件が違うときは止まる（run.json の無い
-    ディレクトリは指紋と条件の突き合わせを飛ばす）。
+    同じ (arm, seed) が2回現れる・同じ名前のアームの設定の指紋が違う・対局条件が違うときは止まる。計測の基準
+    （エンジン設定・コードの版）が最初の実行と違うときも止まる（allow_mixed なら WARN を出して合わせる）。
+    run.json の無いディレクトリは突き合わせを飛ばす。
     """
-    records, seen, prints, conditions = [], {}, {}, None
+    records, seen, prints, conditions, first = [], {}, {}, None, None
     for out in outs:
         if os.path.exists(out.file("run.json")):
             plan = out.read_json("run.json")
@@ -368,7 +483,12 @@ def load_records(outs):
             if conditions is not None and cond != conditions:
                 raise SystemExit(f"game conditions differ between the run directories ({out.path})")
             conditions = cond
-        for r in out.records():
+            if first is None:
+                first = (out, plan)
+            else:
+                where = f"{repo_relpath(first[0].path)} vs {repo_relpath(out.path)}"
+                check_baseline(first[1], plan, where, allow_mixed, log)
+        for r in out.records(log):
             key = (r["arm"], r["seed"])
             if key in seen:
                 raise SystemExit(f"arm {r['arm']} seed {r['seed']} appears in both {seen[key]} and {out.path}")
@@ -377,17 +497,17 @@ def load_records(outs):
     return records
 
 
-def summarize_dir(outs, n_boot=10000, compare=None, conf=0.975, dest=None):
+def summarize_dir(outs, n_boot=10000, compare=None, conf=0.975, dest=None, allow_mixed=False, log=print):
     """summary.txt（ASCII）/ summary.json を dest（既定: 最初の実行）に書く。
 
-    outs は OutputDir かそのリスト（複数なら load_records で合わせる）。compare は (A, B) か [(A, B), ...]
-    （同じ seed の対の差 A - B。既定の区間 97.5%＝2回見る停止規則）。
+    outs は OutputDir かそのリスト（複数なら load_records で合わせる。allow_mixed は計測の基準の違いを許す）。
+    compare は (A, B) か [(A, B), ...]（同じ seed の対の差 A - B。既定の区間 97.5%＝2回見る停止規則）。
     """
     outs = list(outs) if isinstance(outs, (list, tuple)) else [outs]
     dest = dest or outs[0]
-    records = load_records(outs)
+    records = load_records(outs, allow_mixed, log)
     summary = S.selfplay_summarize(records, n_boot)
-    summary["sources"] = [o.path for o in outs]
+    summary["sources"] = [repo_relpath(o.path) for o in outs]
     pairs = [tuple(compare)] if compare and isinstance(compare[0], str) else [tuple(c) for c in compare or []]
     if pairs:
         summary["compare"] = []
@@ -409,15 +529,16 @@ def calibration_result(out, plan):
     per_rank = S.calibration_rank_stats(records)
     choices = S.selfplay_pool_choice(per_rank) if plan["size"] == 13 and len(per_rank) >= 3 else []
     best = choices[0] if choices else None
-    # 計測の健全性（review finding on Task 6fix, dedup: Task 6fix2）: calibrate も run と同じ4つの合計を出す
-    # （全アーム＝全局分）。集計式そのものは selfplay_arm_summary と共有（S.integrity_totals）。
+    # 計測の健全性: calibrate も run と同じ4つの合計を出す（全アーム＝全局分）。集計式は selfplay_arm_summary と
+    # 共有（S.integrity_totals）。
     integrity = S.integrity_totals(records)
     arm_name = plan["arms"][0].get("name", "calib")
     return {
-        "run_dir": out.path,
+        "run_dir": repo_relpath(out.path),  # プールの source_run と md に入る＝作業ツリーの絶対パスを埋め込まない
         "strategy": plan["arms"][0]["strategy"],
         "size": plan["size"],
         "tau": plan["opponent"]["tau"],
+        "resign_model": resign_model_of_plan(plan.get("resign") or {}),
         "targets": S.CALIB_TARGETS_13,
         "per_rank": per_rank,
         "choices": choices[:5],
@@ -440,6 +561,7 @@ def pool_file_content(cal):
         "strategy": cal["strategy"],
         "ranks": best["ranks"],
         "tau": cal["tau"],
+        "resign_model": cal.get("resign_model"),
         "fit": best,
         "targets": cal["targets"],
         "per_rank": cal["per_rank"],
@@ -456,7 +578,7 @@ def format_calibration_md(cal):
     if cal.get("integrity_warning"):
         lines += [cal["integrity_warning"], ""]
     lines += [
-        f"実行: `{cal['run_dir']}`",
+        f"実行: `{cal['run_dir']}`（投了モデル: {cal.get('resign_model') or '-'}）",
         "",
         "## 段位ごと（相手＝humanSL・WATCH 木・局単位）",
         "",

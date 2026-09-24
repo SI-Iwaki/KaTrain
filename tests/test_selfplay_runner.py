@@ -7,6 +7,7 @@
 import ast
 import inspect
 import textwrap
+import threading
 import time
 import types
 
@@ -17,6 +18,7 @@ from katrain.core.ai import AIStrategy, AnalysisDiscardedException, generate_ai_
 from katrain.core.constants import OUTPUT_ERROR
 from katrain.core.sgf_parser import Move
 from katrain_debug import selfplay_game as G
+from katrain_debug import selfplay_stats as S
 from katrain_debug.selfplay_opponent import HumanSLOpponent
 from tests.selfplay_fakes import FakeEngine, make_stub, new_game
 
@@ -112,7 +114,42 @@ class TestResolveArm:
         assert arm.settings == {} and arm.settings_source.startswith("code defaults")
 
 
-def _spec(ai_color="B", resign_lead=None, seed=1000):
+class TestNullGuardOnEffectiveSettings:
+    """null ガードは戦略が実際に使う設定（コードの既定値 → ユーザー config → 上書き・数値は正規化）で比べる。"""
+
+    def test_int_and_float_of_the_same_value_are_the_same_setting(self, tmp_path):
+        stub = make_stub(tmp_path, **{"ai:enigma13plus": {"enigma13plus_probe_extra": 6.0}})
+        a = G.resolve_arm(stub, "A", "enigma13plus", [])
+        b = G.resolve_arm(stub, "B", "enigma13plus", ["enigma13plus_probe_extra=6"])
+        assert type(b.settings["enigma13plus_probe_extra"]) is int  # parse_settings は "6" を int にする
+        assert a.fingerprint != b.fingerprint  # run.json の指紋（再開の突き合わせ）は生の設定のまま
+        assert S.arms_null_guard([a.as_dict(), b.as_dict()]) == [("A", "B")]
+        c = G.resolve_arm(stub, "C", "enigma13plus", ["enigma13plus_probe_extra=5"])
+        assert S.arms_null_guard([a.as_dict(), c.as_dict()]) == []
+
+    def test_override_equal_to_the_code_default_is_no_difference(self, tmp_path):
+        stub = make_stub(tmp_path, **{"ai:mimic13": {}})  # ユーザー config の節は空＝すべてコードの既定値
+        a = G.resolve_arm(stub, "A", "mimic13", [])
+        b = G.resolve_arm(stub, "B", "mimic13", ["mimic13_probe_extra=4", "mimic13_reserve=3.0"])  # どちらも既定値
+        assert a.effective_settings["mimic13_probe_extra"] == 4.0 and a.effective_settings["mimic13_reserve"] == 3.0
+        assert S.arms_null_guard([a.as_dict(), b.as_dict()]) == [("A", "B")]
+        c = G.resolve_arm(stub, "C", "mimic13", ["mimic13_reserve=4.0"])
+        assert S.arms_null_guard([a.as_dict(), b.as_dict(), c.as_dict()]) == [("A", "B")]
+
+    def test_different_strategies_are_never_null(self, tmp_path):
+        stub = make_stub(tmp_path, **{"ai:mimic13": {}, "ai:enigma13plus": {}})
+        arms = [G.resolve_arm(stub, n, s, []) for n, s in (("A", "enigma13plus"), ("B", "mimic13"))]
+        assert S.arms_null_guard([a.as_dict() for a in arms]) == []
+
+    def test_strategy_without_code_defaults_uses_the_resolved_settings(self, tmp_path):
+        stub = make_stub(tmp_path, **{"ai:default": {"dummy": 1}})
+        a = G.resolve_arm(stub, "A", "default", [])
+        b = G.resolve_arm(stub, "B", "default", ["dummy=1.0"])
+        assert a.effective_settings == {"dummy": 1.0}
+        assert S.arms_null_guard([a.as_dict(), b.as_dict()]) == [("A", "B")]
+
+
+def _spec(ai_color="B", resign_lead=None, seed=1000, resign_len=None):
     return {
         "index": 0,
         "seed": seed,
@@ -121,6 +158,7 @@ def _spec(ai_color="B", resign_lead=None, seed=1000):
         "opp_seed": 7,
         "strategy_seed": 11,
         "resign_lead": resign_lead,
+        "resign_len": resign_len,
     }
 
 
@@ -169,6 +207,23 @@ class TestPlayGame:
         assert rec["end_reason"] == "opp_resign" and rec["result"] == "win"
         assert rec["n_moves"] == 22  # 9路の開始 19 手以降の AI 手番（20・22 手目の局面）で2回続いた
         assert res.game.end_result == "B+R"
+        assert rec["resign_model"] == "lead" and rec["resign_lead"] == 10.0 and rec["resign_len"] is None
+
+    def test_length_model_resigns_two_ai_turns_after_the_target_length(self, tmp_path):
+        h = self._harness(tmp_path, FakeEngine(lead=30.0, winrate=0.99))
+        arm = G.resolve_arm(h.stub, "A", "default", [])
+        res = G.play_game(h, arm, _spec("B", resign_len=30), HumanSLOpponent("rank_3k", seed=7), max_moves=60)
+        rec = res.record
+        assert rec["end_reason"] == "opp_resign" and rec["result"] == "win"
+        assert rec["n_moves"] == 32  # L=30 以降の AI 手番（30・32 手目）で2回続いた（開始 19 手は使わない）
+        assert rec["resign_model"] == "length" and rec["resign_len"] == 30 and rec["resign_lead"] is None
+
+    @pytest.mark.parametrize("lead, winrate", [(2.0, 0.99), (30.0, 0.85)])
+    def test_length_model_needs_a_clear_win(self, tmp_path, lead, winrate):
+        h = self._harness(tmp_path, FakeEngine(lead=lead, winrate=winrate))  # リード 2.5 未満・勝率 0.90 未満
+        arm = G.resolve_arm(h.stub, "A", "default", [])
+        res = G.play_game(h, arm, _spec("B", resign_len=10), HumanSLOpponent("rank_3k", seed=7), max_moves=40)
+        assert res.record["end_reason"] == "move_cap" and res.record["n_moves"] == 40
 
     def test_engine_death_aborts_the_game(self, tmp_path):
         engine = FakeEngine()
@@ -298,3 +353,77 @@ class TestWatchdog:
         dog.ensure_alive()
         dog.ensure_alive()
         assert dog.restarts == 1 and engine.restarts == 1 and engine.alive
+
+    def test_restarts_a_live_engine_that_stopped_answering(self):
+        engine = StallingEngine()
+        engine.queries["QUERY:1"] = (None, None, time.time(), None, None)  # 待ちの問い合わせに返事が来ない
+        dog = G.EngineWatchdog(engine, interval=0.01, stall_timeout=0.2).start()
+        started = time.time()
+        while dog.restarts == 0 and time.time() - started < 3:
+            time.sleep(0.01)
+        dog.stop()
+        assert dog.restarts == 1 and dog.stalls == 1
+        assert engine.query_generation == 1 and engine.queries == {}  # restart が世代を進め、待ちの戦略が抜ける
+
+    def test_stall_needs_pending_queries_without_any_reply(self):
+        engine = StallingEngine()
+        dog = G.EngineWatchdog(engine, stall_timeout=10.0)
+        assert dog.stalled(now=0.0) is False  # 何も待っていない
+        assert dog.stalled(now=100.0) is False
+        engine.queries.update(Q1=None)
+        assert dog.stalled(now=101.0) is False  # 待ち始め
+        engine.queries.update(Q2=None)
+        assert dog.stalled(now=110.0) is False  # 9秒: まだ
+        del engine.queries["Q1"]
+        assert dog.stalled(now=111.5) is False  # Q1 に返事が来た＝進んでいる
+        assert dog.stalled(now=121.0) is False
+        assert dog.stalled(now=121.6) is True  # Q2 だけが 10 秒を超えて返事なし
+        assert G.EngineWatchdog(FakeEngine(), stall_timeout=0.0).stalled(now=1e9) is False  # queries の無いエンジン
+
+    def test_stalled_engine_aborts_only_the_game_in_progress(self, tmp_path, monkeypatch):
+        class WaitsForAReply(AIStrategy):
+            def generate_move(self):
+                self.request_analysis({"stall": True})  # 返事の来ない追加の問い合わせ（ai.py の待ちループ）
+                return Move.from_gtp("A1", player=self.cn.next_player), "never"
+
+        monkeypatch.setitem(ai_module.STRATEGY_REGISTRY, "ai:test_waits", WaitsForAReply)
+        stub = make_stub(tmp_path)
+        engine = StallingEngine()
+        engine.katrain = stub
+        dog = G.EngineWatchdog(engine, interval=0.01, stall_timeout=0.3).start()
+        try:
+            h = G.Harness(stub, engine, size=9, watchdog=dog, timeout=5)
+            arm = G.Arm("A", "x", "ai:test_waits", {}, [], "WaitsForAReply", "test")
+            res = G.play_game(h, arm, _spec("B"), HumanSLOpponent("rank_3k", seed=7), max_moves=6)
+        finally:
+            dog.stop()
+        assert res.record["result"] == "aborted" and "AI move discarded" in res.record["error"]
+        assert dog.stalls == 1 and engine.restarts == 1
+        assert any(line.startswith("selfplay: KataGo stalled") for line in res.logs)
+
+
+class StallingEngine(FakeEngine):
+    """生きているのに返事をしない KataGo: extra_settings に stall のある問い合わせを queries に積んだまま答えない。
+
+    KataGoEngine と同じく queries（待ちの問い合わせ）・thread_lock・query_generation を持ち、restart で世代を進める。
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.queries = {}
+        self.thread_lock = threading.RLock()
+        self.query_generation = 0
+
+    def request_analysis(self, node, callback, error_callback=None, **kwargs):
+        if "stall" in (kwargs.get("extra_settings") or {}):
+            self.requests.append((node, kwargs))
+            with self.thread_lock:
+                self.queries[f"QUERY:{len(self.requests)}"] = (callback, error_callback, time.time(), None, node)
+            return
+        super().request_analysis(node, callback, error_callback, **kwargs)
+
+    def restart(self):
+        with self.thread_lock:
+            self.query_generation += 1
+            self.queries.clear()
+        super().restart()

@@ -1,8 +1,8 @@
 """自己対局ハーネスの CLI（戦略 vs humanSL ボットを無人で N 局打たせ、両者の終局レポートの一致率を集計する）。
 
     python -m katrain_debug.selfplay run --arm A=enigma13plus --arm B=enigma13plus:enigma13plus_max_loss=2.0
-        --size 13 --pairs 20 [--opp-pool FILE | --ranks rank_3k,rank_1k,rank_1d] [--komi-shift 4] [--no-resign]
-        [--label NAME] [--resume DIR]
+        --size 13 --pairs 20 [--opp-pool FILE | --ranks rank_3k,rank_1k,rank_1d] [--komi-shift 4]
+        [--resign-model length|lead | --no-resign] [--label NAME] [--resume DIR]
     python -m katrain_debug.selfplay calibrate --size 13 --strategy enigma13plus
         --ranks rank_8k,rank_5k,rank_3k,rank_1k,rank_1d,rank_3d --games 8 [--write-pool FILE]
     python -m katrain_debug.selfplay summarize DIR [DIR ...] [--compare A B]
@@ -69,6 +69,18 @@ def setup_errors():
         raise SystemExit(f"error: {e}") from e
 
 
+def humansl_profiles(profiles, what):
+    """humanSL の段位のリストを確かめる（エンジンを起こす前）。形の違う段位は KataGo がエラーを返すだけで、
+    相手の全手が最善手へのフォールバックになる（WARN integrity は実行の後にしか出ない）。"""
+    bad = S.invalid_humansl_profiles(profiles)
+    if bad:
+        raise SystemExit(
+            f"invalid humanSL profile(s) for {what}: {bad} "
+            "(expected rank_<N>k / rank_<N>d, preaz_<N>k / preaz_<N>d or proyear_<YYYY>)"
+        )
+    return profiles
+
+
 def default_config_path():
     return os.path.expanduser(os.path.join(DATA_FOLDER, "config.json"))
 
@@ -93,37 +105,53 @@ def opponent_plan(args, size):
             raise SystemExit(f"opponent pool not found: {pool_file}")
         with open(pool_file, encoding="utf-8") as f:
             pool = json.load(f)
-    ranks = args.ranks.split(",") if args.ranks else (pool or {}).get("ranks")
+    ranks = S.parse_profiles(args.ranks) if args.ranks else (pool or {}).get("ranks")
     if not ranks:
         raise SystemExit("no opponent ranks: pass --ranks or --opp-pool (or run calibrate --write-pool first)")
+    humansl_profiles(ranks, "--ranks" if args.ranks else f"the opponent pool {pool_file}")
     tau = args.tau if args.tau is not None else (pool or {}).get("tau", 1.0)
     return {
         "kind": "humansl",
         "ranks": ranks,
         "tau": tau,
         "max_loss": args.opp_max_loss,
-        "pool_file": pool_file,
+        "pool_file": R.repo_relpath(pool_file),
         "pool": pool,
     }
 
 
 def resign_plan(args, size):
-    """投了モデル: --no-resign / --resign-lead LO:HI / 実戦 13路の投了局の最終リード（既定）。"""
+    """投了モデル（--resign-model）:
+    - length（既定）: 局ごとに目標の手数 L を実戦 13路 18局の手数から引き、L 以降に AI が明らかに勝っていれば投了。
+    - lead: 局ごとに閾値 R を実戦の投了局の最終リード（または --resign-lead LO:HI の一様）から引く。
+    --no-resign ならどちらでもなく投了しない（model "none"）。
+    """
     start = S.resign_start_move(size)
+    common = {"no_resign": False, "range": None, "pool": [], "lengths": [], "start_move": None, "source": None}
     if args.no_resign:
-        return {"no_resign": True, "range": None, "pool": [], "start_move": start, "source": None}
+        return {**common, "model": "none", "no_resign": True, "start_move": start}
+    if args.resign_lead and args.resign_model != "lead":
+        raise SystemExit("--resign-lead LO:HI applies only to --resign-model lead")
+    source = R.repo_relpath(R.RECON_DIR)
+    if args.resign_model == "length":
+        lengths = R.load_resign_lengths(size)
+        if not lengths:
+            raise SystemExit(
+                f"no game lengths in {source}: pass --resign-model lead --resign-lead LO:HI or --no-resign"
+            )
+        return {**common, "model": "length", "lengths": lengths, "source": source}
     if args.resign_lead:
         return {
-            "no_resign": False,
+            **common,
+            "model": "lead",
             "range": list(S.parse_range(args.resign_lead)),
-            "pool": [],
             "start_move": start,
             "source": "--resign-lead",
         }
     pool = R.load_resign_pool(size)
     if not pool:
-        raise SystemExit(f"no resign data in {R.RECON_DIR}: pass --resign-lead LO:HI or --no-resign")
-    return {"no_resign": False, "range": None, "pool": pool, "start_move": start, "source": R.RECON_DIR}
+        raise SystemExit(f"no resign data in {source}: pass --resign-lead LO:HI or --no-resign")
+    return {**common, "model": "lead", "pool": pool, "start_move": start, "source": source}
 
 
 def _schedule(n_seeds, ranks, args, resign):
@@ -134,13 +162,18 @@ def _schedule(n_seeds, ranks, args, resign):
         resign_leads=resign["pool"],
         resign_range=resign["range"],
         no_resign=resign["no_resign"],
+        resign_lens=resign["lengths"],
     )
 
 
-def _warn_if_unbalanced(plan):
+def _plan_warnings(plan):
+    """新しい計画の注意: 段位 × 色の層の偏りと、コードの既定値で走るアーム（エンジンを起こす前に出す）。"""
     warning = S.schedule_balance_warning(plan["schedule"], plan["opponent"]["ranks"])
     if warning:
         safe_print(warning)
+    for arm in plan["arms"]:  # spec §11: 戦略の節がユーザー config に無いと、GUI と違うコードの既定値で走る
+        if arm["settings_source"] != "user config":
+            safe_print(f"note: arm {arm['name']} ({arm['strategy']}): settings_source = {arm['settings_source']}")
 
 
 def _new_output(args, stub, plan, label):
@@ -170,6 +203,9 @@ def _plan_run(args):
         raise SystemExit(f"null experiment: arms {same} resolve to identical settings")
     if args.shadow is not None and args.shadow not in {a.name for a in arms}:
         raise SystemExit(f"--shadow {args.shadow}: not one of the --arm names")
+    hp_audit = args.hp_audit.strip() if args.hp_audit is not None else None
+    if hp_audit is not None:
+        humansl_profiles([hp_audit], "--hp-audit")
     opponent = opponent_plan(args, args.size)
     if opponent["kind"] == "strategy":  # 相手の戦略名と上書きキーの綴りも開始前に確かめる
         resolve_arm(stub, "opponent", opponent["strategy"], opponent["override_items"])
@@ -190,7 +226,7 @@ def _plan_run(args):
         extra={
             "config_path": args.config or default_config_path(),
             "shadow": args.shadow,
-            "hp_audit": args.hp_audit,
+            "hp_audit": hp_audit,
         },
     )
     return stub, plan
@@ -202,7 +238,7 @@ def cmd_run(args):
     else:
         with setup_errors():
             stub, plan = _plan_run(args)
-        _warn_if_unbalanced(plan)
+        _plan_warnings(plan)
         out = _new_output(args, stub, plan, args.label or "run")
     R.execute_plan(
         plan,
@@ -211,6 +247,7 @@ def cmd_run(args):
         engine_factory=start_engine,
         hooks_builder=make_hooks_factory,
         retry_aborted=args.retry_aborted,
+        allow_mixed=args.allow_mixed,
         log=safe_print,
     )
     names = [a["name"] for a in plan["arms"]]
@@ -222,7 +259,7 @@ def _plan_calibrate(args):
     """calibrate の計画（1アーム × 段位ごとに --games 局・色は交互）。-> (stub, plan)"""
     stub = make_stub(args.config)
     arm = resolve_arm(stub, "calib", args.strategy, [])
-    ranks = args.ranks.split(",")
+    ranks = humansl_profiles(S.parse_profiles(args.ranks), "--ranks")
     resign = resign_plan(args, args.size)
     opponent = {
         "kind": "humansl",
@@ -241,9 +278,32 @@ def _plan_calibrate(args):
         opponent=opponent,
         resign=resign,
         timeout=args.timeout,
-        extra={"config_path": args.config or default_config_path(), "write_pool": args.write_pool},
+        extra={
+            "config_path": args.config or default_config_path(),
+            "write_pool": args.write_pool,
+            "force_pool": args.force_pool,
+        },
     )
     return stub, plan
+
+
+def _write_pool(plan, cal, force):
+    """--write-pool: 計測の健全性の数が 0 でなければ既定のプールを上書きせず <path>.suspect に書く（--force-pool で上書き）。"""
+    path = plan["write_pool"]
+    bad = " ".join(f"{k}={v}" for k, v in cal["integrity"].items() if v)
+    if bad and not force:
+        path += ".suspect"
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(R.pool_file_content(cal), f, ensure_ascii=False, indent=1)
+    if bad and not force:
+        safe_print(
+            f"WARN integrity: pool NOT written to {plan['write_pool']} ({bad}); wrote {path} instead. "
+            "Check logs/, or re-run with --force-pool to overwrite the pool."
+        )
+    else:
+        safe_print(f"pool written: {path}")
+        if bad:
+            safe_print("WARN integrity: pool written from games with integrity problems (--force-pool)")
 
 
 def cmd_calibrate(args):
@@ -252,11 +312,19 @@ def cmd_calibrate(args):
     else:
         with setup_errors():
             stub, plan = _plan_calibrate(args)
-        _warn_if_unbalanced(plan)
+        _plan_warnings(plan)
         out = _new_output(args, stub, plan, args.label or f"calib-{args.strategy}")
-    R.execute_plan(plan, out, stub, engine_factory=start_engine, retry_aborted=args.retry_aborted, log=safe_print)
+    R.execute_plan(
+        plan,
+        out,
+        stub,
+        engine_factory=start_engine,
+        retry_aborted=args.retry_aborted,
+        allow_mixed=args.allow_mixed,
+        log=safe_print,
+    )
     summary, _ = R.summarize_dir(out, args.boot)
-    for line in R.integrity_warnings(summary):  # review finding on Task 6fix: calibrate must warn too, not just run
+    for line in R.integrity_warnings(summary):  # calibrate も run と同じ WARN integrity を出す
         safe_print(line)
     cal = R.calibration_result(out, plan)
     out.write_json("calibration.json", cal)
@@ -275,11 +343,7 @@ def cmd_calibrate(args):
             f"loss={R.fmt_num(best['opp_loss'], '.2f')} drift_ai={R.fmt_num(cal['harness_drift_ai'], '+.3f')}"
         )
     if plan.get("write_pool") and best is not None:
-        with open(plan["write_pool"], "w", encoding="utf-8") as f:
-            json.dump(R.pool_file_content(cal), f, ensure_ascii=False, indent=1)
-        safe_print(f"pool written: {plan['write_pool']}")
-        if cal["integrity"].get("humansl_errors"):
-            safe_print("WARN integrity: pool written from games with humanSL errors")
+        _write_pool(plan, cal, force=args.force_pool or plan.get("force_pool"))
     safe_print(f"calibration: {out.file('calibration.md')}")
 
 
@@ -291,7 +355,9 @@ def cmd_summarize(args):
     outs = [R.OutputDir(d) for d in args.dirs]
     dest = R.OutputDir(args.out) if args.out else None
     compare = tuple(args.compare) if args.compare else None
-    _, text = R.summarize_dir(outs, args.boot, compare, args.conf, dest=dest)
+    _, text = R.summarize_dir(
+        outs, args.boot, compare, args.conf, dest=dest, allow_mixed=args.allow_mixed, log=safe_print
+    )
     safe_print(text)
 
 
@@ -331,7 +397,17 @@ def _add_common(p):
     p.add_argument("--rules", default=None, help="ルール（既定: config の game/rules）")
     p.add_argument("--no-resign", action="store_true", help="相手は投了しない（必須の感度アーム）")
     p.add_argument(
-        "--resign-lead", default=None, metavar="LO:HI", help="投了閾値 R を一様分布で引く（既定: 実戦の分布）"
+        "--resign-model",
+        choices=("length", "lead"),
+        default="length",
+        help="相手の投了モデル。length（既定）: 実戦の手数 L 以降に AI が明らかに勝っていれば投了"
+        "（勝率 >= 0.90・リード >= 2.5目が AI の2手番続く）/ lead: 実戦の最終リード R 以上で投了",
+    )
+    p.add_argument(
+        "--resign-lead",
+        default=None,
+        metavar="LO:HI",
+        help="lead モデルの閾値 R を一様分布で引く（--resign-model lead のときだけ。既定: 実戦の分布）",
     )
     p.add_argument("--tau", type=float, default=None, help="相手の温度 τ（hp^(1/τ)。既定: プールの値か 1.0）")
     p.add_argument("--opp-max-loss", type=float, default=None, help="相手の悪手フィルタ（目。既定 OFF）")
@@ -343,6 +419,12 @@ def _add_common(p):
     p.add_argument("--resume", default=None, metavar="DIR", help="落ちた実行を run.json の計画のまま再開")
     p.add_argument(
         "--retry-aborted", action="store_true", help="--resume で aborted の局も打ち直す（行は aborted.jsonl へ移す）"
+    )
+    p.add_argument(
+        "--allow-mixed",
+        action="store_true",
+        help="--resume でエンジン設定（katago・model・humanlike_model・max_visits・max_time・wide_root_noise）や"
+        "コードの版（git HEAD・ai.py の場所）が run.json と違っても続ける（既定は止まる）",
     )
     p.add_argument("--boot", type=int, default=10000, help="bootstrap の回数")
     p.add_argument("--allow-concurrent", action="store_true", help="他の KataGo が動いていても走らせる（非推奨）")
@@ -369,6 +451,12 @@ def build_parser():
     cal.add_argument("--ranks", default=DEFAULT_CALIB_RANKS)
     cal.add_argument("--games", type=int, default=8, help="段位ごとの局数（色は交互）")
     cal.add_argument("--write-pool", default=None, help="選んだプールを書き出すパス（opponent_pool_13.json）")
+    cal.add_argument(
+        "--force-pool",
+        action="store_true",
+        help="計測の健全性の数（fallbacks・humanSL の失敗など）が 0 でなくても --write-pool を上書きする"
+        "（既定は <path>.suspect に書く）",
+    )
     _add_common(cal)
     summ = sub.add_parser("summarize", help="games.jsonl を集計し直す（複数の実行を合わせられる）")
     summ.add_argument("dirs", nargs="+", metavar="DIR", help="実行ディレクトリ（延長の実行を後ろに並べる）")
@@ -376,6 +464,11 @@ def build_parser():
     summ.add_argument("--compare", nargs=2, metavar=("A", "B"), help="同じ seed の対の差 A - B")
     summ.add_argument("--boot", type=int, default=10000)
     summ.add_argument("--conf", type=float, default=0.975, help="対の差の区間の信頼度（2回見る停止規則で 0.975）")
+    summ.add_argument(
+        "--allow-mixed",
+        action="store_true",
+        help="エンジン設定やコードの版（git HEAD・ai.py の場所）が違う実行も合わせる（既定は止まる）",
+    )
     rep = sub.add_parser("report-sgf", help="保存 SGF から両者のレポート一致率を出す")
     rep.add_argument("file")
     rep.add_argument("--timeout", type=float, default=1200.0)
