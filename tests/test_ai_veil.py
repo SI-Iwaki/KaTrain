@@ -857,6 +857,8 @@ SPEC_DEFAULTS = {
         "forced_min_lead": 1.0,      # 13路 2.0・19路 3.0
         "forced_min_winrate": 0.70,
         "forced_max_loss": 5.0,      # 13路 10.0・19路 15.0
+        # spec §15.2（2026-09-26）
+        "open_moves": 0,
     },
     13: {
         "target_rate": 0.30,
@@ -883,6 +885,7 @@ SPEC_DEFAULTS = {
         "forced_min_lead": 2.0,
         "forced_min_winrate": 0.70,
         "forced_max_loss": 10.0,
+        "open_moves": 0,
     },
     19: {
         "target_rate": 0.30,
@@ -909,6 +912,7 @@ SPEC_DEFAULTS = {
         "forced_min_lead": 3.0,
         "forced_min_winrate": 0.70,
         "forced_max_loss": 15.0,
+        "open_moves": 0,
     },
 }
 # 校正（Task 17）で選んだ既定値の差分。apply_veil_defaults.py が書き換える（空なら spec のまま）
@@ -2721,6 +2725,26 @@ class TestRegistration:
         )
         m = re.search(rf'msgid "aihelp:{prefix}"\s*\nmsgstr "(.*)"', po)
         assert m and f"{prefix}_forced_mode" in m.group(1), prefix
+
+    @pytest.mark.parametrize("cls,size,prefix,ai_key,const", VEILS, ids=VEIL_IDS)
+    def test_open_moves_is_registered(self, cls, size, prefix, ai_key, const):
+        """序盤の研究外しの1キー（spec §15.2）: 画面の並びは 24（最後）、候補値は spec の表どおり（0 は OFF）、既定は
+        整数の 0（OFF）、jp の概要がこの層（<prefix>_open_moves）を案内する。"""
+        from katrain.core.constants import AI_OPTION_ORDER, AI_OPTION_VALUES
+
+        with open(Path(katrain.__file__).parent / "config.json", encoding="utf-8") as f:
+            package_ai_conf = json.load(f)["ai"][ai_key]
+        windows = {9: [6, 8, 10, 12, 16, 20], 13: [12, 20, 24, 30, 40], 19: [20, 30, 40, 50, 60]}
+        key = f"{prefix}_open_moves"
+        assert AI_OPTION_ORDER[key] == 24 and list(cls.SETTING_DEFAULTS)[-1] == "open_moves"
+        assert AI_OPTION_VALUES[key] == [(0, "OFF")] + [(n, str(n)) for n in windows[size]]
+        assert cls.SETTING_DEFAULTS["open_moves"] == 0 and type(cls.SETTING_DEFAULTS["open_moves"]) is int
+        assert package_ai_conf[key] == 0 and type(package_ai_conf[key]) is int
+        po = (Path(katrain.__file__).parent / "i18n" / "locales" / "jp" / "LC_MESSAGES" / "katrain.po").read_text(
+            encoding="utf-8"
+        )
+        m = re.search(rf'msgid "aihelp:{prefix}"\s*\nmsgstr "(.*)"', po)
+        assert m and f"{prefix}_open_moves" in m.group(1), prefix
 
     def test_debug_cli_names(self):
         from katrain_debug.runner import STRATEGY_NAME_MAP

@@ -264,6 +264,12 @@ _VEIL_FORCED_MAX_LOSS = {
     13: [6.0, 8.0, 10.0, 12.0, 15.0],
     19: [8.0, 10.0, 15.0, 20.0],
 }
+# 韜晦の序盤の研究外し（veil*_open_moves・spec §15.2）。打つ手の番号（両者の通算）がこの値以下の手番を難解＋に任せる。0 = OFF
+_VEIL_OPEN_MOVES = {
+    9: [(0, "OFF"), (6, "6"), (8, "8"), (10, "10"), (12, "12"), (16, "16"), (20, "20")],
+    13: [(0, "OFF"), (12, "12"), (20, "20"), (24, "24"), (30, "30"), (40, "40")],
+    19: [(0, "OFF"), (20, "20"), (30, "30"), (40, "40"), (50, "50"), (60, "60")],
+}
 
 AI_OPTION_VALUES = {
     "kyu_rank": [(k, f"{k}[strength:kyu]") for k in range(15, 0, -1)]
@@ -572,6 +578,7 @@ AI_OPTION_VALUES = {
     "veil9_forced_min_lead": _VEIL_FORCED_MIN_LEAD[9],
     "veil9_forced_min_winrate": _VEIL_FORCED_MIN_WINRATE,
     "veil9_forced_max_loss": _VEIL_FORCED_MAX_LOSS[9],
+    "veil9_open_moves": _VEIL_OPEN_MOVES[9],
     "veil13_target_rate": _VEIL_TARGET_RATE,
     "veil13_reserve": _VEIL_RESERVE,
     "veil13_min_winrate": _VEIL_MIN_WINRATE,
@@ -596,6 +603,7 @@ AI_OPTION_VALUES = {
     "veil13_forced_min_lead": _VEIL_FORCED_MIN_LEAD[13],
     "veil13_forced_min_winrate": _VEIL_FORCED_MIN_WINRATE,
     "veil13_forced_max_loss": _VEIL_FORCED_MAX_LOSS[13],
+    "veil13_open_moves": _VEIL_OPEN_MOVES[13],
     "veil19_target_rate": _VEIL_TARGET_RATE,
     "veil19_reserve": _VEIL_RESERVE,
     "veil19_min_winrate": _VEIL_MIN_WINRATE,
@@ -620,6 +628,7 @@ AI_OPTION_VALUES = {
     "veil19_forced_min_lead": _VEIL_FORCED_MIN_LEAD[19],
     "veil19_forced_min_winrate": _VEIL_FORCED_MIN_WINRATE,
     "veil19_forced_max_loss": _VEIL_FORCED_MAX_LOSS[19],
+    "veil19_open_moves": _VEIL_OPEN_MOVES[19],
     # ===== TsumegoOwnershipStrategy（ai:tsumego）の ON/OFF 項目: チェックボックスで出す =====
     "gain_verify": "bool",
     "ko_win_assumption": "bool",
@@ -871,6 +880,7 @@ AI_OPTION_ORDER = {
     "veil9_forced_min_lead": 21,
     "veil9_forced_min_winrate": 22,
     "veil9_forced_max_loss": 23,
+    "veil9_open_moves": 24,
     "veil13_target_rate": 0,
     "veil13_reserve": 1,
     "veil13_min_winrate": 2,
@@ -895,6 +905,7 @@ AI_OPTION_ORDER = {
     "veil13_forced_min_lead": 21,
     "veil13_forced_min_winrate": 22,
     "veil13_forced_max_loss": 23,
+    "veil13_open_moves": 24,
     "veil19_target_rate": 0,
     "veil19_reserve": 1,
     "veil19_min_winrate": 2,
@@ -919,6 +930,7 @@ AI_OPTION_ORDER = {
     "veil19_forced_min_lead": 21,
     "veil19_forced_min_winrate": 22,
     "veil19_forced_max_loss": 23,
+    "veil19_open_moves": 24,
 }
 
 AI_KEY_PROPERTIES = {

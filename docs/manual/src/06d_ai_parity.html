@@ -142,6 +142,7 @@
       <tr><td>veil*_forced_min_lead</td><td>2<span class="jp">9路 1・19路 3</span></td><td>9路 0.5〜3・13路 1〜5・19路 2〜8</td><td>最善手しか無い手番で外した後に残すリード（目。打つ前のリード − 損と、打った後の読みの両方）</td><td><span class="up">上げる</span>接戦で外さなくなる（負けにくいが一致率は下がりにくい）</td></tr>
       <tr><td>veil*_forced_min_winrate</td><td>70%<span class="jp">9路 70%・19路 70%</span></td><td>60%〜85%</td><td>最善手しか無い手番で外した後の勝率の下限（読みで確かめた値）</td><td><span class="up">上げる</span>負けにくいが一致率は下がりにくい</td></tr>
       <tr><td>veil*_forced_max_loss</td><td>10<span class="jp">9路 5・19路 15</span></td><td>9路 3〜8・13路 6〜15・19路 8〜20</td><td>最善手しか無い手番で1手に許す損の上限（目・読みで確かめた値。ヨセは yose_max_loss）</td><td><span class="up">上げる</span>大差で大きく緩めて一致率が下がる（6 目を超える損の手も出る）</td></tr>
+      <tr><td>veil*_open_moves</td><td>OFF<span class="jp">9路 OFF・19路 OFF</span></td><td>9路 OFF/6〜20・13路 OFF/12〜40・19路 OFF/20〜60</td><td>序盤の研究外し。打つ手の番号（両者の通算）がこの値以下の手番を、同じ盤サイズの難解＋に難解＋の設定のまま任せる（9路 12 なら各色 6 手）</td><td><span class="up">上げる</span>相手に定跡を打たせない手番が増え、一致率が下がる。窓の中は勝ちの安全条件より研究外しを優先する（難解＋並みの危険）</td></tr>
     </tbody>
   </table></div>
   <div class="callout warn">

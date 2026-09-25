@@ -5000,6 +5000,7 @@ class Veil9Strategy(Enigma9Strategy):
         "forced_min_lead": 1.0,     # 打った後に残すリード（目・root リード − 損と検証済みリードの両方）
         "forced_min_winrate": 0.70,  # 打った後の検証済み勝率の下限
         "forced_max_loss": 5.0,     # 1手の損の上限（検証済み・目。ヨセは yose_max_loss）
+        "open_moves": 0,            # 序盤の研究外し（spec §15）: 打つ手の番号（両者の通算）がこの値以下の手番を難解＋に任せる（0 = OFF）
     }
     # スライダーにしない盤サイズ別の値（spec §6.1）
     VEIL_BOARD = {"endgame_move": 30, "unsettled_max": 8, "trusted_visits": 100, "probe_hp": 3, "probe_cheap": 2}
@@ -5866,6 +5867,7 @@ class Veil13Strategy(Veil9Strategy):
         "forced_min_lead": 2.0,
         "forced_min_winrate": 0.70,
         "forced_max_loss": 10.0,
+        "open_moves": 0,
     }
     VEIL_BOARD = {"endgame_move": 85, "unsettled_max": 16, "trusted_visits": 50, "probe_hp": 3, "probe_cheap": 2}
 
@@ -5906,6 +5908,7 @@ class Veil19Strategy(Veil9Strategy):
         "forced_min_lead": 3.0,
         "forced_min_winrate": 0.70,
         "forced_max_loss": 15.0,
+        "open_moves": 0,
     }
     VEIL_BOARD = {"endgame_move": 150, "unsettled_max": 36, "trusted_visits": 50, "probe_hp": 3, "probe_cheap": 1}
 
