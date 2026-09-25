@@ -111,3 +111,76 @@ class TestReconLogs:
         rl.main([*logs, "--strategy", "Veil9Strategy", "--out", str(tmp_path / "recon_9_veil")])
         (v,) = json.loads((tmp_path / "recon_9_veil" / "summary.json").read_text(encoding="utf-8"))
         assert (v["game"], v["strategy"], v["n_moves"]) == ("game_20260930_210000", "Veil9Strategy", 2)
+
+
+class TestOfflineReport:
+    def test_bins_follow_the_board_size(self):
+        off = _load("offline_report")
+        rows = [
+            {"depth": d, "player": "B" if d % 2 else "W", "ptloss": 0.5, "match": d % 3 == 0, "score": 1.0}
+            for d in range(1, 60)
+        ]
+        s13 = off.summarize("g", "B", rows, 13)
+        assert [k for k in s13 if "85" in k] == ["mine_pre85", "mine_post85", "opp_pre85", "opp_post85"]
+        assert s13["board_size"] == 13 and s13["mine_post85"] is None
+        s9 = off.summarize("g", "B", rows, 9)
+        assert [k for k in s9 if "41" in k] == ["mine_pre41", "mine_post41", "opp_pre41", "opp_post41"]
+        assert s9["board_size"] == 9 and s9["mine_post41"]["n"] == 10
+
+
+def _calib_targets(*args):
+    r = subprocess.run(
+        [sys.executable, os.path.join(DATA, "calib_targets.py"), *args],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    return r.stdout.splitlines()
+
+
+class TestCalibTargets:
+    def test_13x13_output_is_unchanged(self):
+        """recon/（13路 18局）の既存の出力 32 行は変えない（2026-09-26 の出力の sha256）。"""
+        lines = _calib_targets()
+        digest = hashlib.sha256("\n".join(lines[:32]).encode("utf-8")).hexdigest()
+        assert digest == "1d8e92e93c8d56cad8b3e01d728dcaac2074fdd3254a02bc6795daec3b089cc0"
+        assert lines[32:34] == ["games 18 / ai_mean over 18 (all)", "CALIB_TARGET_GAMES 18/18"]
+
+    def test_9x9_bins_filters_and_the_targets_line(self, tmp_path):
+        for i, (loss_ok, cfg) in enumerate(((True, 1.6), (False, 1.8))):
+            rows = [
+                {
+                    "depth": d,
+                    "player": "B" if d % 2 else "W",
+                    "ptloss": 3.0 if d == 42 else 0.2,
+                    "match": d < 12,
+                    "score": 1.0,
+                    "top_prior": 0.5,
+                }
+                for d in range(1, 49)
+            ]
+            summary = {
+                "game": f"g{i}",
+                "ai": "B",
+                "n_moves": 48,
+                "final_score": 5.0,
+                "secs": 1.0,
+                "strategy": "Enigma9PlusStrategy",
+                "board_size": 9,
+                "mine": {"n": 24, "match": 0.5 if loss_ok else 0.25, "mean_loss": 0.2},
+                "opp": {"n": 24, "match": 0.2 + 0.1 * i, "mean_loss": 0.4},
+                "settings": {"enigma9plus_max_loss": cfg},
+            }
+            (tmp_path / f"report_game_{i}.json").write_text(
+                json.dumps({"summary": summary, "rows": rows}), encoding="utf-8"
+            )
+        lines = _calib_targets(str(tmp_path), "--size", "9", "--ai-where", "enigma9plus_max_loss=1.6")
+        assert any(line.startswith("opp opening<12 ") for line in lines)
+        assert any(line.startswith("opp middle12-40 ") for line in lines)
+        assert any(line.startswith("opp endgame>=41 ") for line in lines)
+        assert "CALIB_TARGET_GAMES 1/2" in lines
+        targets = json.loads(next(line for line in lines if line.startswith("CALIB_TARGETS "))[len("CALIB_TARGETS ") :])
+        assert targets["ai_mean"] == 0.5 and targets["opp_mean"] == 0.25 and targets["moves_median"] == 48
+        assert targets["bins"]["cal_opening"]["opp_top1"] == 1.0 and targets["bins"]["cal_endgame"]["opp_top1"] == 0.0
+        assert targets["opp_ge2"] == round(2 / 48, 2)
