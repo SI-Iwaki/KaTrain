@@ -4444,6 +4444,7 @@ VEIL_BLUNDER_VISITS = 1500       # 失着の検証プローブ（クリーン解
 VEIL_BLUNDER_PROBES = 2          # 深く検証する失着候補の数（hp の高い順）
 VEIL_BLUNDER_RAW_MARGIN = 2.0    # 失着候補の生の loss の上の足切りに持たせる余裕（目）
 VEIL_BLUNDER_PROB = 0.5          # ON で資格のある手番に実際に打つ確率（影の計測の後に見直す）
+VEIL_FORCED_PROBES = 4           # 最善手しか無い手番の外しで検証する候補の数（hp の高い順・spec §14）
 _VEIL_EPS = 1e-9                 # 上限比較の浮動小数の許容誤差
 
 
@@ -4793,6 +4794,52 @@ def veil_blunder_pick(rows):
     return min(rows, key=lambda r: (-r["hp"], r["vloss"], r["gtp"]))
 
 
+def veil_forced_candidates(candidates, best_gtp, hp_of, floor, cap, raw_margin=VEIL_RAW_MARGIN,
+                           limit=VEIL_FORCED_PROBES):
+    """最善手しか無い手番の外しの候補（spec §14.3 手順4・クエリ 0 本）。
+
+    candidates は `_veil_candidates` の {"gtp", "loss", "visits", "wr"}、hp_of は gtp → humanPolicy、floor は通常の層と
+    同じ自然さの床、cap は cap_f = min(上限, lead − forced_min_lead)。best_gtp・pass 以外で、生の loss <= cap + raw_margin
+    かつ hp >= floor の手を、hp の降順（同点は gtp の昇順）に並べて先頭 limit 手。生の loss の下限は置かない（通常の層の
+    条件で落ちた安い手も拾い直す）。返り値は候補 dict のコピーに "hp" を足したもの（元は変えない）。
+    """
+    pool = []
+    for c in candidates:
+        if c["gtp"] in (best_gtp, "pass") or c["loss"] > cap + raw_margin + _VEIL_EPS:
+            continue
+        hp = hp_of(c["gtp"])
+        if hp < floor:
+            continue
+        pool.append({**c, "hp": hp})
+    pool.sort(key=lambda c: (-c["hp"], c["gtp"]))
+    return pool[:limit]
+
+
+def veil_forced_ok(row, max_loss, lead, min_lead, min_wr):
+    """最善手しか無い手番の外しの資格（spec §14.3 手順6）。row は検証済みの {"cost", "lead_after", "wr_after", ...}
+    （cost = max(0, cons)・打つ側視点）、lead は root リード。
+
+    cost <= max_loss かつ lead_after >= min_lead かつ lead − cost >= min_lead（root リード基準・不変条件 kind forced と
+    同じ式）かつ wr_after >= min_wr。lead かどれかの値が None なら False。
+    """
+    cost, lead_after, wr_after = row.get("cost"), row.get("lead_after"), row.get("wr_after")
+    if lead is None or cost is None or lead_after is None or wr_after is None:
+        return False
+    return (
+        cost <= max_loss + _VEIL_EPS
+        and lead_after >= min_lead - _VEIL_EPS
+        and lead - cost >= min_lead - _VEIL_EPS
+        and wr_after >= min_wr - _VEIL_EPS
+    )
+
+
+def veil_forced_pick(rows):
+    """資格のある手から1手（spec §14.3 手順6）: hp 最大、同点は cost の小さい方、さらに同点は gtp の昇順。空なら None。"""
+    if not rows:
+        return None
+    return min(rows, key=lambda r: (-r["hp"], r["cost"], r["gtp"]))
+
+
 def veil_decided_verified_ok(vloss, wr_after, f_eff, lead, reserve, min_winrate, margin=VEIL_RAW_MARGIN):
     """S13 の即決を打つ前の確認（2手のプローブ）。生の loss だけを信じると親局面の読み落としを打つ
     （2026-09-25・生 0.36 目 → 実損 16.3 目で持碁）。margin はプローブのノイズ（±0.2〜0.3 目）の分。
@@ -4818,6 +4865,7 @@ def veil_invariant_ok(chosen, best, cand_gtps, kind, bounds):
     trap: price <= allow かつ max(0, vloss) <= trap_cap かつ lead − max(0, vloss) >= reserve。
     terminal: raw <= limit。
     blunder: vloss <= max_loss かつ lead − max(0, vloss) >= reserve + margin かつ wr_after >= min_wr。
+    forced: cost <= max_loss かつ lead − max(0, cost) >= min_lead かつ wr_after >= min_wr。
     それ以外の kind・キー欠落・None は False。
     """
     if chosen is None or chosen == best or chosen == "pass" or chosen not in cand_gtps:
@@ -4844,6 +4892,13 @@ def veil_invariant_ok(chosen, best, cand_gtps, kind, bounds):
             return (
                 bounds["vloss"] <= bounds["max_loss"] + _VEIL_EPS
                 and bounds["lead"] - paid >= bounds["reserve"] + bounds["margin"] - _VEIL_EPS
+                and bounds["wr_after"] >= bounds["min_wr"] - _VEIL_EPS
+            )
+        if kind == "forced":
+            paid = max(0.0, bounds["cost"])
+            return (
+                bounds["cost"] <= bounds["max_loss"] + _VEIL_EPS
+                and bounds["lead"] - paid >= bounds["min_lead"] - _VEIL_EPS
                 and bounds["wr_after"] >= bounds["min_wr"] - _VEIL_EPS
             )
     except (KeyError, TypeError):

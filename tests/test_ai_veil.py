@@ -22,6 +22,7 @@ from katrain.core.ai import (
     VEIL_BLUNDER_PROBES,
     VEIL_BLUNDER_RAW_MARGIN,
     VEIL_BLUNDER_VISITS,
+    VEIL_FORCED_PROBES,
     VEIL_TERMINAL_MIN_VISITS,
     AnalysisDiscardedException,
     Enigma9Strategy,
@@ -40,6 +41,9 @@ from katrain.core.ai import (
     veil_cons_loss,
     veil_decided_verified_ok,
     veil_decision_record,
+    veil_forced_candidates,
+    veil_forced_ok,
+    veil_forced_pick,
     veil_free_limit,
     veil_invariant_ok,
     veil_merge_trap,
@@ -597,6 +601,95 @@ class TestBlunderPick:
         assert veil_blunder_pick([]) is None
 
 
+class TestForcedConstants:
+    def test_constants_match_the_spec(self):
+        assert VEIL_FORCED_PROBES == 4
+
+
+class TestForcedCandidates:
+    """spec §14.3 手順4: best・pass 以外で、生の loss <= cap + VEIL_RAW_MARGIN かつ hp >= floor。hp の降順（同点は gtp）。"""
+
+    @staticmethod
+    def gtps(cands, hp=None, floor=0.08, cap=3.0, **kw):
+        hp_of = hp_table({c["gtp"]: 0.2 for c in cands} if hp is None else hp)
+        return [c["gtp"] for c in veil_forced_candidates(cands, "E5", hp_of, floor, cap, **kw)]
+
+    def test_keeps_moves_up_to_cap_plus_the_raw_margin(self):
+        cands = [cand("A1", 0.0), cand("B2", 3.0), cand("C3", 3.3), cand("D4", 3.31)]
+        assert self.gtps(cands) == ["A1", "B2", "C3"]
+
+    def test_no_lower_bound_on_the_loss(self):
+        """通常の層で外れた安い手（同値・支払いの条件で落ちた手）も、この層の条件で拾い直す。"""
+        assert self.gtps([cand("A1", -0.2), cand("B2", 0.05)]) == ["A1", "B2"]
+
+    def test_hp_floor_is_inclusive(self):
+        cands = [cand("A1", 1.0), cand("B2", 1.0)]
+        assert self.gtps(cands, hp={"A1": 0.08, "B2": 0.079}) == ["A1"]
+
+    def test_excludes_the_best_move_and_pass(self):
+        cands = [cand("E5", 0.0), cand("pass", 0.5), cand("A1", 0.5)]
+        assert self.gtps(cands, hp={"E5": 0.9, "pass": 0.9, "A1": 0.2}) == ["A1"]
+
+    def test_sorted_by_hp_then_gtp_and_cut_at_the_limit(self):
+        cands = [cand(g, 1.0) for g in ("D4", "C3", "B2", "A1", "F6")]
+        hp = {"D4": 0.3, "C3": 0.2, "B2": 0.2, "A1": 0.1, "F6": 0.5}
+        assert self.gtps(cands, hp=hp) == ["F6", "D4", "B2", "C3"]  # 既定の limit は VEIL_FORCED_PROBES = 4
+        assert self.gtps(cands, hp=hp, limit=2) == ["F6", "D4"]
+
+    def test_returns_copies_with_hp_and_leaves_the_input_alone(self):
+        cands = [cand("A1", 1.0)]
+        rows = veil_forced_candidates(cands, "E5", hp_table({"A1": 0.2}), 0.08, 3.0)
+        assert rows == [{**cands[0], "hp": 0.2}] and "hp" not in cands[0]
+
+
+class TestForcedOk:
+    """spec §14.3 手順6: cost <= max_loss・lead_after >= min_lead・lead − cost >= min_lead・wr_after >= min_wr。"""
+
+    @staticmethod
+    def ok(lead=20.0, max_loss=5.0, min_lead=1.0, min_wr=0.70, **kw):
+        row = {"cost": 1.4, "lead_after": 2.6, "wr_after": 0.74, **kw}
+        return veil_forced_ok(row, max_loss, lead, min_lead, min_wr)
+
+    def test_accepts_a_move_that_keeps_the_lead_and_the_winrate(self):
+        assert self.ok(lead=4.0)
+
+    def test_cost_up_to_max_loss(self):
+        assert self.ok(cost=5.0, lead_after=15.0) and not self.ok(cost=5.01, lead_after=15.0)
+
+    def test_lead_after_the_probe_must_keep_min_lead(self):
+        assert self.ok(lead_after=1.0) and not self.ok(lead_after=0.99)
+
+    def test_root_lead_minus_cost_must_keep_min_lead(self):
+        assert self.ok(lead=4.0, cost=3.0) and not self.ok(lead=4.0, cost=3.01)
+
+    def test_winrate_after_floor(self):
+        assert self.ok(wr_after=0.70) and not self.ok(wr_after=0.699)
+
+    @pytest.mark.parametrize("key", ["cost", "lead_after", "wr_after"])
+    def test_missing_metrics_fail(self, key):
+        assert not self.ok(**{key: None})
+
+    def test_missing_root_lead_fails(self):
+        assert not veil_forced_ok({"cost": 1.0, "lead_after": 5.0, "wr_after": 0.9}, 5.0, None, 1.0, 0.7)
+
+
+class TestForcedPick:
+    def test_most_human_move_wins(self):
+        rows = [{"gtp": "A1", "hp": 0.2, "cost": 0.5}, {"gtp": "B2", "hp": 0.3, "cost": 2.0}]
+        assert veil_forced_pick(rows)["gtp"] == "B2"
+
+    def test_hp_ties_go_to_the_smaller_cost_then_gtp(self):
+        rows = [
+            {"gtp": "C3", "hp": 0.3, "cost": 1.0},
+            {"gtp": "B2", "hp": 0.3, "cost": 0.5},
+            {"gtp": "A1", "hp": 0.3, "cost": 0.5},
+        ]
+        assert veil_forced_pick(rows)["gtp"] == "A1"
+
+    def test_empty_is_none(self):
+        assert veil_forced_pick([]) is None
+
+
 class TestDecidedVerified:
     """S13 の即決を打つ前の2手のプローブの確認。F_eff 0.3・reserve 3・min_winrate 0.85。"""
 
@@ -669,6 +762,18 @@ class TestInvariant:
             assert not veil_invariant_ok("C3", "E5", self.GTPS, "blunder", missing), key
         assert not veil_invariant_ok("Q16", "E5", self.GTPS, "blunder", b)  # 候補に無い
         assert not veil_invariant_ok("E5", "E5", self.GTPS, "blunder", b)  # 最善手
+
+    def test_forced_bounds(self):
+        cands = {"E5", "D4", "C7"}
+        good = {"cost": 1.4, "max_loss": 5.0, "lead": 4.0, "min_lead": 1.0, "wr_after": 0.74, "min_wr": 0.70}
+        assert veil_invariant_ok("C7", "E5", cands, "forced", good)
+        assert not veil_invariant_ok("C7", "E5", cands, "forced", {**good, "cost": 5.01})
+        assert not veil_invariant_ok("C7", "E5", cands, "forced", {**good, "cost": 3.01})  # lead − cost < min_lead
+        assert not veil_invariant_ok("C7", "E5", cands, "forced", {**good, "wr_after": 0.69})
+        assert not veil_invariant_ok("C7", "E5", cands, "forced", {**good, "wr_after": None})
+        assert not veil_invariant_ok("C7", "E5", cands, "forced", {k: v for k, v in good.items() if k != "min_lead"})
+        assert not veil_invariant_ok("A1", "E5", cands, "forced", good)  # 候補に無い手（共通規則）
+        assert not veil_invariant_ok("E5", "E5", cands, "forced", good)  # 最善手そのもの
 
     def test_unknown_kind_or_missing_bounds_fail(self):
         assert not veil_invariant_ok("D4", "E5", self.GTPS, "mystery", {"cost": 0.0, "f_eff": 1.0})
