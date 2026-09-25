@@ -100,6 +100,8 @@ def append(path, addition):
 
 ## Task 1: 序盤の研究外しの純関数と任せる先の表（TDD）
 
+状態: 完了（`ea82381a`）。
+
 **Files:**
 - Modify: `katrain/core/ai.py`（定数は `_VEIL_EPS = 1e-9` の行〈4448〉の直前＝`VEIL_FORCED_PROBES`〈4447〉の後。純関数は `def veil_decided_verified_ok`〈4843〉の直前＝`veil_forced_pick`〈4836〉の後）
 - Test: `tests/test_ai_veil.py`（import 群〈16-62〉・`class TestDecidedVerified:`〈693〉の直前に `TestOpenPure`）
@@ -242,6 +244,8 @@ git commit -m "feat(veil): 序盤の研究外しの窓・確認の純関数と�
 ---
 
 ## Task 2: 設定 `open_moves`（既定値・登録・GUI の説明・マニュアルの表）
+
+状態: 完了（`d9cc3cbb`）。
 
 **Files:**
 - Modify: `katrain/core/ai.py`（`SETTING_DEFAULTS`: Veil9 の `"forced_max_loss": 5.0, ...`〈4979〉・Veil13 の `"forced_max_loss": 10.0,`〈5845〉・Veil19 の `"forced_max_loss": 15.0,`〈5885〉の後）
@@ -483,6 +487,8 @@ git commit -m "feat(veil): 序盤の研究外しの設定 open_moves（既定 OF
 
 ## Task 3: 任せる先の派生クラスと `_veil_open_delegate`（テストハーネスの拡張を含む）
 
+状態: 完了（`0c76b417`）。
+
 **Files:**
 - Modify: `katrain/core/ai.py`（`veil_decision_record` の末尾〈4923 `return json.dumps(...)`〉と `@register_strategy(AI_VEIL_9)`〈4926〉の間に派生クラス 3 つと `_VEIL_OPEN_CLASSES`。`Veil9Strategy` の `def _generate_move`〈5419〉の直前＝`_veil_forced` の後に `_veil_open_delegate`）
 - Test: `tests/test_ai_veil.py`（`_Harness._strategy`〈964-1019〉に `placements`・`ai_config`・`players_info`。`MANUAL_PARITY_PAGE = Path(`〈2543〉の直前＝`TestForced` の後に `_ai_vs_human` と `TestOpenDelegate`）
@@ -690,6 +696,8 @@ git commit -m "feat(veil): 序盤の窓で手を任せる難解＋の派生ク�
 ---
 
 ## Task 4: S4b（序盤の研究外し）を判定フローに組み込む（TDD）
+
+状態: 完了（`fa194153`）。
 
 **Files:**
 - Modify: `katrain/core/ai.py`（`Veil9Strategy`: `_veil_open_index_or_none` と `_veil_open`〈`_veil_open_delegate` の後・`_generate_move` の前〉・`_generate_move`〈5419〉で `_veil_open_at` を戻す・`_veil_error`〈5432-5445〉に `open_index`・`_veil_move` の S4〈5487-5497〉と S5〈5499〉の間に S4b・クラスの docstring〈4927-4953〉）
@@ -1195,6 +1203,8 @@ git commit -m "feat(veil): 序盤の研究外し（S4b・既定 OFF）を判定�
 ---
 
 ## Task 5: ハーネスの韜晦の要約（spec §15.4）
+
+状態: 完了（`a5f1b6b7`）。
 
 **Files:**
 - Modify: `katrain_debug/selfplay_stats.py`（`VEIL_TERMINAL_KINDS`〈463〉の後に `_veil_unpaid`・`_opening_metrics`。`_decision_metrics`〈466-538〉の docstring・`vloss_by_kind`〈491〉・`curse_by_kind`〈501〉・out の末尾〈505〉・`nonfree_below_reserve`〈509-512〉）。black 整形済み＝Edit ツールでよい。
