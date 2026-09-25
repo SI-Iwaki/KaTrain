@@ -262,7 +262,8 @@ def cmd_run(args):
 def _plan_calibrate(args):
     """calibrate の計画（1アーム × 段位ごとに --games 局・色は交互）。-> (stub, plan)"""
     stub = make_stub(args.config)
-    arm = resolve_arm(stub, "calib", args.strategy, [])
+    _, strategy, items = S.parse_arm("calib=" + args.strategy)  # NAME[:key=val,...]＝AI の設定の上書き
+    arm = resolve_arm(stub, "calib", strategy, items)
     ranks = humansl_profiles(S.parse_profiles(args.ranks), "--ranks")
     resign = resign_plan(args, args.size)
     opponent = {
@@ -317,7 +318,7 @@ def cmd_calibrate(args):
         with setup_errors():
             stub, plan = _plan_calibrate(args)
         _plan_warnings(plan)
-        out = _new_output(args, stub, plan, args.label or f"calib-{args.strategy}")
+        out = _new_output(args, stub, plan, args.label or f"calib-{plan['arms'][0]['strategy']}")
     R.execute_plan(
         plan,
         out,
@@ -451,7 +452,12 @@ def build_parser():
     run.add_argument("--hp-audit", default=None, metavar="PROFILE", help="hp 監査の humanSL（例 rank_9d）")
     _add_common(run)
     cal = sub.add_parser("calibrate", help="相手ボットの段位ごとの統計を取り、3段位プールを選ぶ")
-    cal.add_argument("--strategy", default="enigma13plus", help="校正に使う戦略（runner の戦略名）")
+    cal.add_argument(
+        "--strategy",
+        default="enigma13plus",
+        metavar="NAME[:key=val,...]",
+        help="校正に使う戦略（runner の戦略名）。:key=val,... で AI の設定を上書きする（9路は実戦の多数派の設定）",
+    )
     cal.add_argument("--ranks", default=DEFAULT_CALIB_RANKS)
     cal.add_argument("--games", type=int, default=8, help="段位ごとの局数（色は交互）")
     cal.add_argument("--write-pool", default=None, help="選んだプールを書き出すパス（opponent_pool_13.json）")

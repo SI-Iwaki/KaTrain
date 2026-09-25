@@ -488,6 +488,35 @@ class TestSummaries:
         assert pool["ranks"] == ["rank_8k", "rank_3k", "rank_1d"] and pool["tau"] == 1.0
         assert pool["resign_model"] == "length"
 
+    def test_calibration_targets_follow_the_board_size(self, tmp_path, monkeypatch):
+        """spec §16.2 手順4: 目標・「実戦（目標）」の局数・ずれ（harness_drift_ai）は盤サイズの目標から。"""
+        out = R.OutputDir(tmp_path / "cal")
+        recs = [
+            _cal_record(rank=rank, seed=i, opp_top1=0.1 + 0.05 * i)
+            for i, rank in enumerate(("rank_8k", "rank_3k", "rank_1d"))
+        ]
+        with open(out.file("games.jsonl"), "w", encoding="utf-8") as f:
+            f.writelines(json.dumps(r) + "\n" for r in recs)
+        targets_9 = {**S.CALIB_TARGETS_13, "ai_mean": 0.6, "moves_median": 48}
+        monkeypatch.setitem(S.CALIB_TARGETS, 9, targets_9)
+        monkeypatch.setitem(S.CALIB_TARGET_GAMES, 9, "7/16")
+        plan = {
+            "size": 9,
+            "arms": [{"name": "calib", "strategy": "enigma9plus", "override_items": ["enigma9plus_max_loss=1.6"]}],
+            "opponent": {"tau": 1.0},
+        }
+        cal = R.calibration_result(out, plan)
+        assert cal["targets"] is targets_9 and cal["best"]["ranks"] == ["rank_8k", "rank_3k", "rank_1d"]
+        assert abs(cal["harness_drift_ai"] - (0.55 - 0.6)) < 1e-9
+        assert cal["strategy_overrides"] == ["enigma9plus_max_loss=1.6"]
+        md = R.format_calibration_md(cal)
+        assert "| **実戦（目標）** | 7/16 |" in md
+        assert "（9路・enigma9plus（上書き enigma9plus_max_loss=1.6）・tau 1.0）" in md
+        assert R.pool_file_content(cal)["strategy_overrides"] == ["enigma9plus_max_loss=1.6"]
+        cal19 = R.calibration_result(out, {**plan, "size": 19})  # 目標の無い盤: プールを選ばず md も書ける
+        assert cal19["best"] is None and cal19["choices"] == [] and cal19["harness_drift_ai"] is None
+        assert "実戦（目標）" not in R.format_calibration_md(cal19)
+
     def test_calibration_result_and_markdown_carry_integrity_totals(self, tmp_path):
         """review finding on Task 6fix (outside its file list): calibrate must surface integrity problems too."""
         out = R.OutputDir(tmp_path / "cal")

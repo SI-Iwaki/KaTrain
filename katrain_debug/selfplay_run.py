@@ -534,7 +534,8 @@ def summarize_dir(outs, n_boot=10000, compare=None, conf=0.975, dest=None, allow
 def calibration_result(out, plan):
     records = out.records()
     per_rank = S.calibration_rank_stats(records)
-    choices = S.selfplay_pool_choice(per_rank) if plan["size"] == 13 and len(per_rank) >= 3 else []
+    targets = S.calib_targets_for(plan["size"])  # 目標の無い盤（19路）はプールを選ばない
+    choices = S.selfplay_pool_choice(per_rank, targets) if targets is not None and len(per_rank) >= 3 else []
     best = choices[0] if choices else None
     # 計測の健全性: calibrate も run と同じ4つの合計を出す（全アーム＝全局分）。集計式は selfplay_arm_summary と
     # 共有（S.integrity_totals）。
@@ -543,15 +544,17 @@ def calibration_result(out, plan):
     return {
         "run_dir": repo_relpath(out.path),  # プールの source_run と md に入る＝作業ツリーの絶対パスを埋め込まない
         "strategy": plan["arms"][0]["strategy"],
+        "strategy_overrides": list(plan["arms"][0].get("override_items") or []),  # calibrate --strategy NAME:k=v,...
         "size": plan["size"],
         "tau": plan["opponent"]["tau"],
         "resign_model": resign_model_of_plan(plan.get("resign") or {}),
-        "targets": S.CALIB_TARGETS_13,
+        "targets": targets,
+        "targets_games": S.CALIB_TARGET_GAMES.get(plan["size"]),
         "per_rank": per_rank,
         "choices": choices[:5],
         "best": best,
         "harness_drift_ai": (
-            None if best is None or best["own_mean"] is None else best["own_mean"] - S.CALIB_TARGETS_13["ai_mean"]
+            None if best is None or best["own_mean"] is None else best["own_mean"] - targets["ai_mean"]
         ),
         "integrity": integrity,
         "integrity_warning": _integrity_warning_line(f"arm {arm_name}", integrity),
@@ -566,6 +569,7 @@ def pool_file_content(cal):
         "created": datetime.datetime.now().isoformat(timespec="seconds"),
         "source_run": cal["run_dir"],
         "strategy": cal["strategy"],
+        "strategy_overrides": cal.get("strategy_overrides") or [],
         "ranks": best["ranks"],
         "tau": cal["tau"],
         "resign_model": cal.get("resign_model"),
@@ -578,8 +582,10 @@ def pool_file_content(cal):
 
 def format_calibration_md(cal):
     t = cal["targets"]
+    overrides = cal.get("strategy_overrides") or []
+    strategy = cal["strategy"] + (f"（上書き {', '.join(overrides)}）" if overrides else "")
     lines = [
-        f"# 自己対局ハーネスの相手ボット校正（{cal['size']}路・{cal['strategy']}・tau {cal['tau']}）",
+        f"# 自己対局ハーネスの相手ボット校正（{cal['size']}路・{strategy}・tau {cal['tau']}）",
         "",
     ]
     if cal.get("integrity_warning"):
@@ -603,15 +609,18 @@ def format_calibration_md(cal):
             f"{fmt_num(s['opp_loss'], '.2f')} | {fmt_pct(s['opp_ge2'])} | {fmt_pct(s['opp_ge5'])} | {cells[0]} | {cells[1]} | "
             f"{cells[2]} | {fmt_pct(s['own_mean'])} | {fmt_num(s['moves_median'], '.0f')} |"
         )
-    b = t["bins"]
-    lines += [
-        f"| **実戦（目標）** | 16/18 | {fmt_pct(t['opp_mean'])} | {100 * t['opp_sd']:.1f}pt | {t['opp_loss']:.2f} | "
-        f"{fmt_pct(t['opp_ge2'])} | {fmt_pct(t['opp_ge5'])} | "
-        + " | ".join(
-            f"{fmt_pct(b[n]['opp_top1'])} / {b[n]['opp_loss']:.2f}"
-            for n in ("cal_opening", "cal_middle", "cal_endgame")
+    if t is not None:  # 目標の無い盤（19路）は行を出さない
+        b = t["bins"]
+        lines.append(
+            f"| **実戦（目標）** | {cal.get('targets_games') or '-'} | {fmt_pct(t['opp_mean'])} | {100 * t['opp_sd']:.1f}pt | "
+            f"{t['opp_loss']:.2f} | {fmt_pct(t['opp_ge2'])} | {fmt_pct(t['opp_ge5'])} | "
+            + " | ".join(
+                f"{fmt_pct(b[n]['opp_top1'])} / {b[n]['opp_loss']:.2f}"
+                for n in ("cal_opening", "cal_middle", "cal_endgame")
+            )
+            + f" | {fmt_pct(t['ai_mean'])} | {t['moves_median']} |"
         )
-        + f" | {fmt_pct(t['ai_mean'])} | {t['moves_median']} |",
+    lines += [
         "",
         "## 3段位プールの候補（スコア = 局平均・局間 SD・損失の目標からのずれの二乗和。小さいほど良い）",
         "",
@@ -630,7 +639,7 @@ def format_calibration_md(cal):
         "",
         "## ハーネスと実戦のずれ（AI 側）",
         "",
-        f"選んだプールでの AI 一致率 - 実戦の難解＋ 局平均 {fmt_pct(t['ai_mean'])} = "
+        f"選んだプールでの AI 一致率 - 実戦の難解＋ 局平均 {fmt_pct(t['ai_mean'] if t else None)} = "
         f"{'-' if drift is None else f'{100 * drift:+.1f}pt'}（実戦の予測はこの差を引いて読む）",
         "",
     ]

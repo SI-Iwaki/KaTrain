@@ -283,6 +283,25 @@ class TestCalibrate:
             "WARN integrity: pool written from games with integrity problems (--force-pool)" in capsys.readouterr().out
         )
 
+    def test_calibrate_strategy_overrides(self, env):
+        """spec §16.2 手順4: calibrate --strategy NAME:key=v,... で AI の設定を上書きする（エンジンは起こさない）。"""
+        args = _calibrate_args(env)
+        args[args.index("--strategy") + 1] = "enigma9plus:enigma9plus_max_loss=1.6,enigma9plus_gamble_until_move=20"
+        stub, plan = CLI._plan_calibrate(CLI.build_parser().parse_args(args))
+        arm = plan["arms"][0]
+        assert arm["strategy"] == "enigma9plus" and arm["name"] == "calib"
+        assert arm["override_items"] == ["enigma9plus_max_loss=1.6", "enigma9plus_gamble_until_move=20"]
+        assert arm["settings"]["enigma9plus_max_loss"] == 1.6 and arm["settings"]["enigma9plus_gamble_until_move"] == 20
+
+    def test_calibrate_refuses_a_typo_in_the_strategy_overrides(self, env, monkeypatch):
+        started = []
+        monkeypatch.setattr(CLI, "start_engine", lambda stub: started.append(1) or FakeEngine())
+        args = _calibrate_args(env)
+        args[args.index("--strategy") + 1] = "enigma9plus:enigma9plus_max_los=1.6"
+        with pytest.raises(SystemExit, match="unknown setting keys"):
+            CLI.main(args)
+        assert started == []
+
     def test_invalid_calibrate_ranks_are_refused(self, env):
         with pytest.raises(SystemExit, match="invalid humanSL profile"):
             CLI.main(_calibrate_args(env, ranks="rank_8k, 3k"))
