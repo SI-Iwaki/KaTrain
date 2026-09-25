@@ -605,14 +605,15 @@ A/B で見るもの: 自分と相手の一致率・勝率・mean_ptloss・払っ
 8. **ON（mode 2）**: 不変条件（`veil_invariant_ok` の kind `forced`: 候補が通常解析の候補に含まれ best・pass でない・cost <= 上限・
    lead − cost >= `forced_min_lead`・wr_after >= `forced_min_winrate`）を確かめ、tier `forced`・kind `forced` で打つ。
    今局の数（`_veil_state` の `forced`）を1つ増やす。違反なら ERROR ログ＋最善手（他の kind と同じ）。
-9. **記録**: `Decision:` に `forced`（gate / no_hp / no_cand / rejected / shadow / played）・`forced_from`（元の why）・`forced_gtp`・
+9. **記録**: `Decision:` に `forced`（gate / no_hp / no_cand / no_probe / rejected / shadow / invariant / played）・`forced_from`（元の why）・`forced_gtp`・
    `forced_cost`・`forced_vloss`・`forced_hp`・`forced_wr`・`forced_lead_after` を残す。どの分岐の例外も S0 のフェイルセーフ（最善手）に落ちる。
 
 - 外した後の手番は、下がった lead から予算を計算し直す（S = lead − reserve）ので、後の支払いは自動で減る。
   1局の回数の上限・勝率の予算は置かない（§14.1）。多すぎれば実測の後に足す。
-- 失着の層（S9b）は今のまま先に動く。両方 ON でよい。
+- 失着の層（S9b）は今のまま先に動く。両方 ON でよい。失着の層と両方 ON のときは、失着の層が見送った手（抽選で skipped・1局の上限に達した・失着の安全条件で rejected）も、この層の条件（cost <= forced_max_loss・lead − cost >= forced_min_lead・wr_after >= forced_min_winrate）を満たせば、同じ手番にこの層が打つ。13路は forced_max_loss（10）が blunder_max_loss（10）と同じなので、大きめの外しの上限は失着の層ではなくこの層の設定で決まる（失着の層の blunder_per_game・確率・安全条件はこの層の手には効かない）。
 - 追加のクエリは強制手番だけで、親の hp 1本（S10 の出口のみ）と、プローブ (1 + k) 手分（1手あたりクリーン＋hp の2本・k <= 4）。
   1手の決定時間は 1〜2 秒増えうる。
+- この層は1手の上限を u で縮めない（u > 0 なら上限いっぱいまで）。13路は目標 30% に対して一致率が構造的に約 45% なので u はほぼ 1 で差が出ないが、9路・19路の校正で見直す。
 
 ### 14.4 測り方と合格の条件
 

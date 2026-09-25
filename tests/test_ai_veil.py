@@ -2275,6 +2275,23 @@ class TestForced(_Harness):
     HP = {"E5": 0.40, "C7": 0.20, "G3": 0.10}
     PROBES = {"E5": (4.0, 0.80), "C7": (2.6, 0.74)}
 
+    # 失着の層と両方 ON の場面（I3・裁定 I1）。C7 / G3 の hp は失着の床 0.7 × 0.40 = 0.28 未満（no_cand）だが、
+    # forced の自然さの床（0.08）は超える。
+    BOTH_ON_CANDS = [
+        {"move": "E5", "pointsLost": 0.0, "relativePointsLost": 0.0, "visits": 600, "winrate": 0.80},
+        {"move": "C7", "pointsLost": 4.0, "relativePointsLost": 4.0, "visits": 60, "winrate": 0.74},
+        {"move": "G3", "pointsLost": 5.0, "relativePointsLost": 5.0, "visits": 40, "winrate": 0.70},
+    ]
+    BOTH_ON_HP = {"E5": 0.40, "C7": 0.20, "G3": 0.10}
+
+    # 失着の層が抽選で見送る場面（G3 の hp 0.35 >= 0.28・raw 3.8 は blunder の帯の内）。C7 が無いので通常の流れは
+    # no_pool（G3 の raw 3.8 は raw_cap 3.3 の外）に落ち、forced だけが G3 を拾える。
+    SKIPPED_CANDS = [
+        {"move": "E5", "pointsLost": 0.0, "relativePointsLost": 0.0, "visits": 600, "winrate": 0.99},
+        {"move": "G3", "pointsLost": 3.8, "relativePointsLost": 3.8, "visits": 40, "winrate": 0.90},
+    ]
+    SKIPPED_HP = {"E5": 0.40, "G3": 0.35}
+
     def _forced(self, mode, *, probes=None, player="B", lead=4.0, wr=0.80, hist=None, settings=None, **kw):
         table = self.PROBES if probes is None else probes
         kw.setdefault("cands", self.NO_POOL_CANDS)
@@ -2301,6 +2318,30 @@ class TestForced(_Harness):
         assert s.queries == [] and s.probe_calls == [] and info["queries"] == 0
         assert "forced" not in s.game._veil_state["veil9"]
         assert not any("Forced" in m for m in logs)
+
+    def test_mode_0_changes_nothing_at_the_no_natural_exit(self):
+        """M3: mode 0 は no_natural の出口でも forced を足す前と同じ（クエリ・probe_calls とも C7 を読まない）。"""
+        hp = {"E5": 0.40, "D4": 0.03, "F6": 0.03, "C7": 0.20, "G3": 0.04}
+        s, logs = self._forced(0, cands=_Harness.CANDS, hp=hp)
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert (move.gtp(), info["why"]) == ("E5", "no_natural")
+        assert not any(k.startswith("forced") for k in info)
+        assert not any(k.startswith("forced") for k in self._decision(logs))
+        assert s.queries == ["parent hp"] and s.probe_calls == [] and info["queries"] == 1
+        assert "forced" not in s.game._veil_state["veil9"]
+
+    def test_mode_0_changes_nothing_at_the_none_qualified_exit(self):
+        """M3: mode 0 は none_qualified の出口でも forced を足す前と同じ（S15 のプローブだけ・forced 分は無い）。"""
+        probes = {"E5": (4.0, 0.80), "D4": (3.3, 0.75), "F6": (3.0, 0.74)}
+        s, logs = self._forced(0, cands=_Harness.CANDS, hp=_Harness.HP, probes=probes)
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert (move.gtp(), info["why"]) == ("E5", "none_qualified")
+        assert not any(k.startswith("forced") for k in info)
+        assert not any(k.startswith("forced") for k in self._decision(logs))
+        assert s.queries == ["parent hp"] and s.probe_calls == [["E5", "D4", "F6"]] and info["queries"] == 7
+        assert "forced" not in s.game._veil_state["veil9"]
 
     def test_mode_1_records_the_move_without_playing_it(self):
         s, logs = self._forced(1)
@@ -2420,10 +2461,83 @@ class TestForced(_Harness):
         assert info["forced_cost"] == pytest.approx(0.7)
         assert s.probe_calls == [["E5", "D4", "F6"]] and info["queries"] == 7
 
+    def test_none_qualified_exit_probes_a_forced_candidate_outside_the_shortlist(self):
+        """M2: forced の候補（C7）が S15 のショートリストに無ければ、その手だけ読み直す（E5・D4・F6 は読み直さない）。
+        C7（生 2.0）は通常の層の raw_cap 0.8 の外だが、forced の cap_f(3.0) + 0.3 = 3.3 の内。D4 の hp 0.30 が
+        C7 の 0.20 より高いので、どちらも資格を持てば D4 が選ばれる。"""
+        hp = {**_Harness.HP, "C7": 0.20}
+        probes = {"E5": (4.0, 0.80), "D4": (3.3, 0.75), "F6": (3.0, 0.74), "C7": (2.5, 0.72)}
+        s, _ = self._forced(2, cands=_Harness.CANDS, hp=hp, probes=probes)
+        assert s.generate_move()[0].gtp() == "D4"
+        info = s.last_decision_info
+        assert (info["forced_from"], info["forced_gtp"]) == ("none_qualified", "D4")
+        assert s.probe_calls == [["E5", "D4", "F6"], ["C7"]]
+        assert info["queries"] == 1 + 6 + 2
+
+    def test_none_qualified_exit_reprobes_an_s15_move_with_no_clean_probe(self):
+        """M2: S15 の手（F6）の clean が None（プローブ未完了）なら、forced はその手だけ読み直す。"""
+        probes = {"E5": (4.0, 0.80), "D4": (3.3, 0.75), "F6": None}
+        s, _ = self._forced(2, cands=_Harness.CANDS, hp=_Harness.HP, probes=probes)
+        assert s.generate_move()[0].gtp() == "D4"
+        info = s.last_decision_info
+        assert (info["forced_from"], info["forced_gtp"]) == ("none_qualified", "D4")
+        assert s.probe_calls == [["E5", "D4", "F6"], ["F6"]]
+        assert info["queries"] == 1 + 6 + 2
+
     def test_white_plays_the_same_move(self):
         s, _ = self._forced(2, player="W")
         assert s.generate_move()[0].gtp() == "C7"
         assert s.last_decision_info["forced"] == "played"
+
+    # ---- I3: 失着の層と両方 ON（裁定 I1）。TestBlunder と違い _veil_blunder_probe / _veil_blunder_draw の
+    # 差し替えが要る場面だけ self._strategy を直に使う。ほかは _forced（veil9_blunder_mode を settings で足す）。
+
+    @pytest.mark.parametrize("blunder_mode", [1, 2])
+    def test_both_layers_on_forced_plays_what_blunder_passed_over_by_hp(self, blunder_mode):
+        """裁定 I1: 失着の層が hp の床（0.7 × 0.40 = 0.28）で候補なし（no_cand）になった no_pool の手番を、
+        forced が拾って打つ（親局面の humanSL は1本だけ・S9b と共有）。"""
+        settings = {"veil9_blunder_mode": blunder_mode}
+        probes = {"E5": (12.0, 0.96), "C7": (8.0, 0.85)}
+        s, _ = self._forced(
+            2, cands=self.BOTH_ON_CANDS, hp=self.BOTH_ON_HP, lead=12.0, wr=0.96, probes=probes, settings=settings
+        )
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert move.gtp() == "C7"
+        assert s.queries == ["parent hp"]
+        assert info["blunder"] == "no_cand"
+        assert (info["forced"], info["forced_from"]) == ("played", "no_pool")
+
+    def test_both_layers_on_forced_shares_the_failed_parent_humansl(self):
+        """裁定 I1 の前提: S9b の humanSL が失敗すれば forced も同じ手番で撃ち直さない（no_hp を共有）。"""
+        settings = {"veil9_blunder_mode": 2}
+        s, _ = self._forced(
+            2, cands=self.BOTH_ON_CANDS, hp=self.BOTH_ON_HP, lead=12.0, wr=0.96, hp_ok=False, settings=settings
+        )
+        assert s.generate_move()[0].gtp() == "E5"
+        info = s.last_decision_info
+        assert (info["blunder"], info["forced"]) == ("no_hp", "no_hp")
+        assert s.queries == ["parent hp"]
+
+    def test_both_layers_on_forced_plays_a_move_blunder_skipped_by_its_draw(self):
+        """裁定 I1: 失着の層が抽選（VEIL_BLUNDER_PROB）で見送った手（skipped）を forced が同じ手番に打つ。"""
+        settings = {"veil9_blunder_mode": 2, "veil9_forced_mode": 2}
+        probes = {"E5": _child(20.0, 0.99), "G3": _child(15.5, 0.97)}
+        s, _ = self._strategy(
+            lead=20.0, wr=0.99, cands=self.SKIPPED_CANDS, hp=self.SKIPPED_HP, probes=probes, settings=settings
+        )
+        deep = {"E5": (20.0, 0.99), "G3": (15.5, 0.97)}
+
+        def deep_probe(gtps, player):
+            return {g: _child(*deep[g], player=player)["clean"] for g in gtps}
+
+        s._veil_blunder_probe = deep_probe
+        s._veil_blunder_draw = lambda: 0.99
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert move.gtp() == "G3"
+        assert (info["blunder"], info["blunder_gtp"]) == ("skipped", "G3")
+        assert (info["forced"], info["forced_gtp"]) == ("played", "G3")
 
 
 MANUAL_PARITY_PAGE = Path(__file__).resolve().parent.parent / "docs" / "manual" / "src" / "06d_ai_parity.html"

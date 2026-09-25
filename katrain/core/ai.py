@@ -5676,6 +5676,7 @@ class Veil9Strategy(Enigma9Strategy):
         )
         shortlist = nat_short + trap_short
         if not shortlist:
+            # 今の S10〜S14 の論理では naturals か trap_cands があれば shortlist は空にならない＝この出口は守りのためのコード
             forced = self._veil_forced(
                 cands, player, best_gtp, lead, root_wr, in_yose, u, info, "no_shortlist",
                 stage_hp=stage_hp, hp_fetched=True,

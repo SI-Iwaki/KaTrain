@@ -1203,7 +1203,7 @@ KaTrain の AI は「戦略」を選ぶことで棋風や強さが変わりま�
     <li>外す先は 9段が実際に打ちそうな手に限り、候補を着手後の局面まで読んで確かめ、最も安い帯（<code>veil*_cost_slack</code>）の中で最も人間らしい手を選びます（決着局面の同値外しも、最善手とその手の 2 手だけ読んで確かめてから打ちます。終局間際の手の入れ替えは読みを省き、通常の解析の値で決めます）。</li>
     <li>ヨセも自分で打ち（委譲しない）、盤上に 0.5 目以上の手が無い終局間際はダメ詰めの順番を入れ替える程度（0.1 目・接戦 0.05 目まで）に留めます。</li>
     <li><b>失着の層</b>（<code>veil*_blunder_mode</code>・既定 OFF）は、9段でも迷う局面（失着の手の humanPolicy が最善手の <code>veil*_blunder_hp_ratio</code> 倍以上かつ 15% 以上）で、通常の支払い上限（<code>veil*_max_loss</code>）を超える人間らしい失着をまれに打ちます。打った後もリードが <code>veil*_reserve</code> ＋ 5 目以上・勝率 95% 以上残る手だけを、深い読み（1500 visits）で確かめて打ちます。ヨセと接戦では打ちません。LOG は条件を満たす手を探してログに書くだけで打たず、ON は条件を満たした手番の半分で、1 局 <code>veil*_blunder_per_game</code> 回まで打ちます。一致率はほとんど変わりません。</li>
-    <li><b>最善手しか無い手番の外し</b>（<code>veil*_forced_mode</code>・既定 OFF）は、ふつうの外しでは最善手しか打てない手番でも、9段が打ちそうな手のうち、打った後もリードが <code>veil*_forced_min_lead</code> 目以上・勝率が <code>veil*_forced_min_winrate</code> 以上残り、損が <code>veil*_forced_max_loss</code> 目以下（ヨセは <code>veil*_yose_max_loss</code>）の手があれば打ちます。一致率が目標を超えている間だけ動きます。接戦でもリードが残る範囲で外すので、ON にするとまれに負けます（20 局に 1 局ほどを許す設定です）。9段がほぼ必ず打つ明らかな一手は外しません。LOG は打つ手をログに書くだけで最善手を打ちます。</li>
+    <li><b>最善手しか無い手番の外し</b>（<code>veil*_forced_mode</code>・既定 OFF）は、ふつうの外しでは最善手しか打てない手番でも、9段が打ちそうな手のうち、打った後もリードが <code>veil*_forced_min_lead</code> 目以上・勝率が <code>veil*_forced_min_winrate</code> 以上残り、損が <code>veil*_forced_max_loss</code> 目以下（ヨセは <code>veil*_yose_max_loss</code>）の手があれば打ちます。一致率が目標を超えている間だけ動きます。接戦でもリードが残る範囲で外すので、ON にするとまれに負けます（20 局に 1 局ほどを許す設定です）。9段がほぼ必ず打つ明らかな一手は外しません。LOG は打つ手をログに書くだけで最善手を打ちます。失着の層と両方 ON のときは、失着の層が見送った手（抽選・1 局の上限・失着の条件）も、この層の条件を満たせば打ちます。</li>
   </ol>
   <div class="tablewrap"><table class="params">
     <thead><tr><th>設定項目</th><th>既定（13路）</th><th>範囲</th><th>意味</th><th>上げると／下げると</th></tr></thead>
