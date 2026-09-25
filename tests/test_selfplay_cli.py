@@ -182,6 +182,18 @@ class TestBookOpponent:
         with pytest.raises(SystemExit, match="--book-moves wraps the humansl opponent only"):
             CLI.main(_run_args(env, "--arm", "A=default", "--opponent", "strategy:default", "--book-moves", "4"))
 
+    def test_negative_book_moves_is_refused(self, env):
+        with pytest.raises(SystemExit, match="--book-moves must be >= 0"):
+            CLI.main(_run_args(env, "--arm", "A=default", "--book-moves", "-1"))
+
+    def test_negative_book_loss_is_refused(self, env):
+        with pytest.raises(SystemExit, match="--book-loss must be >= 0"):
+            CLI.main(_run_args(env, "--arm", "A=default", "--book-moves", "4", "--book-loss", "-0.1"))
+
+    def test_book_loss_without_book_moves_is_refused(self, env):
+        with pytest.raises(SystemExit, match=r"--book-loss requires --book-moves"):
+            CLI.main(_run_args(env, "--arm", "A=default", "--book-loss", "0.5"))
+
 
 class TestResignModel:
     def test_length_model_is_the_default(self, env):

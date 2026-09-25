@@ -129,7 +129,14 @@ class TestOpenDelegate:
         assert arm.as_dict()["delegate"] == arm.delegate
 
     @pytest.mark.parametrize(
-        "strategy, items", [("veil9", []), ("veil9", ["veil9_open_moves=0"]), ("enigma9plus", []), ("default", [])]
+        "strategy, items",
+        [
+            ("veil9", []),
+            ("veil9", ["veil9_open_moves=0"]),
+            ("veil9", ["veil9_open_moves=0.5"]),  # finding 8: int(open_moves) > 0 (veil_open_window と同じ)
+            ("enigma9plus", []),
+            ("default", []),
+        ],
     )
     def test_no_delegate_without_an_open_window(self, tmp_path, strategy, items):
         assert G.resolve_arm(make_stub(tmp_path), "A", strategy, items).delegate is None

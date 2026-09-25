@@ -157,8 +157,9 @@ def open_delegate(stub, cls, effective):
     """
     prefix = getattr(cls, "KEY_PREFIX", None)
     size = getattr(cls, "BOARD_LEN", None)
-    open_moves = (effective or {}).get(f"{prefix}_open_moves") if prefix else None
-    if size not in VEIL_OPEN_DELEGATES or not open_moves or open_moves <= 0:
+    raw_open_moves = (effective or {}).get(f"{prefix}_open_moves") if prefix else None
+    open_moves = int(raw_open_moves or 0)  # ai.py の veil_open_window と同じ丸め（(0, 1) の値は OFF）
+    if size not in VEIL_OPEN_DELEGATES or open_moves <= 0:
         return None
     key = VEIL_OPEN_DELEGATES[size]
     section = stub.config(f"ai/{key}")

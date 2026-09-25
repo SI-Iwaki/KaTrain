@@ -226,6 +226,16 @@ class TestResignAndOutcome:
         assert S.resign_pool_from_summaries(summaries, 13) == [3.9, 28.9]
         assert S.resign_pool_from_summaries(summaries, 9) == [round(3.9 * 81 / 169, 2), round(28.9 * 81 / 169, 2)]
 
+    def test_resign_pool_keeps_the_board_of_the_summary(self):
+        """final-fix finding 5: resign_pool_from_summaries も resign_lengths_from_summaries と同じく board_size を見る
+        （9路の実戦は9路の開始手数〈19〉で判定し、目標盤に合わせて比例させる。13路は今まで通り）。"""
+        summaries = [
+            {"ai": "B", "n_moves": 48, "final_score": 5.0, "board_size": 9},
+            {"ai": "W", "n_moves": 15, "final_score": -2.0, "board_size": 9},  # 9路の開始手数 19 より前 → 除く
+        ]
+        assert S.resign_pool_from_summaries(summaries, 9) == [5.0]
+        assert S.resign_pool_from_summaries(summaries, 13) == [round(5.0 * 169 / 81, 2)]
+
     def test_resign_lengths_from_real_game_summaries(self):
         summaries = [
             {"ai": "W", "n_moves": 123, "final_score": -3.9},

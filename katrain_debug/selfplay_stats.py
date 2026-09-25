@@ -336,14 +336,18 @@ def selfplay_resign_check(spec, depth, lead_ai, wr_ai, streak, size):
 def resign_pool_from_summaries(summaries, size):
     """実戦の report_game_*.json の summary 群 → 投了局の最終リード（AI 視点）の標本（lead モデル）。
 
-    実戦の監視対局はパスで終わらない（相手の投了で終わる）ので全局を投了局とみなす。投了判定の開始手数
-    （13路 40）未満で終わった局は除く。13路以外の盤は盤面積で比例させる（9路 ×81/169・19路 ×361/169）。
+    実戦の監視対局はパスで終わらない（相手の投了で終わる）ので全局を投了局とみなす。summary の盤（board_size・無ければ
+    13路）と size が違えば盤面積で比例させる（resign_lengths_from_summaries と同じ・盤サイズを見ない旧版は final-fix
+    finding 5 で直した）。投了判定の開始手数（13路 40 相当・summary の盤で比例させた値）未満で終わった局は除く。
     """
-    scale = size * size / 169
     out = []
     for s in summaries:
-        if s.get("final_score") is None or s.get("n_moves", 0) < RESIGN_START_13:
+        if s.get("final_score") is None:
             continue
+        from_size = s.get("board_size", 13)
+        if s.get("n_moves", 0) < resign_start_move(from_size):
+            continue
+        scale = size * size / (from_size * from_size)
         lead = s["final_score"] * (1 if s["ai"] == "B" else -1)
         out.append(round(lead * scale, 2))
     return out

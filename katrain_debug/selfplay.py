@@ -90,11 +90,20 @@ def make_stub(config_path):
 
 
 def book_plan(args):
-    """定跡を知る相手（--book-moves B・--book-loss X）。B 0（既定）は OFF＝どちらも None（run.json と突き合わせのキー）。"""
+    """定跡を知る相手（--book-moves B・--book-loss X）。B 0（既定）は OFF＝どちらも None（run.json と突き合わせのキー）。
+
+    final-fix finding 6: --book-loss は負を拒む（B の有無によらない）。B が 0（OFF）のときに --book-loss を明示するのも拒む
+    （意味の無い指定＝打ち間違いの検知）。--book-loss を渡さなければ S.BOOK_LOSS が既定（引数の既定は None＝明示と区別する）。
+    """
     moves = getattr(args, "book_moves", 0) or 0
     if moves < 0:
         raise SystemExit("--book-moves must be >= 0")
-    return {"book_moves": moves or None, "book_loss": args.book_loss if moves else None}
+    loss = getattr(args, "book_loss", None)
+    if loss is not None and loss < 0:
+        raise SystemExit("--book-loss must be >= 0")
+    if loss is not None and not moves:
+        raise SystemExit("--book-loss requires --book-moves > 0 (it has no effect otherwise)")
+    return {"book_moves": moves or None, "book_loss": (S.BOOK_LOSS if loss is None else loss) if moves else None}
 
 
 def opponent_plan(args, size):
@@ -481,9 +490,9 @@ def build_parser():
     run.add_argument(
         "--book-loss",
         type=float,
-        default=S.BOOK_LOSS,
+        default=None,
         metavar="X",
-        help="定跡の中とみなす AI の1手の損失の上限（目・既定 0.3）",
+        help="定跡の中とみなす AI の1手の損失の上限（目・既定 0.3・--book-moves 無しでは指定できない）",
     )
     run.add_argument("--watch-flags", action="store_true", help="game.board_watch_active を立てる（監視専用の分岐）")
     run.add_argument("--shadow", default=None, metavar="ARM", help="他のアームの各手番でこのアームの判断も記録する")
