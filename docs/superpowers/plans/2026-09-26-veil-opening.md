@@ -1377,6 +1377,8 @@ git commit -m "feat(selfplay): 韜晦の要約で序盤の研究外しの窓の�
 
 ## Task 6: 文書（開発者向けルール・CLAUDE.md・マニュアルの本文・spec の状態・INDEX・計画の状態）
 
+状態: 完了（`a82ee597`）。
+
 **Files:**
 - Modify: `.claude/rules/ai-parameters.md`（韜晦の節〈777-845〉）・`.claude/rules/ai-strategies.md`（30 行）・`CLAUDE.md`（15 行）
 - Modify: `docs/manual/src/06d_ai_parity.html`（本文の箇条〈116〉の後）→ `python tools/build_manual.py`
