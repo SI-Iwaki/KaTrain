@@ -2648,6 +2648,287 @@ class TestOpenDelegate(_Harness):
         assert delegate.query_generations is s.query_generations
 
 
+class _RootSpy:
+    """root の属性を読んだら記録する（open_moves 0 の S4b が root に触れないことを確かめる）。"""
+
+    def __init__(self):
+        self.touched = []
+
+    def __getattr__(self, name):
+        self.touched.append(name)
+        raise AttributeError(name)
+
+
+class _StubEnigma:
+    """序盤の窓で任せる難解＋のスタブ（`_veil_open_delegate` の戻り値）。打つ前に board_watch_probe_warm を立てる
+    （難解が立てたままにする形）。gtp が None なら (None, 説明) を返し、error があればそれを送出する。"""
+
+    def __init__(self, gtp, thoughts, error, game, player):
+        self.gtp, self.thoughts, self.error, self.game, self.player = gtp, thoughts, error, game, player
+        self.calls = 0
+
+    def generate_move(self):
+        self.calls += 1
+        self.game.board_watch_probe_warm = True
+        if self.error is not None:
+            raise self.error
+        move = None if self.gtp is None else Move.from_gtp(self.gtp, player=self.player)
+        return move, self.thoughts
+
+
+def _no_delegate():
+    pytest.fail("open_moves 0 と窓の外では任せる先を作らない")
+
+
+class _OpenFlow:
+    """序盤の研究外し（spec §15.3）の通しテストの共通部（_Harness 系と組む）。窓は WINDOW 手・任せる先のキーは SRC。
+    窓の手番は depth を明示する（_Harness の既定 depth 12 は 9路の窓 12 の外）。"""
+
+    WINDOW, SRC = 12, "ai:enigma9plus"
+
+    def _open(self, *, gtp="D4", thoughts="stub enigma thoughts", error=None, depth=0, settings=None, **kw):
+        settings = {f"{self.CLS.KEY_PREFIX}_open_moves": self.WINDOW, **(settings or {})}
+        s, logs = self._strategy(depth=depth, settings=settings, **kw)
+        stub = _StubEnigma(gtp, thoughts, error, s.game, s.cn.next_player)
+        s._veil_open_delegate = lambda: (stub, self.SRC)
+        return s, logs, stub
+
+    @staticmethod
+    def _decision(logs):
+        decisions = [m for m in logs if "Decision: {" in m]
+        assert len(decisions) == 1
+        return json.loads(decisions[0].split("Decision: ", 1)[1])
+
+    @staticmethod
+    def _tkwo(info):
+        return (info["tier"], info["kind"], info.get("why"), info.get("open"))
+
+
+class TestOpening(_OpenFlow, _Harness):
+    """S4b 序盤の研究外し（spec §15.3・§15.5 の通しテスト）。9路・窓 12・既定は黒番・最善手 E5・難解＋のスタブは D4。"""
+
+    def test_off_never_touches_the_root_and_adds_nothing(self):
+        """(a) open_moves 0（既定）: 窓の手数（depth 0）でも S4b は何もしない＝root に触れず、任せる先を作らず、記録も
+        足さない。同じ場面の depth 0 と depth 12 で Decision の中身（depth と secs 以外）・クエリ列・着手が同じ。"""
+        runs = []
+        for depth in (0, 12):
+            spy = _RootSpy()
+            s, logs = self._strategy(depth=depth, root=spy, **_NEAR_FREE)
+            s._veil_open_delegate = _no_delegate
+            move, _ = s.generate_move()
+            record = self._decision(logs)
+            assert spy.touched == []
+            assert not any(k.startswith("open") for k in record)
+            assert "opening" not in s.game._veil_state["veil9"]
+            same = {k: v for k, v in record.items() if k not in ("depth", "secs")}
+            runs.append((same, s.queries, s.probe_calls, move.gtp()))
+        assert runs[0] == runs[1]
+
+    def test_window_turn_plays_the_enigma_plus_move(self):
+        """(b) 窓の中は難解＋の手をそのまま返す: tier / kind opening・ledger・Decision のキー・_veil_state["opening"]。"""
+        s, logs, stub = self._open(thoughts="x" * 300)
+        move, thoughts = s.generate_move()
+        info = s.last_decision_info
+        assert move.gtp() == "D4" and stub.calls == 1
+        assert thoughts.startswith("[Veil9→ai:enigma9plus opening] xxx")
+        assert self._tkwo(info) == ("opening", "opening", "opening", "played")
+        opened = (info["open_index"], info["open_src"], info["open_in_cands"])
+        assert opened == (0, "ai:enigma9plus", True)
+        assert info["open_thoughts"] == "x" * 200 and info["open_secs"] >= 0.0
+        assert info["lead"] == pytest.approx(10.0) and info["root_wr"] == pytest.approx(0.95)
+        record = self._decision(logs)
+        for key in ("open", "open_index", "open_src", "open_in_cands", "open_secs", "open_thoughts", "lead", "root_wr"):
+            assert key in record, key
+        assert s.queries == [] and s.probe_calls == [] and s.ponders == [] and info["queries"] == 0
+        state = s.game._veil_state["veil9"]
+        assert state["opening"] == 1 and state["ledger"] == [(0, "E5", "D4", "opening")]
+        assert any(m.startswith("[Veil9Strategy] Rate: ") for m in logs)
+        assert any("Opening: index=0 < open_moves=12 -> delegating to ai:enigma9plus" in m for m in logs)
+        s.generate_move()
+        assert s.game._veil_state["veil9"]["opening"] == 2
+
+    def test_enigma_plus_playing_the_best_move_is_kind_best(self):
+        s, _, _ = self._open(gtp="E5")
+        assert s.generate_move()[0].gtp() == "E5"
+        info = s.last_decision_info
+        assert self._tkwo(info) == ("opening", "best", "opening_best", "played")
+        assert "opening" not in s.game._veil_state["veil9"]
+        assert s.game._veil_state["veil9"]["ledger"] == [(0, "E5", "E5", "best")]
+
+    def test_white_lead_and_winrate_are_from_whites_view(self):
+        s, _, _ = self._open(player="W", lead=3.0, wr=0.7)
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert move.gtp() == "D4" and move.player == "W"
+        assert info["lead"] == pytest.approx(3.0) and info["root_wr"] == pytest.approx(0.7)
+
+    def test_missing_lead_still_hands_the_turn_over(self):
+        """S5 は lead が無ければ最善手だが、窓の中は lead が None でも任せる（spec §15.3 手順4）。"""
+        s, _, stub = self._open(lead=None, wr=None)
+        assert s.generate_move()[0].gtp() == "D4" and stub.calls == 1
+        info = s.last_decision_info
+        assert info["lead"] is None and info["root_wr"] is None and info["kind"] == "opening"
+
+    def test_outside_the_window_is_the_normal_flow(self):
+        """(c) 窓の外（depth 12＝13 手目）は通常の流れそのまま: open_moves 0 と同じ記録（secs 以外）・open のキーなし。"""
+        runs = []
+        for open_moves in (0, 12):
+            s, logs = self._strategy(settings={"veil9_open_moves": open_moves}, **_NEAR_FREE)
+            s._veil_open_delegate = _no_delegate
+            move, _ = s.generate_move()
+            record = self._decision(logs)
+            assert not any(k.startswith("open") for k in record)
+            runs.append(({k: v for k, v in record.items() if k != "secs"}, s.queries, s.probe_calls, move.gtp()))
+        assert runs[0] == runs[1]
+
+    def test_gate_after_an_opponent_pass(self):
+        """(d) 相手の直前パスは任せない（open gate）＝S7 の終局処理（EXITS の opp_pass と同じ結末）。"""
+        s, logs, stub = self._open(cands=_end_cands(), hp=_END_HP, last_move=Move(None, player="W"))
+        s.generate_move()
+        info = s.last_decision_info
+        assert stub.calls == 0 and "open_src" not in info
+        assert self._tkwo(info) == ("terminal", "pass", "opp_pass", "gate") and info["open_index"] == 0
+        assert any("Opening gate: index=0 < open_moves=12 but the opponent passed" in m for m in logs)
+
+    @pytest.mark.parametrize("mine,n", [(0, 6), (2, 19)])  # p_match 1/7・3/20 = 0.15（境界も任せない）
+    def test_gate_at_or_below_the_rate_floor(self, mine, n):
+        """(d) p_match <= VEIL_TARGET_FLOOR（0.15）は任せない（15% 未満へ無駄に外さない）。"""
+        s, _, stub = self._open(cands=[_Harness.CANDS[0], _Harness.CANDS[-1]], hist=_hist("B", mine, n))
+        assert s.generate_move()[0].gtp() == "E5"
+        info = s.last_decision_info
+        assert stub.calls == 0 and info["open_index"] == 0
+        assert self._tkwo(info) == ("i", "best", "no_pool", "gate")
+
+    def test_just_above_the_rate_floor_is_handed_over(self):
+        s, _, stub = self._open(hist=_hist("B", 0, 5))  # p_match 1/6
+        assert s.generate_move()[0].gtp() == "D4" and stub.calls == 1
+
+    @pytest.mark.parametrize("gtp", [None, "pass"])
+    def test_no_move_from_enigma_plus_plays_the_best_move(self, gtp):
+        """(e) 手が None / pass なら ERROR ログ＋最善手（open invariant）。"""
+        s, logs, _ = self._open(gtp=gtp)
+        assert s.generate_move()[0].gtp() == "E5"
+        info = s.last_decision_info
+        assert self._tkwo(info) == ("opening", "best", "invariant", "invariant")
+        assert info["open_src"] == "ai:enigma9plus" and info["open_index"] == 0
+        assert any(f"Opening: ai:enigma9plus returned {gtp!r} (not a move on the board)" in m for m in logs)
+        assert "opening" not in s.game._veil_state["veil9"]
+        assert s.game._veil_state["veil9"]["ledger"] == [(0, "E5", "E5", "best")]
+
+    def test_a_move_outside_the_candidates_is_played(self):
+        """(e) 通常解析の候補に無い手（C3）もそのまま打つ（open_in_cands 偽）。"""
+        s, _, _ = self._open(gtp="C3")
+        assert s.generate_move()[0].gtp() == "C3"
+        info = s.last_decision_info
+        assert info["kind"] == "opening" and info["open_in_cands"] is False
+
+    def test_an_error_in_enigma_plus_plays_the_best_move(self):
+        """(f)(j) 難解＋の例外は S0 のフェイルセーフ（最善手）で、記録に open_index。例外でも probe_warm は False に戻る。"""
+        s, _, _ = self._open(error=RuntimeError("boom"))
+        assert s.generate_move()[0].gtp() == "E5"
+        info = s.last_decision_info
+        assert (info["tier"], info["kind"], info["why"]) == ("failsafe", "best", "exception")
+        assert info["open_index"] == 0 and "open" not in info
+        assert info["error"] == "RuntimeError('boom')"
+        assert s.game.board_watch_probe_warm is False
+        assert s.game._veil_state["veil9"]["ledger"] == [(0, "E5", "E5", "best")]
+
+    def test_an_error_after_the_gate_keeps_the_open_index(self, monkeypatch):
+        monkeypatch.setattr(ai_module, "veil_allowance", _boom)
+        s, _, stub = self._open(hist=_hist("B", 0, 6))
+        s.generate_move()
+        info = s.last_decision_info
+        assert stub.calls == 0 and info["why"] == "exception" and info["open_index"] == 0
+
+    def test_an_error_outside_the_window_has_no_open_index(self, monkeypatch):
+        monkeypatch.setattr(ai_module, "veil_allowance", _boom)
+        s, _, _ = self._open(depth=12)
+        s.generate_move()
+        assert s.last_decision_info["why"] == "exception" and "open_index" not in s.last_decision_info
+
+    def test_an_error_before_s4b_in_the_window_keeps_the_open_index(self, monkeypatch):
+        """(f) S4b より前の例外（S4 の集計）でも、窓の中の手番なら open_index を残す（spec §15.3 手順8）。"""
+        monkeypatch.setattr(ai_module, "veil_tally", _boom)
+        s, _, stub = self._open()
+        s.generate_move()
+        info = s.last_decision_info
+        assert stub.calls == 0 and info["why"] == "exception" and info["open_index"] == 0
+
+    def test_discarded_analysis_in_enigma_plus_is_not_swallowed(self):
+        s, _, _ = self._open(error=AnalysisDiscardedException("new game"))
+        with pytest.raises(AnalysisDiscardedException):
+            s.generate_move()
+        assert s.game.board_watch_probe_warm is False
+
+    def test_probe_warm_is_reset_after_enigma_plus(self):
+        """(j) 難解＋が立てた board_watch_probe_warm を、戻った後に False に戻す。"""
+        s, _, stub = self._open()
+        s.generate_move()
+        assert stub.calls == 1 and s.game.board_watch_probe_warm is False
+
+    def test_root_placements_shift_the_window(self):
+        """(i) index = depth ＋ root の置き石の数（board_watch が相手の初手を置き石として取り込んだ局）。"""
+        stone = Move.from_gtp("E5", player="B")
+        s, _, stub = self._open(depth=11)
+        s.generate_move()
+        assert stub.calls == 1 and s.last_decision_info["open_index"] == 11
+        s, logs, stub = self._open(depth=11, placements=(stone,))  # index 12 → 窓の外
+        s.generate_move()
+        assert stub.calls == 0 and not any(k.startswith("open") for k in self._decision(logs))
+        stones = (stone, Move.from_gtp("D4", player="W"), Move.from_gtp("C3", player="B"))
+        s, _, stub = self._open(depth=0, placements=stones)
+        s.generate_move()
+        assert stub.calls == 1 and s.last_decision_info["open_index"] == 3
+
+    def test_the_real_delegate_never_starts_a_ponder(self, monkeypatch):
+        """(g) 任せた難解＋が着手の直前に `_start_ponder` を呼んでも、ponder を止めた派生クラスなのでスレッドは起動せず
+        `_enigma_ponder_owner` も None のまま（players_info は {自分: AI, 相手: HUMAN}。同じ場面で素の難解＋なら起動する）。
+        本物の難解＋の選択はエンジンが要るので、`Enigma9Strategy._generate_move` を「_start_ponder を呼んで D4」に差し替える。"""
+        started = []
+
+        class _Thread:
+            def __init__(self, *a, **k):
+                pass
+
+            def start(self):
+                started.append(True)
+
+        probe = {"hp": {"humanPolicy": [0.1] * 82}}
+
+        def fake_enigma(strategy):
+            strategy._start_ponder("D4", probe, strategy.cn.next_player)
+            return Move.from_gtp("D4", player=strategy.cn.next_player), "fake enigma"
+
+        monkeypatch.setattr(ai_module.threading, "Thread", _Thread)
+        monkeypatch.setattr(ai_module.Enigma9Strategy, "_generate_move", fake_enigma)
+        s, _ = self._strategy(
+            depth=0,
+            settings={"veil9_open_moves": 12},
+            players_info=_ai_vs_human(),
+            ai_config={"ai:enigma9plus": {}},
+            _enigma_ponder_owner=None,
+        )
+        assert s.generate_move()[0].gtp() == "D4"
+        assert s.last_decision_info["open"] == "played"
+        assert started == [] and s.game._enigma_ponder_owner is None
+        ai_module.Enigma9PlusStrategy(s.game, {})._start_ponder("D4", probe, "B")
+        assert started == [True] and s.game._enigma_ponder_owner == "B"
+
+
+class TestOpening13(_OpenFlow, _Harness13):
+    WINDOW, SRC = 30, "ai:enigma13plus"
+
+    def test_window_is_30_moves_on_13x13(self):
+        s, _, stub = self._open(depth=29)
+        assert s.generate_move()[0].gtp() == "D4" and stub.calls == 1
+        info = s.last_decision_info
+        assert (info["open_src"], info["open_index"]) == ("ai:enigma13plus", 29)
+        assert s.game._veil_state["veil13"]["ledger"] == [(29, "G7", "D4", "opening")]
+        s, _, stub = self._open(depth=30)
+        s.generate_move()
+        assert stub.calls == 0 and "open_index" not in s.last_decision_info
+
+
 MANUAL_PARITY_PAGE = Path(__file__).resolve().parent.parent / "docs" / "manual" / "src" / "06d_ai_parity.html"
 
 

@@ -4993,7 +4993,7 @@ class Veil9Strategy(Enigma9Strategy):
     外し（free）は常に、損をする外し（paid）は u > 0 のときだけ余剰 S = lead − reserve の範囲で払う。
     外し（終局帯の手を除く）は子局面プローブ（clean 500v + humanSL 8v）で検証し、最安帯の中で
     humanPolicy 最大を選ぶ（決着局面の即決は生の loss で選んだ1手を best と2手だけプローブして確かめる）。
-    罠（trap_mode）は ΔE の上乗せ層。ヨセは委譲しない・ponder は起動しない。全分岐のフェイルセーフは最善手。
+    罠（trap_mode）は ΔE の上乗せ層。ヨセは委譲しない・ponder は起動しない（序盤の窓で任せる難解＋も ponder を止めた派生クラス）。全分岐のフェイルセーフは最善手。
     失着の層（blunder_mode・spec §13・既定 OFF）は S9b で、9段でも迷う局面で支払い上限 max_loss を超える候補を
     深い読み（クリーン VEIL_BLUNDER_VISITS）で確かめ、LOG（1）は `Decision:` に記録するだけ、ON（2）は資格のある手番の
     VEIL_BLUNDER_PROB の割合で1局 blunder_per_game 回まで打つ（勝ちの安全条件 reserve・min_winrate は緩めない）。
@@ -5001,11 +5001,14 @@ class Veil9Strategy(Enigma9Strategy):
     （no_pool / no_natural / no_shortlist / none_qualified）で、打った後にリード forced_min_lead・勝率
     forced_min_winrate が残り損が forced_max_loss（ヨセは yose_max_loss）以下の 9段らしい手を探し、LOG（1）は
     記録だけ、ON（2）は打つ（u > 0 のときだけ）。
+    序盤の研究外し（open_moves・spec §15・既定 OFF）は S4b（S4 の直後）で、index = cn.depth ＋ root の置き石の数 <
+    open_moves の手番を、同じ盤サイズの難解＋（ponder を止めた派生クラス・ユーザー設定の難解＋の節のまま）に任せる
+    （相手の直前パスと p_match <= VEIL_TARGET_FLOOR の手番は任せない）。窓の中は要件1・5・7の代わりに難解＋の挙動。
 
     難解（Enigma9Strategy）からは generate_move（時間ログ）・_setting・_log・_best_move・_run_query・
     _probe_children・_cancel_ponder・_terminal_band_move を継承して使う。13/19路は属性だけ差し替えたサブクラス。
     sticky な状態は `game._veil_state[KEY_PREFIX]`（endgame・close_drift・ledger・blunders・forced（ON で打った数・
-    打ったときだけ作る））。
+    打ったときだけ作る）・opening（序盤の窓で難解＋が最善手と違う手を打った数・打ったときだけ作る））。
     設計: docs/superpowers/specs/2026-09-23-veil-strategy-design.md
     """
 
@@ -5490,9 +5493,91 @@ class Veil9Strategy(Enigma9Strategy):
         delegate.query_generations = self.query_generations
         return delegate, key
 
+    def _veil_open_index_or_none(self):
+        """序盤の窓の中なら index、OFF・窓の外・判定できないときは None（`_veil_error` が S4b より前の例外の手番で使う。
+        spec §15.3 手順8）。open_moves 0 なら root に触れない。記録のための判定なので例外は出さない。"""
+        try:
+            open_moves = int(self._setting("open_moves") or 0)
+            if open_moves <= 0:
+                return None
+            index = veil_open_index(self.cn.depth, len(self.game.root.placements))
+            return index if veil_open_window(index, open_moves) else None
+        except Exception:  # noqa: BLE001 記録のための判定で着手と記録を止めない
+            return None
+
+    def _veil_open(self, player, sign, best_gtp, cand_gtps, p_match, info):
+        """S4b 序盤の研究外し（spec §15.3）。窓の中で関門を通れば、手を同じ盤サイズの難解＋に任せる。任せた手番だけ
+        (result, tier, kind, fields) を返し、それ以外は None（呼び出し側が S5 以降の通常の流れへ進む）。
+
+        open_moves 0 なら何もしない（root に触れない・info に何も足さない＝今とビット同一）。窓の外も何も足さない。
+        窓の中で関門（相手の直前パス・p_match <= VEIL_TARGET_FLOOR）に止まった手番は open = "gate" と open_index だけ
+        足して None。任せた手番は tier opening・kind opening（best と違う手）/ best で、open・open_index・open_src・
+        open_in_cands・open_secs・open_thoughts と lead・root_wr（打つ側視点・None もありうる＝None でも任せる）を残す。
+        手が None / pass なら ERROR ログ＋最善手（tier opening・kind best・why invariant・open = "invariant"）。通常解析の
+        候補に無い手もそのまま打つ（難解と同じ）。
+        難解＋の例外は S0 に任せる（`_veil_error` が open_index を残す）。戻った後は例外でも board_watch_probe_warm を
+        False に戻す。窓の中では韜晦の他の層（失着・forced・即決・罠・終局帯の入れ替え）は動かない。"""
+        open_moves = int(self._setting("open_moves") or 0)
+        if open_moves <= 0:
+            return None
+        cn = self.cn
+        index = veil_open_index(cn.depth, len(self.game.root.placements))
+        if not veil_open_window(index, open_moves):
+            return None
+        self._veil_open_at = index
+        info["open_index"] = index
+        opp_passed = cn.move is not None and cn.move.is_pass
+        if opp_passed or p_match <= VEIL_TARGET_FLOOR:
+            info["open"] = "gate"
+            reason = "the opponent passed" if opp_passed else f"p_match {p_match:.3f} <= {VEIL_TARGET_FLOOR:.2f}"
+            self._log(f"Opening gate: index={index} < open_moves={open_moves} but {reason} -> normal flow")
+            return None
+        # 窓のリードの記録（S5 と同じ計算・クエリ 0 本。None でも任せる）
+        root = cn.analysis.get("root") or {}
+        root_lead, root_wr = root.get("scoreLead"), root.get("winrate")
+        info["lead"] = None if root_lead is None else root_lead * sign
+        info["root_wr"] = None if root_wr is None else (root_wr if player == "B" else 1.0 - root_wr)
+        delegate, src = self._veil_open_delegate()
+        info["open_src"] = src
+        self._log(f"Opening: index={index} < open_moves={open_moves} -> delegating to {src} ({type(delegate).__name__})")
+        started = time.time()
+        try:
+            move, thoughts = delegate.generate_move()
+        finally:
+            self.game.board_watch_probe_warm = False  # 難解＋が立てたままだと監視の先読みが Probe の温めを続ける
+        info["open_secs"] = time.time() - started
+        info["open_thoughts"] = str(thoughts or "")[:200]
+        chosen = None if move is None else move.gtp()
+        if not veil_open_ok(chosen):
+            info["open"] = "invariant"
+            self.game.katrain.log(
+                f"[{type(self).__name__}] Opening: {src} returned {chosen!r} (not a move on the board) -> best move",
+                OUTPUT_ERROR,
+            )
+            return (
+                self._best_move(f"{self.LABEL}: the opening delegate returned no move, playing best move."),
+                "opening", "best", {"why": "invariant"},
+            )
+        info["open"] = "played"
+        info["open_in_cands"] = chosen in cand_gtps
+        kind = "best" if chosen == best_gtp else "opening"
+        if kind == "opening":
+            state = self._veil_state()
+            state["opening"] = state.get("opening", 0) + 1  # 打ったときだけ作る（OFF と窓の外の状態は今と同じ）
+        what = "the best move" if kind == "best" else f"instead of {best_gtp}"
+        self._log(
+            f"Opening: {src} played {chosen} ({what}, in candidates: {info['open_in_cands']}, "
+            f"{info['open_secs']:.1f}s)"
+        )
+        return (
+            (move, f"[{self.LABEL}→{src} opening] {thoughts}"),
+            "opening", kind, {"why": "opening" if kind == "opening" else "opening_best"},
+        )
+
     def _generate_move(self) -> Tuple[Move, str]:
         # ---- S0 ラッパー: 解析の破棄は上へ、それ以外の例外は最善手（ほかの出口と同じく Decision 行と ledger も残す）----
         t0 = time.time()
+        self._veil_open_at = None  # S4b が窓の中の手番で番号を置く（例外の手番の記録 `_veil_error` が読む）
         try:
             return self._veil_move()
         except AnalysisDiscardedException:
@@ -5505,12 +5590,18 @@ class Veil9Strategy(Enigma9Strategy):
 
     def _veil_error(self, error, t0):
         """S0 の例外の手番: 最善手を打ち、ほかの出口と同じ `_veil_finish` で最小の記録を残す（tier failsafe・kind best・
-        why exception と depth / player / best / chosen / error）。記録に失敗しても最善手は打つ（ERROR ログを足す）。"""
+        why exception と depth / player / best / chosen / error。序盤の窓の中の手番なら open_index も＝S4b が置いた
+        `_veil_open_at`、まだ無ければ `_veil_open_index_or_none()`）。記録に失敗しても最善手は打つ（ERROR ログを足す）。"""
         result = self._best_move(f"{self.LABEL}: internal error, playing best move.")
         try:
             cn = self.cn
             cands = cn.candidate_moves
             info = {"depth": cn.depth, "player": cn.next_player, "best": cands[0]["move"] if cands else None, "t0": t0}
+            open_at = getattr(self, "_veil_open_at", None)
+            if open_at is None:  # S4b より前の例外（S1 の解析待ち・S4 の集計）でも窓の中かを記録する（spec §15.3 手順8）
+                open_at = self._veil_open_index_or_none()
+            if open_at is not None:
+                info["open_index"] = open_at
             return self._veil_finish(result, info, "failsafe", "best", why="exception", error=repr(error))
         except Exception as e:  # noqa: BLE001 記録の失敗で着手を止めない
             self.game.katrain.log(
@@ -5569,6 +5660,12 @@ class Veil9Strategy(Enigma9Strategy):
             f"Rate: mine={mine}/{n_mine} opp={opp}/{n_opp} opp_trunc={opp_trunc} "
             f"p_match={p_match:.3f} target={target:.2f} u={u:.2f}"
         )
+
+        # ---- S4b 序盤の研究外し（spec §15.3。open_moves 0 なら何もしない＝root に触れず、記録も足さない）----
+        opening = self._veil_open(player, sign, best_gtp, cand_gtps, p_match, info)
+        if opening is not None:
+            result, tier, kind, fields = opening
+            return finish(result, tier, kind, **fields)
 
         # ---- S5 リード（打つ側視点）----
         root = cn.analysis.get("root") or {}
