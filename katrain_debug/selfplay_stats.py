@@ -61,6 +61,7 @@ POOL_TOLERANCE = {"opp_mean": 0.01, "opp_sd": 0.02, "opp_loss": 0.25}  # プー�
 CALIB_TARGETS = {13: CALIB_TARGETS_13}
 # 盤サイズ → 目標の元の局数（AI 側 / 相手側）。calibration.md の「実戦（目標）」の行に出す
 CALIB_TARGET_GAMES = {13: "16/18"}
+BOOK_LOSS = 0.3  # 定跡を知る相手の既定の X（AI の1手の損失の上限＝引き分けを保つ帯。spec §16.2 手順6）
 
 
 # ---- 盤サイズ ----
@@ -264,6 +265,18 @@ def selfplay_opponent_pick(cands, rng, tau, try_move, pass_ok):
             return key, result
         pool.pop(k)
     return None, None
+
+
+# ---- 定跡を知る相手（spec §16.2 手順6）----
+def book_exit_depth(ai_losses, max_loss):
+    """AI の手 [(手数, points_lost)]（時系列）のうち、points_lost が max_loss を超えた（または無い）最初の手の手数。
+
+    すべて max_loss 以下なら None（まだ定跡の中）。
+    """
+    for depth, loss in ai_losses:
+        if loss is None or loss > max_loss:
+            return depth
+    return None
 
 
 # ---- 投了・勝敗 ----

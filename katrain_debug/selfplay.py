@@ -89,9 +89,23 @@ def make_stub(config_path):
     return KaTrainStub(config_path or default_config_path(), debug_level=0, quiet=True)
 
 
+def book_plan(args):
+    """定跡を知る相手（--book-moves B・--book-loss X）。B 0（既定）は OFF＝どちらも None（run.json と突き合わせのキー）。"""
+    moves = getattr(args, "book_moves", 0) or 0
+    if moves < 0:
+        raise SystemExit("--book-moves must be >= 0")
+    return {"book_moves": moves or None, "book_loss": args.book_loss if moves else None}
+
+
 def opponent_plan(args, size):
-    """相手の設定。humansl は --ranks か --opp-pool（無ければ calibration-data/selfplay/opponent_pool_<size>.json）。"""
+    """相手の設定。humansl は --ranks か --opp-pool（無ければ calibration-data/selfplay/opponent_pool_<size>.json）。
+
+    --book-moves B（> 0）なら humansl の相手を定跡を知る相手で包む（spec §16.2 手順6。strategy の相手には使えない）。
+    """
+    book = book_plan(args)
     if args.opponent != "humansl":
+        if book["book_moves"]:
+            raise SystemExit("--book-moves wraps the humansl opponent only (not --opponent strategy:...)")
         if not args.opponent.startswith("strategy:"):
             raise SystemExit(f"--opponent must be humansl or strategy:NAME[:k=v,...]: {args.opponent!r}")
         _, strategy, items = S.parse_arm("opponent=" + args.opponent[len("strategy:") :])
@@ -117,6 +131,7 @@ def opponent_plan(args, size):
         "max_loss": args.opp_max_loss,
         "pool_file": R.repo_relpath(pool_file),
         "pool": pool,
+        **book,
     }
 
 
@@ -447,6 +462,20 @@ def build_parser():
     run.add_argument("--ranks", default=None, help="相手の段位（カンマ区切り。プールより優先）")
     run.add_argument("--opponent", default="humansl", help="humansl か strategy:NAME[:key=val,...]")
     run.add_argument("--komi-shift", type=float, default=0.0, help="AI 不利にずらすコミ（接戦ストレス層）")
+    run.add_argument(
+        "--book-moves",
+        type=int,
+        default=0,
+        metavar="B",
+        help="定跡を知る相手: 手数 < B の間、AI の手がすべて --book-loss 以下なら KataGo の最善手を打つ（0 = OFF）",
+    )
+    run.add_argument(
+        "--book-loss",
+        type=float,
+        default=S.BOOK_LOSS,
+        metavar="X",
+        help="定跡の中とみなす AI の1手の損失の上限（目・既定 0.3）",
+    )
     run.add_argument("--watch-flags", action="store_true", help="game.board_watch_active を立てる（監視専用の分岐）")
     run.add_argument("--shadow", default=None, metavar="ARM", help="他のアームの各手番でこのアームの判断も記録する")
     run.add_argument("--hp-audit", default=None, metavar="PROFILE", help="hp 監査の humanSL（例 rank_9d）")

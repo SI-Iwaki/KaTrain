@@ -448,6 +448,14 @@ class TestSummaries:
         assert R.plan_conditions(old) == R.plan_conditions(lead)
         assert R.plan_conditions(plan({"no_resign": True, "range": None}))["resign"]["model"] == "none"
 
+    def test_book_opponent_is_a_game_condition(self):
+        base = {"size": 9, "komi": 7.0, "resign": {"model": "length"}}
+        plain = {**base, "opponent": {"kind": "humansl", "book_moves": None, "book_loss": None}}
+        old = {**base, "opponent": {"kind": "humansl"}}  # 定跡を知る相手より前の run.json
+        book = {**base, "opponent": {"kind": "humansl", "book_moves": 24, "book_loss": 0.3}}
+        assert R.plan_conditions(plain) == R.plan_conditions(old)
+        assert R.plan_conditions(plain) != R.plan_conditions(book)
+
     def test_calibration_markdown_and_pool_file(self, tmp_path):
         out = R.OutputDir(tmp_path / "cal")
         recs = []

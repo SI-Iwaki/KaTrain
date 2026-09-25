@@ -162,6 +162,27 @@ def _run_files(run_dir):
     return plan, recs
 
 
+class TestBookOpponent:
+    def test_book_opponent_wraps_the_pool_opponent(self, env):
+        CLI.main(_run_args(env, "--arm", "A=default", "--book-moves", "4"))
+        plan, recs = _run_files(_only_dir(env["out"]))
+        assert plan["opponent"]["book_moves"] == 4 and plan["opponent"]["book_loss"] == 0.3
+        for r in recs:  # 偽エンジンは損失 0＝定跡のまま手数 4 まで（相手の手番は2回）、その後は humanSL
+            assert r["opponent"] == "book4@0.3+humanSL:rank_3k"
+            stats = r["opponent_stats"]
+            assert (stats["book_played"], stats["book_exit_depth"], stats["book_exit_reason"]) == (2, 4, "limit")
+
+    def test_book_is_off_by_default(self, env):
+        CLI.main(_run_args(env, "--arm", "A=default"))
+        plan, recs = _run_files(_only_dir(env["out"]))
+        assert plan["opponent"]["book_moves"] is None and plan["opponent"]["book_loss"] is None
+        assert all(r["opponent"] == "humanSL:rank_3k" and "book_played" not in r["opponent_stats"] for r in recs)
+
+    def test_book_needs_the_humansl_opponent(self, env):
+        with pytest.raises(SystemExit, match="--book-moves wraps the humansl opponent only"):
+            CLI.main(_run_args(env, "--arm", "A=default", "--opponent", "strategy:default", "--book-moves", "4"))
+
+
 class TestResignModel:
     def test_length_model_is_the_default(self, env):
         CLI.main(_resign_args(env))

@@ -467,7 +467,10 @@ def plan_conditions(plan):
     resign = plan.get("resign") or {}
     return {
         **{k: plan.get(k) for k in ("size", "komi", "komi_shift", "rules", "max_moves", "watch_flags", "target")},
-        "opponent": {k: opp.get(k) for k in ("kind", "ranks", "tau", "max_loss", "strategy", "override_items")},
+        "opponent": {
+            k: opp.get(k)
+            for k in ("kind", "ranks", "tau", "max_loss", "strategy", "override_items", "book_moves", "book_loss")
+        },
         "resign": {"model": resign_model_of_plan(resign), **{k: resign.get(k) for k in ("no_resign", "range")}},
     }
 

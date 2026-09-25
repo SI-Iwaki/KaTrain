@@ -10,7 +10,7 @@ import pytest
 
 from katrain.core.constants import OUTPUT_ERROR, PRIORITY_EXTRA_AI_QUERY
 from katrain.core.sgf_parser import Move
-from katrain_debug.selfplay_opponent import GameAborted, HumanSLOpponent, Waiter
+from katrain_debug.selfplay_opponent import BookOpponent, GameAborted, HumanSLOpponent, Waiter
 from tests.selfplay_fakes import FakeEngine, hp_array, make_stub, new_game
 
 
@@ -155,3 +155,92 @@ class TestHumanSLOpponent:
                 seq.append(opp.play(game, waiter).move.gtp())
             runs.append(seq)
         assert runs[0] == runs[1]
+
+
+def _book_position(nodes, depth, next_player, best="E5"):
+    """BookOpponent の単体テスト用の局面（stub のノード）。nodes: [(手数, 打った色, points_lost)]（root は足す）。"""
+    root = types.SimpleNamespace(depth=0, player="W", points_lost=None)
+    path = [root] + [types.SimpleNamespace(depth=d, player=p, points_lost=pl) for d, p, pl in nodes]
+    cn = types.SimpleNamespace(
+        depth=depth, next_player=next_player, nodes_from_root=path, candidate_moves=[{"move": best}]
+    )
+    played = []
+
+    def play(move):
+        played.append((move.player, move.gtp()))
+        return "book-node"
+
+    return types.SimpleNamespace(current_node=cn, play=play), played
+
+
+class _Inner:
+    label = "humanSL:rank_3d"
+
+    def __init__(self):
+        self.stats = {"moves": 0, "fallbacks": 0, "humansl_errors": 0}
+        self.calls = 0
+
+    def play(self, game, waiter):
+        self.calls += 1
+        return "inner-node"
+
+
+_NO_WAIT = types.SimpleNamespace(nodes=lambda nodes, what: None)
+
+
+class TestBookOpponent:
+    """定跡を知る相手（spec 2026-09-23-veil-strategy-design.md §16.2 手順6）。"""
+
+    def test_plays_the_best_move_while_the_ai_stays_in_the_book(self):
+        inner = _Inner()
+        opp = BookOpponent(inner, book_moves=12, book_loss=0.3)
+        # AI は黒（相手＝白の手番）。相手自身の損失（2.0）は見ない
+        game, played = _book_position([(1, "B", 0.1), (2, "W", 2.0), (3, "B", 0.3)], depth=3, next_player="W")
+        assert opp.play(game, _NO_WAIT) == "book-node" and played == [("W", "E5")] and inner.calls == 0
+        assert opp.stats == {
+            "moves": 0,
+            "fallbacks": 0,
+            "humansl_errors": 0,
+            "book_played": 1,
+            "book_exit_depth": None,
+            "book_exit_reason": None,
+        }
+        assert opp.label == "book12@0.3+humanSL:rank_3d"
+
+    def test_one_ai_move_over_the_limit_leaves_the_book_for_the_rest_of_the_game(self):
+        inner = _Inner()
+        opp = BookOpponent(inner, book_moves=12, book_loss=0.3)
+        game, played = _book_position([(1, "B", 0.31)], depth=1, next_player="W")
+        assert opp.play(game, _NO_WAIT) == "inner-node" and played == []
+        game, played = _book_position([(1, "B", 0.31), (2, "W", 0.0), (3, "B", 0.0)], depth=3, next_player="W")
+        assert opp.play(game, _NO_WAIT) == "inner-node" and played == [] and inner.calls == 2
+        assert (opp.stats["book_exit_depth"], opp.stats["book_exit_reason"]) == (1, "ai_loss")
+
+    def test_a_move_without_points_lost_leaves_the_book(self):
+        opp = BookOpponent(_Inner(), book_moves=12)
+        game, _ = _book_position([(1, "W", None)], depth=1, next_player="B")  # AI は白
+        assert opp.play(game, _NO_WAIT) == "inner-node" and opp.stats["book_exit_reason"] == "ai_loss"
+
+    def test_stops_at_the_book_length(self):
+        opp = BookOpponent(_Inner(), book_moves=4)
+        game, played = _book_position([(1, "B", 0.0), (2, "W", 0.0), (3, "B", 0.0)], depth=3, next_player="W")
+        assert opp.play(game, _NO_WAIT) == "book-node"  # 手数 3 < 4
+        game, played = _book_position([(d, "BW"[(d - 1) % 2], 0.0) for d in range(1, 6)], depth=5, next_player="W")
+        assert opp.play(game, _NO_WAIT) == "inner-node" and played == []
+        assert (opp.stats["book_played"], opp.stats["book_exit_depth"], opp.stats["book_exit_reason"]) == (
+            1,
+            4,
+            "limit",
+        )
+
+    def test_wraps_the_humansl_opponent_on_a_real_game(self, tmp_path):
+        engine = FakeEngine(hp_fn=_hp({(8, 8): 1.0}))  # humanSL は右上（J9）・KataGo の最善手は左下（A1）から
+        game = new_game(make_stub(tmp_path), engine)
+        opp = BookOpponent(HumanSLOpponent("rank_3k", seed=1), book_moves=1)
+        waiter = Waiter(engine, timeout=5)
+        first = opp.play(game, waiter)  # 手数 0 < 1: KataGo の最善手
+        assert first.move.gtp() == "A1" and first.move.player == "B"
+        game.play(Move.from_gtp("B1", player="W"))
+        third = opp.play(game, waiter)  # 手数 2 >= 1: 包んだ humanSL
+        assert third.move.coords == (8, 8)
+        assert opp.stats["book_played"] == 1 and opp.stats["moves"] == 1 and opp.stats["book_exit_reason"] == "limit"

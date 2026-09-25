@@ -22,7 +22,7 @@ from katrain.core.game import Game, KaTrainSGF  # noqa: E402
 from katrain_debug import selfplay_stats as S  # noqa: E402
 from katrain_debug.cli import parse_settings  # noqa: E402
 from katrain_debug.runner import STRATEGY_NAME_MAP  # noqa: E402
-from katrain_debug.selfplay_opponent import GameAborted, HumanSLOpponent, Waiter  # noqa: E402
+from katrain_debug.selfplay_opponent import BookOpponent, GameAborted, HumanSLOpponent, Waiter  # noqa: E402
 
 # stub.logs から残す行（戦略自身の [XxxStrategy] 行・判定ログと時間ログ・エラー）。エンジンのクエリ送受信は捨てる
 KEEP_LOG_MARKERS = ("Rate:", "Decision:", "着手決定に", "Generating move using", "Move generation complete")
@@ -220,9 +220,13 @@ class StrategyOpponent:
 def make_opponent(opponent_plan, spec, opponent_arm=None):
     if opponent_plan["kind"] == "strategy":
         return StrategyOpponent(opponent_arm)
-    return HumanSLOpponent(
+    opponent = HumanSLOpponent(
         spec["rank"], tau=opponent_plan.get("tau", 1.0), seed=spec["opp_seed"], max_loss=opponent_plan.get("max_loss")
     )
+    if opponent_plan.get("book_moves"):  # 定跡を知る相手（spec §16.2 手順6）: プールの humanSL を包む
+        loss = opponent_plan.get("book_loss")
+        return BookOpponent(opponent, opponent_plan["book_moves"], S.BOOK_LOSS if loss is None else loss)
+    return opponent
 
 
 def drain_logs(stub):

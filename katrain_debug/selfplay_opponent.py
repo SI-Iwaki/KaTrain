@@ -159,3 +159,55 @@ class HumanSLOpponent:
             node = game.play(Move(None, player=player))
         self.stats["moves"] += 1
         return node
+
+
+class BookOpponent:
+    """定跡を知る相手（spec 2026-09-23-veil-strategy-design.md §16.2 手順6・`--book-moves B --book-loss X`）。
+
+    相手の手番の局面の手数が B 未満で、それまでの AI の手がすべて points_lost <= X の間は、KataGo の最善手（通常解析の
+    candidate_moves[0]）を打つ。AI が一度でも X を超える手（points_lost の無い手も）を打つか、手数が B に届いたら、その局の
+    残りは包んだ相手（プールの humanSL）で打つ。ユーザーの仮説（こちらが定跡どおりだと高段の BOT が最善手を続ける）の
+    モデル: 「定跡」は本より浅い読み（通常解析）の最善手で、「定跡の中」を AI の損失で決めるのはモデルの仮定。
+    stats は包んだ相手の stats に book_played（最善手を打った回数）・book_exit_depth（定跡を外れた手数: X を超えた AI の手の
+    手数、または B）・book_exit_reason（ai_loss / limit。B に届く前に終局したら None）を足したもの。
+    """
+
+    def __init__(self, inner, book_moves, book_loss=S.BOOK_LOSS):
+        self.inner = inner
+        self.book_moves = book_moves
+        self.book_loss = book_loss
+        self.book_played = 0
+        self.exit_depth = None
+        self.exit_reason = None
+
+    @property
+    def label(self):
+        return f"book{self.book_moves}@{self.book_loss:g}+{self.inner.label}"
+
+    @property
+    def stats(self):
+        return {
+            **self.inner.stats,
+            "book_played": self.book_played,
+            "book_exit_depth": self.exit_depth,
+            "book_exit_reason": self.exit_reason,
+        }
+
+    def play(self, game, waiter):
+        cn = game.current_node
+        if self.exit_reason is None and cn.depth >= self.book_moves:
+            self.exit_depth, self.exit_reason = self.book_moves, "limit"
+        if self.exit_reason is None:
+            waiter.nodes(cn.nodes_from_root, "path analysis before the book opponent")
+            ai = "W" if cn.next_player == "B" else "B"
+            losses = [(n.depth, n.points_lost) for n in cn.nodes_from_root[1:] if n.player == ai]
+            exit_depth = S.book_exit_depth(losses, self.book_loss)
+            if exit_depth is not None:
+                self.exit_depth, self.exit_reason = exit_depth, "ai_loss"
+        if self.exit_reason is not None:
+            return self.inner.play(game, waiter)
+        cands = cn.candidate_moves
+        best = cands[0]["move"] if cands else "pass"
+        node = game.play(Move.from_gtp(best, player=cn.next_player))
+        self.book_played += 1
+        return node

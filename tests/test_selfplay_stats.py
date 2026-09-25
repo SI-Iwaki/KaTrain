@@ -266,6 +266,13 @@ class TestResignAndOutcome:
         assert S.selfplay_resign_check(lead, 60, 3.0, 0.91, 1, 13) == (False, 0)  # lead は R 10 と勝率 0.95
         assert S.selfplay_resign_check(lead, 60, 12.0, 0.96, 1, 13) == (True, 2)
 
+    def test_book_exit_depth(self):
+        """spec §16.2 手順6: AI の手の points_lost が X を超えた（または無い）最初の手の手数。"""
+        assert S.book_exit_depth([(1, 0.1), (3, 0.3), (5, -0.2)], 0.3) is None
+        assert S.book_exit_depth([(1, 0.1), (3, 0.31), (5, 2.0)], 0.3) == 3
+        assert S.book_exit_depth([(2, None)], 0.3) == 2
+        assert S.book_exit_depth([], 0.3) is None and S.BOOK_LOSS == 0.3
+
     def test_ai_view(self):
         assert S.ai_view_lead(3.0, "W") == -3.0 and S.ai_view_winrate(0.8, "W") == pytest.approx(0.2)
 
