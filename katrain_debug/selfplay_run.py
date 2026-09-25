@@ -29,6 +29,8 @@ from katrain_debug.selfplay_game import (  # noqa: E402
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SELFPLAY_DATA = os.path.join(REPO_ROOT, "docs", "superpowers", "specs", "calibration-data", "selfplay")
 RECON_DIR = os.path.join(SELFPLAY_DATA, "recon")
+# 盤サイズ → 投了モデル（length の手数 L）の元データ。無い盤は 13路の recon/ を盤面積で縮めて使う（spec §16.2 手順5）
+RECON_DIRS = {9: os.path.join(SELFPLAY_DATA, "recon_9")}
 DEFAULT_OUT_ROOT = os.path.join(REPO_ROOT, "experiments", "selfplay")
 COMPARE_METRICS = ("own_top1", "opp_top1", "own_minus_opp", "flip_moves", "win", "own_mean_ptloss", "ge6")
 
@@ -62,14 +64,19 @@ def _recon_summaries(recon_dir):
     return summaries
 
 
-def load_resign_pool(size, recon_dir=RECON_DIR):
+def recon_dir_for(size):
+    """盤サイズの実戦の復元と事後解析のディレクトリ（9路は recon_9/＝難解＋9路・それ以外は recon/＝13路）。"""
+    return RECON_DIRS.get(size, RECON_DIR)
+
+
+def load_resign_pool(size, recon_dir=None):
     """lead モデルの投了閾値 R の標本（実戦の投了局の最終リード）。"""
-    return S.resign_pool_from_summaries(_recon_summaries(recon_dir), size)
+    return S.resign_pool_from_summaries(_recon_summaries(recon_dir or recon_dir_for(size)), size)
 
 
-def load_resign_lengths(size, recon_dir=RECON_DIR):
-    """length モデルの目標の手数 L の標本（実戦 13路 18局の手数を盤面積で比例）。"""
-    return S.resign_lengths_from_summaries(_recon_summaries(recon_dir), size)
+def load_resign_lengths(size, recon_dir=None):
+    """length モデルの目標の手数 L の標本（9路は recon_9 の手数そのまま・19路は 13路 18局を盤面積で比例）。"""
+    return S.resign_lengths_from_summaries(_recon_summaries(recon_dir or recon_dir_for(size)), size)
 
 
 def git_info(path):

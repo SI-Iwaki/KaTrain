@@ -416,8 +416,18 @@ class TestSummaries:
     def test_resign_lengths_are_the_real_game_lengths(self):
         lens = R.load_resign_lengths(13)  # 実戦 13路 18局（recon/report_game_*.json の summary.n_moves）
         assert len(lens) == 18 and statistics.median(lens) == 78.5 and (min(lens), max(lens)) == (31, 128)
-        assert R.load_resign_lengths(9) == [round(n * 81 / 169) for n in lens]
+        assert R.load_resign_lengths(9, R.RECON_DIR) == [round(n * 81 / 169) for n in lens]
         assert R.load_resign_lengths(19) == [round(n * 361 / 169) for n in lens]
+
+    def test_recon_dir_by_board_size(self, tmp_path, monkeypatch):
+        """spec §16.2 手順5: 9路の投了モデルは recon_9/（9路の実戦）を縮めずに読む。19路は 13路の recon/ を縮める。"""
+        assert R.repo_relpath(R.recon_dir_for(9)) == "docs/superpowers/specs/calibration-data/selfplay/recon_9"
+        assert R.recon_dir_for(13) == R.RECON_DIR and R.recon_dir_for(19) == R.RECON_DIR
+        for i, n in enumerate((31, 48, 99)):
+            summary = {"ai": "B", "n_moves": n, "final_score": 5.0, "board_size": 9}
+            (tmp_path / f"report_game_{i}.json").write_text(json.dumps({"summary": summary}), encoding="utf-8")
+        monkeypatch.setitem(R.RECON_DIRS, 9, str(tmp_path))
+        assert R.load_resign_lengths(9) == [31, 48, 99]
 
     def test_repo_relpath(self, tmp_path):
         inside = R.os.path.join(R.REPO_ROOT, "experiments", "selfplay", "20260924_0202_calib13")

@@ -236,6 +236,13 @@ class TestResignAndOutcome:
         assert S.resign_lengths_from_summaries(summaries, 9) == [round(123 * 81 / 169), round(31 * 81 / 169)]
         assert S.resign_lengths_from_summaries(summaries, 19) == [round(123 * 361 / 169), round(31 * 361 / 169)]
 
+    def test_resign_lengths_keep_the_board_of_the_summary(self):
+        """spec §16.2 手順5: 9路の実戦（recon_9・summary.board_size 9）は 9路で縮めない。"""
+        summaries = [{"ai": "B", "n_moves": 48, "board_size": 9}, {"ai": "W", "n_moves": 31, "board_size": 9}]
+        assert S.resign_lengths_from_summaries(summaries, 9) == [48, 31]
+        assert S.resign_lengths_from_summaries(summaries, 13) == [round(48 * 169 / 81), round(31 * 169 / 81)]
+        assert S.scale_moves(78, 13) == 78 and S.scale_moves(40, 9) == 19 and S.scale_moves_13(40, 9) == 19
+
     def test_length_model_resigns_at_or_after_the_target_length_when_clearly_winning(self):
         assert S.selfplay_should_resign_at_length(59, 20.0, 0.99, 1, 60) == (False, 0)  # L より前は数えない
         ok, streak = S.selfplay_should_resign_at_length(60, 2.5, 0.90, 0, 60)

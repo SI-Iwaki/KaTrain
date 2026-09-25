@@ -122,8 +122,10 @@ def opponent_plan(args, size):
 
 def resign_plan(args, size):
     """投了モデル（--resign-model）:
-    - length（既定）: 局ごとに目標の手数 L を実戦 13路 18局の手数から引き、L 以降に AI が明らかに勝っていれば投了。
-    - lead: 局ごとに閾値 R を実戦の投了局の最終リード（または --resign-lead LO:HI の一様）から引く。
+    - length（既定）: 局ごとに目標の手数 L を実戦の手数（9路は recon_9 の難解＋9路・ほかは 13路 18局を盤面積で比例）
+      から引き、L 以降に AI が明らかに勝っていれば投了。
+    - lead: 局ごとに閾値 R を実戦の投了局の最終リード（または --resign-lead LO:HI の一様）から引く。9路は
+      --resign-lead が要る（実戦の最終リードの標本は 13路だけ・spec §16.2 手順5）。
     --no-resign ならどちらでもなく投了しない（model "none"）。
     """
     start = S.resign_start_move(size)
@@ -132,7 +134,7 @@ def resign_plan(args, size):
         return {**common, "model": "none", "no_resign": True, "start_move": start}
     if args.resign_lead and args.resign_model != "lead":
         raise SystemExit("--resign-lead LO:HI applies only to --resign-model lead")
-    source = R.repo_relpath(R.RECON_DIR)
+    source = R.repo_relpath(R.recon_dir_for(size))
     if args.resign_model == "length":
         lengths = R.load_resign_lengths(size)
         if not lengths:
@@ -148,6 +150,8 @@ def resign_plan(args, size):
             "start_move": start,
             "source": "--resign-lead",
         }
+    if size == 9:
+        raise SystemExit("--resign-model lead on 9x9 needs --resign-lead LO:HI (no real-game lead pool for 9x9)")
     pool = R.load_resign_pool(size)
     if not pool:
         raise SystemExit(f"no resign data in {source}: pass --resign-lead LO:HI or --no-resign")

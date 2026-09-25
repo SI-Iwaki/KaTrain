@@ -12,12 +12,20 @@ import pytest
 from katrain_debug import selfplay as CLI
 from tests.selfplay_fakes import FakeEngine, make_stub
 
+RECON_9_LENGTHS = (31, 48, 99)  # テストの 9路の実戦の手数（本物の recon_9/ は計測の準備で作る）
+
 
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     make_stub(tmp_path, **{"ai:policy": {}})  # tmp_path/config.json を書く
     monkeypatch.setattr(CLI, "start_engine", lambda stub: FakeEngine())
     monkeypatch.setattr(CLI, "katago_processes", lambda: [])
+    recon9 = tmp_path / "recon_9"
+    recon9.mkdir()
+    for i, n in enumerate(RECON_9_LENGTHS):
+        summary = {"ai": "B", "n_moves": n, "final_score": 5.0, "board_size": 9}
+        (recon9 / f"report_game_{i}.json").write_text(json.dumps({"summary": summary}), encoding="utf-8")
+    monkeypatch.setitem(CLI.R.RECON_DIRS, 9, str(recon9))
     return {"config": str(tmp_path / "config.json"), "out": str(tmp_path / "out"), "tmp": tmp_path}
 
 
@@ -158,7 +166,8 @@ class TestResignModel:
     def test_length_model_is_the_default(self, env):
         CLI.main(_resign_args(env))
         plan, recs = _run_files(_only_dir(env["out"]))
-        lens = CLI.R.load_resign_lengths(9)  # 実戦 13路 18局の手数を 9路の盤面積に縮めたもの
+        lens = CLI.R.load_resign_lengths(9)  # 9路の実戦の手数（recon_9・縮めない）
+        assert lens == list(RECON_9_LENGTHS)
         assert plan["resign"]["model"] == "length" and plan["resign"]["lengths"] == lens
         assert all(s["resign_len"] in lens and s["resign_lead"] is None for s in plan["schedule"])
         assert [(r["resign_model"], r["resign_len"]) for r in recs] == [
@@ -172,6 +181,10 @@ class TestResignModel:
         assert all(8 <= s["resign_lead"] <= 40 and s["resign_len"] is None for s in plan["schedule"])
         assert all(r["resign_model"] == "lead" and r["resign_len"] is None for r in recs)
 
+    def test_lead_model_on_9x9_needs_a_range(self, env):
+        with pytest.raises(SystemExit, match="needs --resign-lead"):  # spec §16.2 手順5: 9路の実戦のリードの標本は無い
+            CLI.main(_resign_args(env, "--resign-model", "lead"))
+
     def test_resign_lead_applies_only_to_the_lead_model(self, env):
         with pytest.raises(SystemExit, match="--resign-model lead"):
             CLI.main(_resign_args(env, "--resign-lead", "8:40"))
@@ -183,7 +196,11 @@ class TestResignModel:
 
     def test_runs_with_different_resign_models_are_not_merged(self, env):
         CLI.main(_resign_args(env))
-        CLI.main(_resign_args(env, "--resign-model", "lead", "--seed-base", "1002", "--label", "ext"))
+        CLI.main(
+            _resign_args(
+                env, "--resign-model", "lead", "--resign-lead", "8:40", "--seed-base", "1002", "--label", "ext"
+            )
+        )
         dirs = [os.path.join(env["out"], d) for d in sorted(os.listdir(env["out"]), key=lambda d: d.endswith("_ext"))]
         with pytest.raises(SystemExit, match="game conditions differ"):
             CLI.main(["summarize", *dirs, "--boot", "100"])
@@ -318,7 +335,9 @@ class TestMeasurementBaseline:
         assert "WARN measurement baseline differs" in out and "git.head" in out
 
     def test_run_json_paths_are_relative_to_the_repo(self, env):
-        CLI.main(_resign_args(env))
+        args = _resign_args(env)
+        args[args.index("--size") + 1] = "13"  # 13路の投了モデルは recon/（リポジトリの中）
+        CLI.main(args)
         plan, _ = _run_files(_only_dir(env["out"]))
         assert plan["ai_file"] == "katrain/core/ai.py"
         assert plan["resign"]["source"] == "docs/superpowers/specs/calibration-data/selfplay/recon"

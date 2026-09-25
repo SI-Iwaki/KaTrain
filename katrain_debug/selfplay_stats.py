@@ -68,9 +68,16 @@ def move_cap(size):
     return MOVE_CAP.get(size, round(250 * size * size / 169))
 
 
+def scale_moves(moves, size, from_size=13):
+    """from_size 路の手数を size 路の盤面積で比例させる（同じ盤なら縮めない）。"""
+    if from_size == size:
+        return moves
+    return round(moves * size * size / (from_size * from_size))
+
+
 def scale_moves_13(moves, size):
     """13路の手数を盤面積で比例させる（9路 ×81/169・19路 ×361/169）。"""
-    return round(moves * size * size / 169)
+    return scale_moves(moves, size, 13)
 
 
 def resign_start_move(size):
@@ -332,10 +339,10 @@ def resign_pool_from_summaries(summaries, size):
 def resign_lengths_from_summaries(summaries, size):
     """実戦の report_game_*.json の summary 群 → 局の手数（summary.n_moves）の標本（length モデル）。
 
-    実戦の手数の分布そのもの（13路 18局・中央値 78.5）なので短い局も除かない。13路以外の盤は開始手数と同じく
-    盤面積で比例させる（scale_moves_13）。
+    実戦の手数の分布そのもの（13路 18局・中央値 78.5）なので短い局も除かない。summary の盤（board_size・無ければ
+    13路）と size が違えば盤面積で比例させ、同じ盤なら縮めない（9路の recon_9 は 9路の実戦の手数そのまま）。
     """
-    return [scale_moves_13(s["n_moves"], size) for s in summaries if s.get("n_moves")]
+    return [scale_moves(s["n_moves"], size, s.get("board_size", 13)) for s in summaries if s.get("n_moves")]
 
 
 def selfplay_outcome(end_reason, final_lead_ai):
