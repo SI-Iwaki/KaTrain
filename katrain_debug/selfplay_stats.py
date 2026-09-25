@@ -57,6 +57,10 @@ CALIB_TARGETS_13 = {
     },
 }
 POOL_TOLERANCE = {"opp_mean": 0.01, "opp_sd": 0.02, "opp_loss": 0.25}  # プール選択のスコアの尺度
+# 盤サイズ → 校正目標（spec 2026-09-23-veil-strategy-design.md §16.2 手順4。9路は recon_9 から足す）。無い盤はプールを選ばない
+CALIB_TARGETS = {13: CALIB_TARGETS_13}
+# 盤サイズ → 目標の元の局数（AI 側 / 相手側）。calibration.md の「実戦（目標）」の行に出す
+CALIB_TARGET_GAMES = {13: "16/18"}
 
 
 # ---- 盤サイズ ----
@@ -83,6 +87,19 @@ def depth_bin(depth, size, bins=CALIB_BINS):
         if lo <= depth < hi:
             return name
     return None
+
+
+def calib_bin_moves(size):
+    """校正用の区間の境目の手数 (lo, hi): 序盤 = 手数 < lo・中盤 = lo <= 手数 < hi・終盤 = hi <= 手数。
+
+    game_report と同じ ceil(割合 × 盤面積)（割合は CALIB_BINS の 24/169・85/169）。13路 (24, 85)・9路 (12, 41)・19路 (52, 182)。
+    """
+    return tuple(math.ceil(f * size * size) for f in (CALIB_BINS[0][1][1], CALIB_BINS[2][1][0]))
+
+
+def calib_targets_for(size):
+    """盤サイズの校正目標（CALIB_TARGETS に無い盤は None＝calibrate はプールを選ばない）。"""
+    return CALIB_TARGETS.get(size)
 
 
 # ---- 座標 ----

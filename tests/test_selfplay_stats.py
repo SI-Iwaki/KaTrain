@@ -31,6 +31,35 @@ class TestBoardConstants:
         assert S.depth_bin(85, 13) == "cal_endgame"
         assert S.depth_bin(11, 9) == "cal_opening" and S.depth_bin(12, 9) == "cal_middle"
 
+    def test_calibration_bin_moves_by_board_size(self):
+        """spec 2026-09-23-veil-strategy-design.md §16.2 手順3: 13路の境目は変えない・9路は 12 / 41 手。"""
+        assert S.calib_bin_moves(13) == (24, 85)
+        assert S.calib_bin_moves(9) == (12, 41)
+        assert S.calib_bin_moves(19) == (52, 182)
+        for size in (9, 13, 19):
+            lo, hi = S.calib_bin_moves(size)
+            for depth in range(1, size * size + 1):
+                want = "cal_opening" if depth < lo else "cal_middle" if depth < hi else "cal_endgame"
+                assert S.depth_bin(depth, size) == want
+
+    def test_calibration_targets_by_board_size(self):
+        assert S.calib_targets_for(13) is S.CALIB_TARGETS_13 and S.CALIB_TARGET_GAMES[13] == "16/18"
+        assert S.calib_targets_for(19) is None  # 目標の無い盤は calibrate がプールを選ばない
+        assert S.CALIB_TARGETS_13 == {  # 13路の目標は変えない
+            "opp_mean": 0.231,
+            "opp_sd": 0.065,
+            "opp_loss": 1.77,
+            "opp_ge2": 0.28,
+            "opp_ge5": 0.10,
+            "ai_mean": 0.533,
+            "moves_median": 78.5,
+            "bins": {
+                "cal_opening": {"opp_top1": 0.267, "opp_loss": 0.56},
+                "cal_middle": {"opp_top1": 0.182, "opp_loss": 2.43},
+                "cal_endgame": {"opp_top1": 0.291, "opp_loss": 0.96},
+            },
+        }
+
     def test_gtp_keys_match_move(self):
         for gtp in ("A1", "D4", "N13", "T19", "J9"):
             assert S.gtp_to_key(gtp) == Move.from_gtp(gtp).coords
