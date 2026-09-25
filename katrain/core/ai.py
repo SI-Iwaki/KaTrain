@@ -5480,6 +5480,15 @@ class Veil9Strategy(Enigma9Strategy):
             {"raw": pick["raw"], "vloss": pick["vloss"], "cons": pick["cons"], "cost": pick["cost"], "hp": pick["hp"]},
         )
 
+    def _veil_root_lead(self, cn, sign):
+        """S5 と同じ、打つ側視点の root のリードと勝率（クエリ 0 本）。root の scoreLead が None ならどちらも None
+        （S4b は None でも任せる・S5 は None なら最善手に落ちる。呼び出し側の判定はそのまま）。"""
+        root = cn.analysis.get("root") or {}
+        root_lead, root_wr = root.get("scoreLead"), root.get("winrate")
+        lead = None if root_lead is None else root_lead * sign
+        root_wr = None if root_wr is None else (root_wr if cn.next_player == "B" else 1.0 - root_wr)
+        return lead, root_wr
+
     def _veil_open_delegate(self):
         """序盤の窓で手を任せる先（spec §15.3 手順5）を作って (戦略, 戦略キー) を返す。
 
@@ -5533,12 +5542,12 @@ class Veil9Strategy(Enigma9Strategy):
             self._log(f"Opening gate: index={index} < open_moves={open_moves} but {reason} -> normal flow")
             return None
         # 窓のリードの記録（S5 と同じ計算・クエリ 0 本。None でも任せる）
-        root = cn.analysis.get("root") or {}
-        root_lead, root_wr = root.get("scoreLead"), root.get("winrate")
-        info["lead"] = None if root_lead is None else root_lead * sign
-        info["root_wr"] = None if root_wr is None else (root_wr if player == "B" else 1.0 - root_wr)
+        info["lead"], info["root_wr"] = self._veil_root_lead(cn, sign)
         delegate, src = self._veil_open_delegate()
         info["open_src"] = src
+        if bool(delegate._setting("aim_jigo")):  # spec §15.2: 設定は上書きしないが、持碁狙いは見えるようにする
+            info["open_aim_jigo"] = True
+            self._log(f"Opening: {src} has aim_jigo ON (draw-aiming window)")
         self._log(f"Opening: index={index} < open_moves={open_moves} -> delegating to {src} ({type(delegate).__name__})")
         started = time.time()
         try:
@@ -5570,7 +5579,7 @@ class Veil9Strategy(Enigma9Strategy):
             f"{info['open_secs']:.1f}s)"
         )
         return (
-            (move, f"[{self.LABEL}→{src} opening] {thoughts}"),
+            (move, f"[{self.LABEL}→{src} opening] {thoughts or ''}"),
             "opening", kind, {"why": "opening" if kind == "opening" else "opening_best"},
         )
 
@@ -5668,16 +5677,12 @@ class Veil9Strategy(Enigma9Strategy):
             return finish(result, tier, kind, **fields)
 
         # ---- S5 リード（打つ側視点）----
-        root = cn.analysis.get("root") or {}
-        root_lead = root.get("scoreLead")
-        if root_lead is None:
+        lead, root_wr = self._veil_root_lead(cn, sign)
+        if lead is None:
             self._log("Lead unavailable -> best move")
             return finish(
                 self._best_move(f"{self.LABEL}: lead unavailable, playing best move."), "failsafe", "best", why="no_lead"
             )
-        lead = root_lead * sign
-        root_wr = root.get("winrate")
-        root_wr = None if root_wr is None else (root_wr if player == "B" else 1.0 - root_wr)
         info.update(lead=lead, root_wr=root_wr)
 
         # ---- S6 ヨセ判定（sticky・クエリ0本。ownership が無ければ手数だけ）----

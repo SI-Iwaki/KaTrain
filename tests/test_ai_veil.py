@@ -2661,11 +2661,15 @@ class _RootSpy:
 
 class _StubEnigma:
     """序盤の窓で任せる難解＋のスタブ（`_veil_open_delegate` の戻り値）。打つ前に board_watch_probe_warm を立てる
-    （難解が立てたままにする形）。gtp が None なら (None, 説明) を返し、error があればそれを送出する。"""
+    （難解が立てたままにする形）。gtp が None なら (None, 説明) を返し、error があればそれを送出する。_setting は
+    aim_jigo サーフェス（finding 1）を _veil_open が読んでも落ちないための最小スタブ（常に False）。"""
 
     def __init__(self, gtp, thoughts, error, game, player):
         self.gtp, self.thoughts, self.error, self.game, self.player = gtp, thoughts, error, game, player
         self.calls = 0
+
+    def _setting(self, name):
+        return False
 
     def generate_move(self):
         self.calls += 1
@@ -2746,6 +2750,39 @@ class TestOpening(_OpenFlow, _Harness):
         assert any("Opening: index=0 < open_moves=12 -> delegating to ai:enigma9plus" in m for m in logs)
         s.generate_move()
         assert s.game._veil_state["veil9"]["opening"] == 2
+
+    def test_delegated_turn_leaves_other_sticky_state_untouched(self):
+        """(finding 5) 任せた手番は state の opening 以外（endgame・close_drift・blunders）を変えず、ledger は
+        既存の要素はそのままで新しい1件が増えるだけ。"""
+        s, _, stub = self._open()
+        state = s._veil_state()
+        state.update(endgame=True, close_drift=1.25, blunders=2, ledger=[("prior", "entry")])
+        move, _ = s.generate_move()
+        assert move.gtp() == "D4" and stub.calls == 1
+        assert (state["endgame"], state["close_drift"], state["blunders"]) == (True, 1.25, 2)
+        assert state["ledger"] == [("prior", "entry"), (0, "E5", "D4", "opening")]
+
+    def test_aim_jigo_is_surfaced_without_changing_the_delegates_settings(self, monkeypatch):
+        """(finding 1) 難解＋の節に enigma9plus_aim_jigo が立っていたら、設定は上書きしないまま Decision に
+        open_aim_jigo を足してログに残す（spec §15.2）。既定（absent）ではキーを足さない。"""
+
+        def fake_enigma(strategy):
+            return Move.from_gtp("D4", player=strategy.cn.next_player), "fake enigma"
+
+        monkeypatch.setattr(ai_module.Enigma9Strategy, "_generate_move", fake_enigma)
+        s, logs = self._strategy(
+            depth=0,
+            settings={"veil9_open_moves": 12},
+            ai_config={"ai:enigma9plus": {"enigma9plus_aim_jigo": True}},
+        )
+        assert s.generate_move()[0].gtp() == "D4"
+        info = s.last_decision_info
+        assert info["open_aim_jigo"] is True
+        assert any("Opening: ai:enigma9plus has aim_jigo ON (draw-aiming window)" in m for m in logs)
+
+        s, _ = self._strategy(depth=0, settings={"veil9_open_moves": 12}, ai_config={"ai:enigma9plus": {}})
+        assert s.generate_move()[0].gtp() == "D4"
+        assert "open_aim_jigo" not in s.last_decision_info
 
     def test_enigma_plus_playing_the_best_move_is_kind_best(self):
         s, _, _ = self._open(gtp="E5")
