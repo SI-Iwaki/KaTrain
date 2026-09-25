@@ -4445,6 +4445,8 @@ VEIL_BLUNDER_PROBES = 2          # 深く検証する失着候補の数（hp の
 VEIL_BLUNDER_RAW_MARGIN = 2.0    # 失着候補の生の loss の上の足切りに持たせる余裕（目）
 VEIL_BLUNDER_PROB = 0.5          # ON で資格のある手番に実際に打つ確率（影の計測の後に見直す）
 VEIL_FORCED_PROBES = 4           # 最善手しか無い手番の外しで検証する候補の数（hp の高い順・spec §14）
+# 序盤の研究外し（spec §15.3）で窓の手番を任せる戦略キー＝同じ盤サイズの難解＋（ハーネスもこの表で任せる先の設定の節を知る）
+VEIL_OPEN_DELEGATES = {9: AI_ENIGMA_9_PLUS, 13: AI_ENIGMA_13_PLUS, 19: AI_ENIGMA_19_PLUS}
 _VEIL_EPS = 1e-9                 # 上限比較の浮動小数の許容誤差
 
 
@@ -4838,6 +4840,27 @@ def veil_forced_pick(rows):
     if not rows:
         return None
     return min(rows, key=lambda r: (-r["hp"], r["cost"], r["gtp"]))
+
+
+def veil_open_index(depth, n_setup):
+    """序盤の窓の番号（spec §15.3 手順2）: 打つ手の直前の手数 depth ＋ root の置き石の数 n_setup。打つ手の番号は index + 1。
+
+    board_watch が相手の初手を root の置き石として取り込んだ局でも手数がずれない。局の途中で盤を取り込み直すと
+    盤上の石はすべて root の置き石になる＝index が大きく窓の外になる（途中から研究外しを始めない）。
+    """
+    return int(depth) + int(n_setup)
+
+
+def veil_open_window(index, open_moves):
+    """序盤の窓の中か（spec §15.3 手順2）: open_moves > 0 かつ index < open_moves。open_moves は float や None で
+    来ることがあるので int に丸める（None・0 以下は OFF）。"""
+    n = int(open_moves or 0)
+    return n > 0 and index < n
+
+
+def veil_open_ok(chosen):
+    """任せた手の確認（spec §15.3 手順6）: None でも pass でもないこと。通常解析の候補に無い手も通す（難解と同じ）。"""
+    return chosen is not None and chosen != "pass"
 
 
 def veil_decided_verified_ok(vloss, wr_after, f_eff, lead, reserve, min_winrate, margin=VEIL_RAW_MARGIN):

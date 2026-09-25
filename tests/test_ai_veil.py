@@ -23,6 +23,7 @@ from katrain.core.ai import (
     VEIL_BLUNDER_RAW_MARGIN,
     VEIL_BLUNDER_VISITS,
     VEIL_FORCED_PROBES,
+    VEIL_OPEN_DELEGATES,
     VEIL_TERMINAL_MIN_VISITS,
     AnalysisDiscardedException,
     Enigma9Strategy,
@@ -49,6 +50,9 @@ from katrain.core.ai import (
     veil_merge_trap,
     veil_natural_floor,
     veil_near_free_ok,
+    veil_open_index,
+    veil_open_ok,
+    veil_open_window,
     veil_paid_ok,
     veil_prefilter,
     veil_shortlist,
@@ -688,6 +692,41 @@ class TestForcedPick:
 
     def test_empty_is_none(self):
         assert veil_forced_pick([]) is None
+
+
+class TestOpenPure:
+    """序盤の研究外し（spec §15.3 手順2・6）の純関数と任せる先の表。"""
+
+    def test_delegates_are_the_enigma_plus_of_the_same_board(self):
+        assert VEIL_OPEN_DELEGATES == {9: "ai:enigma9plus", 13: "ai:enigma13plus", 19: "ai:enigma19plus"}
+
+    def test_index_is_the_depth_plus_the_root_placements(self):
+        assert veil_open_index(0, 0) == 0
+        assert veil_open_index(11, 0) == 11
+        assert veil_open_index(11, 1) == 12  # board_watch が相手の初手を root の置き石として取り込んだ局
+
+    @pytest.mark.parametrize(
+        "index,open_moves,inside",
+        [
+            (0, 12, True),
+            (11, 12, True),  # open_moves − 1
+            (12, 12, False),  # open_moves
+            (0, 0, False),  # OFF
+            (0, None, False),
+            (5, 12.0, True),  # スライダーの値は float で来ることがある
+        ],
+    )
+    def test_window(self, index, open_moves, inside):
+        assert veil_open_window(index, open_moves) is inside
+
+    def test_window_counts_the_root_placements(self):
+        assert veil_open_window(veil_open_index(10, 1), 12) is True
+        assert veil_open_window(veil_open_index(11, 1), 12) is False
+
+    @pytest.mark.parametrize("chosen,ok", [(None, False), ("pass", False), ("D4", True), ("J9", True)])
+    def test_ok_needs_a_board_move(self, chosen, ok):
+        """None と pass は通さない。通常解析の候補に無い手（J9）も通す（難解と同じ）。"""
+        assert veil_open_ok(chosen) is ok
 
 
 class TestDecidedVerified:
