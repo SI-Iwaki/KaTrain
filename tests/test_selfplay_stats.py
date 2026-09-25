@@ -60,6 +60,13 @@ class TestBoardConstants:
             },
         }
 
+    def test_calibration_targets_9_have_the_shape_of_13(self):
+        """計測の準備（C3）: 9路の目標は recon_9 から（spec §16.2 手順4）。形は 13路と同じ。"""
+        assert S.calib_targets_for(9) is S.CALIB_TARGETS_9 and S.CALIB_TARGET_GAMES[9] == "7/16"
+        assert set(S.CALIB_TARGETS_9) == set(S.CALIB_TARGETS_13)
+        assert all(set(S.CALIB_TARGETS_9["bins"][b]) == {"opp_top1", "opp_loss"} for b in S.CALIB_TARGETS_13["bins"])
+        assert S.CALIB_TARGETS_9["moves_median"] == 48
+
     def test_gtp_keys_match_move(self):
         for gtp in ("A1", "D4", "N13", "T19", "J9"):
             assert S.gtp_to_key(gtp) == Move.from_gtp(gtp).coords

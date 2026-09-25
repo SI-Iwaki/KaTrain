@@ -57,10 +57,27 @@ CALIB_TARGETS_13 = {
     },
 }
 POOL_TOLERANCE = {"opp_mean": 0.01, "opp_sd": 0.02, "opp_loss": 0.25}  # プール選択のスコアの尺度
+
+# 校正目標（9路の実戦・難解＋9路 16局・事後 2500v。ai_mean は実戦の多数派の設定〈max_loss 1.6・target_score 0.2・
+# gamble_until_move 20〉の 7 局＝calibrate の AI と同じ設定の局。spec §16.2 手順4。calib_targets.py --size 9 の CALIB_TARGETS 行）
+CALIB_TARGETS_9 = {
+    "opp_mean": 0.308,
+    "opp_sd": 0.166,
+    "opp_loss": 1.88,
+    "opp_ge2": 0.23,
+    "opp_ge5": 0.1,
+    "ai_mean": 0.628,
+    "moves_median": 48.0,
+    "bins": {
+        "cal_opening": {"opp_top1": 0.233, "opp_loss": 0.77},
+        "cal_middle": {"opp_top1": 0.332, "opp_loss": 2.4},
+        "cal_endgame": {"opp_top1": 0.355, "opp_loss": 0.78},
+    },
+}
 # 盤サイズ → 校正目標（spec 2026-09-23-veil-strategy-design.md §16.2 手順4。9路は recon_9 から足す）。無い盤はプールを選ばない
-CALIB_TARGETS = {13: CALIB_TARGETS_13}
+CALIB_TARGETS = {13: CALIB_TARGETS_13, 9: CALIB_TARGETS_9}
 # 盤サイズ → 目標の元の局数（AI 側 / 相手側）。calibration.md の「実戦（目標）」の行に出す
-CALIB_TARGET_GAMES = {13: "16/18"}
+CALIB_TARGET_GAMES = {13: "16/18", 9: "7/16"}
 BOOK_LOSS = 0.3  # 定跡を知る相手の既定の X（AI の1手の損失の上限＝引き分けを保つ帯。spec §16.2 手順6）
 
 
