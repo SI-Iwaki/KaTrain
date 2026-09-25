@@ -1,0 +1,482 @@
+[
+ {
+  "game": "game_20260926_001643",
+  "ai": "W",
+  "n_moves": 32,
+  "final_score": -23.2106406,
+  "mine": {
+   "n": 16,
+   "match": 0.75,
+   "mean_loss": 0.11888145506875024
+  },
+  "opp": {
+   "n": 16,
+   "match": 0.3125,
+   "mean_loss": 1.3995152171250003
+  },
+  "mine_pre41": {
+   "n": 16,
+   "match": 0.75,
+   "mean_loss": 0.11888145506875024
+  },
+  "mine_post41": null,
+  "opp_pre41": {
+   "n": 16,
+   "match": 0.3125,
+   "mean_loss": 1.3995152171250003
+  },
+  "opp_post41": null,
+  "board_size": 9,
+  "strategy": "Veil9Strategy",
+  "settings": {
+   "veil9_target_rate": 0.4,
+   "veil9_reserve": 3.0,
+   "veil9_min_winrate": 0.85,
+   "veil9_free_loss": 0.2,
+   "veil9_free_wr_drop": 0.03,
+   "veil9_close_drift_cap": 0.0,
+   "veil9_spend_rate": 0.5,
+   "veil9_max_loss": 3.0,
+   "veil9_yose_max_loss": 1.0,
+   "veil9_dominant_hp": 0.8,
+   "veil9_dominant_max_loss": 1.5,
+   "veil9_min_human_policy": 0.05,
+   "veil9_natural_ratio": 0.2,
+   "veil9_cost_slack": 0.3,
+   "veil9_trap_mode": false,
+   "veil9_trap_min_delta_e": 0.5,
+   "veil9_blunder_mode": 0,
+   "veil9_blunder_max_loss": 6.0,
+   "veil9_blunder_per_game": 1,
+   "veil9_blunder_hp_ratio": 0.7,
+   "veil9_forced_mode": 0,
+   "veil9_forced_min_lead": 1.0,
+   "veil9_forced_min_winrate": 0.7,
+   "veil9_forced_max_loss": 5.0
+  },
+  "secs": 19.044301509857178
+ },
+ {
+  "game": "game_20260926_001912",
+  "ai": "B",
+  "n_moves": 33,
+  "final_score": 20.1032175,
+  "mine": {
+   "n": 17,
+   "match": 0.6470588235294118,
+   "mean_loss": 0.2812853271176473
+  },
+  "opp": {
+   "n": 16,
+   "match": 0.4375,
+   "mean_loss": 1.5592045920625004
+  },
+  "mine_pre41": {
+   "n": 17,
+   "match": 0.6470588235294118,
+   "mean_loss": 0.2812853271176473
+  },
+  "mine_post41": null,
+  "opp_pre41": {
+   "n": 16,
+   "match": 0.4375,
+   "mean_loss": 1.5592045920625004
+  },
+  "opp_post41": null,
+  "board_size": 9,
+  "strategy": "Veil9Strategy",
+  "settings": {
+   "veil9_target_rate": 0.4,
+   "veil9_reserve": 3.0,
+   "veil9_min_winrate": 0.85,
+   "veil9_free_loss": 0.2,
+   "veil9_free_wr_drop": 0.03,
+   "veil9_close_drift_cap": 0.0,
+   "veil9_spend_rate": 0.5,
+   "veil9_max_loss": 3.0,
+   "veil9_yose_max_loss": 1.0,
+   "veil9_dominant_hp": 0.8,
+   "veil9_dominant_max_loss": 1.5,
+   "veil9_min_human_policy": 0.05,
+   "veil9_natural_ratio": 0.2,
+   "veil9_cost_slack": 0.3,
+   "veil9_trap_mode": false,
+   "veil9_trap_min_delta_e": 0.5,
+   "veil9_blunder_mode": 0,
+   "veil9_blunder_max_loss": 6.0,
+   "veil9_blunder_per_game": 1,
+   "veil9_blunder_hp_ratio": 0.7,
+   "veil9_forced_mode": 0,
+   "veil9_forced_min_lead": 1.0,
+   "veil9_forced_min_winrate": 0.7,
+   "veil9_forced_max_loss": 5.0
+  },
+  "secs": 16.43730616569519
+ },
+ {
+  "game": "game_20260926_002128",
+  "ai": "W",
+  "n_moves": 46,
+  "final_score": -5.56704106,
+  "mine": {
+   "n": 23,
+   "match": 0.8260869565217391,
+   "mean_loss": 0.054192841391304335
+  },
+  "opp": {
+   "n": 23,
+   "match": 0.34782608695652173,
+   "mean_loss": 0.29676567017391303
+  },
+  "mine_pre41": {
+   "n": 20,
+   "match": 0.8,
+   "mean_loss": 0.05778210159999997
+  },
+  "mine_post41": {
+   "n": 3,
+   "match": 1.0,
+   "mean_loss": 0.030264440000000132
+  },
+  "opp_pre41": {
+   "n": 20,
+   "match": 0.4,
+   "mean_loss": 0.34086797719999995
+  },
+  "opp_post41": {
+   "n": 3,
+   "match": 0.0,
+   "mean_loss": 0.0027502900000001182
+  },
+  "board_size": 9,
+  "strategy": "Veil9Strategy",
+  "settings": {
+   "veil9_target_rate": 0.4,
+   "veil9_reserve": 3.0,
+   "veil9_min_winrate": 0.85,
+   "veil9_free_loss": 0.2,
+   "veil9_free_wr_drop": 0.03,
+   "veil9_close_drift_cap": 0.0,
+   "veil9_spend_rate": 0.5,
+   "veil9_max_loss": 3.0,
+   "veil9_yose_max_loss": 1.0,
+   "veil9_dominant_hp": 0.8,
+   "veil9_dominant_max_loss": 1.5,
+   "veil9_min_human_policy": 0.05,
+   "veil9_natural_ratio": 0.2,
+   "veil9_cost_slack": 0.3,
+   "veil9_trap_mode": false,
+   "veil9_trap_min_delta_e": 0.5,
+   "veil9_blunder_mode": 0,
+   "veil9_blunder_max_loss": 6.0,
+   "veil9_blunder_per_game": 1,
+   "veil9_blunder_hp_ratio": 0.7,
+   "veil9_forced_mode": 0,
+   "veil9_forced_min_lead": 1.0,
+   "veil9_forced_min_winrate": 0.7,
+   "veil9_forced_max_loss": 5.0
+  },
+  "secs": 19.840425968170166
+ },
+ {
+  "game": "game_20260926_002344",
+  "ai": "B",
+  "n_moves": 21,
+  "final_score": 16.0264325,
+  "mine": {
+   "n": 11,
+   "match": 0.5454545454545454,
+   "mean_loss": 0.20996985989363637
+  },
+  "opp": {
+   "n": 10,
+   "match": 0.4,
+   "mean_loss": 1.8855368219830002
+  },
+  "mine_pre41": {
+   "n": 11,
+   "match": 0.5454545454545454,
+   "mean_loss": 0.20996985989363637
+  },
+  "mine_post41": null,
+  "opp_pre41": {
+   "n": 10,
+   "match": 0.4,
+   "mean_loss": 1.8855368219830002
+  },
+  "opp_post41": null,
+  "board_size": 9,
+  "strategy": "Veil9Strategy",
+  "settings": {
+   "veil9_target_rate": 0.4,
+   "veil9_reserve": 3.0,
+   "veil9_min_winrate": 0.85,
+   "veil9_free_loss": 0.2,
+   "veil9_free_wr_drop": 0.03,
+   "veil9_close_drift_cap": 0.0,
+   "veil9_spend_rate": 0.5,
+   "veil9_max_loss": 3.0,
+   "veil9_yose_max_loss": 1.0,
+   "veil9_dominant_hp": 0.8,
+   "veil9_dominant_max_loss": 1.5,
+   "veil9_min_human_policy": 0.05,
+   "veil9_natural_ratio": 0.2,
+   "veil9_cost_slack": 0.3,
+   "veil9_trap_mode": false,
+   "veil9_trap_min_delta_e": 0.5,
+   "veil9_blunder_mode": 0,
+   "veil9_blunder_max_loss": 6.0,
+   "veil9_blunder_per_game": 1,
+   "veil9_blunder_hp_ratio": 0.7,
+   "veil9_forced_mode": 0,
+   "veil9_forced_min_lead": 1.0,
+   "veil9_forced_min_winrate": 0.7,
+   "veil9_forced_max_loss": 5.0
+  },
+  "secs": 11.82703971862793
+ },
+ {
+  "game": "game_20260926_005258",
+  "ai": "B",
+  "n_moves": 47,
+  "final_score": 35.739509,
+  "mine": {
+   "n": 24,
+   "match": 0.625,
+   "mean_loss": 0.09741646025833332
+  },
+  "opp": {
+   "n": 23,
+   "match": 0.08695652173913043,
+   "mean_loss": 1.5134521462695647
+  },
+  "mine_pre41": {
+   "n": 20,
+   "match": 0.65,
+   "mean_loss": 0.11282305230999992
+  },
+  "mine_post41": {
+   "n": 4,
+   "match": 0.5,
+   "mean_loss": 0.020383500000000332
+  },
+  "opp_pre41": {
+   "n": 20,
+   "match": 0.05,
+   "mean_loss": 1.4643722482099997
+  },
+  "opp_post41": {
+   "n": 3,
+   "match": 0.3333333333333333,
+   "mean_loss": 1.840651466666665
+  },
+  "board_size": 9,
+  "strategy": "Veil9Strategy",
+  "settings": {
+   "veil9_target_rate": 0.4,
+   "veil9_reserve": 3.0,
+   "veil9_min_winrate": 0.85,
+   "veil9_free_loss": 0.2,
+   "veil9_free_wr_drop": 0.03,
+   "veil9_close_drift_cap": 0.0,
+   "veil9_spend_rate": 0.5,
+   "veil9_max_loss": 3.0,
+   "veil9_yose_max_loss": 1.0,
+   "veil9_dominant_hp": 0.8,
+   "veil9_dominant_max_loss": 1.5,
+   "veil9_min_human_policy": 0.05,
+   "veil9_natural_ratio": 0.2,
+   "veil9_cost_slack": 0.3,
+   "veil9_trap_mode": false,
+   "veil9_trap_min_delta_e": 0.5,
+   "veil9_blunder_mode": 0,
+   "veil9_blunder_max_loss": 6.0,
+   "veil9_blunder_per_game": 1,
+   "veil9_blunder_hp_ratio": 0.7,
+   "veil9_forced_mode": 0,
+   "veil9_forced_min_lead": 1.0,
+   "veil9_forced_min_winrate": 0.7,
+   "veil9_forced_max_loss": 5.0
+  },
+  "secs": 24.25738215446472
+ },
+ {
+  "game": "game_20260926_005657",
+  "ai": "W",
+  "n_moves": 48,
+  "final_score": -37.5849582,
+  "mine": {
+   "n": 24,
+   "match": 0.5416666666666666,
+   "mean_loss": 0.19726602099999976
+  },
+  "opp": {
+   "n": 24,
+   "match": 0.3333333333333333,
+   "mean_loss": 1.7173668334583334
+  },
+  "mine_pre41": {
+   "n": 20,
+   "match": 0.5,
+   "mean_loss": 0.2276383802
+  },
+  "mine_post41": {
+   "n": 4,
+   "match": 0.75,
+   "mean_loss": 0.04540422499999863
+  },
+  "opp_pre41": {
+   "n": 20,
+   "match": 0.35,
+   "mean_loss": 0.53393035615
+  },
+  "opp_post41": {
+   "n": 4,
+   "match": 0.25,
+   "mean_loss": 7.63454922
+  },
+  "board_size": 9,
+  "strategy": "Veil9Strategy",
+  "settings": {
+   "veil9_target_rate": 0.4,
+   "veil9_reserve": 3.0,
+   "veil9_min_winrate": 0.85,
+   "veil9_free_loss": 0.2,
+   "veil9_free_wr_drop": 0.03,
+   "veil9_close_drift_cap": 0.0,
+   "veil9_spend_rate": 0.5,
+   "veil9_max_loss": 3.0,
+   "veil9_yose_max_loss": 1.0,
+   "veil9_dominant_hp": 0.8,
+   "veil9_dominant_max_loss": 1.5,
+   "veil9_min_human_policy": 0.05,
+   "veil9_natural_ratio": 0.2,
+   "veil9_cost_slack": 0.3,
+   "veil9_trap_mode": false,
+   "veil9_trap_min_delta_e": 0.5,
+   "veil9_blunder_mode": 0,
+   "veil9_blunder_max_loss": 6.0,
+   "veil9_blunder_per_game": 1,
+   "veil9_blunder_hp_ratio": 0.7,
+   "veil9_forced_mode": 0,
+   "veil9_forced_min_lead": 1.0,
+   "veil9_forced_min_winrate": 0.7,
+   "veil9_forced_max_loss": 5.0
+  },
+  "secs": 22.852575540542603
+ },
+ {
+  "game": "game_20260926_010014",
+  "ai": "B",
+  "n_moves": 35,
+  "final_score": 20.0160957,
+  "mine": {
+   "n": 18,
+   "match": 0.7222222222222222,
+   "mean_loss": 0.10509109383333354
+  },
+  "opp": {
+   "n": 17,
+   "match": 0.29411764705882354,
+   "mean_loss": 1.307174882647059
+  },
+  "mine_pre41": {
+   "n": 18,
+   "match": 0.7222222222222222,
+   "mean_loss": 0.10509109383333354
+  },
+  "mine_post41": null,
+  "opp_pre41": {
+   "n": 17,
+   "match": 0.29411764705882354,
+   "mean_loss": 1.307174882647059
+  },
+  "opp_post41": null,
+  "board_size": 9,
+  "strategy": "Veil9Strategy",
+  "settings": {
+   "veil9_target_rate": 0.4,
+   "veil9_reserve": 3.0,
+   "veil9_min_winrate": 0.85,
+   "veil9_free_loss": 0.2,
+   "veil9_free_wr_drop": 0.03,
+   "veil9_close_drift_cap": 0.0,
+   "veil9_spend_rate": 0.5,
+   "veil9_max_loss": 3.0,
+   "veil9_yose_max_loss": 1.0,
+   "veil9_dominant_hp": 0.8,
+   "veil9_dominant_max_loss": 1.5,
+   "veil9_min_human_policy": 0.05,
+   "veil9_natural_ratio": 0.2,
+   "veil9_cost_slack": 0.3,
+   "veil9_trap_mode": false,
+   "veil9_trap_min_delta_e": 0.5,
+   "veil9_blunder_mode": 0,
+   "veil9_blunder_max_loss": 6.0,
+   "veil9_blunder_per_game": 1,
+   "veil9_blunder_hp_ratio": 0.7,
+   "veil9_forced_mode": 0,
+   "veil9_forced_min_lead": 1.0,
+   "veil9_forced_min_winrate": 0.7,
+   "veil9_forced_max_loss": 5.0
+  },
+  "secs": 14.631917238235474
+ },
+ {
+  "game": "game_20260926_010213",
+  "ai": "W",
+  "n_moves": 40,
+  "final_score": -39.8735385,
+  "mine": {
+   "n": 20,
+   "match": 0.65,
+   "mean_loss": 0.1848399819
+  },
+  "opp": {
+   "n": 20,
+   "match": 0.25,
+   "mean_loss": 2.0039682995
+  },
+  "mine_pre41": {
+   "n": 20,
+   "match": 0.65,
+   "mean_loss": 0.1848399819
+  },
+  "mine_post41": null,
+  "opp_pre41": {
+   "n": 20,
+   "match": 0.25,
+   "mean_loss": 2.0039682995
+  },
+  "opp_post41": null,
+  "board_size": 9,
+  "strategy": "Veil9Strategy",
+  "settings": {
+   "veil9_target_rate": 0.4,
+   "veil9_reserve": 3.0,
+   "veil9_min_winrate": 0.85,
+   "veil9_free_loss": 0.2,
+   "veil9_free_wr_drop": 0.03,
+   "veil9_close_drift_cap": 0.0,
+   "veil9_spend_rate": 0.5,
+   "veil9_max_loss": 3.0,
+   "veil9_yose_max_loss": 1.0,
+   "veil9_dominant_hp": 0.8,
+   "veil9_dominant_max_loss": 1.5,
+   "veil9_min_human_policy": 0.05,
+   "veil9_natural_ratio": 0.2,
+   "veil9_cost_slack": 0.3,
+   "veil9_trap_mode": false,
+   "veil9_trap_min_delta_e": 0.5,
+   "veil9_blunder_mode": 0,
+   "veil9_blunder_max_loss": 6.0,
+   "veil9_blunder_per_game": 1,
+   "veil9_blunder_hp_ratio": 0.7,
+   "veil9_forced_mode": 0,
+   "veil9_forced_min_lead": 1.0,
+   "veil9_forced_min_winrate": 0.7,
+   "veil9_forced_max_loss": 5.0
+  },
+  "secs": 20.250301122665405
+ }
+]

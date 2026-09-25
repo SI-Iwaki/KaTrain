@@ -10,6 +10,8 @@ spec `2026-09-23-selfplay-harness-design.md`（§3 校正・§10 移設）。設
 | `recon/report_game_*.json` | 18局の事後 2500v 再解析。`summary`（ai・n_moves・final_score…）と1手1行（depth・player・move・top・match・ptloss・score・alt_min_loss・top_prior…）。ハーネスの投了モデル（length の手数 L・lead の最終リード R）はここの `summary` を読む |
 | `recon/report_all.json` | `offline_report.py` の最後の実行が書いた `summary` のリスト。**4局分だけの部分リスト**（18局の一覧ではない。ハーネスは読まない） |
 | `recon/summary.json` | ログ側の手番の分類（`recon_logs.py` の出力） |
+| `recon_9/` | 難解＋9路の実戦 16 局（2026-09-19〜22 の監視対局ログ・`experiments/selfplay/realgames-9x9-logs/` から `recon_logs.py --size 9`。持碁9路 `game_20260919_224212` を除く・置き石の初手 4 局と監視の外の相手のパス 1 局を直した）と事後 2500v（`offline_report.py --dir recon_9`）。summary に局の難解＋の設定。9路の投了の手数（length モデル）と `CALIB_TARGETS_9` の元 |
+| `recon_9_veil/` | 一致率ひかえめ9路（今の設定＝spec §6.1 の 9路の列）の実戦 8 局（2026-09-26 の監視対局ログ・同じ置き場から `recon_logs.py --size 9 --strategy Veil9Strategy`。置き石の初手 2 局を直した）と事後 2500v。spec §16.5 の「実戦」（`window_stats.py --recon`）の元。投了の手数と校正の目標には使わない |
 | `recon_logs.py` | `~/.katrain/logs/game_*.log` → `recon/*.sgf` と `summary.json`。`--log-dir`・`--out`・`--size`・`--strategy`。9路は難解＋の局だけ（一致率ひかえめ9路は `--strategy Veil9Strategy` で `recon_9_veil/`）・除く局（`EXCLUDE_9`）・監視の外の相手のパス・root の置き石になった相手の初手を直す（spec 韜晦 §16.2 手順1） |
 | `offline_report.py` | `recon/*.sgf` を KataGo で事後解析して `recon/report_*.json` を書く（KataGo を起動する）。`--dir`（9路は `recon_9`）・`--config`。区間は盤別（13路 85・9路 41 手）で summary に `board_size` と局の設定 |
 | `calib_targets.py` | 校正目標（相手の一致率・損失・区間 <24 / 24〜84 / >=85 の形）を `recon/` から出す＝spec §3 の表。`--size 9`（区間 12 / 41）・`--where` / `--ai-where k=v,...`（局の設定で絞る）。最後の行 `CALIB_TARGETS {...}` は `selfplay_stats.CALIB_TARGETS_<size>` の形 |

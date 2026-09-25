@@ -457,6 +457,13 @@ class TestSummaries:
         monkeypatch.setitem(R.RECON_DIRS, 9, str(tmp_path))
         assert R.load_resign_lengths(9) == [31, 48, 99]
 
+    def test_recon_9_lengths_are_the_9x9_real_games(self):
+        """計測の準備（C2）: 難解＋9路の実戦 16 局（recon_9/report_game_*.json・縮めない）。手数の中央値 48。"""
+        lens = R.load_resign_lengths(9)
+        assert len(lens) == 16 and statistics.median(lens) == 48
+        summaries = R._recon_summaries(R.recon_dir_for(9))
+        assert {s["board_size"] for s in summaries} == {9} and all(s.get("settings") for s in summaries)
+
     def test_repo_relpath(self, tmp_path):
         inside = R.os.path.join(R.REPO_ROOT, "experiments", "selfplay", "20260924_0202_calib13")
         assert R.repo_relpath(inside) == "experiments/selfplay/20260924_0202_calib13"
