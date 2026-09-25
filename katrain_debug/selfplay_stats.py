@@ -463,6 +463,37 @@ def _num(v):
 VEIL_TERMINAL_KINDS = ("pass", "swap", "finish")
 
 
+def _veil_unpaid(d):
+    """支払う外しでない手（free・終局帯の手・序盤の研究外しの窓の手＝reserve を見ない設計の手。韜晦 spec §15.4）。"""
+    return d.get("kind") == "free" or d.get("tier") in ("terminal", "opening") or d.get("kind") in VEIL_TERMINAL_KINDS
+
+
+def _opening_metrics(decs):
+    """序盤の研究外し（韜晦 spec §15.4）の窓の手番の要約。窓の記録（open / open_index）が1つも無ければ None。
+
+    turns = 難解＋に任せた手番（open が played か invariant）・opening = そのうち best と違う手を打った手番（kind
+    opening）・report_loss = 任せて打った手（open played）のレポートの損失の合計・ge2 / ge6 = その手のうち損失 2目 /
+    6目以上の数・not_in_cands = 通常解析の候補に無い手を打った数（open_in_cands が偽）・gate = 関門で任せなかった手番・
+    invariant = 任せた手が None / pass で最善手にした手番・errors = 窓の中の例外の手番（why exception）。
+    """
+    opened = [r for r in decs if "open" in r["decision"] or "open_index" in r["decision"]]
+    if not opened:
+        return None
+    played = [r for r in opened if r["decision"].get("open") == "played"]
+    losses = [r["loss"] for r in played if r["loss"] is not None]
+    return {
+        "turns": sum(1 for r in opened if r["decision"].get("open") in ("played", "invariant")),
+        "opening": sum(1 for r in played if r["decision"].get("kind") == "opening"),
+        "report_loss": sum(losses),
+        "ge2": sum(1 for x in losses if x >= 2.0),
+        "ge6": sum(1 for x in losses if x >= 6.0),
+        "not_in_cands": sum(1 for r in played if r["decision"].get("open_in_cands") is False),
+        "gate": sum(1 for r in opened if r["decision"].get("open") == "gate"),
+        "invariant": sum(1 for r in opened if r["decision"].get("open") == "invariant"),
+        "errors": sum(1 for r in opened if r["decision"].get("why") == "exception"),
+    }
+
+
 def _decision_metrics(ai_rows, rows, reserve, ledger):
     """判定情報（last_decision_info）を持つ戦略（韜晦）だけの指標。持たない戦略では None。
 
@@ -470,7 +501,8 @@ def _decision_metrics(ai_rows, rows, reserve, ledger):
     trap ほか）/ best / chosen / vloss / lead / E / close（無ければ lead < reserve で代用）。
     curse_by_kind = 外しの種類ごとの「レポートの損失 − 判定時の vloss」（spec §6 勝者の呪いの検出。正なら判定が甘い）。
     nonfree_below_reserve = lead < reserve で打った free でない外しの数（安全の警報）。終局帯の手（tier terminal か
-    kind pass / swap / finish）は数えない。
+    kind pass / swap / finish）と序盤の研究外しの窓の手（tier opening）は数えない。窓の手は opening（`_opening_metrics`）。
+    vloss を持たない kind opening の vloss_by_kind・curse_by_kind は 0 ではなく None（ほかの kind は vloss が無くても 0）。
     """
     decs = [r for r in ai_rows if isinstance(r.get("decision"), dict) and r["decision"]]
     if not decs:
@@ -488,7 +520,12 @@ def _decision_metrics(ai_rows, rows, reserve, ledger):
     ]
     deviated = [r["decision"] for r in dev_rows]
     kinds = Counter(str(d.get("kind")) for d in infos)
-    vloss_by_kind = {k: sum(vl(d) for d in deviated if str(d.get("kind")) == k) for k in sorted(kinds)}
+    # vloss を持たない kind（序盤の研究外しの opening）は 0 ではなく None（韜晦 spec §15.4。ほかの kind は今と同じ値）
+    with_vloss = {str(d.get("kind")) for d in infos if _num(d.get("vloss"))}
+    vloss_by_kind = {
+        k: None if k == "opening" and k not in with_vloss else sum(vl(d) for d in deviated if str(d.get("kind")) == k)
+        for k in sorted(kinds)
+    }
     report_loss_by_kind = {
         k: sum(r["loss"] or 0.0 for r in dev_rows if str(r["decision"].get("kind")) == k) for k in sorted(kinds)
     }
@@ -498,19 +535,18 @@ def _decision_metrics(ai_rows, rows, reserve, ledger):
         "paid_vloss_sum": sum(vl(d) for d in deviated),
         "vloss_by_kind": vloss_by_kind,
         "report_loss_by_kind": report_loss_by_kind,
-        "curse_by_kind": {k: report_loss_by_kind[k] - vloss_by_kind[k] for k in sorted(kinds)},
+        "curse_by_kind": {
+            k: None if vloss_by_kind[k] is None else report_loss_by_kind[k] - vloss_by_kind[k] for k in sorted(kinds)
+        },
         "nonfree_below_reserve": None,
         "close_free_vloss": None,
         "trap_next_loss_over_E": None,
         "ledger_mismatch": None,
+        "opening": _opening_metrics(decs),
     }
     if reserve is not None:
         below = [d for d in deviated if _num(d.get("lead")) and d["lead"] < reserve]
-        out["nonfree_below_reserve"] = sum(
-            1
-            for d in below
-            if d.get("kind") != "free" and d.get("tier") != "terminal" and d.get("kind") not in VEIL_TERMINAL_KINDS
-        )
+        out["nonfree_below_reserve"] = sum(1 for d in below if not _veil_unpaid(d))
         out["close_free_vloss"] = sum(
             vl(d)
             for d in deviated

@@ -445,6 +445,52 @@ class TestGameSummary:
         assert veil["kinds"] == {"pass": 1, "swap": 1, "finish": 1, "paid": 1}
         assert veil["nonfree_below_reserve"] == 1  # 数えるのは lead 4.0 の paid だけ
 
+    def test_opening_window_turns_are_summarised_apart(self):
+        """序盤の研究外し（韜晦 spec §15.4）: 窓の手（tier opening）は lead < reserve でも nonfree_below_reserve に
+        入れず、要約の opening に出す。vloss を持たない kind（opening）の vloss_by_kind・curse_by_kind は None。"""
+
+        def dec(kind, chosen, open_, index, tier="opening", **kw):
+            d = {"tier": tier, "kind": kind, "best": "C3", "chosen": chosen, "open": open_, "open_index": index}
+            return {**d, **kw}
+
+        exception = {"tier": "failsafe", "kind": "best", "best": "C3", "chosen": "C3", "why": "exception"}
+        paid = {"tier": "iii", "kind": "paid", "best": "C3", "chosen": "D4", "vloss": 1.0, "lead": 4.0}
+        rows = [
+            _row(1, True, False, 2.5, decision=dec("opening", "D4", "played", 0, lead=0.5, open_in_cands=True)),
+            _row(3, True, True, 0.0, decision=dec("best", "C3", "played", 2, lead=0.4, open_in_cands=True)),
+            _row(5, True, False, 7.0, move="J9", decision=dec("opening", "J9", "played", 4, open_in_cands=False)),
+            _row(7, True, True, 0.0, decision=dec("best", "C3", "invariant", 6, why="invariant")),
+            _row(9, True, True, 0.0, decision=dec("best", "C3", "gate", 8, tier="i", why="no_pool", lead=0.3)),
+            _row(11, True, True, 0.0, decision={**exception, "open_index": 10}),
+            _row(13, True, False, 1.0, decision=paid),
+        ]
+        veil = S.selfplay_game_summary(META, _reports(0.25, 0.2), rows, target=0.30, reserve=5.0)["veil"]
+        assert veil["nonfree_below_reserve"] == 1  # lead 4.0 の paid だけ（窓の手は lead 0.5 でも数えない）
+        assert veil["opening"] == {
+            "turns": 4,
+            "opening": 2,
+            "report_loss": pytest.approx(9.5),
+            "ge2": 2,
+            "ge6": 1,
+            "not_in_cands": 1,
+            "gate": 1,
+            "invariant": 1,
+            "errors": 1,
+        }
+        assert veil["vloss_by_kind"]["opening"] is None and veil["curse_by_kind"]["opening"] is None
+        assert veil["report_loss_by_kind"]["opening"] == pytest.approx(9.5)
+        assert veil["vloss_by_kind"]["best"] == pytest.approx(0.0)  # opening 以外の kind は今と同じ値
+        assert veil["vloss_by_kind"]["paid"] == pytest.approx(1.0)
+        assert veil["curse_by_kind"]["paid"] == pytest.approx(0.0)
+        assert veil["paid_vloss_sum"] == pytest.approx(1.0)
+
+    def test_opening_block_is_none_without_window_records(self):
+        paid = {"tier": "iii", "kind": "paid", "best": "C3", "chosen": "D4", "vloss": 1.0, "lead": 9.0}
+        rows = [_row(1, True, False, 1.0, decision=paid)]
+        veil = S.selfplay_game_summary(META, _reports(0.25, 0.2), rows, target=0.30, reserve=5.0)["veil"]
+        assert veil["opening"] is None
+        assert veil["vloss_by_kind"] == {"paid": pytest.approx(1.0)}
+
     def test_shadow_metrics(self):
         rows = [
             _row(1, True, True, 0.0, move="C3", shadow={"arm": "B", "move": "D4", "vloss": 0.8, "secs": 0.4}),
