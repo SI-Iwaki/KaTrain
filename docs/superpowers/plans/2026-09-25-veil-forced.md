@@ -816,6 +816,8 @@ git commit -m "docs(veil): 最善手しか無い手番の外しを開発者向�
 
 ## Task 5（コントローラ）: 校正・採否・仕上げ
 
+状態: 完了（校正は合格＝`e1e0848e`・ユーザーの決定でローカル設定の 13路を ON にし、master にマージ）。
+
 KataGo を使う。**KaTrain が動いていないことを確かめてから**（`Get-CimInstance Win32_Process` で `-m katrain` の python と、自分が起動していない katago.exe が無いこと）。走っている間はユーザーに KaTrain を起動しないよう伝える。
 
 - [ ] **Step 1: 全体のテスト**: `python -m pytest -q -p no:cacheprovider tests --ignore=tests/test_ai.py`（期待: 2021 件＋この計画で足した件数がすべて PASS）。
