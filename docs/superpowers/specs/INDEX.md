@@ -152,7 +152,7 @@
 除いたもの、例 `2026-08-18-board-watch.md` ↔ `2026-08-18-board-watch-design.md`）。
 実装済みの機能では履歴的な資料で、**現在の挙動を知りたいなら spec か rules を見ること**
 （プランは着手前に書かれるので、実装中に変わった判断が反映されていない）。
-`2026-09-24-veil-blunder.md` は独立の spec を持たない追加の計画（韜晦の spec `2026-09-23-veil-strategy-design.md` の §13 失着オプション。13路の既定を loose にする変更と決着局面の即決の検証も含む）。`2026-09-25-veil-forced.md`（同 §14 最善手しか無い手番の外し）と `2026-09-26-veil-opening.md`（同 §15 序盤の研究外し）も同じ spec の追加の計画。
+`2026-09-24-veil-blunder.md` は独立の spec を持たない追加の計画（韜晦の spec `2026-09-23-veil-strategy-design.md` の §13 失着オプション。13路の既定を loose にする変更と決着局面の即決の検証も含む）。`2026-09-25-veil-forced.md`（同 §14 最善手しか無い手番の外し）と `2026-09-26-veil-opening.md`（同 §15 序盤の研究外し）と `2026-09-26-selfplay-9x9.md`（同 §16 9路の校正と研究外しの計測・ハーネスの 9路対応）も同じ spec の追加の計画。
 
 ---
 
@@ -165,4 +165,4 @@
 - `tsumego-web/` — Web キャプチャの実スクショ回帰（`validate_web_capture.py`）
 - `jigo-speedup/` `jigo-endgame/` `parity9/` `enigma9/` `board-watch/` `runs/` — 各機能の校正結果
 - `enigma-overdraft/` — 難解「捨て身の罠」の在庫の反実仮想（ハーネス `overdraft_cf.py`・集計 `overdraft_cf_report.py`・復元 SGF 18 局）
-- `selfplay/` — 自己対局ハーネス（`python -m katrain_debug.selfplay`）: 実戦 13路 18局の復元 SGF と事後 2500v レポート（`recon/`）・校正目標 `calib_targets.py`・相手ボットのプール `opponent_pool_13.json`（calibrate の出力）・試作と計測・韜晦の反実仮想（`README.md` に一覧）
+- `selfplay/` — 自己対局ハーネス（`python -m katrain_debug.selfplay`）: 実戦 13路 18局の復元 SGF と事後 2500v レポート（`recon/`）・校正目標 `calib_targets.py`・相手ボットのプール `opponent_pool_13.json`（calibrate の出力）・試作と計測・韜晦の反実仮想・9路（`recon_9/`・`window_stats.py`・調査の集計 `enigma9_log_stats.py` / `opp_bot_match9.py`・韜晦 spec §16）（`README.md` に一覧）
