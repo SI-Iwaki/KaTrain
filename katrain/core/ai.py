@@ -4946,6 +4946,43 @@ def veil_decision_record(**fields):
     return json.dumps({k: clean(v) for k, v in fields.items()}, ensure_ascii=True, sort_keys=True)
 
 
+# ===== 一致率ひかえめ（韜晦）の序盤の研究外し（spec §15）: 窓の手番を任せる難解＋ =====
+# 難解＋から ponder（着手後の先読み）を止めただけの派生クラス。@register_strategy は付けない（戦略の一覧に出さない）。
+# KEY_PREFIX・LABEL・SETTING_DEFAULTS は難解＋のまま＝ユーザー設定の難解＋のキーと sticky フラグ（`_enigma9plus_endgame`
+# など）の名前を保つ。クラス名は Strategy で終わる（ハーネスのログの正規表現 `^\[\w+Strategy\] ` が難解＋の Pool / Score /
+# Deviate / Gamble / Overdraft の行を拾う）。ponder を止める理由は spec §3.1（監視対局で自ノードのフル解析が後回しになり、
+# 相手の手がレポートで 200v の最善手と比べられる＝相手の一致率の基準がぶれる）。止めても手の選び方は変わらない。
+
+
+class VeilOpenEnigma9PlusStrategy(Enigma9PlusStrategy):
+    """韜晦9路の序盤の窓で手を任せる難解＋9路（ponder を起動しない）。"""
+
+    def _ponder_applies(self):
+        return False
+
+
+class VeilOpenEnigma13PlusStrategy(Enigma13PlusStrategy):
+    """韜晦13路の序盤の窓で手を任せる難解＋13路（ponder を起動しない）。"""
+
+    def _ponder_applies(self):
+        return False
+
+
+class VeilOpenEnigma19PlusStrategy(Enigma19PlusStrategy):
+    """韜晦19路の序盤の窓で手を任せる難解＋19路（ponder を起動しない）。"""
+
+    def _ponder_applies(self):
+        return False
+
+
+# 盤サイズ → 任せる先のクラス（戦略キーは VEIL_OPEN_DELEGATES）
+_VEIL_OPEN_CLASSES = {
+    9: VeilOpenEnigma9PlusStrategy,
+    13: VeilOpenEnigma13PlusStrategy,
+    19: VeilOpenEnigma19PlusStrategy,
+}
+
+
 @register_strategy(AI_VEIL_9)
 class Veil9Strategy(Enigma9Strategy):
     """9路専用「韜晦」戦略＝勝ちを最優先にしたまま、自分の AI 最善手一致率を絶対目標まで下げる。
@@ -5439,6 +5476,19 @@ class Veil9Strategy(Enigma9Strategy):
             "forced", "forced",
             {"raw": pick["raw"], "vloss": pick["vloss"], "cons": pick["cons"], "cost": pick["cost"], "hp": pick["hp"]},
         )
+
+    def _veil_open_delegate(self):
+        """序盤の窓で手を任せる先（spec §15.3 手順5）を作って (戦略, 戦略キー) を返す。
+
+        同じ盤サイズの難解＋の派生クラス（ponder を止めただけ）を、ユーザー設定の難解＋の節（`config("ai/<戦略キー>")` の
+        写し。節が無ければ {}＝難解＋の既定値）で作る。作った直後に cn と query_generations を韜晦のものにする（韜晦が
+        待った局面と世代をそのまま使う＝作る間に局面が動いても別の局面を読まない）。テストはこのメソッドをスタブに差し替える。
+        """
+        key = VEIL_OPEN_DELEGATES[self.BOARD_LEN]
+        delegate = _VEIL_OPEN_CLASSES[self.BOARD_LEN](self.game, dict(self.game.katrain.config(f"ai/{key}") or {}))
+        delegate.cn = self.cn
+        delegate.query_generations = self.query_generations
+        return delegate, key
 
     def _generate_move(self) -> Tuple[Move, str]:
         # ---- S0 ラッパー: 解析の破棄は上へ、それ以外の例外は最善手（ほかの出口と同じく Decision 行と ledger も残す）----

@@ -1020,11 +1020,20 @@ class _Harness:
         ownership=None,
         size=None,
         player="B",
+        placements=(),
+        ai_config=None,
+        players_info=None,
         **game_attrs,
     ):
         size = size or self.SIZE
         logs = []
-        katrain_ns = types.SimpleNamespace(log=lambda msg, *a, **k: logs.append(str(msg)))
+        katrain_ns = types.SimpleNamespace(
+            log=lambda msg, *a, **k: logs.append(str(msg)),
+            # config("ai/<戦略キー>") だけを返す（序盤の研究外しで任せる難解＋の設定の節。無い節は default＝None）
+            config=lambda setting, default=None: (ai_config or {}).get(setting.split("/", 1)[-1], default),
+        )
+        if players_info is not None:
+            katrain_ns.players_info = players_info
         black = player == "B"
         root_lead = lead if (black or lead is None) else -lead
         root_wr = wr if (black or wr is None) else 1.0 - wr
@@ -1040,6 +1049,7 @@ class _Harness:
             nodes_from_root=[] if hist is None else hist,
             policy_ranking=[],
         )
+        game_attrs.setdefault("root", types.SimpleNamespace(placements=list(placements)))  # 序盤の窓の番号に足す置き石
         game = types.SimpleNamespace(katrain=katrain_ns, current_node=node, board_size=(size, size), **game_attrs)
         spec = {f"{self.CLS.KEY_PREFIX}_{k}": v for k, v in SPEC_DEFAULTS[self.CLS.BOARD_LEN].items()}
         s = self.CLS(game, {**spec, **(settings or {})})
@@ -2581,6 +2591,61 @@ class TestForced(_Harness):
         assert move.gtp() == "G3"
         assert (info["blunder"], info["blunder_gtp"]) == ("skipped", "G3")
         assert (info["forced"], info["forced_gtp"]) == ("played", "G3")
+
+
+def _ai_vs_human(ai="B"):
+    """players_info: ai が AI・相手が人間（難解の ponder が起動する条件）。"""
+    from katrain.core.constants import PLAYER_AI, PLAYER_HUMAN
+
+    human = "W" if ai == "B" else "B"
+    return {ai: types.SimpleNamespace(player_type=PLAYER_AI), human: types.SimpleNamespace(player_type=PLAYER_HUMAN)}
+
+
+class TestOpenDelegate(_Harness):
+    """序盤の窓で任せる先（spec §15.3 手順5）: ponder を止めただけの難解＋の派生クラスと、それを作る `_veil_open_delegate`。"""
+
+    @pytest.mark.parametrize("size", [9, 13, 19])
+    def test_subclass_only_turns_the_ponder_off(self, size):
+        cls = getattr(ai_module, f"VeilOpenEnigma{size}PlusStrategy")
+        base = getattr(ai_module, f"Enigma{size}PlusStrategy")
+        assert cls.__bases__ == (base,) and cls.__name__.endswith("Strategy")
+        own = {k for k in vars(cls) if not k.startswith("__")} - {"_abc_impl"}  # _abc_impl は ABC が足す
+        assert own == {"_ponder_applies"}
+        assert (cls.KEY_PREFIX, cls.LABEL) == (f"enigma{size}plus", f"Enigma{size}Plus")
+        assert cls.SETTING_DEFAULTS is base.SETTING_DEFAULTS
+        assert cls not in STRATEGY_REGISTRY.values()
+
+    def test_ponder_never_applies_even_against_a_human(self):
+        s, _ = self._strategy(players_info=_ai_vs_human())
+        assert ai_module.Enigma9PlusStrategy(s.game, {})._ponder_applies() is True  # 素の難解＋なら先読みする場面
+        assert ai_module.VeilOpenEnigma9PlusStrategy(s.game, {})._ponder_applies() is False
+
+    @pytest.mark.parametrize("harness,size", [(_Harness, 9), (_Harness13, 13), (_Harness19, 19)], ids=VEIL_IDS)
+    def test_class_and_config_section_follow_the_board(self, harness, size):
+        """(h) 9/13/19路で任せる先のクラスと設定の節（ai:enigma9plus など）が切り替わる。節が無ければ難解＋の既定値。"""
+        key = f"ai:enigma{size}plus"
+        base = getattr(ai_module, f"Enigma{size}PlusStrategy")
+        section = {f"enigma{size}plus_max_loss": 1.25}
+        s, _ = harness()._strategy(ai_config={key: section})
+        delegate, src = s._veil_open_delegate()
+        assert src == key == VEIL_OPEN_DELEGATES[size]
+        assert type(delegate) is getattr(ai_module, f"VeilOpenEnigma{size}PlusStrategy") and isinstance(delegate, base)
+        assert delegate.settings == section and delegate.settings is not section  # 写しを渡す（config を書き換えない）
+        assert delegate._setting("max_loss") == 1.25
+        s, _ = harness()._strategy()  # 節が無い（config が None を返す）
+        delegate, _ = s._veil_open_delegate()
+        assert delegate.settings == {}
+        assert delegate._setting("max_loss") == base.SETTING_DEFAULTS["max_loss"]
+
+    def test_delegate_reads_the_position_and_generation_the_veil_waited_for(self):
+        """(k) 任せた戦略の cn と query_generations は韜晦のもの（作る間に game.current_node が動いても読まない）。"""
+        s, _ = self._strategy()
+        s.query_generations = {12345: 7}
+        moved = types.SimpleNamespace(**vars(s.cn))
+        s.game.current_node = moved
+        delegate, _ = s._veil_open_delegate()
+        assert delegate.cn is s.cn and delegate.cn is not moved
+        assert delegate.query_generations is s.query_generations
 
 
 MANUAL_PARITY_PAGE = Path(__file__).resolve().parent.parent / "docs" / "manual" / "src" / "06d_ai_parity.html"
