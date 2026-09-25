@@ -193,6 +193,12 @@ def _plan_warnings(plan):
     for arm in plan["arms"]:  # spec §11: 戦略の節がユーザー config に無いと、GUI と違うコードの既定値で走る
         if arm["settings_source"] != "user config":
             safe_print(f"note: arm {arm['name']} ({arm['strategy']}): settings_source = {arm['settings_source']}")
+        delegate = arm.get("delegate")
+        if delegate:  # 序盤の研究外しの窓は難解＋にユーザー config の節のまま任せる（アームの上書きは効かない）
+            safe_print(
+                f"note: arm {arm['name']} ({arm['strategy']}): opening window delegated to {delegate['strategy_key']} "
+                f"({delegate['settings_source']}, fingerprint {delegate['fingerprint']})"
+            )
 
 
 def _new_output(args, stub, plan, label):

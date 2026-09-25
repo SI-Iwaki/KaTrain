@@ -14,7 +14,7 @@ import types
 import pytest
 
 import katrain.core.ai as ai_module
-from katrain.core.ai import AIStrategy, AnalysisDiscardedException, generate_ai_move
+from katrain.core.ai import VEIL_OPEN_DELEGATES, AIStrategy, AnalysisDiscardedException, generate_ai_move
 from katrain.core.constants import OUTPUT_ERROR
 from katrain.core.sgf_parser import Move
 from katrain_debug import selfplay_game as G
@@ -112,6 +112,39 @@ class TestResolveArm:
     def test_mode_missing_from_user_config_is_flagged(self, tmp_path):
         arm = G.resolve_arm(make_stub(tmp_path), "A", "enigma13", [])
         assert arm.settings == {} and arm.settings_source.startswith("code defaults")
+
+
+class TestOpenDelegate:
+    """spec 2026-09-23-veil-strategy-design.md §16.2 手順9: open_moves > 0 の韜晦のアームは任せる先を持つ。"""
+
+    def test_open_window_arm_carries_its_delegate(self, tmp_path):
+        stub = make_stub(tmp_path, **{"ai:enigma9plus": {"enigma9plus_max_loss": 1.8}})
+        arm = G.resolve_arm(stub, "open", "veil9", ["veil9_open_moves=12"])
+        assert arm.delegate == {
+            "strategy_key": "ai:enigma9plus",
+            "settings": {"enigma9plus_max_loss": 1.8},
+            "settings_source": "user config",
+            "fingerprint": S.settings_fingerprint("ai:enigma9plus", {"enigma9plus_max_loss": 1.8}),
+        }
+        assert arm.as_dict()["delegate"] == arm.delegate
+
+    @pytest.mark.parametrize(
+        "strategy, items", [("veil9", []), ("veil9", ["veil9_open_moves=0"]), ("enigma9plus", []), ("default", [])]
+    )
+    def test_no_delegate_without_an_open_window(self, tmp_path, strategy, items):
+        assert G.resolve_arm(make_stub(tmp_path), "A", strategy, items).delegate is None
+
+    @pytest.mark.parametrize("strategy, size", [("veil9", 9), ("veil13", 13), ("veil19", 19)])
+    def test_delegate_follows_the_board_size(self, tmp_path, strategy, size):
+        arm = G.resolve_arm(make_stub(tmp_path), "A", strategy, [f"{strategy}_open_moves=30"])
+        assert arm.delegate["strategy_key"] == VEIL_OPEN_DELEGATES[size]
+        assert arm.delegate["settings"] == {} and arm.delegate["settings_source"].startswith("code defaults")
+
+    def test_arm_overrides_do_not_touch_the_delegate(self, tmp_path):
+        stub = make_stub(tmp_path, **{"ai:enigma9plus": {"enigma9plus_max_loss": 1.8}})
+        a = G.resolve_arm(stub, "A", "veil9", ["veil9_open_moves=12"])
+        b = G.resolve_arm(stub, "B", "veil9", ["veil9_open_moves=12", "veil9_reserve=4.0"])
+        assert a.delegate == b.delegate and a.fingerprint != b.fingerprint
 
 
 class TestNullGuardOnEffectiveSettings:

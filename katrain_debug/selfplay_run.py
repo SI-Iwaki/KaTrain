@@ -35,6 +35,12 @@ DEFAULT_OUT_ROOT = os.path.join(REPO_ROOT, "experiments", "selfplay")
 COMPARE_METRICS = ("own_top1", "opp_top1", "own_minus_opp", "flip_moves", "win", "own_mean_ptloss", "ge6")
 
 
+def delegate_fingerprint(arm):
+    """アーム（run.json の dict か Arm）の序盤の研究外しの任せる先の指紋（任せない・古い run.json は None）。"""
+    delegate = arm.get("delegate") if isinstance(arm, dict) else arm.delegate
+    return (delegate or {}).get("fingerprint")
+
+
 def default_pool_path(size):
     return os.path.join(SELFPLAY_DATA, f"opponent_pool_{size}.json")
 
@@ -335,6 +341,11 @@ def execute_plan(
             raise SystemExit(
                 f"arm {entry['name']}: resolved settings differ from run.json (config edited?). Start a new run."
             )
+        if delegate_fingerprint(arm) != delegate_fingerprint(entry):  # 序盤の研究外しの任せる先（難解＋の節）
+            raise SystemExit(
+                f"arm {entry['name']}: the delegate of the opening window differs from run.json (config edited?). "
+                "Start a new run."
+            )
         arms[arm.name] = arm
     opponent_arm = None
     if plan["opponent"]["kind"] == "strategy":
@@ -482,13 +493,18 @@ def load_records(outs, allow_mixed=False, log=print):
     （エンジン設定・コードの版）が最初の実行と違うときも止まる（allow_mixed なら WARN を出して合わせる）。
     run.json の無いディレクトリは突き合わせを飛ばす。
     """
-    records, seen, prints, conditions, first = [], {}, {}, None, None
+    records, seen, prints, delegates, conditions, first = [], {}, {}, {}, None, None
     for out in outs:
         if os.path.exists(out.file("run.json")):
             plan = out.read_json("run.json")
             for arm in plan["arms"]:
                 if prints.setdefault(arm["name"], arm["fingerprint"]) != arm["fingerprint"]:
                     raise SystemExit(f"arm {arm['name']}: settings differ between the run directories ({out.path})")
+                if delegates.setdefault(arm["name"], delegate_fingerprint(arm)) != delegate_fingerprint(arm):
+                    raise SystemExit(
+                        f"arm {arm['name']}: the delegate of the opening window differs between the run directories "
+                        f"({out.path})"
+                    )
             cond = plan_conditions(plan)
             if conditions is not None and cond != conditions:
                 raise SystemExit(f"game conditions differ between the run directories ({out.path})")

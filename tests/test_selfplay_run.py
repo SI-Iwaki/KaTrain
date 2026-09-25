@@ -135,6 +135,18 @@ class TestExecutePlan:
         assert engine.requests == [] and engine.new_games == 0  # 1局も打たずに止まる
         assert [r["seed"] for r in out.records()] == [1000, 1001]
 
+    def test_a_changed_delegate_section_stops_the_resume(self, tmp_path):
+        """spec §16.2 手順9: 序盤の研究外しの任せる先（難解＋の節）が run.json と違えば1局も打たずに止まる。"""
+        stub = make_stub(tmp_path, **{"ai:enigma9plus": {"enigma9plus_max_loss": 1.8}})
+        arm = resolve_arm(stub, "open", "veil9", ["veil9_open_moves=12"])
+        schedule = S.selfplay_schedule(2, ["rank_3k"], 1000)
+        plan = R.make_plan("run", [arm], schedule, size=9, komi=7.0, max_moves=6, timeout=5)
+        edited = make_stub(tmp_path, **{"ai:enigma9plus": {"enigma9plus_max_loss": 1.6}})  # 任せる先の節だけ変えた
+        engine = FakeEngine()
+        with pytest.raises(SystemExit, match="delegate of the opening window differs from run.json"):
+            _run(plan, R.OutputDir(tmp_path / "run"), edited, engine)
+        assert engine.requests == [] and engine.new_games == 0
+
     def test_resume_drops_torn_last_lines_with_a_warning(self, tmp_path):
         stub = make_stub(tmp_path)
         out = R.OutputDir(tmp_path / "run")
@@ -291,6 +303,22 @@ class TestMeasurementBaseline:
         old = {"engine": {}, "git": {}, "ai_file": R.os.path.join(R.REPO_ROOT, "katrain", "core", "ai.py")}
         new = {"engine": {}, "git": {}, "ai_file": "katrain/core/ai.py"}
         assert R.baseline_differences(old, new) == []
+
+    def test_summarize_refuses_runs_whose_delegates_differ(self, tmp_path):
+        stub = make_stub(tmp_path, **{"ai:enigma9plus": {"enigma9plus_max_loss": 1.8}})
+        arm = resolve_arm(stub, "open", "veil9", ["veil9_open_moves=12"])
+        outs = []
+        for label, seed_base in (("a", 1000), ("b", 1002)):
+            plan = R.make_plan("run", [arm], S.selfplay_schedule(2, ["rank_3k"], seed_base), size=9, komi=7.0)
+            plan = json.loads(json.dumps(plan, default=str))
+            if label == "b":
+                plan["arms"][0]["delegate"]["fingerprint"] = "0" * 16  # 任せる先の節を変えて打った延長
+            out = R.OutputDir(tmp_path / label)
+            out.write_json("run.json", plan)
+            outs.append(out)
+        with pytest.raises(SystemExit, match="delegate of the opening window differs between the run directories"):
+            R.load_records(outs)
+        assert R.load_records(outs[:1]) == []
 
     def test_summarize_refuses_runs_with_different_baselines(self, tmp_path):
         stub = make_stub(tmp_path)

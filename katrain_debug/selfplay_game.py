@@ -15,7 +15,12 @@ import re  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
 
-from katrain.core.ai import STRATEGY_REGISTRY, AnalysisDiscardedException, game_report  # noqa: E402
+from katrain.core.ai import (  # noqa: E402
+    STRATEGY_REGISTRY,
+    VEIL_OPEN_DELEGATES,
+    AnalysisDiscardedException,
+    game_report,
+)
 from katrain.core.constants import AI_DEFAULT, OUTPUT_DEBUG, OUTPUT_ERROR  # noqa: E402
 from katrain.core.engine import KataGoEngine  # noqa: E402
 from katrain.core.game import Game, KaTrainSGF  # noqa: E402
@@ -122,6 +127,8 @@ class Arm:
 
     effective_settings は戦略が実際に使う設定（コードの既定値に settings を重ねて数値を正規化・null ガード用）。
     fingerprint は settings の指紋のまま（run.json の再開・複数の実行の突き合わせと互換）。
+    delegate は序盤の研究外し（`<KEY_PREFIX>_open_moves` > 0）の韜晦のアームだけ: 窓の中を任せる難解＋の戦略キー・設定・
+    指紋（open_delegate）。再開と合算の突き合わせに入る（spec 2026-09-23-veil-strategy-design.md §16.2 手順9）。
     """
 
     name: str
@@ -132,6 +139,7 @@ class Arm:
     strategy_class: str
     settings_source: str
     effective_settings: dict = None
+    delegate: dict = None
 
     @property
     def fingerprint(self):
@@ -139,6 +147,30 @@ class Arm:
 
     def as_dict(self):
         return {**dataclasses.asdict(self), "fingerprint": self.fingerprint}
+
+
+def open_delegate(stub, cls, effective):
+    """序盤の研究外しの任せる先（spec §15.3 手順5・§16.2 手順9）。`<KEY_PREFIX>_open_moves` > 0 の韜晦だけ dict、ほかは None。
+
+    韜晦は窓の中を同じ盤サイズの難解＋（VEIL_OPEN_DELEGATES）に、ユーザー config の節（`ai/<戦略キー>`）のまま任せる
+    ＝アームの上書きでは変わらない。指紋はその節の中身（節が無ければ {}＝難解＋のコードの既定値）。
+    """
+    prefix = getattr(cls, "KEY_PREFIX", None)
+    size = getattr(cls, "BOARD_LEN", None)
+    open_moves = (effective or {}).get(f"{prefix}_open_moves") if prefix else None
+    if size not in VEIL_OPEN_DELEGATES or not open_moves or open_moves <= 0:
+        return None
+    key = VEIL_OPEN_DELEGATES[size]
+    section = stub.config(f"ai/{key}")
+    settings = dict(section or {})
+    return {
+        "strategy_key": key,
+        "settings": settings,
+        "settings_source": (
+            "user config" if section is not None else "code defaults (mode missing from the user config)"
+        ),
+        "fingerprint": S.settings_fingerprint(key, settings),
+    }
 
 
 def resolve_arm(stub, name, strategy, override_items):
@@ -160,6 +192,7 @@ def resolve_arm(stub, name, strategy, override_items):
             f"arm {name}: unknown setting keys {unknown} (not in the user config nor the strategy defaults)"
         )
     settings = {**(user or {}), **overrides}
+    effective = S.effective_settings(settings, prefix, defaults)
     return Arm(
         name=name,
         strategy=strategy,
@@ -168,7 +201,8 @@ def resolve_arm(stub, name, strategy, override_items):
         override_items=list(override_items),
         strategy_class=cls.__name__ if cls is not None else None,
         settings_source="user config" if user is not None else "code defaults (mode missing from the user config)",
-        effective_settings=S.effective_settings(settings, prefix, defaults),
+        effective_settings=effective,
+        delegate=open_delegate(stub, cls, effective),
     )
 
 

@@ -383,6 +383,18 @@ class TestMeasurementBaseline:
         assert plan["resign"]["source"] == "docs/superpowers/specs/calibration-data/selfplay/recon"
 
 
+class TestOpenWindowNote:
+    """spec §16.2 手順9: 任せる先は難解＋の節のまま（アームの上書きは効かない）なので、計画時に note で知らせる。"""
+
+    def test_open_window_delegate_is_announced_at_plan_time(self, env, capsys):
+        args = CLI.build_parser().parse_args(_run_args(env, "--arm", "A=veil9:veil9_open_moves=12"))
+        _, plan = CLI._plan_run(args)  # エンジンは起こさない
+        CLI._plan_warnings(plan)
+        out = capsys.readouterr().out
+        assert "note: arm A (veil9): opening window delegated to ai:enigma9plus (code defaults" in out
+        assert plan["arms"][0]["delegate"]["strategy_key"] == "ai:enigma9plus"
+
+
 class TestReportSgf:
     def test_report_of_a_saved_game_equals_the_game_record(self, env, capsys, monkeypatch):
         CLI.main(_run_args(env, "--arm", "A=default"))
