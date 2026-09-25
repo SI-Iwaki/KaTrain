@@ -774,7 +774,7 @@ git commit -m "feat(veil): 最善手しか無い手番の外しを判定フロ�
 
 ## Task 4: 文書（開発者向けルール・マニュアルの本文・測定の記録・INDEX・計画の状態）
 
-状態: 完了。
+状態: 完了（`0cd6efd2`）。
 
 **Files:**
 - Modify: `.claude/rules/ai-parameters.md`・`.claude/rules/ai-strategies.md`
