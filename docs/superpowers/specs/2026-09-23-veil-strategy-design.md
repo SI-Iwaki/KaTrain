@@ -2,7 +2,7 @@
 
 日付: 2026-09-23
 対象: `katrain/core/ai.py`（veil 純関数群 + `Veil9Strategy` / `Veil13Strategy` / `Veil19Strategy`）
-状態: 実装済み（2026-09-24）・13路は自己対局ハーネスで測定し、2026-09-25 のユーザーの決定で既定を段階1b の loose に変えた（値は §6.1 の表の直後の段落。安全条件は据え置き。自分の一致率は loose の 3 run 平均 45.2%・spec の初期値 51.5% で目標 30% に届かず、下限は構造的。接戦ストレス〈AI 不利 4 目・HumanStyle 9段・20 対〉で §10.4 (a) 勝ちの安全は初期値・loose とも 20-0 で可）・失着の層（§13・2026-09-25）は既定 OFF・決着局面の即決（§4 S13）は打つ前に best と候補の2手をプローブで確かめる（2026-09-25）・9路・19路は未校正・実戦校正は未実施（詳細は `calibration-data/selfplay/veil13-campaign.md`）
+状態: 実装済み（2026-09-24）・13路は自己対局ハーネスで測定し、2026-09-25 のユーザーの決定で既定を段階1b の loose に変えた（値は §6.1 の表の直後の段落。安全条件は据え置き。自分の一致率は loose の 3 run 平均 45.2%・spec の初期値 51.5% で目標 30% に届かず、下限は構造的。接戦ストレス〈AI 不利 4 目・HumanStyle 9段・20 対〉で §10.4 (a) 勝ちの安全は初期値・loose とも 20-0 で可）・失着の層（§13・2026-09-25）は既定 OFF・決着局面の即決（§4 S13）は打つ前に best と候補の2手をプローブで確かめる（2026-09-25）・最善手しか無い手番の外し（§14・2026-09-25 設計）は既定 OFF で、ON にしたときだけ要件1を「20局に1局ほどの負けは許す」に緩める・9路・19路は未校正・実戦校正は未実施（詳細は `calibration-data/selfplay/veil13-campaign.md`）
 
 ## 0. 一言で
 
@@ -407,12 +407,12 @@ A/B で見るもの: 自分と相手の一致率・勝率・mean_ptloss・払っ
 - `katrain/core/ai.py`（CRLF。python パッチスクリプトで編集＝black フック回避。plan
   `2026-09-17-mimic13-strategy.md:47-72` の手順）: import に AI_VEIL_9/13/19、VEIL_* 定数・veil_* 純関数・3クラス。
 - `katrain/core/constants.py`: `AI_VEIL_9/13/19`、`AI_STRATEGIES_ENGINE`、`AI_STRATEGIES`、
-  `AI_STRATEGIES_RECOMMENDED_ORDER`（擬態の後）、`AI_STRENGTH`（nan）、`AI_OPTION_VALUES` / `AI_OPTION_ORDER`（20キー×3盤＝当初の16キー＋§13.2 の失着の4キー。
+  `AI_STRATEGIES_RECOMMENDED_ORDER`（擬態の後）、`AI_STRENGTH`（nan）、`AI_OPTION_VALUES` / `AI_OPTION_ORDER`（24キー×3盤＝当初の16キー＋§13.2 の失着の4キー＋§14.2 の4キー。
   target_rate の値域は 0.15〜0.50）。
 - `katrain/gui/ai_help.py`: `_VEIL_FAMILY = re.compile(r"^(veil(?:9|13|19))_(.+)$")` で `aiopt:veil*_<suffix>` を3盤共有。
 - `katrain/config.json`（パッケージ）と `C:\Users\iwaki\.katrain\config.json`（ユーザー）: ai:veil9 / ai:veil13 / ai:veil19。
   **ユーザー側はメインセッションで、KaTrain を止めてから**編集する。
-- jp / en の `katrain.po`（ai:veilN・aihelp:veilN・`aiopt:veil*_<suffix>` 20件＝当初の16件＋§13.2 の4件）→ `python tools/compile_mo.py`。
+- jp / en の `katrain.po`（ai:veilN・aihelp:veilN・`aiopt:veil*_<suffix>` 24件＝当初の16件＋§13.2 の4件＋§14.2 の4件）→ `python tools/compile_mo.py`。
 - `katrain_debug/runner.py`: `STRATEGY_NAME_MAP` に veil9 / veil13 / veil19。
 - ドキュメント: `.claude/rules/ai-strategies.md`（Veil の段落）、`.claude/rules/ai-parameters.md`（パラメータ表）、
   `CLAUDE.md`（戦略一覧）、`docs/manual/src/`（AI 概要と一致率の節）→ `python tools/build_manual.py`、
@@ -524,3 +524,110 @@ A/B で見るもの: 自分と相手の一致率・勝率・mean_ptloss・払っ
   計算＝失着も重なった。S13 は打つ前に2手だけプローブで確かめる形に直した（§4 S13 の 2026-09-25 追記）。
 - ユーザーの決定: 失着の条件は下限（失着の手の hp が最善手の 0.7 倍以上）だけのまま（上限〈1.43 倍以下＝ほぼ同じ〉も足すと
   loose で 0.05 回/局）・既定は OFF（GUI の LOG／ON で使う）。
+
+## 14. 最善手しか無い手番の外し（`<prefix>_forced_mode`・既定 OFF）— 2026-09-25 追記
+
+### 14.1 要件の再決定とねらい
+
+- **ユーザーの決定（2026-09-25）**: 13路で「20局に1局ほどなら負けてもよい」代わりに、自分の一致率を平均 30〜45% に下げたい。
+  ユーザー案は「最善手しか打てない手番でも、外しても逆転されて劣勢にならない範囲で、人間らしい手があれば打つ（無理に打たない）」。
+  - **この層を ON にしたときだけ**、要件1（勝ち最優先・安全条件を緩めない）をこの許容に緩める。OFF なら要件1のまま。
+  - 要件5 (i)「候補が最善手しか無い → 最善手（常に）」の例外になる。通常の層の候補（予算と床）では最善手しか無くても、
+    §14.3 の条件を満たす人間らしい手があれば打つ。9段らしさの床（§6 の自然さの床）は変えない＝人間らしくない手は打たない。
+- **根拠**: 実戦3局とハーネス80局の強制手番（通常の層が最善手を打った手番）1790 手を KataGo で読み直した、1手ずつの反実仮想の見積もり
+  （記録は `experiments/selfplay/relax-spike-20260925/`・要約は `calibration-data/selfplay/veil13-campaign.md`）。
+  - 同じ局面を humanSL の確率どおりに打つ人の一致率（全手番の最善手の hp の平均）:
+
+    | 局面 | 9段 | 3段 | 1段 |
+    |---|---|---|---|
+    | ハーネス（通常の相手・60局） | 48.3% | 44.4% | 41.7% |
+    | 実戦（2026-09-25 の3局） | 51.9% | 47.3% | 44.7% |
+
+  - 9段らしさの床を守る限り、安全条件をすべて外しても下限はハーネス 23.9%・実戦 27.8%。最善手の 9段 hp >= 0.95 の手番は、
+    ハーネスの 390 手番で1度も開かない。
+  - 見込み（範囲は、その手番だけを変えた計算 〜 後の通常の層の外しが減る分を入れた悲観的な計算）:
+
+    | 条件 | ハーネス（通常） | 実戦（3局） | 接戦ストレス | 最終リードが負になる局（一次近似） |
+    |---|---|---|---|---|
+    | 今（loose） | 45.2% | 53.6% | 65.4% | 0/20 |
+    | ① 安全は今のまま・強制手番だけ上限 10目 | 40.2〜42.2% | 49.0% | 63.0〜66.2% | 0/20 |
+    | ② 着手後リード +2・勝率 70%・上限 6目 | 38.4〜43.7% | 46.4〜48.4% | 59.5〜64.2% | 0/20 |
+    | **③ 着手後リード +2・勝率 70%・上限 10目** | **36.3〜42.2%** | **43.5〜45.4%** | 59.5〜65.4% | 1/20 |
+    | ④ 着手後リード +2・勝率 70%・上限なし | 34.6〜41.4% | 41.8〜48.4% | 59.5〜65.4% | 1/20 |
+
+  - 効くのは「大差のとき1手で許す損の上限」。接戦（lead < 5）で外す分は数 pt で、負けの危険はここから来る。
+  - **採らなかった案**:
+    - 1局の勝率の予算（外しで減らした勝率の合計に上限）。終盤の大差では勝率が飽和し、9〜15目の損でも勝率の低下がほぼ 0 と
+      数えられて効かない。逆に KataGo の勝率は、対 BOT の負けの危険を大きく見積もる（既存の外しで1局 0.10〜0.12 使っても 83局全勝）。
+      安全は、1手ごとのリードと勝率の床、損の上限で持つ。
+    - 大差のとき人間らしさの基準を弱い段位（3段・1段）の humanSL にする案。下がるのは 0.3〜1.1pt だけ（3段・1段の人も
+      明らかな手は同じように打つ）。
+- **ユーザーが選んだ組み合わせ（2026-09-25）**: ③。着手後リード +2目以上・着手後勝率 70% 以上・1手の損の上限 10目
+  （ヨセは通常の層と同じ `yose_max_loss`）。上限はスライダーで変えられる。
+
+### 14.2 設定（4キー × 3盤）
+
+| 接尾辞 | 意味 | 9路 | 13路 | 19路 | スライダー |
+|---|---|---|---|---|---|
+| `forced_mode` | 0 = OFF・1 = 記録のみ（影＝打つ手を探して `Decision:` に書くが、最善手を打つ）・2 = ON | 0 | 0 | 0 | OFF / LOG / ON |
+| `forced_min_lead` | 打った後に残すリード（目。root リード基準と検証済みリードの両方） | 1.0 | 2.0 | 3.0 | 9路 0.5/1/2/3・13路 1/2/3/5・19路 2/3/5/8 |
+| `forced_min_winrate` | 打った後の検証済み勝率の下限 | 0.70 | 0.70 | 0.70 | 60% / 70% / 75% / 80% / 85% |
+| `forced_max_loss` | 1手の損の上限（検証済み損失・目。ヨセは `yose_max_loss`） | 5.0 | 10.0 | 15.0 | 9路 3/4/5/6/8・13路 6/8/10/12/15・19路 8/10/15/20 |
+
+スライダーにしない定数（ai.py）:
+
+| 定数 | 値 | 意味 |
+|---|---|---|
+| `VEIL_FORCED_PROBES` | 4 | 検証する候補の数（hp の高い順） |
+
+9路・19路の値は校正していない（13路の比で置いた）。コードの既定は3盤とも OFF。
+
+### 14.3 流れ（通常の流れが最善手で終わる出口の直前）
+
+1. **入口**: 通常の流れが最善手で終わる4つの出口（S10 `no_pool`・S12 `no_natural`・S14 `no_shortlist`・S17 `none_qualified`）で、
+   `finish` の前に `_veil_forced` を呼ぶ。`forced_mode` が 0 なら何もしない（クエリ 0 本・記録も足さない）。
+   終局帯（S7/S8）・フェイルセーフ・`dominant_closed`（u <= 0 のときだけ起きる）では呼ばない。
+2. **関門**（クエリ 0 本）: u > 0（一致率が目標を超えている）・root 勝率 >= `forced_min_winrate`（root 勝率が無ければ止める）・
+   cap_f = min(上限, lead − `forced_min_lead`) > 0（上限はヨセなら `yose_max_loss`、それ以外は `forced_max_loss`）。
+   通らなければ `forced = "gate"`。
+3. **親局面の humanSL**（9段・8 visits）: S9b か S11 で撃っていればそれを使う（同じ手番で2回撃たない）。S10 の出口ではまだ無いので
+   1本撃つ。取れなければ `forced = "no_hp"`。
+4. **候補**（純関数 `veil_forced_candidates`・クエリ 0 本）: 通常解析の候補（`_veil_candidates`）のうち best・pass 以外で、
+   生の loss <= cap_f + `VEIL_RAW_MARGIN`、かつ hp >= 床（`_veil_floor(human_policy, dominant=False)`＝通常の層と同じ 9段らしさの床）。
+   hp の高い順に `VEIL_FORCED_PROBES` 手まで。無ければ `forced = "no_cand"`。
+5. **検証**: best と候補を、S15 と同じ `_probe_children`（500 visits のクリーン解析）で1バッチ。S15 で同じ手を読んでいればその結果を
+   使う。vloss = best の lead_after − 候補の lead_after、cons = `veil_cons_loss(vloss, 生の loss, visits, trusted_visits)`、
+   cost = max(0, cons)。
+6. **資格**（純関数 `veil_forced_ok`）: cost <= 上限・lead_after >= `forced_min_lead`・lead − cost >= `forced_min_lead`・
+   wr_after >= `forced_min_winrate`（None は不可）。資格のある手のうち hp 最大、同じなら cost の小さい手（`veil_forced_pick`）。
+   無ければ `forced = "rejected"`。
+7. **影（mode 1）**: `forced = "shadow"` と候補の値を記録して、最善手を打つ（元の why のまま）。
+8. **ON（mode 2）**: 不変条件（`veil_invariant_ok` の kind `forced`: 候補が通常解析の候補に含まれ best・pass でない・cost <= 上限・
+   lead − cost >= `forced_min_lead`・wr_after >= `forced_min_winrate`）を確かめ、tier `forced`・kind `forced` で打つ。
+   今局の数（`_veil_state` の `forced`）を1つ増やす。違反なら ERROR ログ＋最善手（他の kind と同じ）。
+9. **記録**: `Decision:` に `forced`（gate / no_hp / no_cand / rejected / shadow / played）・`forced_from`（元の why）・`forced_gtp`・
+   `forced_cost`・`forced_vloss`・`forced_hp`・`forced_wr`・`forced_lead_after` を残す。どの分岐の例外も S0 のフェイルセーフ（最善手）に落ちる。
+
+- 外した後の手番は、下がった lead から予算を計算し直す（S = lead − reserve）ので、後の支払いは自動で減る。
+  1局の回数の上限・勝率の予算は置かない（§14.1）。多すぎれば実測の後に足す。
+- 失着の層（S9b）は今のまま先に動く。両方 ON でよい。
+- 追加のクエリは強制手番だけで、親の hp 1本（S10 の出口のみ）と、プローブ (1 + k) 手分（1手あたりクリーン＋hp の2本・k <= 4）。
+  1手の決定時間は 1〜2 秒増えうる。
+
+### 14.4 測り方と合格の条件
+
+- **アーム**（24キーをすべて明示）:
+  - `cur` = loose の 20キー＋`veil13_blunder_mode=2`（いまのユーザーのローカル設定と同じ）
+  - `new` = `cur`＋`veil13_forced_mode=2`（ほかの forced キーは §14.2 の 13路の既定）
+- **通常の相手**: 20 対（seed 1000〜1019）。段階1b と同じ humanSL の相手（`opponent_pool_13.json`）。
+- **接戦ストレス**: 40 対。段階3b と同じ条件（`--komi-shift 4 --opponent strategy:human:human_kyu_rank=-8,modern_style=true`）。
+- **合格の条件**:
+  - (a) 通常の相手: `new` の自分の一致率（1局ごとの平均）が 42% 以下。`new` の負けは 20 局中 1 以下。
+  - (b) 接戦ストレス: `new` の負けは 40 局中 2 以下（約 20 局に 1 局以下）。持碁は負けに数える。
+  - (c) 人間らしさ: この層で打った手の 9段 hp の中央値が 0.15 以上。1局あたりの ≥6目の手の数を出す。
+  - (d) 1手の戦略時間の p95 が 2 秒以下。
+- (b) を満たさなければ、`forced_min_lead` 3・`forced_min_winrate` 0.75 にして接戦ストレスだけやり直す。それでも満たさなければ、
+  結果をユーザーに見せて決めてもらう。(a) だけ満たさないときも、結果を見せて決めてもらう。
+- 合格したら、ユーザーのローカル設定の `veil13_forced_mode` を 2 にする（メインセッションで、KaTrain を止めてから）。
+  コードの既定は OFF のまま。9路・19路は未校正。
+- その後の実戦（各10局以上）で、ログの `Rate:` と `Decision:`（`forced`）から一致率・この層の手・勝敗を集計する。
