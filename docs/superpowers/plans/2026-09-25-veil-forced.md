@@ -29,6 +29,8 @@
 
 ## Task 1: 最善手しか無い手番の外しの定数・純関数・不変条件（TDD）
 
+状態: 完了（`931fbb28`）。
+
 **Files:**
 - Modify: `katrain/core/ai.py`（定数は `VEIL_BLUNDER_PROB = 0.5 ...` の行の直後・`_VEIL_EPS` の前。純関数は `def veil_decided_verified_ok` の直前。`veil_invariant_ok` に kind `"forced"`）
 - Test: `tests/test_ai_veil.py`
@@ -236,6 +238,8 @@ git commit -m "feat(veil): 最善手しか無い手番の外しの候補・資�
 
 ## Task 2: 最善手しか無い手番の外しの設定4キー（既定値・登録・GUI の説明・マニュアルの表）
 
+状態: 完了（`d429bd37`）。
+
 **Files:**
 - Modify: `katrain/core/ai.py`（`Veil9Strategy` / `Veil13Strategy` / `Veil19Strategy` の `SETTING_DEFAULTS` の末尾＝`blunder_hp_ratio` の後）
 - Modify: `katrain/core/constants.py`（候補値のリスト・`AI_OPTION_VALUES`・`AI_OPTION_ORDER`）
@@ -424,6 +428,8 @@ git commit -m "feat(veil): 最善手しか無い手番の外しの設定4キー�
 ---
 
 ## Task 3: 最善手しか無い手番の外しを判定フローに組み込む（TDD）
+
+状態: 完了（`5aae2e2a`）。
 
 **Files:**
 - Modify: `katrain/core/ai.py`（`Veil9Strategy` に `_veil_forced`・`_veil_move` の4つの出口）
@@ -767,6 +773,8 @@ git commit -m "feat(veil): 最善手しか無い手番の外しを判定フロ�
 ---
 
 ## Task 4: 文書（開発者向けルール・マニュアルの本文・測定の記録・INDEX・計画の状態）
+
+状態: 完了。
 
 **Files:**
 - Modify: `.claude/rules/ai-parameters.md`・`.claude/rules/ai-strategies.md`
