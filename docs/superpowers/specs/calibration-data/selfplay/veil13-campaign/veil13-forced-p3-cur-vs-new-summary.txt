@@ -1,0 +1,26 @@
+# selfplay summary (own = strategy, opp = opponent; WATCH tree; rates in %)
+
+## arms
+group                              n    W-L-J        win CI own mean        own CI opp mean own-opp P(o<p) P<=T+5   P<15  loss o/p  >=6 flip lead med moves hp dev p95 s
+cur                               40 40-0-0    [91.2,100.0]    66.1%   [62.6,69.4]    39.3%   26.8%   5.0%   0.0%   0.0% 0.18/0.50 0.07 0.20     +7.0    81  26.1%  0.76
+new                               40 40-0-0    [91.2,100.0]    62.6%   [58.8,66.6]    41.4%   21.3%   5.0%   0.0%   0.0% 0.29/0.57 0.28 0.10     +6.5    82  28.2%  0.74
+
+## arm|rank|color
+group                              n    W-L-J        win CI own mean        own CI opp mean own-opp P(o<p) P<=T+5   P<15  loss o/p  >=6 flip lead med moves hp dev p95 s
+cur|strategy:human|B              20 20-0-0    [83.9,100.0]    68.4%   [63.6,73.0]    38.7%   29.7%   5.0%   0.0%   0.0% 0.16/0.48 0.10 0.20     +6.4    80  22.4%  0.81
+cur|strategy:human|W              20 20-0-0    [83.9,100.0]    63.7%   [58.9,68.5]    39.9%   23.8%   5.0%   0.0%   0.0% 0.20/0.53 0.05 0.20     +9.3    81  29.2%  0.72
+new|strategy:human|B              20 20-0-0    [83.9,100.0]    65.0%   [59.8,70.3]    40.5%   24.5%   0.0%   0.0%   0.0% 0.25/0.58 0.35 0.15     +7.0    80  25.6%  0.76
+new|strategy:human|W              20 20-0-0    [83.9,100.0]    60.3%   [54.9,66.1]    42.2%   18.1%  10.0%   0.0%   0.0% 0.32/0.56 0.20 0.05     +6.5    83  30.6%  0.72
+
+## own top1 by bin (pooled)
+cur: all=64.5% gui_opening=72.6% gui_middle=71.9% gui_endgame=37.0% cal_opening=72.6% cal_middle=64.7% cal_endgame=39.6%
+new: all=61.2% gui_opening=74.3% gui_middle=62.2% gui_endgame=43.7% cal_opening=74.3% cal_middle=57.6% cal_endgame=47.6%
+
+## paired diff cur - new (same seed; conf 0.975)
+own_top1         n= 40 mean=+0.0344 t=-0.0195..+0.0883 boot=-0.0164..+0.0862 wilcoxon_p=0.1683 verdict(+-3pt)=extend
+opp_top1         n= 40 mean=-0.0206 t=-0.0582..+0.0170 boot=-0.0561..+0.0151 wilcoxon_p=0.1992 verdict(+-3pt)=extend
+own_minus_opp    n= 40 mean=+0.0550 t=-0.0016..+0.1116 boot=+0.0028..+0.1082 wilcoxon_p=0.0498 verdict(+-3pt)=extend
+flip_moves       n= 40 mean=+0.1000 t=-0.1331..+0.3331 boot=-0.1250..+0.3250 wilcoxon_p=0.3402 verdict(+-3pt)=-
+win              n= 40 mean=+0.0000 t=+0.0000..+0.0000 boot=+0.0000..+0.0000 wilcoxon_p=- verdict(+-3pt)=-
+own_mean_ptloss  n= 40 mean=-0.1083 t=-0.1786..-0.0380 boot=-0.1784..-0.0452 wilcoxon_p=0.0001 verdict(+-3pt)=-
+ge6              n= 40 mean=-0.2000 t=-0.4240..+0.0240 boot=-0.4250..-0.0250 wilcoxon_p=0.0348 verdict(+-3pt)=-
