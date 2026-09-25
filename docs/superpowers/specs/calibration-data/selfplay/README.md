@@ -20,6 +20,7 @@ spec `2026-09-23-selfplay-harness-design.md`（§3 校正・§10 移設）。設
 | `bench_pipeline.py` / `bench_size.py` | 戦略なしの流れの所要時間（spec §7。KataGo を起動する） |
 | `cf_absolute.py` / `cf_absolute2.py` / `cf_veil.py` / `veil_cf.py` / `judge/unified_cf.py` | 韜晦の反実仮想（KataGo 不要。韜晦 spec §2.4） |
 | `opponent_pool_13.json` | 相手ボットの 3段位プール（`calibrate --write-pool` の出力。`run` の既定の相手）。今のプール（2026-09-24 08:22）は length の投了モデルで合わせたもの（手数中央値 81 vs 実戦 78.5・結果 `selfplay-calibration-results-20260924-length.md`） |
+| `opponent_pool_9.json` | 9路の相手ボットの 3段位プール（`calibrate --size 9 --strategy enigma9plus:<実戦の多数派の 7 局の設定> --ranks rank_1d,rank_3d,rank_5d,rank_7d,rank_9d --games 8`・結果 `selfplay-calibration-results-<YYYYMMDD>-9x9.md`） |
 | `selfplay-calibration-results-*.md` | 校正の結果（段位ごとの表・プールの候補・ハーネスと実戦のずれ）。`-20260924.md` は lead の投了モデルでの最初の校正＝`-20260924-length.md` に置き換え済み |
 | `veil13-campaign.md` / `veil13-campaign/` | 韜晦（13路）の自己対局キャンペーン結果（計画 `2026-09-23-veil-strategy.md` の Task 15・16）。段階1（5アーム × 20局）だけ実施＝段階1b・2・3 は未実施。主比較・罠 A/B・一致率の下限の内訳・採否・ユーザーの決定（13路の既定値は据え置き）。`veil13-campaign/` は段階1の `veil13-p1-run.json` と default 対各アームの summary（`veil13-p1-default-vs-<アーム>-summary.{json,txt}`）の写し |
 | `window_stats.py` | 序盤の窓の指標（spec 韜晦 §16.2 手順7）: 実行ディレクトリの moves.jsonl から窓の中（手数 <= W・9路 12・13路 30）と後の一致率・損失・大きな損・W 手目のリード・flip・窓の後の u と paid・定跡を知る相手の出口・`decision_open` の確かめ・同じ seed の対の差（`--compare A B`）。`--recon DIR ...` は実戦の事後解析（`recon_9/`・`recon_9_veil/`）の自分と相手の窓の中・後の一致率と相手が最善手を続けた手数（spec 韜晦 §16.5 の「実戦」） |
