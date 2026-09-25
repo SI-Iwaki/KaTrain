@@ -4444,6 +4444,7 @@ VEIL_BLUNDER_VISITS = 1500       # 失着の検証プローブ（クリーン解
 VEIL_BLUNDER_PROBES = 2          # 深く検証する失着候補の数（hp の高い順）
 VEIL_BLUNDER_RAW_MARGIN = 2.0    # 失着候補の生の loss の上の足切りに持たせる余裕（目）
 VEIL_BLUNDER_PROB = 0.5          # ON で資格のある手番に実際に打つ確率（影の計測の後に見直す）
+VEIL_FORCED_PROBES = 4           # 最善手しか無い手番の外しで検証する候補の数（hp の高い順・spec §14）
 _VEIL_EPS = 1e-9                 # 上限比較の浮動小数の許容誤差
 
 
@@ -4793,6 +4794,52 @@ def veil_blunder_pick(rows):
     return min(rows, key=lambda r: (-r["hp"], r["vloss"], r["gtp"]))
 
 
+def veil_forced_candidates(candidates, best_gtp, hp_of, floor, cap, raw_margin=VEIL_RAW_MARGIN,
+                           limit=VEIL_FORCED_PROBES):
+    """最善手しか無い手番の外しの候補（spec §14.3 手順4・クエリ 0 本）。
+
+    candidates は `_veil_candidates` の {"gtp", "loss", "visits", "wr"}、hp_of は gtp → humanPolicy、floor は通常の層と
+    同じ自然さの床、cap は cap_f = min(上限, lead − forced_min_lead)。best_gtp・pass 以外で、生の loss <= cap + raw_margin
+    かつ hp >= floor の手を、hp の降順（同点は gtp の昇順）に並べて先頭 limit 手。生の loss の下限は置かない（通常の層の
+    条件で落ちた安い手も拾い直す）。返り値は候補 dict のコピーに "hp" を足したもの（元は変えない）。
+    """
+    pool = []
+    for c in candidates:
+        if c["gtp"] in (best_gtp, "pass") or c["loss"] > cap + raw_margin + _VEIL_EPS:
+            continue
+        hp = hp_of(c["gtp"])
+        if hp < floor:
+            continue
+        pool.append({**c, "hp": hp})
+    pool.sort(key=lambda c: (-c["hp"], c["gtp"]))
+    return pool[:limit]
+
+
+def veil_forced_ok(row, max_loss, lead, min_lead, min_wr):
+    """最善手しか無い手番の外しの資格（spec §14.3 手順6）。row は検証済みの {"cost", "lead_after", "wr_after", ...}
+    （cost = max(0, cons)・打つ側視点）、lead は root リード。
+
+    cost <= max_loss かつ lead_after >= min_lead かつ lead − cost >= min_lead（root リード基準・不変条件 kind forced と
+    同じ式）かつ wr_after >= min_wr。lead かどれかの値が None なら False。
+    """
+    cost, lead_after, wr_after = row.get("cost"), row.get("lead_after"), row.get("wr_after")
+    if lead is None or cost is None or lead_after is None or wr_after is None:
+        return False
+    return (
+        cost <= max_loss + _VEIL_EPS
+        and lead_after >= min_lead - _VEIL_EPS
+        and lead - cost >= min_lead - _VEIL_EPS
+        and wr_after >= min_wr - _VEIL_EPS
+    )
+
+
+def veil_forced_pick(rows):
+    """資格のある手から1手（spec §14.3 手順6）: hp 最大、同点は cost の小さい方、さらに同点は gtp の昇順。空なら None。"""
+    if not rows:
+        return None
+    return min(rows, key=lambda r: (-r["hp"], r["cost"], r["gtp"]))
+
+
 def veil_decided_verified_ok(vloss, wr_after, f_eff, lead, reserve, min_winrate, margin=VEIL_RAW_MARGIN):
     """S13 の即決を打つ前の確認（2手のプローブ）。生の loss だけを信じると親局面の読み落としを打つ
     （2026-09-25・生 0.36 目 → 実損 16.3 目で持碁）。margin はプローブのノイズ（±0.2〜0.3 目）の分。
@@ -4818,6 +4865,7 @@ def veil_invariant_ok(chosen, best, cand_gtps, kind, bounds):
     trap: price <= allow かつ max(0, vloss) <= trap_cap かつ lead − max(0, vloss) >= reserve。
     terminal: raw <= limit。
     blunder: vloss <= max_loss かつ lead − max(0, vloss) >= reserve + margin かつ wr_after >= min_wr。
+    forced: cost <= max_loss かつ lead − max(0, cost) >= min_lead かつ wr_after >= min_wr。
     それ以外の kind・キー欠落・None は False。
     """
     if chosen is None or chosen == best or chosen == "pass" or chosen not in cand_gtps:
@@ -4844,6 +4892,13 @@ def veil_invariant_ok(chosen, best, cand_gtps, kind, bounds):
             return (
                 bounds["vloss"] <= bounds["max_loss"] + _VEIL_EPS
                 and bounds["lead"] - paid >= bounds["reserve"] + bounds["margin"] - _VEIL_EPS
+                and bounds["wr_after"] >= bounds["min_wr"] - _VEIL_EPS
+            )
+        if kind == "forced":
+            paid = max(0.0, bounds["cost"])
+            return (
+                bounds["cost"] <= bounds["max_loss"] + _VEIL_EPS
+                and bounds["lead"] - paid >= bounds["min_lead"] - _VEIL_EPS
                 and bounds["wr_after"] >= bounds["min_wr"] - _VEIL_EPS
             )
     except (KeyError, TypeError):
@@ -4882,10 +4937,15 @@ class Veil9Strategy(Enigma9Strategy):
     失着の層（blunder_mode・spec §13・既定 OFF）は S9b で、9段でも迷う局面で支払い上限 max_loss を超える候補を
     深い読み（クリーン VEIL_BLUNDER_VISITS）で確かめ、LOG（1）は `Decision:` に記録するだけ、ON（2）は資格のある手番の
     VEIL_BLUNDER_PROB の割合で1局 blunder_per_game 回まで打つ（勝ちの安全条件 reserve・min_winrate は緩めない）。
+    最善手しか無い手番の外し（forced_mode・spec §14・既定 OFF）は、通常の流れが最善手で終わる4つの出口
+    （no_pool / no_natural / no_shortlist / none_qualified）で、打った後にリード forced_min_lead・勝率
+    forced_min_winrate が残り損が forced_max_loss（ヨセは yose_max_loss）以下の 9段らしい手を探し、LOG（1）は
+    記録だけ、ON（2）は打つ（u > 0 のときだけ）。
 
     難解（Enigma9Strategy）からは generate_move（時間ログ）・_setting・_log・_best_move・_run_query・
     _probe_children・_cancel_ponder・_terminal_band_move を継承して使う。13/19路は属性だけ差し替えたサブクラス。
-    sticky な状態は `game._veil_state[KEY_PREFIX]`（endgame・close_drift・ledger・blunders）。
+    sticky な状態は `game._veil_state[KEY_PREFIX]`（endgame・close_drift・ledger・blunders・forced（ON で打った数・
+    打ったときだけ作る））。
     設計: docs/superpowers/specs/2026-09-23-veil-strategy-design.md
     """
 
@@ -4913,6 +4973,10 @@ class Veil9Strategy(Enigma9Strategy):
         "blunder_max_loss": 6.0,    # 失着の上限（検証済み損失・目）
         "blunder_per_game": 1,      # 1局で打つ失着の上限（ON のとき）
         "blunder_hp_ratio": 0.7,    # 失着の手の hp ÷ 最善手の hp の下限（9段 humanSL）
+        "forced_mode": 0,           # 最善手しか無い手番の外し（spec §14）: 0 OFF / 1 記録のみ（影）/ 2 ON
+        "forced_min_lead": 1.0,     # 打った後に残すリード（目・root リード − 損と検証済みリードの両方）
+        "forced_min_winrate": 0.70,  # 打った後の検証済み勝率の下限
+        "forced_max_loss": 5.0,     # 1手の損の上限（検証済み・目。ヨセは yose_max_loss）
     }
     # スライダーにしない盤サイズ別の値（spec §6.1）
     VEIL_BOARD = {"endgame_move": 30, "unsettled_max": 8, "trusted_visits": 100, "probe_hp": 3, "probe_cheap": 2}
@@ -5248,6 +5312,110 @@ class Veil9Strategy(Enigma9Strategy):
             stage_hp, True,
         )
 
+    def _veil_forced(self, cands, player, best_gtp, lead, root_wr, in_yose, u, info, why,
+                     stage_hp=None, hp_fetched=False, probes=None):
+        """最善手しか無い手番の外し（spec §14.3）。通常の流れが最善手で終わる出口（why = no_pool / no_natural /
+        no_shortlist / none_qualified）の直前に呼ぶ。返り値は打つときだけ (result, tier, kind, fields)、それ以外は None
+        （呼び出し側が元の why で最善手を打つ）。
+
+        forced_mode 0 なら何もしない（クエリ 0 本・info に何も足さない）。関門（クエリ 0 本・`forced = "gate"`）は u <= 0・
+        root 勝率が無いか forced_min_winrate 未満・cap_f = min(上限, lead − forced_min_lead) <= 0 のどれか（上限はヨセなら
+        yose_max_loss、それ以外は forced_max_loss）。stage_hp / hp_fetched は S9b・S11 の親局面の humanSL（撃っていれば
+        使う＝同じ手番で2回撃たない）、probes は S15 の子局面プローブ（同じ手は読み直さない）。"""
+        mode = int(self._setting("forced_mode"))
+        if mode <= 0:
+            return None
+        info["forced_from"] = why
+        min_lead = float(self._setting("forced_min_lead"))
+        min_wr = float(self._setting("forced_min_winrate"))
+        max_loss = float(self._setting("yose_max_loss" if in_yose else "forced_max_loss"))
+        cap_f = min(max_loss, lead - min_lead)
+        if u <= 0 or root_wr is None or root_wr < min_wr - _VEIL_EPS or cap_f <= 0:
+            info["forced"] = "gate"
+            return None
+        if not hp_fetched:
+            stage_hp = self._veil_parent_hp(info)
+        if not stage_hp or "humanPolicy" not in stage_hp:
+            info["forced"] = "no_hp"
+            return None
+        human_policy = stage_hp["humanPolicy"]
+        hp_of = enigma9_hp_lookup(human_policy, self.game.board_size)
+        rows0 = veil_forced_candidates(
+            self._veil_candidates(cands, player), best_gtp, hp_of, self._veil_floor(human_policy, False), cap_f
+        )
+        if not rows0:
+            info["forced"] = "no_cand"
+            return None
+        probes = dict(probes or {})
+        need = [g for g in [best_gtp] + [c["gtp"] for c in rows0] if not (probes.get(g) or {}).get("clean")]
+        if need:
+            fresh, _unused = self._probe_children(need, player, parent_hp=False)
+            info["queries"] += 2 * len(need)
+            probes.update(fresh)
+        best_lead_after, _best_wr_after = enigma9_verified_metrics((probes.get(best_gtp) or {}).get("clean"), player)
+        if best_lead_after is None:
+            self._log("Forced: best-move probe unavailable -> best move")
+            info["forced"] = "no_probe"
+            return None
+        trusted = self.VEIL_BOARD["trusted_visits"]
+        ok_rows = []
+        for c in rows0:
+            lead_after, wr_after = enigma9_verified_metrics((probes.get(c["gtp"]) or {}).get("clean"), player)
+            if lead_after is None:
+                self._log(f"Forced {c['gtp']}: probe incomplete -> dropped")
+                continue
+            vloss = best_lead_after - lead_after
+            cons = veil_cons_loss(vloss, c["loss"], c.get("visits", 0), trusted)
+            row = {
+                **c, "raw": c["loss"], "vloss": vloss, "cons": cons, "cost": max(0.0, cons),
+                "lead_after": lead_after, "wr_after": wr_after,
+            }
+            ok = veil_forced_ok(row, max_loss, lead, min_lead, min_wr)
+            wr_txt = "n/a" if wr_after is None else f"{wr_after:.1%}"
+            self._log(
+                f"Forced {c['gtp']}: raw={c['loss']:.2f} vloss={vloss:.2f} cost={row['cost']:.2f} hp={c['hp']:.3f} "
+                f"wr={wr_txt} lead_after={lead_after:.2f} ok={ok}"
+            )
+            if ok:
+                ok_rows.append(row)
+        pick = veil_forced_pick(ok_rows)
+        if pick is None:
+            info["forced"] = "rejected"
+            return None
+        gtp = pick["gtp"]
+        fields = {
+            "forced_gtp": gtp, "forced_cost": pick["cost"], "forced_vloss": pick["vloss"], "forced_hp": pick["hp"],
+            "forced_wr": pick["wr_after"], "forced_lead_after": pick["lead_after"],
+        }
+        info.update(fields)
+        summary = f"{gtp} (cost {pick['cost']:.2f}, vloss {pick['vloss']:.2f}, hp {pick['hp']:.3f}) instead of {best_gtp}"
+        # 影（mode 1）: 記録だけして最善手（元の why のまま）
+        if mode == 1:
+            info["forced"] = "shadow"
+            self._log(f"Forced shadow: {summary} -> not played (mode 1)")
+            return None
+        bounds = {
+            "cost": pick["cost"], "max_loss": max_loss, "lead": lead, "min_lead": min_lead,
+            "wr_after": pick["wr_after"], "min_wr": min_wr,
+        }
+        if not veil_invariant_ok(gtp, best_gtp, {d["move"] for d in cands}, "forced", bounds):
+            info["forced"] = "invariant"
+            return self._veil_violation(gtp, "forced", bounds), "failsafe", "best", {"why": "invariant"}
+        state = self._veil_state()
+        state["forced"] = state.get("forced", 0) + 1  # 打ったときだけ作る（mode 0 の状態は今と同じ）
+        info["forced"] = "played"
+        self._log(f"Forced: played {summary}")
+        return (
+            (
+                Move.from_gtp(gtp, player=player),
+                f"{self.LABEL}: deviated to {gtp} on a best-only turn (verified loss {pick['vloss']:.2f}, "
+                f"hp {pick['hp']:.1%}, lead after {pick['lead_after']:.1f}, winrate after {pick['wr_after']:.0%}) "
+                f"instead of {best_gtp}.",
+            ),
+            "forced", "forced",
+            {"raw": pick["raw"], "vloss": pick["vloss"], "cons": pick["cons"], "cost": pick["cost"], "hp": pick["hp"]},
+        )
+
     def _generate_move(self) -> Tuple[Move, str]:
         # ---- S0 ラッパー: 解析の破棄は上へ、それ以外の例外は最善手（ほかの出口と同じく Decision 行と ledger も残す）----
         t0 = time.time()
@@ -5391,6 +5559,13 @@ class Veil9Strategy(Enigma9Strategy):
         trap_pool = veil_prefilter(pool0, raw_cap + VEIL_TRAP_RAW_EXTRA) if trap_on else []
         if not nat_pool and not trap_pool:
             self._log(f"Tier i: no candidate within raw cap {raw_cap:.2f} -> best move")
+            forced = self._veil_forced(
+                cands, player, best_gtp, lead, root_wr, in_yose, u, info, "no_pool",
+                stage_hp=stage_hp, hp_fetched=hp_fetched,
+            )
+            if forced is not None:
+                result, tier_f, kind_f, fields = forced
+                return finish(result, tier_f, kind_f, **fields)
             return finish(
                 self._best_move(f"{self.LABEL}: only the best move is a candidate, playing it."),
                 "i", "best", why="no_pool",
@@ -5434,6 +5609,13 @@ class Veil9Strategy(Enigma9Strategy):
             f"naturals={[c['gtp'] for c in naturals]} trap_cands={len(trap_cands)}"
         )
         if not naturals and not trap_cands:
+            forced = self._veil_forced(
+                cands, player, best_gtp, lead, root_wr, in_yose, u, info, "no_natural",
+                stage_hp=stage_hp, hp_fetched=True,
+            )
+            if forced is not None:
+                result, tier_f, kind_f, fields = forced
+                return finish(result, tier_f, kind_f, **fields)
             return finish(
                 self._best_move(f"{self.LABEL}: no natural alternative, playing best move."), "i", "best", why="no_natural"
             )
@@ -5494,6 +5676,14 @@ class Veil9Strategy(Enigma9Strategy):
         )
         shortlist = nat_short + trap_short
         if not shortlist:
+            # 今の S10〜S14 の論理では naturals か trap_cands があれば shortlist は空にならない＝この出口は守りのためのコード
+            forced = self._veil_forced(
+                cands, player, best_gtp, lead, root_wr, in_yose, u, info, "no_shortlist",
+                stage_hp=stage_hp, hp_fetched=True,
+            )
+            if forced is not None:
+                result, tier_f, kind_f, fields = forced
+                return finish(result, tier_f, kind_f, **fields)
             return finish(
                 self._best_move(f"{self.LABEL}: no alternative in the passable band, playing best move."),
                 tier, "best", why="no_shortlist",
@@ -5571,6 +5761,13 @@ class Veil9Strategy(Enigma9Strategy):
         chosen = veil_merge_trap(plain_pick, traps) if trap_on else plain_pick
         if chosen is None:
             self._log("No qualifying deviation -> best move")
+            forced = self._veil_forced(
+                cands, player, best_gtp, lead, root_wr, in_yose, u, info, "none_qualified",
+                stage_hp=stage_hp, hp_fetched=True, probes=probes,
+            )
+            if forced is not None:
+                result, tier_f, kind_f, fields = forced
+                return finish(result, tier_f, kind_f, **fields)
             return finish(
                 self._best_move(f"{self.LABEL}: no safe deviation, playing best move."), tier, "best", why="none_qualified"
             )
@@ -5642,6 +5839,10 @@ class Veil13Strategy(Veil9Strategy):
         "blunder_max_loss": 10.0,
         "blunder_per_game": 1,
         "blunder_hp_ratio": 0.7,
+        "forced_mode": 0,
+        "forced_min_lead": 2.0,
+        "forced_min_winrate": 0.70,
+        "forced_max_loss": 10.0,
     }
     VEIL_BOARD = {"endgame_move": 85, "unsettled_max": 16, "trusted_visits": 50, "probe_hp": 3, "probe_cheap": 2}
 
@@ -5678,6 +5879,10 @@ class Veil19Strategy(Veil9Strategy):
         "blunder_max_loss": 15.0,
         "blunder_per_game": 1,
         "blunder_hp_ratio": 0.7,
+        "forced_mode": 0,
+        "forced_min_lead": 3.0,
+        "forced_min_winrate": 0.70,
+        "forced_max_loss": 15.0,
     }
     VEIL_BOARD = {"endgame_move": 150, "unsettled_max": 36, "trusted_visits": 50, "probe_hp": 3, "probe_cheap": 1}
 

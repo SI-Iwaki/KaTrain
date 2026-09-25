@@ -22,6 +22,7 @@ from katrain.core.ai import (
     VEIL_BLUNDER_PROBES,
     VEIL_BLUNDER_RAW_MARGIN,
     VEIL_BLUNDER_VISITS,
+    VEIL_FORCED_PROBES,
     VEIL_TERMINAL_MIN_VISITS,
     AnalysisDiscardedException,
     Enigma9Strategy,
@@ -40,6 +41,9 @@ from katrain.core.ai import (
     veil_cons_loss,
     veil_decided_verified_ok,
     veil_decision_record,
+    veil_forced_candidates,
+    veil_forced_ok,
+    veil_forced_pick,
     veil_free_limit,
     veil_invariant_ok,
     veil_merge_trap,
@@ -597,6 +601,95 @@ class TestBlunderPick:
         assert veil_blunder_pick([]) is None
 
 
+class TestForcedConstants:
+    def test_constants_match_the_spec(self):
+        assert VEIL_FORCED_PROBES == 4
+
+
+class TestForcedCandidates:
+    """spec §14.3 手順4: best・pass 以外で、生の loss <= cap + VEIL_RAW_MARGIN かつ hp >= floor。hp の降順（同点は gtp）。"""
+
+    @staticmethod
+    def gtps(cands, hp=None, floor=0.08, cap=3.0, **kw):
+        hp_of = hp_table({c["gtp"]: 0.2 for c in cands} if hp is None else hp)
+        return [c["gtp"] for c in veil_forced_candidates(cands, "E5", hp_of, floor, cap, **kw)]
+
+    def test_keeps_moves_up_to_cap_plus_the_raw_margin(self):
+        cands = [cand("A1", 0.0), cand("B2", 3.0), cand("C3", 3.3), cand("D4", 3.31)]
+        assert self.gtps(cands) == ["A1", "B2", "C3"]
+
+    def test_no_lower_bound_on_the_loss(self):
+        """通常の層で外れた安い手（同値・支払いの条件で落ちた手）も、この層の条件で拾い直す。"""
+        assert self.gtps([cand("A1", -0.2), cand("B2", 0.05)]) == ["A1", "B2"]
+
+    def test_hp_floor_is_inclusive(self):
+        cands = [cand("A1", 1.0), cand("B2", 1.0)]
+        assert self.gtps(cands, hp={"A1": 0.08, "B2": 0.079}) == ["A1"]
+
+    def test_excludes_the_best_move_and_pass(self):
+        cands = [cand("E5", 0.0), cand("pass", 0.5), cand("A1", 0.5)]
+        assert self.gtps(cands, hp={"E5": 0.9, "pass": 0.9, "A1": 0.2}) == ["A1"]
+
+    def test_sorted_by_hp_then_gtp_and_cut_at_the_limit(self):
+        cands = [cand(g, 1.0) for g in ("D4", "C3", "B2", "A1", "F6")]
+        hp = {"D4": 0.3, "C3": 0.2, "B2": 0.2, "A1": 0.1, "F6": 0.5}
+        assert self.gtps(cands, hp=hp) == ["F6", "D4", "B2", "C3"]  # 既定の limit は VEIL_FORCED_PROBES = 4
+        assert self.gtps(cands, hp=hp, limit=2) == ["F6", "D4"]
+
+    def test_returns_copies_with_hp_and_leaves_the_input_alone(self):
+        cands = [cand("A1", 1.0)]
+        rows = veil_forced_candidates(cands, "E5", hp_table({"A1": 0.2}), 0.08, 3.0)
+        assert rows == [{**cands[0], "hp": 0.2}] and "hp" not in cands[0]
+
+
+class TestForcedOk:
+    """spec §14.3 手順6: cost <= max_loss・lead_after >= min_lead・lead − cost >= min_lead・wr_after >= min_wr。"""
+
+    @staticmethod
+    def ok(lead=20.0, max_loss=5.0, min_lead=1.0, min_wr=0.70, **kw):
+        row = {"cost": 1.4, "lead_after": 2.6, "wr_after": 0.74, **kw}
+        return veil_forced_ok(row, max_loss, lead, min_lead, min_wr)
+
+    def test_accepts_a_move_that_keeps_the_lead_and_the_winrate(self):
+        assert self.ok(lead=4.0)
+
+    def test_cost_up_to_max_loss(self):
+        assert self.ok(cost=5.0, lead_after=15.0) and not self.ok(cost=5.01, lead_after=15.0)
+
+    def test_lead_after_the_probe_must_keep_min_lead(self):
+        assert self.ok(lead_after=1.0) and not self.ok(lead_after=0.99)
+
+    def test_root_lead_minus_cost_must_keep_min_lead(self):
+        assert self.ok(lead=4.0, cost=3.0) and not self.ok(lead=4.0, cost=3.01)
+
+    def test_winrate_after_floor(self):
+        assert self.ok(wr_after=0.70) and not self.ok(wr_after=0.699)
+
+    @pytest.mark.parametrize("key", ["cost", "lead_after", "wr_after"])
+    def test_missing_metrics_fail(self, key):
+        assert not self.ok(**{key: None})
+
+    def test_missing_root_lead_fails(self):
+        assert not veil_forced_ok({"cost": 1.0, "lead_after": 5.0, "wr_after": 0.9}, 5.0, None, 1.0, 0.7)
+
+
+class TestForcedPick:
+    def test_most_human_move_wins(self):
+        rows = [{"gtp": "A1", "hp": 0.2, "cost": 0.5}, {"gtp": "B2", "hp": 0.3, "cost": 2.0}]
+        assert veil_forced_pick(rows)["gtp"] == "B2"
+
+    def test_hp_ties_go_to_the_smaller_cost_then_gtp(self):
+        rows = [
+            {"gtp": "C3", "hp": 0.3, "cost": 1.0},
+            {"gtp": "B2", "hp": 0.3, "cost": 0.5},
+            {"gtp": "A1", "hp": 0.3, "cost": 0.5},
+        ]
+        assert veil_forced_pick(rows)["gtp"] == "A1"
+
+    def test_empty_is_none(self):
+        assert veil_forced_pick([]) is None
+
+
 class TestDecidedVerified:
     """S13 の即決を打つ前の2手のプローブの確認。F_eff 0.3・reserve 3・min_winrate 0.85。"""
 
@@ -670,6 +763,18 @@ class TestInvariant:
         assert not veil_invariant_ok("Q16", "E5", self.GTPS, "blunder", b)  # 候補に無い
         assert not veil_invariant_ok("E5", "E5", self.GTPS, "blunder", b)  # 最善手
 
+    def test_forced_bounds(self):
+        cands = {"E5", "D4", "C7"}
+        good = {"cost": 1.4, "max_loss": 5.0, "lead": 4.0, "min_lead": 1.0, "wr_after": 0.74, "min_wr": 0.70}
+        assert veil_invariant_ok("C7", "E5", cands, "forced", good)
+        assert not veil_invariant_ok("C7", "E5", cands, "forced", {**good, "cost": 5.01})
+        assert not veil_invariant_ok("C7", "E5", cands, "forced", {**good, "cost": 3.01})  # lead − cost < min_lead
+        assert not veil_invariant_ok("C7", "E5", cands, "forced", {**good, "wr_after": 0.69})
+        assert not veil_invariant_ok("C7", "E5", cands, "forced", {**good, "wr_after": None})
+        assert not veil_invariant_ok("C7", "E5", cands, "forced", {k: v for k, v in good.items() if k != "min_lead"})
+        assert not veil_invariant_ok("A1", "E5", cands, "forced", good)  # 候補に無い手（共通規則）
+        assert not veil_invariant_ok("E5", "E5", cands, "forced", good)  # 最善手そのもの
+
     def test_unknown_kind_or_missing_bounds_fail(self):
         assert not veil_invariant_ok("D4", "E5", self.GTPS, "mystery", {"cost": 0.0, "f_eff": 1.0})
         assert not veil_invariant_ok("D4", "E5", self.GTPS, "paid", {"cost": 0.1})
@@ -708,6 +813,11 @@ SPEC_DEFAULTS = {
         "blunder_max_loss": 6.0,
         "blunder_per_game": 1,
         "blunder_hp_ratio": 0.7,
+        # spec §14.2（2026-09-25）
+        "forced_mode": 0,
+        "forced_min_lead": 1.0,      # 13路 2.0・19路 3.0
+        "forced_min_winrate": 0.70,
+        "forced_max_loss": 5.0,      # 13路 10.0・19路 15.0
     },
     13: {
         "target_rate": 0.30,
@@ -730,6 +840,10 @@ SPEC_DEFAULTS = {
         "blunder_max_loss": 10.0,
         "blunder_per_game": 1,
         "blunder_hp_ratio": 0.7,
+        "forced_mode": 0,
+        "forced_min_lead": 2.0,
+        "forced_min_winrate": 0.70,
+        "forced_max_loss": 10.0,
     },
     19: {
         "target_rate": 0.30,
@@ -752,6 +866,10 @@ SPEC_DEFAULTS = {
         "blunder_max_loss": 15.0,
         "blunder_per_game": 1,
         "blunder_hp_ratio": 0.7,
+        "forced_mode": 0,
+        "forced_min_lead": 3.0,
+        "forced_min_winrate": 0.70,
+        "forced_max_loss": 15.0,
     },
 }
 # 校正（Task 17）で選んだ既定値の差分。apply_veil_defaults.py が書き換える（空なら spec のまま）
@@ -2146,6 +2264,282 @@ class TestBlunder(_Harness):
         assert any("G3" in m and "boom" in m for m in logs)
 
 
+class TestForced(_Harness):
+    """最善手しか無い手番の外し（spec §14.3）。場面は docstring の上の計算（計画 Task 3 Step 1）どおり。"""
+
+    NO_POOL_CANDS = [
+        {"move": "E5", "pointsLost": 0.0, "relativePointsLost": 0.0, "visits": 600, "winrate": 0.80},
+        {"move": "C7", "pointsLost": 2.0, "relativePointsLost": 2.0, "visits": 60, "winrate": 0.74},
+        {"move": "G3", "pointsLost": 3.8, "relativePointsLost": 3.8, "visits": 40, "winrate": 0.70},
+    ]
+    HP = {"E5": 0.40, "C7": 0.20, "G3": 0.10}
+    PROBES = {"E5": (4.0, 0.80), "C7": (2.6, 0.74)}
+
+    # 失着の層と両方 ON の場面（I3・裁定 I1）。C7 / G3 の hp は失着の床 0.7 × 0.40 = 0.28 未満（no_cand）だが、
+    # forced の自然さの床（0.08）は超える。
+    BOTH_ON_CANDS = [
+        {"move": "E5", "pointsLost": 0.0, "relativePointsLost": 0.0, "visits": 600, "winrate": 0.80},
+        {"move": "C7", "pointsLost": 4.0, "relativePointsLost": 4.0, "visits": 60, "winrate": 0.74},
+        {"move": "G3", "pointsLost": 5.0, "relativePointsLost": 5.0, "visits": 40, "winrate": 0.70},
+    ]
+    BOTH_ON_HP = {"E5": 0.40, "C7": 0.20, "G3": 0.10}
+
+    # 失着の層が抽選で見送る場面（G3 の hp 0.35 >= 0.28・raw 3.8 は blunder の帯の内）。C7 が無いので通常の流れは
+    # no_pool（G3 の raw 3.8 は raw_cap 3.3 の外）に落ち、forced だけが G3 を拾える。
+    SKIPPED_CANDS = [
+        {"move": "E5", "pointsLost": 0.0, "relativePointsLost": 0.0, "visits": 600, "winrate": 0.99},
+        {"move": "G3", "pointsLost": 3.8, "relativePointsLost": 3.8, "visits": 40, "winrate": 0.90},
+    ]
+    SKIPPED_HP = {"E5": 0.40, "G3": 0.35}
+
+    def _forced(self, mode, *, probes=None, player="B", lead=4.0, wr=0.80, hist=None, settings=None, **kw):
+        table = self.PROBES if probes is None else probes
+        kw.setdefault("cands", self.NO_POOL_CANDS)
+        if player == "W":
+            kw["cands"] = [{**c, "winrate": 1.0 - c["winrate"]} for c in kw["cands"]]
+        kw["probes"] = {g: None if v is None else _child(*v, player=player) for g, v in table.items()}
+        settings = {"veil9_forced_mode": mode, **(settings or {})}
+        hist = _hist(player, 9, 10) if hist is None else hist
+        return self._strategy(lead=lead, wr=wr, player=player, hist=hist, settings=settings, **kw)
+
+    @staticmethod
+    def _decision(logs):
+        decisions = [m for m in logs if "Decision: {" in m]
+        assert len(decisions) == 1
+        return json.loads(decisions[0].split("Decision: ", 1)[1])
+
+    def test_mode_0_changes_nothing(self):
+        s, logs = self._forced(0)
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert (move.gtp(), info["tier"], info["kind"], info["why"]) == ("E5", "i", "best", "no_pool")
+        assert not any(k.startswith("forced") for k in info)
+        assert not any(k.startswith("forced") for k in self._decision(logs))
+        assert s.queries == [] and s.probe_calls == [] and info["queries"] == 0
+        assert "forced" not in s.game._veil_state["veil9"]
+        assert not any("Forced" in m for m in logs)
+
+    def test_mode_0_changes_nothing_at_the_no_natural_exit(self):
+        """M3: mode 0 は no_natural の出口でも forced を足す前と同じ（クエリ・probe_calls とも C7 を読まない）。"""
+        hp = {"E5": 0.40, "D4": 0.03, "F6": 0.03, "C7": 0.20, "G3": 0.04}
+        s, logs = self._forced(0, cands=_Harness.CANDS, hp=hp)
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert (move.gtp(), info["why"]) == ("E5", "no_natural")
+        assert not any(k.startswith("forced") for k in info)
+        assert not any(k.startswith("forced") for k in self._decision(logs))
+        assert s.queries == ["parent hp"] and s.probe_calls == [] and info["queries"] == 1
+        assert "forced" not in s.game._veil_state["veil9"]
+
+    def test_mode_0_changes_nothing_at_the_none_qualified_exit(self):
+        """M3: mode 0 は none_qualified の出口でも forced を足す前と同じ（S15 のプローブだけ・forced 分は無い）。"""
+        probes = {"E5": (4.0, 0.80), "D4": (3.3, 0.75), "F6": (3.0, 0.74)}
+        s, logs = self._forced(0, cands=_Harness.CANDS, hp=_Harness.HP, probes=probes)
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert (move.gtp(), info["why"]) == ("E5", "none_qualified")
+        assert not any(k.startswith("forced") for k in info)
+        assert not any(k.startswith("forced") for k in self._decision(logs))
+        assert s.queries == ["parent hp"] and s.probe_calls == [["E5", "D4", "F6"]] and info["queries"] == 7
+        assert "forced" not in s.game._veil_state["veil9"]
+
+    def test_mode_1_records_the_move_without_playing_it(self):
+        s, logs = self._forced(1)
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert (move.gtp(), info["kind"], info["why"]) == ("E5", "best", "no_pool")
+        assert (info["forced"], info["forced_from"], info["forced_gtp"]) == ("shadow", "no_pool", "C7")
+        assert info["forced_cost"] == pytest.approx(1.4) and info["forced_vloss"] == pytest.approx(1.4)
+        assert info["forced_hp"] == pytest.approx(0.20) and info["forced_wr"] == pytest.approx(0.74)
+        assert info["forced_lead_after"] == pytest.approx(2.6)
+        assert self._decision(logs)["forced"] == "shadow"
+        assert s.queries == ["parent hp"] and s.probe_calls == [["E5", "C7"]] and info["queries"] == 5
+        assert "forced" not in s.game._veil_state["veil9"]
+        assert any(m.startswith("[Veil9Strategy] Forced shadow: C7") for m in logs)
+
+    def test_mode_2_plays_the_move(self):
+        s, logs = self._forced(2)
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert (move.gtp(), info["tier"], info["kind"]) == ("C7", "forced", "forced")
+        assert (info["forced"], info["forced_from"]) == ("played", "no_pool")
+        assert info["cost"] == pytest.approx(1.4) and info["hp"] == pytest.approx(0.20)
+        record = self._decision(logs)
+        assert (record["kind"], record["forced"], record["forced_gtp"]) == ("forced", "played", "C7")
+        state = s.game._veil_state["veil9"]
+        assert state["forced"] == 1 and state["ledger"] == [(12, "E5", "C7", "forced")]
+        assert any("Forced C7: raw=2.00 vloss=1.40 cost=1.40 hp=0.200 wr=74.0% lead_after=2.60 ok=True" in m for m in logs)
+        s.generate_move()  # 1局の回数の上限は無い
+        assert s.last_decision_info["forced"] == "played" and s.game._veil_state["veil9"]["forced"] == 2
+
+    @pytest.mark.parametrize(
+        "kw",
+        [
+            dict(hist=_hist("B", 3, 9)),  # p_match 0.40 = 目標 → u = 0
+            dict(wr=0.69),  # root 勝率 < forced_min_winrate
+            dict(wr=None),  # root 勝率が無い
+            dict(lead=1.0),  # cap_f = min(5, 1 − 1) = 0
+        ],
+    )
+    def test_gate_stops_the_layer_without_queries(self, kw):
+        s, _ = self._forced(2, **kw)
+        assert s.generate_move()[0].gtp() == "E5"
+        info = s.last_decision_info
+        assert (info["forced"], info["forced_from"], info["why"]) == ("gate", "no_pool", "no_pool")
+        assert s.queries == [] and s.probe_calls == []
+
+    def test_gate_winrate_bound_is_inclusive(self):
+        s, _ = self._forced(2, wr=0.70)
+        assert s.generate_move()[0].gtp() == "C7"
+
+    def test_humansl_failure(self):
+        s, _ = self._forced(2, hp_ok=False)
+        assert s.generate_move()[0].gtp() == "E5"
+        assert s.last_decision_info["forced"] == "no_hp" and s.queries == ["parent hp"] and s.probe_calls == []
+
+    def test_no_candidate_below_the_natural_floor(self):
+        s, _ = self._forced(2, hp={"E5": 0.40, "C7": 0.07, "G3": 0.10})
+        assert s.generate_move()[0].gtp() == "E5"
+        assert s.last_decision_info["forced"] == "no_cand" and s.probe_calls == []
+
+    @pytest.mark.parametrize(
+        "c7",
+        [
+            (2.6, 0.69),  # 着手後勝率 < 0.70
+            (0.9, 0.90),  # lead_after 0.9 < 1・4.0 − 3.1 < 1
+        ],
+    )
+    def test_rejected_after_the_probe(self, c7):
+        s, _ = self._forced(2, probes={"E5": (4.0, 0.80), "C7": c7})
+        assert s.generate_move()[0].gtp() == "E5"
+        assert s.last_decision_info["forced"] == "rejected"
+
+    def test_missing_best_probe(self):
+        s, _ = self._forced(2, probes={"E5": None, "C7": (2.6, 0.74)})
+        assert s.generate_move()[0].gtp() == "E5"
+        assert s.last_decision_info["forced"] == "no_probe"
+
+    def test_invariant_violation_plays_the_best_move(self, monkeypatch):
+        real = ai_module.veil_invariant_ok
+        monkeypatch.setattr(
+            ai_module, "veil_invariant_ok", lambda c, b, g, kind, bounds: False if kind == "forced" else real(c, b, g, kind, bounds)
+        )
+        s, logs = self._forced(2)
+        assert s.generate_move()[0].gtp() == "E5"
+        info = s.last_decision_info
+        assert (info["tier"], info["kind"], info["why"], info["forced"]) == ("failsafe", "best", "invariant", "invariant")
+        assert any("Invariant violated: chosen=C7 kind=forced" in m for m in logs)
+        assert "forced" not in s.game._veil_state["veil9"]
+
+    def test_yose_uses_the_yose_max_loss(self):
+        state = {"veil9": {"endgame": True, "close_drift": 0.0, "ledger": [], "blunders": 0}}
+        s, _ = self._forced(2, _veil_state=state)  # cap_f = min(1.0, 3.0) = 1.0 → C7（生 2.0）は候補外
+        assert s.generate_move()[0].gtp() == "E5" and s.last_decision_info["forced"] == "no_cand"
+        cheap = [{**c, "pointsLost": 0.9, "relativePointsLost": 0.9} if c["move"] == "C7" else c for c in self.NO_POOL_CANDS]
+        state = {"veil9": {"endgame": True, "close_drift": 0.0, "ledger": [], "blunders": 0}}
+        s, _ = self._forced(2, cands=cheap, probes={"E5": (4.0, 0.80), "C7": (3.1, 0.76)}, _veil_state=state)
+        assert s.generate_move()[0].gtp() == "C7"  # cost 0.9 <= yose_max_loss 1.0
+        assert s.last_decision_info["forced_cost"] == pytest.approx(0.9)
+
+    def test_no_natural_exit_shares_the_parent_humansl(self):
+        """通常の候補 D4（生 0.1）・F6（0.8）が床（0.08）より下＝no_natural。この層は C7（生 2.0・hp 0.20）を拾う。"""
+        hp = {"E5": 0.40, "D4": 0.03, "F6": 0.03, "C7": 0.20, "G3": 0.04}
+        s, _ = self._forced(2, cands=_Harness.CANDS, hp=hp)
+        assert s.generate_move()[0].gtp() == "C7"
+        info = s.last_decision_info
+        assert (info["forced_from"], info["kind"]) == ("no_natural", "forced")
+        assert s.queries == ["parent hp"] and s.probe_calls == [["E5", "C7"]]
+
+    def test_none_qualified_exit_reuses_the_s15_probes(self):
+        """通常の候補 D4（hp 0.30）・F6（0.15）はプローブで cost 0.7・1.0 > A_t 0.5 → none_qualified。
+        この層は同じプローブを使って D4（hp 最大）を打つ（読み直さない）。"""
+        probes = {"E5": (4.0, 0.80), "D4": (3.3, 0.75), "F6": (3.0, 0.74)}
+        s, _ = self._forced(2, cands=_Harness.CANDS, hp=_Harness.HP, probes=probes)
+        assert s.generate_move()[0].gtp() == "D4"
+        info = s.last_decision_info
+        assert (info["forced_from"], info["forced_gtp"]) == ("none_qualified", "D4")
+        assert info["forced_cost"] == pytest.approx(0.7)
+        assert s.probe_calls == [["E5", "D4", "F6"]] and info["queries"] == 7
+
+    def test_none_qualified_exit_probes_a_forced_candidate_outside_the_shortlist(self):
+        """M2: forced の候補（C7）が S15 のショートリストに無ければ、その手だけ読み直す（E5・D4・F6 は読み直さない）。
+        C7（生 2.0）は通常の層の raw_cap 0.8 の外だが、forced の cap_f(3.0) + 0.3 = 3.3 の内。D4 の hp 0.30 が
+        C7 の 0.20 より高いので、どちらも資格を持てば D4 が選ばれる。"""
+        hp = {**_Harness.HP, "C7": 0.20}
+        probes = {"E5": (4.0, 0.80), "D4": (3.3, 0.75), "F6": (3.0, 0.74), "C7": (2.5, 0.72)}
+        s, _ = self._forced(2, cands=_Harness.CANDS, hp=hp, probes=probes)
+        assert s.generate_move()[0].gtp() == "D4"
+        info = s.last_decision_info
+        assert (info["forced_from"], info["forced_gtp"]) == ("none_qualified", "D4")
+        assert s.probe_calls == [["E5", "D4", "F6"], ["C7"]]
+        assert info["queries"] == 1 + 6 + 2
+
+    def test_none_qualified_exit_reprobes_an_s15_move_with_no_clean_probe(self):
+        """M2: S15 の手（F6）の clean が None（プローブ未完了）なら、forced はその手だけ読み直す。"""
+        probes = {"E5": (4.0, 0.80), "D4": (3.3, 0.75), "F6": None}
+        s, _ = self._forced(2, cands=_Harness.CANDS, hp=_Harness.HP, probes=probes)
+        assert s.generate_move()[0].gtp() == "D4"
+        info = s.last_decision_info
+        assert (info["forced_from"], info["forced_gtp"]) == ("none_qualified", "D4")
+        assert s.probe_calls == [["E5", "D4", "F6"], ["F6"]]
+        assert info["queries"] == 1 + 6 + 2
+
+    def test_white_plays_the_same_move(self):
+        s, _ = self._forced(2, player="W")
+        assert s.generate_move()[0].gtp() == "C7"
+        assert s.last_decision_info["forced"] == "played"
+
+    # ---- I3: 失着の層と両方 ON（裁定 I1）。TestBlunder と違い _veil_blunder_probe / _veil_blunder_draw の
+    # 差し替えが要る場面だけ self._strategy を直に使う。ほかは _forced（veil9_blunder_mode を settings で足す）。
+
+    @pytest.mark.parametrize("blunder_mode", [1, 2])
+    def test_both_layers_on_forced_plays_what_blunder_passed_over_by_hp(self, blunder_mode):
+        """裁定 I1: 失着の層が hp の床（0.7 × 0.40 = 0.28）で候補なし（no_cand）になった no_pool の手番を、
+        forced が拾って打つ（親局面の humanSL は1本だけ・S9b と共有）。"""
+        settings = {"veil9_blunder_mode": blunder_mode}
+        probes = {"E5": (12.0, 0.96), "C7": (8.0, 0.85)}
+        s, _ = self._forced(
+            2, cands=self.BOTH_ON_CANDS, hp=self.BOTH_ON_HP, lead=12.0, wr=0.96, probes=probes, settings=settings
+        )
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert move.gtp() == "C7"
+        assert s.queries == ["parent hp"]
+        assert info["blunder"] == "no_cand"
+        assert (info["forced"], info["forced_from"]) == ("played", "no_pool")
+
+    def test_both_layers_on_forced_shares_the_failed_parent_humansl(self):
+        """裁定 I1 の前提: S9b の humanSL が失敗すれば forced も同じ手番で撃ち直さない（no_hp を共有）。"""
+        settings = {"veil9_blunder_mode": 2}
+        s, _ = self._forced(
+            2, cands=self.BOTH_ON_CANDS, hp=self.BOTH_ON_HP, lead=12.0, wr=0.96, hp_ok=False, settings=settings
+        )
+        assert s.generate_move()[0].gtp() == "E5"
+        info = s.last_decision_info
+        assert (info["blunder"], info["forced"]) == ("no_hp", "no_hp")
+        assert s.queries == ["parent hp"]
+
+    def test_both_layers_on_forced_plays_a_move_blunder_skipped_by_its_draw(self):
+        """裁定 I1: 失着の層が抽選（VEIL_BLUNDER_PROB）で見送った手（skipped）を forced が同じ手番に打つ。"""
+        settings = {"veil9_blunder_mode": 2, "veil9_forced_mode": 2}
+        probes = {"E5": _child(20.0, 0.99), "G3": _child(15.5, 0.97)}
+        s, _ = self._strategy(
+            lead=20.0, wr=0.99, cands=self.SKIPPED_CANDS, hp=self.SKIPPED_HP, probes=probes, settings=settings
+        )
+        deep = {"E5": (20.0, 0.99), "G3": (15.5, 0.97)}
+
+        def deep_probe(gtps, player):
+            return {g: _child(*deep[g], player=player)["clean"] for g in gtps}
+
+        s._veil_blunder_probe = deep_probe
+        s._veil_blunder_draw = lambda: 0.99
+        move, _ = s.generate_move()
+        info = s.last_decision_info
+        assert move.gtp() == "G3"
+        assert (info["blunder"], info["blunder_gtp"]) == ("skipped", "G3")
+        assert (info["forced"], info["forced_gtp"]) == ("played", "G3")
+
+
 MANUAL_PARITY_PAGE = Path(__file__).resolve().parent.parent / "docs" / "manual" / "src" / "06d_ai_parity.html"
 
 
@@ -2258,6 +2652,36 @@ class TestRegistration:
         )
         m = re.search(rf'msgid "aihelp:{prefix}"\s*\nmsgstr "(.*)"', po)
         assert m and f"{prefix}_blunder_mode" in m.group(1), prefix
+
+    @pytest.mark.parametrize("cls,size,prefix,ai_key,const", VEILS, ids=VEIL_IDS)
+    def test_forced_settings_are_registered(self, cls, size, prefix, ai_key, const):
+        """最善手しか無い手番の外しの4キー（spec §14.2）: 画面の並びは 20〜23、候補値は spec の表どおり、mode は整数、
+        jp の概要がこの層（<prefix>_forced_mode）を案内する。"""
+        from katrain.core.constants import AI_OPTION_ORDER, AI_OPTION_VALUES
+
+        with open(Path(katrain.__file__).parent / "config.json", encoding="utf-8") as f:
+            package_ai_conf = json.load(f)["ai"][ai_key]
+        min_lead = {9: [0.5, 1.0, 2.0, 3.0], 13: [1.0, 2.0, 3.0, 5.0], 19: [2.0, 3.0, 5.0, 8.0]}
+        max_loss = {9: [3.0, 4.0, 5.0, 6.0, 8.0], 13: [6.0, 8.0, 10.0, 12.0, 15.0], 19: [8.0, 10.0, 15.0, 20.0]}
+        winrates = [(0.6, "60%"), (0.7, "70%"), (0.75, "75%"), (0.8, "80%"), (0.85, "85%")]
+        expected = {  # 接尾辞: (画面の並び, 候補値, 型)
+            "forced_mode": (20, [(0, "OFF"), (1, "LOG"), (2, "ON")], int),
+            "forced_min_lead": (21, min_lead[size], float),
+            "forced_min_winrate": (22, winrates, float),
+            "forced_max_loss": (23, max_loss[size], float),
+        }
+        for suffix, (order, values, typ) in expected.items():
+            key = f"{prefix}_{suffix}"
+            assert AI_OPTION_ORDER[key] == order, key
+            assert AI_OPTION_VALUES[key] == values, key
+            assert type(cls.SETTING_DEFAULTS[suffix]) is typ, key
+            assert type(package_ai_conf[key]) is typ, key
+        assert cls.SETTING_DEFAULTS["forced_mode"] == 0
+        po = (Path(katrain.__file__).parent / "i18n" / "locales" / "jp" / "LC_MESSAGES" / "katrain.po").read_text(
+            encoding="utf-8"
+        )
+        m = re.search(rf'msgid "aihelp:{prefix}"\s*\nmsgstr "(.*)"', po)
+        assert m and f"{prefix}_forced_mode" in m.group(1), prefix
 
     def test_debug_cli_names(self):
         from katrain_debug.runner import STRATEGY_NAME_MAP
