@@ -7,8 +7,10 @@ run.json（計画＋実行環境）を最初に書き、1局ごとに games.json
 
 import datetime
 import glob
+import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 
@@ -33,6 +35,12 @@ RECON_DIR = os.path.join(SELFPLAY_DATA, "recon")
 RECON_DIRS = {9: os.path.join(SELFPLAY_DATA, "recon_9")}
 DEFAULT_OUT_ROOT = os.path.join(REPO_ROOT, "experiments", "selfplay")
 COMPARE_METRICS = ("own_top1", "opp_top1", "own_minus_opp", "flip_moves", "win", "own_mean_ptloss", "ge6")
+CONFIG_SNAPSHOT = "config-snapshot.json"  # run / calibrate が出力ディレクトリに置く config の写し（spec §16.2 手順9）
+
+
+def file_sha256(path):
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
 
 
 def delegate_fingerprint(arm):
@@ -204,6 +212,23 @@ class OutputDir:
     def read_json(self, name):
         with open(self.file(name), encoding="utf-8") as f:
             return json.load(f)
+
+    def snapshot_config(self, config_path):
+        """使った config の写し（CONFIG_SNAPSHOT）を置き、run.json に足す {config_snapshot, config_sha256} を返す。"""
+        shutil.copyfile(config_path, self.file(CONFIG_SNAPSHOT))
+        return {"config_snapshot": CONFIG_SNAPSHOT, "config_sha256": file_sha256(self.file(CONFIG_SNAPSHOT))}
+
+    def pinned_config(self, plan):
+        """再開で読む config: 写し（中身が run.json の sha256 と違えば止まる）。写しの無い古い実行は plan の config_path。"""
+        name = plan.get("config_snapshot")
+        if not name:
+            return plan["config_path"]
+        path = self.file(name)
+        if not os.path.exists(path):
+            raise SystemExit(f"{path}: the config snapshot named in run.json is missing")
+        if file_sha256(path) != plan.get("config_sha256"):
+            raise SystemExit(f"{path}: the config snapshot was edited after the run started (sha256 differs)")
+        return path
 
     def _jsonl(self, name, log=print):
         """jsonl の (行の文字列, dict) のリスト。最後の行だけが壊れている（書いている途中で止まった）なら捨てて warning を

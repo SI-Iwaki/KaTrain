@@ -202,8 +202,11 @@ def _plan_warnings(plan):
 
 
 def _new_output(args, stub, plan, label):
+    """出力ディレクトリ・使った config の写し（config-snapshot.json）・run.json。--resume はこの写しを読む
+    （止めている間にユーザー config を変えても、再開した局の設定は変わらない・spec §16.2 手順9）。"""
     out = R.OutputDir.create(args.out_root, label)
-    out.write_json("run.json", {**plan, **R.run_meta(stub)})
+    snapshot = out.snapshot_config(plan["config_path"])
+    out.write_json("run.json", {**plan, **snapshot, **R.run_meta(stub)})
     safe_print(f"output: {out.path}")
     return out
 
@@ -212,7 +215,7 @@ def _resume(args):
     out = R.OutputDir(args.resume)
     plan = out.read_json("run.json")
     safe_print(f"resume: {out.path}")
-    return out, plan, make_stub(plan["config_path"])
+    return out, plan, make_stub(out.pinned_config(plan))
 
 
 def _plan_run(args):

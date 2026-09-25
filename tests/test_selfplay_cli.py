@@ -395,6 +395,34 @@ class TestOpenWindowNote:
         assert plan["arms"][0]["delegate"]["strategy_key"] == "ai:enigma9plus"
 
 
+class TestConfigSnapshot:
+    """spec §16.2 手順9: run は使った config の写しを置き、--resume はその写しを読む。"""
+
+    def test_resume_reads_the_pinned_copy_not_the_live_config(self, env):
+        CLI.main(_run_args(env, "--arm", "A=default"))
+        run_dir = _only_dir(env["out"])
+        plan = json.load(open(os.path.join(run_dir, "run.json"), encoding="utf-8"))
+        snap = os.path.join(run_dir, "config-snapshot.json")
+        assert plan["config_snapshot"] == "config-snapshot.json" and plan["config_sha256"] == CLI.R.file_sha256(snap)
+        assert open(snap, "rb").read() == open(env["config"], "rb").read()
+        games = os.path.join(run_dir, "games.jsonl")
+        first = open(games, encoding="utf-8").read().splitlines()[0]
+        open(games, "w", encoding="utf-8").write(first + "\n")  # 1局だけ終えて止まった実行
+        cfg = json.loads(open(env["config"], encoding="utf-8").read())
+        cfg["ai"]["ai:default"] = {"edited": 1}  # 止めている間にユーザー config を変えた
+        open(env["config"], "w", encoding="utf-8").write(json.dumps(cfg))
+        CLI.main(["run", "--resume", run_dir, "--boot", "100"])  # 写しを読むので設定は変わらない＝止まらない
+        assert len(open(games, encoding="utf-8").read().splitlines()) == 2
+
+    def test_an_edited_snapshot_stops_the_resume(self, env):
+        CLI.main(_run_args(env, "--arm", "A=default"))
+        run_dir = _only_dir(env["out"])
+        with open(os.path.join(run_dir, "config-snapshot.json"), "a", encoding="utf-8") as f:
+            f.write(" ")
+        with pytest.raises(SystemExit, match="config snapshot was edited"):
+            CLI.main(["run", "--resume", run_dir, "--boot", "100"])
+
+
 class TestReportSgf:
     def test_report_of_a_saved_game_equals_the_game_record(self, env, capsys, monkeypatch):
         CLI.main(_run_args(env, "--arm", "A=default"))
