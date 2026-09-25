@@ -4968,6 +4968,10 @@ class Veil9Strategy(Enigma9Strategy):
         "blunder_max_loss": 6.0,    # 失着の上限（検証済み損失・目）
         "blunder_per_game": 1,      # 1局で打つ失着の上限（ON のとき）
         "blunder_hp_ratio": 0.7,    # 失着の手の hp ÷ 最善手の hp の下限（9段 humanSL）
+        "forced_mode": 0,           # 最善手しか無い手番の外し（spec §14）: 0 OFF / 1 記録のみ（影）/ 2 ON
+        "forced_min_lead": 1.0,     # 打った後に残すリード（目・root リード − 損と検証済みリードの両方）
+        "forced_min_winrate": 0.70,  # 打った後の検証済み勝率の下限
+        "forced_max_loss": 5.0,     # 1手の損の上限（検証済み・目。ヨセは yose_max_loss）
     }
     # スライダーにしない盤サイズ別の値（spec §6.1）
     VEIL_BOARD = {"endgame_move": 30, "unsettled_max": 8, "trusted_visits": 100, "probe_hp": 3, "probe_cheap": 2}
@@ -5697,6 +5701,10 @@ class Veil13Strategy(Veil9Strategy):
         "blunder_max_loss": 10.0,
         "blunder_per_game": 1,
         "blunder_hp_ratio": 0.7,
+        "forced_mode": 0,
+        "forced_min_lead": 2.0,
+        "forced_min_winrate": 0.70,
+        "forced_max_loss": 10.0,
     }
     VEIL_BOARD = {"endgame_move": 85, "unsettled_max": 16, "trusted_visits": 50, "probe_hp": 3, "probe_cheap": 2}
 
@@ -5733,6 +5741,10 @@ class Veil19Strategy(Veil9Strategy):
         "blunder_max_loss": 15.0,
         "blunder_per_game": 1,
         "blunder_hp_ratio": 0.7,
+        "forced_mode": 0,
+        "forced_min_lead": 3.0,
+        "forced_min_winrate": 0.70,
+        "forced_max_loss": 15.0,
     }
     VEIL_BOARD = {"endgame_move": 150, "unsettled_max": 36, "trusted_visits": 50, "probe_hp": 3, "probe_cheap": 1}
 

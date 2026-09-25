@@ -251,6 +251,19 @@ _VEIL_BLUNDER_MAX_LOSS = {
 }
 _VEIL_BLUNDER_PER_GAME = [1, 2, 3]
 _VEIL_BLUNDER_HP_RATIO = [(0.5, "50%"), (0.7, "70%"), (0.8, "80%"), (1.0, "100%")]
+# 韜晦の「最善手しか無い手番の外し」層（veil*_forced_*・spec §14.2）。上限だけ盤サイズ別。mode は 0 OFF / 1 記録のみ（影）/ 2 ON
+_VEIL_FORCED_MODE = [(0, "OFF"), (1, "LOG"), (2, "ON")]
+_VEIL_FORCED_MIN_LEAD = {
+    9: [0.5, 1.0, 2.0, 3.0],
+    13: [1.0, 2.0, 3.0, 5.0],
+    19: [2.0, 3.0, 5.0, 8.0],
+}
+_VEIL_FORCED_MIN_WINRATE = [(0.6, "60%"), (0.7, "70%"), (0.75, "75%"), (0.8, "80%"), (0.85, "85%")]
+_VEIL_FORCED_MAX_LOSS = {
+    9: [3.0, 4.0, 5.0, 6.0, 8.0],
+    13: [6.0, 8.0, 10.0, 12.0, 15.0],
+    19: [8.0, 10.0, 15.0, 20.0],
+}
 
 AI_OPTION_VALUES = {
     "kyu_rank": [(k, f"{k}[strength:kyu]") for k in range(15, 0, -1)]
@@ -555,6 +568,10 @@ AI_OPTION_VALUES = {
     "veil9_blunder_max_loss": _VEIL_BLUNDER_MAX_LOSS[9],
     "veil9_blunder_per_game": _VEIL_BLUNDER_PER_GAME,
     "veil9_blunder_hp_ratio": _VEIL_BLUNDER_HP_RATIO,
+    "veil9_forced_mode": _VEIL_FORCED_MODE,
+    "veil9_forced_min_lead": _VEIL_FORCED_MIN_LEAD[9],
+    "veil9_forced_min_winrate": _VEIL_FORCED_MIN_WINRATE,
+    "veil9_forced_max_loss": _VEIL_FORCED_MAX_LOSS[9],
     "veil13_target_rate": _VEIL_TARGET_RATE,
     "veil13_reserve": _VEIL_RESERVE,
     "veil13_min_winrate": _VEIL_MIN_WINRATE,
@@ -575,6 +592,10 @@ AI_OPTION_VALUES = {
     "veil13_blunder_max_loss": _VEIL_BLUNDER_MAX_LOSS[13],
     "veil13_blunder_per_game": _VEIL_BLUNDER_PER_GAME,
     "veil13_blunder_hp_ratio": _VEIL_BLUNDER_HP_RATIO,
+    "veil13_forced_mode": _VEIL_FORCED_MODE,
+    "veil13_forced_min_lead": _VEIL_FORCED_MIN_LEAD[13],
+    "veil13_forced_min_winrate": _VEIL_FORCED_MIN_WINRATE,
+    "veil13_forced_max_loss": _VEIL_FORCED_MAX_LOSS[13],
     "veil19_target_rate": _VEIL_TARGET_RATE,
     "veil19_reserve": _VEIL_RESERVE,
     "veil19_min_winrate": _VEIL_MIN_WINRATE,
@@ -595,6 +616,10 @@ AI_OPTION_VALUES = {
     "veil19_blunder_max_loss": _VEIL_BLUNDER_MAX_LOSS[19],
     "veil19_blunder_per_game": _VEIL_BLUNDER_PER_GAME,
     "veil19_blunder_hp_ratio": _VEIL_BLUNDER_HP_RATIO,
+    "veil19_forced_mode": _VEIL_FORCED_MODE,
+    "veil19_forced_min_lead": _VEIL_FORCED_MIN_LEAD[19],
+    "veil19_forced_min_winrate": _VEIL_FORCED_MIN_WINRATE,
+    "veil19_forced_max_loss": _VEIL_FORCED_MAX_LOSS[19],
     # ===== TsumegoOwnershipStrategy（ai:tsumego）の ON/OFF 項目: チェックボックスで出す =====
     "gain_verify": "bool",
     "ko_win_assumption": "bool",
@@ -842,6 +867,10 @@ AI_OPTION_ORDER = {
     "veil9_blunder_max_loss": 17,
     "veil9_blunder_per_game": 18,
     "veil9_blunder_hp_ratio": 19,
+    "veil9_forced_mode": 20,
+    "veil9_forced_min_lead": 21,
+    "veil9_forced_min_winrate": 22,
+    "veil9_forced_max_loss": 23,
     "veil13_target_rate": 0,
     "veil13_reserve": 1,
     "veil13_min_winrate": 2,
@@ -862,6 +891,10 @@ AI_OPTION_ORDER = {
     "veil13_blunder_max_loss": 17,
     "veil13_blunder_per_game": 18,
     "veil13_blunder_hp_ratio": 19,
+    "veil13_forced_mode": 20,
+    "veil13_forced_min_lead": 21,
+    "veil13_forced_min_winrate": 22,
+    "veil13_forced_max_loss": 23,
     "veil19_target_rate": 0,
     "veil19_reserve": 1,
     "veil19_min_winrate": 2,
@@ -882,6 +915,10 @@ AI_OPTION_ORDER = {
     "veil19_blunder_max_loss": 17,
     "veil19_blunder_per_game": 18,
     "veil19_blunder_hp_ratio": 19,
+    "veil19_forced_mode": 20,
+    "veil19_forced_min_lead": 21,
+    "veil19_forced_min_winrate": 22,
+    "veil19_forced_max_loss": 23,
 }
 
 AI_KEY_PROPERTIES = {

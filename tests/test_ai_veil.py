@@ -813,6 +813,11 @@ SPEC_DEFAULTS = {
         "blunder_max_loss": 6.0,
         "blunder_per_game": 1,
         "blunder_hp_ratio": 0.7,
+        # spec §14.2（2026-09-25）
+        "forced_mode": 0,
+        "forced_min_lead": 1.0,      # 13路 2.0・19路 3.0
+        "forced_min_winrate": 0.70,
+        "forced_max_loss": 5.0,      # 13路 10.0・19路 15.0
     },
     13: {
         "target_rate": 0.30,
@@ -835,6 +840,10 @@ SPEC_DEFAULTS = {
         "blunder_max_loss": 10.0,
         "blunder_per_game": 1,
         "blunder_hp_ratio": 0.7,
+        "forced_mode": 0,
+        "forced_min_lead": 2.0,
+        "forced_min_winrate": 0.70,
+        "forced_max_loss": 10.0,
     },
     19: {
         "target_rate": 0.30,
@@ -857,6 +866,10 @@ SPEC_DEFAULTS = {
         "blunder_max_loss": 15.0,
         "blunder_per_game": 1,
         "blunder_hp_ratio": 0.7,
+        "forced_mode": 0,
+        "forced_min_lead": 3.0,
+        "forced_min_winrate": 0.70,
+        "forced_max_loss": 15.0,
     },
 }
 # 校正（Task 17）で選んだ既定値の差分。apply_veil_defaults.py が書き換える（空なら spec のまま）
@@ -2363,6 +2376,36 @@ class TestRegistration:
         )
         m = re.search(rf'msgid "aihelp:{prefix}"\s*\nmsgstr "(.*)"', po)
         assert m and f"{prefix}_blunder_mode" in m.group(1), prefix
+
+    @pytest.mark.parametrize("cls,size,prefix,ai_key,const", VEILS, ids=VEIL_IDS)
+    def test_forced_settings_are_registered(self, cls, size, prefix, ai_key, const):
+        """最善手しか無い手番の外しの4キー（spec §14.2）: 画面の並びは 20〜23、候補値は spec の表どおり、mode は整数、
+        jp の概要がこの層（<prefix>_forced_mode）を案内する。"""
+        from katrain.core.constants import AI_OPTION_ORDER, AI_OPTION_VALUES
+
+        with open(Path(katrain.__file__).parent / "config.json", encoding="utf-8") as f:
+            package_ai_conf = json.load(f)["ai"][ai_key]
+        min_lead = {9: [0.5, 1.0, 2.0, 3.0], 13: [1.0, 2.0, 3.0, 5.0], 19: [2.0, 3.0, 5.0, 8.0]}
+        max_loss = {9: [3.0, 4.0, 5.0, 6.0, 8.0], 13: [6.0, 8.0, 10.0, 12.0, 15.0], 19: [8.0, 10.0, 15.0, 20.0]}
+        winrates = [(0.6, "60%"), (0.7, "70%"), (0.75, "75%"), (0.8, "80%"), (0.85, "85%")]
+        expected = {  # 接尾辞: (画面の並び, 候補値, 型)
+            "forced_mode": (20, [(0, "OFF"), (1, "LOG"), (2, "ON")], int),
+            "forced_min_lead": (21, min_lead[size], float),
+            "forced_min_winrate": (22, winrates, float),
+            "forced_max_loss": (23, max_loss[size], float),
+        }
+        for suffix, (order, values, typ) in expected.items():
+            key = f"{prefix}_{suffix}"
+            assert AI_OPTION_ORDER[key] == order, key
+            assert AI_OPTION_VALUES[key] == values, key
+            assert type(cls.SETTING_DEFAULTS[suffix]) is typ, key
+            assert type(package_ai_conf[key]) is typ, key
+        assert cls.SETTING_DEFAULTS["forced_mode"] == 0
+        po = (Path(katrain.__file__).parent / "i18n" / "locales" / "jp" / "LC_MESSAGES" / "katrain.po").read_text(
+            encoding="utf-8"
+        )
+        m = re.search(rf'msgid "aihelp:{prefix}"\s*\nmsgstr "(.*)"', po)
+        assert m and f"{prefix}_forced_mode" in m.group(1), prefix
 
     def test_debug_cli_names(self):
         from katrain_debug.runner import STRATEGY_NAME_MAP

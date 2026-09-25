@@ -387,7 +387,11 @@
             "veil9_blunder_mode": 0,
             "veil9_blunder_max_loss": 6.0,
             "veil9_blunder_per_game": 1,
-            "veil9_blunder_hp_ratio": 0.7
+            "veil9_blunder_hp_ratio": 0.7,
+            "veil9_forced_mode": 0,
+            "veil9_forced_min_lead": 1.0,
+            "veil9_forced_min_winrate": 0.7,
+            "veil9_forced_max_loss": 5.0
         },
         "ai:veil13": {
             "veil13_target_rate": 0.3,
@@ -409,7 +413,11 @@
             "veil13_blunder_mode": 0,
             "veil13_blunder_max_loss": 10.0,
             "veil13_blunder_per_game": 1,
-            "veil13_blunder_hp_ratio": 0.7
+            "veil13_blunder_hp_ratio": 0.7,
+            "veil13_forced_mode": 0,
+            "veil13_forced_min_lead": 2.0,
+            "veil13_forced_min_winrate": 0.7,
+            "veil13_forced_max_loss": 10.0
         },
         "ai:veil19": {
             "veil19_target_rate": 0.3,
@@ -431,7 +439,11 @@
             "veil19_blunder_mode": 0,
             "veil19_blunder_max_loss": 15.0,
             "veil19_blunder_per_game": 1,
-            "veil19_blunder_hp_ratio": 0.7
+            "veil19_blunder_hp_ratio": 0.7,
+            "veil19_forced_mode": 0,
+            "veil19_forced_min_lead": 3.0,
+            "veil19_forced_min_winrate": 0.7,
+            "veil19_forced_max_loss": 15.0
         },
         "ai:scoreloss": {
             "strength": 0.2
