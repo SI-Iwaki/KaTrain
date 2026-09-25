@@ -99,10 +99,10 @@
 </div>
 
 <div class="card" id="ai-veil">
-  <h3>韜晦（9路 / 13路 / 19路） <code>ai:veil9</code> / <code>ai:veil13</code> / <code>ai:veil19</code></h3>
+  <h3>一致率ひかえめ（9路 / 13路 / 19路） <code>ai:veil9</code> / <code>ai:veil13</code> / <code>ai:veil19</code></h3>
   <div class="tags"><span class="tag ok">盤サイズごとに専用</span><span class="tag hs">humanSL 必須</span><span class="tag">勝ち優先</span></div>
   <p>
-    勝ちを最優先にしたまま、評価レポートの<b>自分の最善手一致率を目標（<code>veil*_target_rate</code>）まで下げる</b>戦略です。
+    勝ちを最優先にしたまま、評価レポートの<b>自分の最善手一致率を目標（<code>veil*_target_rate</code>）まで下げる</b>戦略です（旧名「韜晦」）。
     相手より低くすることは目指しません（相手の一致率はログに出すだけ）。3 つは同じ仕組みで、盤サイズに合わせた既定値だけが違います
     （設定は <code>veil9_*</code> / <code>veil13_*</code> / <code>veil19_*</code> と別々に保存）。対応しない盤サイズで選ぶと常に最善手を打ちます。
   </p>

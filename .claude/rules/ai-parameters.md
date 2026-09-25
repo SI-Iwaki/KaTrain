@@ -774,7 +774,7 @@ sticky ヨセフラグ `game._mimic13_endgame`・ログタグ `[Mimic13Strategy]
 vloss 1.40・price 0.51・0.3 秒）／@67（λ 2.00）→ N5（trap・price 1.14。第一感 N9〈hp 60.5%〉は最善手自身が E 4.3 の罠で ΔE −1.60＝price 2.70 > λ）／
 @88（黒・lead −60）→ `Endgame check: unsettled=15 -> yose` → lead < reserve で最善手。プローブ 8〜9 手で 1.1 秒・2〜3 手で 0.2〜0.3 秒。
 
-## Veil9/13/19Strategy（`ai:veil9` / `ai:veil13` / `ai:veil19` / 韜晦（9/13/19路））
+## Veil9/13/19Strategy（`ai:veil9` / `ai:veil13` / `ai:veil19` / 一致率ひかえめ（旧名 韜晦・9/13/19路））
 
 9/13/19路それぞれ専用。**勝ちを最優先にしたまま、自分の AI 最善手一致率（終局レポートの値）を絶対目標まで下げる**。
 設計: `2026-09-23-veil-strategy-design.md`。`Veil9Strategy(Enigma9Strategy)` が `_generate_move` を上書きし、13/19路は
