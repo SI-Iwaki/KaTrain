@@ -63,6 +63,20 @@ class TestBoardConstants:
     def test_calibration_targets_9_have_the_shape_of_13(self):
         """計測の準備（C3）: 9路の目標は recon_9 から（spec §16.2 手順4）。形は 13路と同じ。"""
         assert S.calib_targets_for(9) is S.CALIB_TARGETS_9 and S.CALIB_TARGET_GAMES[9] == "7/16"
+        assert S.CALIB_TARGETS_9 == {  # 9路の目標は変えない（recon_9 から。C3）
+            "opp_mean": 0.308,
+            "opp_sd": 0.166,
+            "opp_loss": 1.88,
+            "opp_ge2": 0.23,
+            "opp_ge5": 0.1,
+            "ai_mean": 0.628,
+            "moves_median": 48.0,
+            "bins": {
+                "cal_opening": {"opp_top1": 0.233, "opp_loss": 0.77},
+                "cal_middle": {"opp_top1": 0.332, "opp_loss": 2.4},
+                "cal_endgame": {"opp_top1": 0.355, "opp_loss": 0.78},
+            },
+        }
         assert set(S.CALIB_TARGETS_9) == set(S.CALIB_TARGETS_13)
         assert all(set(S.CALIB_TARGETS_9["bins"][b]) == {"opp_top1", "opp_loss"} for b in S.CALIB_TARGETS_13["bins"])
         assert S.CALIB_TARGETS_9["moves_median"] == 48
