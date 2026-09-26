@@ -1,0 +1,26 @@
+# selfplay summary (own = strategy, opp = opponent; WATCH tree; rates in %)
+
+## arms
+group                              n    W-L-J        win CI own mean        own CI opp mean own-opp P(o<p) P<=T+5   P<15  loss o/p  >=6 flip lead med moves hp dev p95 s
+f8                                20 13-5-2     [43.3,81.9]    70.9%   [65.8,75.7]    57.3%   13.6%  25.0%   5.0%   0.0% 0.16/0.35 0.05 0.05     +2.0    55  26.8%  0.60
+f8_open6                          20 12-3-5     [38.7,78.1]    72.0%   [66.1,77.8]    59.6%   12.4%  25.0%   0.0%   0.0% 0.16/0.34 0.00 0.00     +3.0    57  26.3%  0.48
+f8_open6_lead3                    20 14-2-4     [48.1,85.5]    72.4%   [68.0,76.8]    56.5%   15.9%   5.0%   0.0%   0.0% 0.15/0.35 0.05 0.20     +2.4    56  29.0%  0.44
+layers                            20 14-4-2     [48.1,85.5]    75.1%   [71.1,79.1]    62.9%   12.2%  20.0%   0.0%   0.0% 0.22/0.36 0.05 0.10     +3.7    55  29.9%  0.53
+
+## arm|rank|color
+group                              n    W-L-J        win CI own mean        own CI opp mean own-opp P(o<p) P<=T+5   P<15  loss o/p  >=6 flip lead med moves hp dev p95 s
+f8_open6_lead3|strategy:human|B   10  4-2-4     [16.8,68.7]    74.5%   [68.3,81.2]    59.2%   15.3%   0.0%   0.0%   0.0% 0.14/0.29 0.10 0.00     +0.1    58  29.9%  0.51
+f8_open6_lead3|strategy:human|W   10 10-0-0    [72.2,100.0]    70.2%   [64.3,75.3]    53.8%   16.5%  10.0%   0.0%   0.0% 0.17/0.40 0.00 0.40     +3.9    55  28.7%  0.38
+f8_open6|strategy:human|B         10  4-2-4     [16.8,68.7]    72.3%   [63.4,79.8]    59.7%   12.7%  20.0%   0.0%   0.0% 0.13/0.31 0.00 0.00     +0.1    62  28.3%  0.51
+f8_open6|strategy:human|W         10  8-1-1     [49.0,94.3]    71.7%   [63.5,80.0]    59.5%   12.2%  30.0%   0.0%   0.0% 0.18/0.36 0.00 0.00     +3.7    53  25.2%  0.47
+f8|strategy:human|B               10  5-4-1     [23.7,76.3]    65.3%   [58.9,70.9]    58.7%    6.7%  40.0%  10.0%   0.0% 0.14/0.33 0.00 0.00     +1.0    55  25.6%  0.56
+f8|strategy:human|W               10  8-1-1     [49.0,94.3]    76.4%   [70.4,82.1]    55.9%   20.5%  10.0%   0.0%   0.0% 0.17/0.37 0.10 0.10     +2.0    55  27.1%  0.67
+layers|strategy:human|B           10  6-2-2     [31.3,83.2]    74.3%   [68.3,80.0]    63.5%   10.8%  20.0%   0.0%   0.0% 0.29/0.38 0.10 0.10     +3.7    51  28.5%  0.47
+layers|strategy:human|W           10  8-2-0     [49.0,94.3]    75.9%   [70.6,81.7]    62.3%   13.6%  20.0%   0.0%   0.0% 0.15/0.34 0.00 0.10     +3.2    57  30.5%  0.58
+
+## own top1 by bin (pooled)
+f8: all=70.1% gui_opening=70.0% gui_middle=87.1% gui_endgame=53.3% cal_opening=70.0% cal_middle=78.3% cal_endgame=53.6%
+f8_open6: all=71.8% gui_opening=88.2% gui_middle=76.7% gui_endgame=59.7% cal_opening=88.2% cal_middle=72.7% cal_endgame=58.4%
+f8_open6_lead3: all=71.9% gui_opening=89.1% gui_middle=76.1% gui_endgame=60.2% cal_opening=89.1% cal_middle=75.9% cal_endgame=53.4%
+layers: all=74.6% gui_opening=55.5% gui_middle=87.1% gui_endgame=72.5% cal_opening=55.5% cal_middle=83.1% cal_endgame=72.7%
+

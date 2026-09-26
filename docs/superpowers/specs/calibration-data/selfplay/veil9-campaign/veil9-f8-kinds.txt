@@ -1,0 +1,15 @@
+== 9-1
+  layers          turns 626  best 58%  free 3.3/g  paid 2.9/g  forced 2.08/g (vloss mean 1.65, >=5: 0)  opening 0.0/g  decided 2.2/g
+  f8              turns 669  best 53%  free 3.5/g  paid 3.5/g  forced 2.21/g (vloss mean 1.37, >=5: 3)  opening 0.0/g  decided 2.9/g
+  f8_open6        turns 598  best 57%  free 1.4/g  paid 2.6/g  forced 2.25/g (vloss mean 2.58, >=5: 9)  opening 2.2/g  decided 1.7/g
+  f8_open6_lead3  turns 650  best 55%  free 1.6/g  paid 3.8/g  forced 0.67/g (vloss mean 3.06, >=5: 5)  opening 2.0/g  decided 3.1/g
+== 9-4
+  layers          turns 505  best 58%  free 5.5/g  paid 1.8/g  forced 2.60/g (vloss mean 1.17, >=5: 0)  opening 0.0/g  decided 0.2/g
+  f8              turns 520  best 56%  free 5.5/g  paid 2.1/g  forced 2.65/g (vloss mean 0.75, >=5: 0)  opening 0.0/g  decided 0.5/g
+  f8_open6        turns 518  best 60%  free 4.3/g  paid 1.2/g  forced 1.85/g (vloss mean 1.20, >=5: 2)  opening 2.1/g  decided 0.4/g
+  f8_open6_lead3  turns 504  best 64%  free 4.7/g  paid 1.1/g  forced 0.25/g (vloss mean -0.06, >=5: 0)  opening 2.5/g  decided 0.1/g
+== 9-5
+  layers          turns 569  best 74%  free 4.9/g  paid 0.8/g  forced 0.80/g (vloss mean 0.78, >=5: 0)  opening 0.0/g  decided 0.1/g
+  f8              turns 542  best 70%  free 5.2/g  paid 0.9/g  forced 0.50/g (vloss mean 0.21, >=5: 0)  opening 0.0/g  decided 0.8/g
+  f8_open6        turns 564  best 71%  free 4.8/g  paid 0.9/g  forced 1.15/g (vloss mean 0.60, >=5: 0)  opening 0.0/g  decided 0.5/g
+  f8_open6_lead3  turns 565  best 71%  free 5.5/g  paid 1.0/g  forced 0.05/g (vloss mean 4.08, >=5: 0)  opening 0.0/g  decided 0.3/g

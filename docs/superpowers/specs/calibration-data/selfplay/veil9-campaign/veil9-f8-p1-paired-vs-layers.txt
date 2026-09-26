@@ -1,0 +1,30 @@
+## paired diff f8 - layers (same seed; conf 0.975)
+own_top1         n= 24 mean=-0.0403 t=-0.1000..+0.0193 boot=-0.0952..+0.0137 wilcoxon_p=0.1439 verdict(+-3pt)=extend
+opp_top1         n= 24 mean=-0.0221 t=-0.0685..+0.0244 boot=-0.0662..+0.0175 wilcoxon_p=0.3869 verdict(+-3pt)=extend
+own_minus_opp    n= 24 mean=-0.0183 t=-0.1010..+0.0645 boot=-0.0934..+0.0590 wilcoxon_p=0.5503 verdict(+-3pt)=extend
+flip_moves       n= 24 mean=+0.0833 t=-0.1165..+0.2832 boot=-0.0833..+0.2917 wilcoxon_p=0.3173 verdict(+-3pt)=-
+win              n= 24 mean=+0.0000 t=+0.0000..+0.0000 boot=+0.0000..+0.0000 wilcoxon_p=- verdict(+-3pt)=-
+own_mean_ptloss  n= 24 mean=-0.0182 t=-0.1557..+0.1193 boot=-0.1485..+0.1039 wilcoxon_p=0.7469 verdict(+-3pt)=-
+ge6              n= 24 mean=+0.0000 t=-0.2500..+0.2500 boot=-0.2083..+0.2500 wilcoxon_p=1.0000 verdict(+-3pt)=-
+
+
+## paired diff f8_open6 - layers (same seed; conf 0.975)
+own_top1         n= 24 mean=-0.0202 t=-0.0841..+0.0438 boot=-0.0785..+0.0386 wilcoxon_p=0.4749 verdict(+-3pt)=extend
+opp_top1         n= 24 mean=-0.0563 t=-0.1176..+0.0051 boot=-0.1106..+0.0018 wilcoxon_p=0.0559 verdict(+-3pt)=extend
+own_minus_opp    n= 24 mean=+0.0361 t=-0.0606..+0.1328 boot=-0.0532..+0.1239 wilcoxon_p=0.4826 verdict(+-3pt)=extend
+flip_moves       n= 24 mean=+0.5833 t=+0.0646..+1.1021 boot=+0.1250..+1.0833 wilcoxon_p=0.0150 verdict(+-3pt)=-
+win              n= 24 mean=+0.0000 t=+0.0000..+0.0000 boot=+0.0000..+0.0000 wilcoxon_p=- verdict(+-3pt)=-
+own_mean_ptloss  n= 24 mean=+0.1586 t=-0.0086..+0.3257 boot=+0.0092..+0.3167 wilcoxon_p=0.0340 verdict(+-3pt)=-
+ge6              n= 24 mean=+0.3333 t=-0.0103..+0.6769 boot=+0.0417..+0.6667 wilcoxon_p=0.0335 verdict(+-3pt)=-
+
+
+## paired diff f8_open6_lead3 - layers (same seed; conf 0.975)
+own_top1         n= 24 mean=-0.0275 t=-0.1014..+0.0465 boot=-0.0920..+0.0438 wilcoxon_p=0.3011 verdict(+-3pt)=extend
+opp_top1         n= 24 mean=-0.0859 t=-0.1515..-0.0202 boot=-0.1418..-0.0235 wilcoxon_p=0.0097 verdict(+-3pt)=extend
+own_minus_opp    n= 24 mean=+0.0584 t=-0.0314..+0.1483 boot=-0.0207..+0.1439 wilcoxon_p=0.3165 verdict(+-3pt)=extend
+flip_moves       n= 24 mean=+0.2083 t=-0.1137..+0.5304 boot=-0.0833..+0.5000 wilcoxon_p=0.1317 verdict(+-3pt)=-
+win              n= 24 mean=+0.0000 t=+0.0000..+0.0000 boot=+0.0000..+0.0000 wilcoxon_p=- verdict(+-3pt)=-
+own_mean_ptloss  n= 24 mean=-0.0118 t=-0.1635..+0.1399 boot=-0.1505..+0.1258 wilcoxon_p=0.9888 verdict(+-3pt)=-
+ge6              n= 24 mean=+0.1667 t=-0.2060..+0.5393 boot=-0.1250..+0.5417 wilcoxon_p=0.3173 verdict(+-3pt)=-
+
+
