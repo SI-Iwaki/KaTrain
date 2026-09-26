@@ -444,3 +444,12 @@ enigma 7（負け 4・持碁 3）。ただし layers はそれぞれ 3・2 で�
 → 9路では研究外しは目安の上で採る候補にならない。9路の既定では loose9 が spec と差がなく（+1.1pt）、下げたのは forced を含む層（spec − layers +9.8pt）。
 13路（`veil13-campaign.md` の節）は 13-1 の差 `local_open` − `local` が −5.0pt [t −9.8, −0.3] で 0 をまたがずに下がり、13-2・13-3 の勝ち以外は local_open 0 で enigma（0・5）以下＝目安を満たす
 （ただし 13-3 の強い相手では +3.2pt・13-4 の接戦ストレスでは −0.4pt で下がらない）。どれを採るかは C10 でユーザーが決める。
+
+## ユーザーの決定（2026-09-26）
+
+- **9路のローカル設定を layers にする**（`ai:veil9`: loose9 の 7 キー＝free_loss 0.3・spend_rate 1.0・max_loss 4.0・yose_max_loss 1.5・
+  dominant_hp 1.01・dominant_max_loss 2.0・natural_ratio 0.1、失着の層 ON〈blunder_mode 2〉・forced の層 ON〈forced_mode 2〉、研究外し OFF〈open_moves 0〉。
+  安全条件 reserve 3.0・min_winrate 0.85 と層のほかのキーは 9路の既定のまま）。コードの既定値は変えない。
+- **9路の研究外しは OFF のまま**（局全体の一致率が下がらず、強い相手で負けが増えたため）。
+- ブランチ `veil-opening` を master にマージする（層の既定は OFF）。
+- 次は実戦で確かめる（各 10 局以上・ログの `Rate:` / `Decision:`・実戦の直後にログを `experiments/selfplay/realgames-9x9-logs/` に退避）。
