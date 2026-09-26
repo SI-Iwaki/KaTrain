@@ -1,0 +1,23 @@
+== layers (recon_9_veil_layers・9 局)
+misaligned: 0
+kind        n   post-hoc match   mean ptloss   in-game best==2500v top
+best        155    152 (98.1%)     -0.07         152 (98.1%)
+free         36      9 (25.0%)      0.04          24 (66.7%)
+paid         24      1 ( 4.2%)      0.72          22 (91.7%)
+decided      18      7 (38.9%)     -0.39          11 (61.1%)
+forced       16      0 ( 0.0%)      1.17          16 (100.0%)
+swap          1      1 (100.0%)      0.16           0 ( 0.0%)
+total       250    170 (68.0%)
+not_yose: 95/145 = 65.5%
+yose: 75/105 = 71.4%
+
+== 前の設定 (recon_9_veil・8 局)
+misaligned: 0
+kind        n   post-hoc match   mean ptloss   in-game best==2500v top
+best        102     98 (96.1%)     -0.09          98 (96.1%)
+free         22      2 ( 9.1%)      0.14          19 (86.4%)
+paid         21      0 ( 0.0%)      0.57          21 (100.0%)
+decided       8      2 (25.0%)     -0.54           6 (75.0%)
+total       153    102 (66.7%)
+not_yose: 81/123 = 65.9%
+yose: 21/30 = 70.0%
