@@ -1,0 +1,550 @@
+[
+ {
+  "source": "docs/superpowers/specs/calibration-data/selfplay/recon_9_veil",
+  "size": 9,
+  "window": 12,
+  "games": [
+   {
+    "game": "game_20260926_001643",
+    "own_in": {
+     "n": 6,
+     "match": 5
+    },
+    "own_out": {
+     "n": 10,
+     "match": 7
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 4
+    },
+    "opp_out": {
+     "n": 10,
+     "match": 1
+    },
+    "opp_streak": 0
+   },
+   {
+    "game": "game_20260926_001912",
+    "own_in": {
+     "n": 6,
+     "match": 5
+    },
+    "own_out": {
+     "n": 11,
+     "match": 6
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 3
+    },
+    "opp_out": {
+     "n": 10,
+     "match": 4
+    },
+    "opp_streak": 0
+   },
+   {
+    "game": "game_20260926_002128",
+    "own_in": {
+     "n": 6,
+     "match": 4
+    },
+    "own_out": {
+     "n": 17,
+     "match": 15
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 2
+    },
+    "opp_out": {
+     "n": 17,
+     "match": 6
+    },
+    "opp_streak": 0
+   },
+   {
+    "game": "game_20260926_002344",
+    "own_in": {
+     "n": 6,
+     "match": 2
+    },
+    "own_out": {
+     "n": 5,
+     "match": 4
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 4
+    },
+    "opp_out": {
+     "n": 4,
+     "match": 0
+    },
+    "opp_streak": 1
+   },
+   {
+    "game": "game_20260926_005258",
+    "own_in": {
+     "n": 6,
+     "match": 3
+    },
+    "own_out": {
+     "n": 18,
+     "match": 12
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 1
+    },
+    "opp_out": {
+     "n": 17,
+     "match": 1
+    },
+    "opp_streak": 1
+   },
+   {
+    "game": "game_20260926_005657",
+    "own_in": {
+     "n": 6,
+     "match": 4
+    },
+    "own_out": {
+     "n": 18,
+     "match": 9
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 2
+    },
+    "opp_out": {
+     "n": 18,
+     "match": 6
+    },
+    "opp_streak": 0
+   },
+   {
+    "game": "game_20260926_010014",
+    "own_in": {
+     "n": 6,
+     "match": 4
+    },
+    "own_out": {
+     "n": 12,
+     "match": 9
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 1
+    },
+    "opp_out": {
+     "n": 11,
+     "match": 4
+    },
+    "opp_streak": 1
+   },
+   {
+    "game": "game_20260926_010213",
+    "own_in": {
+     "n": 6,
+     "match": 4
+    },
+    "own_out": {
+     "n": 14,
+     "match": 9
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 2
+    },
+    "opp_out": {
+     "n": 14,
+     "match": 3
+    },
+    "opp_streak": 1
+   }
+  ],
+  "summary": {
+   "own_in": {
+    "n": 48,
+    "rate_pooled": 0.6458333333333334,
+    "rate_mean": 0.6458333333333334
+   },
+   "own_out": {
+    "n": 105,
+    "rate_pooled": 0.6761904761904762,
+    "rate_mean": 0.6859164120193532
+   },
+   "opp_in": {
+    "n": 48,
+    "rate_pooled": 0.3958333333333333,
+    "rate_mean": 0.3958333333333333
+   },
+   "opp_out": {
+    "n": 101,
+    "rate_pooled": 0.24752475247524752,
+    "rate_mean": 0.22787751464222053
+   },
+   "opp_streak": {
+    "median": 0.5,
+    "min": 0,
+    "max": 1
+   }
+  }
+ },
+ {
+  "source": "docs/superpowers/specs/calibration-data/selfplay/recon_9",
+  "size": 9,
+  "window": 12,
+  "games": [
+   {
+    "game": "game_20260919_095719",
+    "own_in": {
+     "n": 6,
+     "match": 3
+    },
+    "own_out": {
+     "n": 11,
+     "match": 4
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 2
+    },
+    "opp_out": {
+     "n": 10,
+     "match": 0
+    },
+    "opp_streak": 0
+   },
+   {
+    "game": "game_20260919_095858",
+    "own_in": {
+     "n": 6,
+     "match": 0
+    },
+    "own_out": {
+     "n": 11,
+     "match": 9
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 0
+    },
+    "opp_out": {
+     "n": 11,
+     "match": 2
+    },
+    "opp_streak": 0
+   },
+   {
+    "game": "game_20260919_100100",
+    "own_in": {
+     "n": 6,
+     "match": 2
+    },
+    "own_out": {
+     "n": 21,
+     "match": 18
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 1
+    },
+    "opp_out": {
+     "n": 20,
+     "match": 5
+    },
+    "opp_streak": 0
+   },
+   {
+    "game": "game_20260919_100745",
+    "own_in": {
+     "n": 6,
+     "match": 0
+    },
+    "own_out": {
+     "n": 21,
+     "match": 11
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 0
+    },
+    "opp_out": {
+     "n": 21,
+     "match": 2
+    },
+    "opp_streak": 0
+   },
+   {
+    "game": "game_20260919_184750",
+    "own_in": {
+     "n": 6,
+     "match": 5
+    },
+    "own_out": {
+     "n": 18,
+     "match": 10
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 3
+    },
+    "opp_out": {
+     "n": 17,
+     "match": 7
+    },
+    "opp_streak": 1
+   },
+   {
+    "game": "game_20260919_213546",
+    "own_in": {
+     "n": 6,
+     "match": 1
+    },
+    "own_out": {
+     "n": 8,
+     "match": 7
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 1
+    },
+    "opp_out": {
+     "n": 8,
+     "match": 3
+    },
+    "opp_streak": 0
+   },
+   {
+    "game": "game_20260919_213928",
+    "own_in": {
+     "n": 6,
+     "match": 4
+    },
+    "own_out": {
+     "n": 21,
+     "match": 11
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 3
+    },
+    "opp_out": {
+     "n": 20,
+     "match": 15
+    },
+    "opp_streak": 1
+   },
+   {
+    "game": "game_20260919_214631",
+    "own_in": {
+     "n": 6,
+     "match": 4
+    },
+    "own_out": {
+     "n": 14,
+     "match": 10
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 3
+    },
+    "opp_out": {
+     "n": 13,
+     "match": 7
+    },
+    "opp_streak": 1
+   },
+   {
+    "game": "game_20260919_215145",
+    "own_in": {
+     "n": 6,
+     "match": 1
+    },
+    "own_out": {
+     "n": 44,
+     "match": 32
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 2
+    },
+    "opp_out": {
+     "n": 44,
+     "match": 11
+    },
+    "opp_streak": 0
+   },
+   {
+    "game": "game_20260919_222543",
+    "own_in": {
+     "n": 6,
+     "match": 1
+    },
+    "own_out": {
+     "n": 11,
+     "match": 5
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 0
+    },
+    "opp_out": {
+     "n": 10,
+     "match": 2
+    },
+    "opp_streak": 0
+   },
+   {
+    "game": "game_20260919_223015",
+    "own_in": {
+     "n": 6,
+     "match": 4
+    },
+    "own_out": {
+     "n": 9,
+     "match": 6
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 3
+    },
+    "opp_out": {
+     "n": 8,
+     "match": 2
+    },
+    "opp_streak": 1
+   },
+   {
+    "game": "game_20260919_223517",
+    "own_in": {
+     "n": 6,
+     "match": 4
+    },
+    "own_out": {
+     "n": 19,
+     "match": 14
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 1
+    },
+    "opp_out": {
+     "n": 19,
+     "match": 12
+    },
+    "opp_streak": 0
+   },
+   {
+    "game": "game_20260921_171019",
+    "own_in": {
+     "n": 6,
+     "match": 2
+    },
+    "own_out": {
+     "n": 36,
+     "match": 29
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 1
+    },
+    "opp_out": {
+     "n": 35,
+     "match": 14
+    },
+    "opp_streak": 0
+   },
+   {
+    "game": "game_20260922_201408",
+    "own_in": {
+     "n": 6,
+     "match": 3
+    },
+    "own_out": {
+     "n": 13,
+     "match": 10
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 2
+    },
+    "opp_out": {
+     "n": 12,
+     "match": 3
+    },
+    "opp_streak": 0
+   },
+   {
+    "game": "game_20260922_201809",
+    "own_in": {
+     "n": 6,
+     "match": 3
+    },
+    "own_out": {
+     "n": 25,
+     "match": 18
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 1
+    },
+    "opp_out": {
+     "n": 25,
+     "match": 9
+    },
+    "opp_streak": 1
+   },
+   {
+    "game": "game_20260922_202223",
+    "own_in": {
+     "n": 6,
+     "match": 3
+    },
+    "own_out": {
+     "n": 19,
+     "match": 14
+    },
+    "opp_in": {
+     "n": 6,
+     "match": 1
+    },
+    "opp_out": {
+     "n": 18,
+     "match": 4
+    },
+    "opp_streak": 0
+   }
+  ],
+  "summary": {
+   "own_in": {
+    "n": 96,
+    "rate_pooled": 0.4166666666666667,
+    "rate_mean": 0.41666666666666663
+   },
+   "own_out": {
+    "n": 301,
+    "rate_pooled": 0.6910299003322259,
+    "rate_mean": 0.6780235462636779
+   },
+   "opp_in": {
+    "n": 96,
+    "rate_pooled": 0.25,
+    "rate_mean": 0.25
+   },
+   "opp_out": {
+    "n": 291,
+    "rate_pooled": 0.33676975945017185,
+    "rate_mean": 0.32288023068692573
+   },
+   "opp_streak": {
+    "median": 0.0,
+    "min": 0,
+    "max": 1
+   }
+  }
+ }
+]

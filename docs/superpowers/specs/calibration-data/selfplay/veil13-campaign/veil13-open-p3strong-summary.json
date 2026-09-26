@@ -1,0 +1,778 @@
+{
+ "arms": {
+  "enigma": {
+   "games": 20,
+   "aborted": 0,
+   "wins": 15,
+   "losses": 2,
+   "jigo": 3,
+   "win_ci": [
+    0.5312949900419365,
+    0.888139947210597
+   ],
+   "own_top1_mean": 0.6442828182753919,
+   "own_top1_mean_ci": [
+    0.5965234888048259,
+    0.6932484970328726
+   ],
+   "own_top1_pooled": 0.6579194001874414,
+   "own_top1_pooled_ci": [
+    0.6055552594171997,
+    0.7087063944688184
+   ],
+   "own_mean_ptloss": 0.6861031552954812,
+   "opp_top1_mean": 0.3937002613272598,
+   "opp_top1_mean_ci": [
+    0.34491865794990934,
+    0.44377411198635247
+   ],
+   "opp_top1_pooled": 0.41154562383612664,
+   "opp_top1_pooled_ci": [
+    0.35583398903159774,
+    0.46173066628083625
+   ],
+   "opp_mean_ptloss": 0.7755773387661559,
+   "own_minus_opp_mean": 0.25058255694813214,
+   "own_minus_opp_ci": [
+    0.20322072641978436,
+    0.29264784935944405
+   ],
+   "p_own_lt_opp": 0.05,
+   "p_own_le_target_plus5": 0.0,
+   "p_own_lt_floor": 0.0,
+   "ge6_per_game": 1.6,
+   "flip_per_game": 3.6,
+   "final_lead_median": 4.282508905,
+   "final_lead_iqr": [
+    2.2584913095749997,
+    6.705807399999999
+   ],
+   "moves_median": 110.5,
+   "own_top1_by_bin": {
+    "all": 0.6579194001874414,
+    "gui_opening": 0.44782608695652176,
+    "gui_middle": 0.6651162790697674,
+    "gui_endgame": 0.769041769041769,
+    "cal_opening": 0.44782608695652176,
+    "cal_middle": 0.6764199655765921,
+    "cal_endgame": 0.8046875
+   },
+   "hp_dev_median": 0.0644,
+   "hp_dev_n": 369,
+   "strategy_p95": 1.8870999999999996,
+   "visits_low": 0,
+   "shadow_dev_rate": null,
+   "shadow_same_as_played": null,
+   "shadow_vloss_mean": null,
+   "shadow_played_loss_mean": null,
+   "integrity": {
+    "fallbacks": 0,
+    "humansl_errors": 0,
+    "hp_audit_errors": 0,
+    "shadow_errors": 0
+   }
+  },
+  "local": {
+   "games": 20,
+   "aborted": 0,
+   "wins": 20,
+   "losses": 0,
+   "jigo": 0,
+   "win_ci": [
+    0.8388698745050667,
+    1.0
+   ],
+   "own_top1_mean": 0.47534694033320635,
+   "own_top1_mean_ci": [
+    0.43774874342752224,
+    0.5137180689330534
+   ],
+   "own_top1_pooled": 0.4798619102416571,
+   "own_top1_pooled_ci": [
+    0.4409351523663033,
+    0.518267536763384
+   ],
+   "own_mean_ptloss": 0.32812971302251204,
+   "opp_top1_mean": 0.4449369698365738,
+   "opp_top1_mean_ci": [
+    0.39972464747879416,
+    0.49014225636369124
+   ],
+   "opp_top1_pooled": 0.4539249146757679,
+   "opp_top1_pooled_ci": [
+    0.41275077383707476,
+    0.4952943938138636
+   ],
+   "opp_mean_ptloss": 0.5201063952677132,
+   "own_minus_opp_mean": 0.030409970496632466,
+   "own_minus_opp_ci": [
+    -0.01128297011966925,
+    0.07207479875166381
+   ],
+   "p_own_lt_opp": 0.25,
+   "p_own_le_target_plus5": 0.1,
+   "p_own_lt_floor": 0.0,
+   "ge6_per_game": 0.2,
+   "flip_per_game": 0.0,
+   "final_lead_median": 7.594812455,
+   "final_lead_iqr": [
+    4.901018714999999,
+    9.0455198975
+   ],
+   "moves_median": 83.5,
+   "own_top1_by_bin": {
+    "all": 0.4798619102416571,
+    "gui_opening": 0.4826086956521739,
+    "gui_middle": 0.4939467312348668,
+    "gui_endgame": 0.45132743362831856,
+    "cal_opening": 0.4826086956521739,
+    "cal_middle": 0.4680451127819549,
+    "cal_endgame": 0.5327102803738317
+   },
+   "hp_dev_median": 0.26875000000000004,
+   "hp_dev_n": 452,
+   "strategy_p95": 0.46254999999999996,
+   "visits_low": 0,
+   "shadow_dev_rate": null,
+   "shadow_same_as_played": null,
+   "shadow_vloss_mean": null,
+   "shadow_played_loss_mean": null,
+   "integrity": {
+    "fallbacks": 0,
+    "humansl_errors": 0,
+    "hp_audit_errors": 0,
+    "shadow_errors": 0
+   }
+  },
+  "local_open": {
+   "games": 20,
+   "aborted": 0,
+   "wins": 20,
+   "losses": 0,
+   "jigo": 0,
+   "win_ci": [
+    0.8388698745050667,
+    1.0
+   ],
+   "own_top1_mean": 0.5073041883354386,
+   "own_top1_mean_ci": [
+    0.4721310740111558,
+    0.5411657562878878
+   ],
+   "own_top1_pooled": 0.5169194865810969,
+   "own_top1_pooled_ci": [
+    0.47953197061345565,
+    0.5497026725769241
+   ],
+   "own_mean_ptloss": 0.4499743450768789,
+   "opp_top1_mean": 0.3871091804684063,
+   "opp_top1_mean_ci": [
+    0.3468587446605474,
+    0.4314112065044064
+   ],
+   "opp_top1_pooled": 0.40300230946882215,
+   "opp_top1_pooled_ci": [
+    0.36162276092959605,
+    0.44331263269639065
+   ],
+   "opp_mean_ptloss": 0.6350714211863726,
+   "own_minus_opp_mean": 0.12019500786703215,
+   "own_minus_opp_ci": [
+    0.07688168136308832,
+    0.15794388475065402
+   ],
+   "p_own_lt_opp": 0.05,
+   "p_own_le_target_plus5": 0.05,
+   "p_own_lt_floor": 0.0,
+   "ge6_per_game": 0.35,
+   "flip_per_game": 1.95,
+   "final_lead_median": 7.697832869999999,
+   "final_lead_iqr": [
+    4.3896305175000006,
+    9.467741235
+   ],
+   "moves_median": 82.5,
+   "own_top1_by_bin": {
+    "all": 0.5169194865810969,
+    "gui_opening": 0.43478260869565216,
+    "gui_middle": 0.5793269230769231,
+    "gui_endgame": 0.4834123222748815,
+    "cal_opening": 0.43478260869565216,
+    "cal_middle": 0.5375939849624061,
+    "cal_endgame": 0.6
+   },
+   "hp_dev_median": 0.1908,
+   "hp_dev_n": 415,
+   "strategy_p95": 1.7262999999999997,
+   "visits_low": 0,
+   "shadow_dev_rate": null,
+   "shadow_same_as_played": null,
+   "shadow_vloss_mean": null,
+   "shadow_played_loss_mean": null,
+   "integrity": {
+    "fallbacks": 0,
+    "humansl_errors": 0,
+    "hp_audit_errors": 0,
+    "shadow_errors": 0
+   }
+  }
+ },
+ "strata": {
+  "enigma|strategy:human|B": {
+   "games": 10,
+   "aborted": 0,
+   "wins": 7,
+   "losses": 2,
+   "jigo": 1,
+   "win_ci": [
+    0.39677321997956516,
+    0.892210712513788
+   ],
+   "own_top1_mean": 0.6569603335760371,
+   "own_top1_mean_ci": [
+    0.5798653624172639,
+    0.7394445191228124
+   ],
+   "own_top1_pooled": 0.6762452107279694,
+   "own_top1_pooled_ci": [
+    0.5823917806400213,
+    0.7622641509433963
+   ],
+   "own_mean_ptloss": 0.6388721824136286,
+   "opp_top1_mean": 0.42786099568561997,
+   "opp_top1_mean_ci": [
+    0.3524703434219216,
+    0.49776957574621655
+   ],
+   "opp_top1_pooled": 0.45,
+   "opp_top1_pooled_ci": [
+    0.3674809964171589,
+    0.513469150969151
+   ],
+   "opp_mean_ptloss": 0.7450860319347458,
+   "own_minus_opp_mean": 0.2290993378904171,
+   "own_minus_opp_ci": [
+    0.14891075743415727,
+    0.29795191975351415
+   ],
+   "p_own_lt_opp": 0.1,
+   "p_own_le_target_plus5": 0.0,
+   "p_own_lt_floor": 0.0,
+   "ge6_per_game": 1.3,
+   "flip_per_game": 2.3,
+   "final_lead_median": 4.282508905,
+   "final_lead_iqr": [
+    0.831243527665,
+    9.5991097475
+   ],
+   "moves_median": 90.0,
+   "own_top1_by_bin": {
+    "all": 0.6762452107279694,
+    "gui_opening": 0.4583333333333333,
+    "gui_middle": 0.6909090909090909,
+    "gui_endgame": 0.8021978021978022,
+    "cal_opening": 0.4583333333333333,
+    "cal_middle": 0.6946308724832215,
+    "cal_endgame": 0.875
+   },
+   "hp_dev_median": 0.087,
+   "hp_dev_n": 171,
+   "strategy_p95": 1.8159999999999998,
+   "visits_low": 0,
+   "shadow_dev_rate": null,
+   "shadow_same_as_played": null,
+   "shadow_vloss_mean": null,
+   "shadow_played_loss_mean": null,
+   "integrity": {
+    "fallbacks": 0,
+    "humansl_errors": 0,
+    "hp_audit_errors": 0,
+    "shadow_errors": 0
+   }
+  },
+  "enigma|strategy:human|W": {
+   "games": 10,
+   "aborted": 0,
+   "wins": 8,
+   "losses": 0,
+   "jigo": 2,
+   "win_ci": [
+    0.49015684672072335,
+    0.9433190520193067
+   ],
+   "own_top1_mean": 0.6316053029747468,
+   "own_top1_mean_ci": [
+    0.5760886376901191,
+    0.6849937446751394
+   ],
+   "own_top1_pooled": 0.6403669724770642,
+   "own_top1_pooled_ci": [
+    0.5848297221810795,
+    0.6856249564399218
+   ],
+   "own_mean_ptloss": 0.7333341281773336,
+   "opp_top1_mean": 0.3595395269688996,
+   "opp_top1_mean_ci": [
+    0.30300148343036276,
+    0.4210524426786111
+   ],
+   "opp_top1_pooled": 0.37545126353790614,
+   "opp_top1_pooled_ci": [
+    0.3060426749344626,
+    0.44224000277700637
+   ],
+   "opp_mean_ptloss": 0.806068645597566,
+   "own_minus_opp_mean": 0.2720657760058472,
+   "own_minus_opp_ci": [
+    0.22792424102494135,
+    0.3180781632785508
+   ],
+   "p_own_lt_opp": 0.0,
+   "p_own_le_target_plus5": 0.0,
+   "p_own_lt_floor": 0.0,
+   "ge6_per_game": 1.9,
+   "flip_per_game": 4.9,
+   "final_lead_median": 4.21557852,
+   "final_lead_iqr": [
+    3.0019759725,
+    6.104484885
+   ],
+   "moves_median": 113.5,
+   "own_top1_by_bin": {
+    "all": 0.6403669724770642,
+    "gui_opening": 0.43636363636363634,
+    "gui_middle": 0.638095238095238,
+    "gui_endgame": 0.7422222222222222,
+    "cal_opening": 0.43636363636363634,
+    "cal_middle": 0.657243816254417,
+    "cal_endgame": 0.756578947368421
+   },
+   "hp_dev_median": 0.0405,
+   "hp_dev_n": 198,
+   "strategy_p95": 1.9016499999999998,
+   "visits_low": 0,
+   "shadow_dev_rate": null,
+   "shadow_same_as_played": null,
+   "shadow_vloss_mean": null,
+   "shadow_played_loss_mean": null,
+   "integrity": {
+    "fallbacks": 0,
+    "humansl_errors": 0,
+    "hp_audit_errors": 0,
+    "shadow_errors": 0
+   }
+  },
+  "local_open|strategy:human|B": {
+   "games": 10,
+   "aborted": 0,
+   "wins": 10,
+   "losses": 0,
+   "jigo": 0,
+   "win_ci": [
+    0.7224598312333834,
+    1.0
+   ],
+   "own_top1_mean": 0.5221878344833868,
+   "own_top1_mean_ci": [
+    0.4775252613240419,
+    0.5668654010384642
+   ],
+   "own_top1_pooled": 0.5275,
+   "own_top1_pooled_ci": [
+    0.4797843665768194,
+    0.5724651510122801
+   ],
+   "own_mean_ptloss": 0.3244692663797096,
+   "opp_top1_mean": 0.36812318711099196,
+   "opp_top1_mean_ci": [
+    0.32239244952202273,
+    0.41564435919771286
+   ],
+   "opp_top1_pooled": 0.37593984962406013,
+   "opp_top1_pooled_ci": [
+    0.33074781592223457,
+    0.4206730769230769
+   ],
+   "opp_mean_ptloss": 0.5736342857972779,
+   "own_minus_opp_mean": 0.15406464737239486,
+   "own_minus_opp_ci": [
+    0.11405171568627451,
+    0.1957846440483636
+   ],
+   "p_own_lt_opp": 0.0,
+   "p_own_le_target_plus5": 0.0,
+   "p_own_lt_floor": 0.0,
+   "ge6_per_game": 0.1,
+   "flip_per_game": 1.1,
+   "final_lead_median": 7.697832869999999,
+   "final_lead_iqr": [
+    4.7084252,
+    9.36579914
+   ],
+   "moves_median": 82.0,
+   "own_top1_by_bin": {
+    "all": 0.5275,
+    "gui_opening": 0.4166666666666667,
+    "gui_middle": 0.6179245283018868,
+    "gui_endgame": 0.4411764705882353,
+    "cal_opening": 0.4166666666666667,
+    "cal_middle": 0.5708955223880597,
+    "cal_endgame": 0.6666666666666666
+   },
+   "hp_dev_median": 0.1923,
+   "hp_dev_n": 190,
+   "strategy_p95": 1.598,
+   "visits_low": 0,
+   "shadow_dev_rate": null,
+   "shadow_same_as_played": null,
+   "shadow_vloss_mean": null,
+   "shadow_played_loss_mean": null,
+   "integrity": {
+    "fallbacks": 0,
+    "humansl_errors": 0,
+    "hp_audit_errors": 0,
+    "shadow_errors": 0
+   }
+  },
+  "local_open|strategy:human|W": {
+   "games": 10,
+   "aborted": 0,
+   "wins": 10,
+   "losses": 0,
+   "jigo": 0,
+   "win_ci": [
+    0.7224598312333834,
+    1.0
+   ],
+   "own_top1_mean": 0.4924205421874901,
+   "own_top1_mean_ci": [
+    0.43858645021971354,
+    0.542408104633468
+   ],
+   "own_top1_pooled": 0.5076586433260394,
+   "own_top1_pooled_ci": [
+    0.44809873417721524,
+    0.5529411764705883
+   ],
+   "own_mean_ptloss": 0.5754794237740481,
+   "opp_top1_mean": 0.40609517382582067,
+   "opp_top1_mean_ci": [
+    0.3422274311054799,
+    0.47664242275045565
+   ],
+   "opp_top1_pooled": 0.4261241970021413,
+   "opp_top1_pooled_ci": [
+    0.3634083598170684,
+    0.4841727904976109
+   ],
+   "opp_mean_ptloss": 0.6965085565754672,
+   "own_minus_opp_mean": 0.0863253683616694,
+   "own_minus_opp_ci": [
+    0.014682336248776358,
+    0.1395180588351919
+   ],
+   "p_own_lt_opp": 0.1,
+   "p_own_le_target_plus5": 0.1,
+   "p_own_lt_floor": 0.0,
+   "ge6_per_game": 0.6,
+   "flip_per_game": 2.8,
+   "final_lead_median": 7.16949627,
+   "final_lead_iqr": [
+    4.549146845,
+    9.1779415925
+   ],
+   "moves_median": 87.0,
+   "own_top1_by_bin": {
+    "all": 0.5076586433260394,
+    "gui_opening": 0.45454545454545453,
+    "gui_middle": 0.5392156862745098,
+    "gui_endgame": 0.5034965034965035,
+    "cal_opening": 0.45454545454545453,
+    "cal_middle": 0.5037878787878788,
+    "cal_endgame": 0.5903614457831325
+   },
+   "hp_dev_median": 0.1908,
+   "hp_dev_n": 225,
+   "strategy_p95": 1.765249999999999,
+   "visits_low": 0,
+   "shadow_dev_rate": null,
+   "shadow_same_as_played": null,
+   "shadow_vloss_mean": null,
+   "shadow_played_loss_mean": null,
+   "integrity": {
+    "fallbacks": 0,
+    "humansl_errors": 0,
+    "hp_audit_errors": 0,
+    "shadow_errors": 0
+   }
+  },
+  "local|strategy:human|B": {
+   "games": 10,
+   "aborted": 0,
+   "wins": 10,
+   "losses": 0,
+   "jigo": 0,
+   "win_ci": [
+    0.7224598312333834,
+    1.0
+   ],
+   "own_top1_mean": 0.4916745446524232,
+   "own_top1_mean_ci": [
+    0.4530952380952381,
+    0.5370506025533678
+   ],
+   "own_top1_pooled": 0.49029126213592233,
+   "own_top1_pooled_ci": [
+    0.45130493210744316,
+    0.5382821126242178
+   ],
+   "own_mean_ptloss": 0.29633572956009135,
+   "opp_top1_mean": 0.4750793425708343,
+   "opp_top1_mean_ci": [
+    0.415771826522252,
+    0.5317275747508305
+   ],
+   "opp_top1_pooled": 0.47815533980582525,
+   "opp_top1_pooled_ci": [
+    0.42187403070719603,
+    0.5301857924539094
+   ],
+   "opp_mean_ptloss": 0.5367438678653282,
+   "own_minus_opp_mean": 0.016595202081588923,
+   "own_minus_opp_ci": [
+    -0.04535714285714286,
+    0.07740816632003528
+   ],
+   "p_own_lt_opp": 0.3,
+   "p_own_le_target_plus5": 0.0,
+   "p_own_lt_floor": 0.0,
+   "ge6_per_game": 0.1,
+   "flip_per_game": 0.0,
+   "final_lead_median": 7.58335637,
+   "final_lead_iqr": [
+    3.986304385,
+    9.6330747125
+   ],
+   "moves_median": 83.0,
+   "own_top1_by_bin": {
+    "all": 0.49029126213592233,
+    "gui_opening": 0.475,
+    "gui_middle": 0.5333333333333333,
+    "gui_endgame": 0.4024390243902439,
+    "cal_opening": 0.475,
+    "cal_middle": 0.50187265917603,
+    "cal_endgame": 0.44
+   },
+   "hp_dev_median": 0.2485,
+   "hp_dev_n": 210,
+   "strategy_p95": 0.49545,
+   "visits_low": 0,
+   "shadow_dev_rate": null,
+   "shadow_same_as_played": null,
+   "shadow_vloss_mean": null,
+   "shadow_played_loss_mean": null,
+   "integrity": {
+    "fallbacks": 0,
+    "humansl_errors": 0,
+    "hp_audit_errors": 0,
+    "shadow_errors": 0
+   }
+  },
+  "local|strategy:human|W": {
+   "games": 10,
+   "aborted": 0,
+   "wins": 10,
+   "losses": 0,
+   "jigo": 0,
+   "win_ci": [
+    0.7224598312333834,
+    1.0
+   ],
+   "own_top1_mean": 0.4590193360139894,
+   "own_top1_mean_ci": [
+    0.3994853589116254,
+    0.5186377551273216
+   ],
+   "own_top1_pooled": 0.47045951859956237,
+   "own_top1_pooled_ci": [
+    0.405033466819222,
+    0.5285748462064251
+   ],
+   "own_mean_ptloss": 0.3599236964849327,
+   "opp_top1_mean": 0.41479459710231337,
+   "opp_top1_mean_ci": [
+    0.3534225087927135,
+    0.47984791109316244
+   ],
+   "opp_top1_pooled": 0.43254817987152033,
+   "opp_top1_pooled_ci": [
+    0.37354988399071926,
+    0.4923747276688453
+   ],
+   "opp_mean_ptloss": 0.5034689226700982,
+   "own_minus_opp_mean": 0.04422473891167601,
+   "own_minus_opp_ci": [
+    -0.0077760869596056265,
+    0.10111764723962217
+   ],
+   "p_own_lt_opp": 0.2,
+   "p_own_le_target_plus5": 0.2,
+   "p_own_lt_floor": 0.0,
+   "ge6_per_game": 0.3,
+   "flip_per_game": 0.0,
+   "final_lead_median": 7.594812455,
+   "final_lead_iqr": [
+    6.438163695,
+    8.493113917499999
+   ],
+   "moves_median": 87.0,
+   "own_top1_by_bin": {
+    "all": 0.47045951859956237,
+    "gui_opening": 0.4909090909090909,
+    "gui_middle": 0.45320197044334976,
+    "gui_endgame": 0.4791666666666667,
+    "cal_opening": 0.4909090909090909,
+    "cal_middle": 0.4339622641509434,
+    "cal_endgame": 0.5609756097560976
+   },
+   "hp_dev_median": 0.29405000000000003,
+   "hp_dev_n": 242,
+   "strategy_p95": 0.44604999999999984,
+   "visits_low": 0,
+   "shadow_dev_rate": null,
+   "shadow_same_as_played": null,
+   "shadow_vloss_mean": null,
+   "shadow_played_loss_mean": null,
+   "integrity": {
+    "fallbacks": 0,
+    "humansl_errors": 0,
+    "hp_audit_errors": 0,
+    "shadow_errors": 0
+   }
+  }
+ },
+ "sources": [
+  "experiments/selfplay/20260926_1401_veil13-open-p3strong"
+ ],
+ "compare": [
+  {
+   "a": "local_open",
+   "b": "local",
+   "conf": 0.975,
+   "diffs": {
+    "own_top1": {
+     "metric": "own_top1",
+     "n": 20,
+     "mean": 0.03195724800223214,
+     "t_ci": [
+      -0.02604976712303854,
+      0.08996426312750282
+     ],
+     "wilcoxon_p": 0.21011734008789062,
+     "boot_ci": [
+      -0.018655440423676235,
+      0.08368789919845088
+     ],
+     "conf": 0.975,
+     "verdict": "extend"
+    },
+    "opp_top1": {
+     "metric": "opp_top1",
+     "n": 20,
+     "mean": -0.05782778936816753,
+     "t_ci": [
+      -0.12668515619564724,
+      0.011029577459312184
+     ],
+     "wilcoxon_p": 0.03623390197753906,
+     "boot_ci": [
+      -0.11597213532193204,
+      0.006492621560507482
+     ],
+     "conf": 0.975,
+     "verdict": "extend"
+    },
+    "own_minus_opp": {
+     "metric": "own_minus_opp",
+     "n": 20,
+     "mean": 0.08978503737039967,
+     "t_ci": [
+      0.025597899845100885,
+      0.15397217489569845
+     ],
+     "wilcoxon_p": 0.005580902099609375,
+     "boot_ci": [
+      0.0330476105592873,
+      0.14599935060117047
+     ],
+     "conf": 0.975,
+     "verdict": "extend"
+    },
+    "flip_moves": {
+     "metric": "flip_moves",
+     "n": 20,
+     "mean": 1.95,
+     "t_ci": [
+      0.9285804344038009,
+      2.9714195655961992
+     ],
+     "wilcoxon_p": 0.0005881979906694479,
+     "boot_ci": [
+      1.1,
+      2.9
+     ],
+     "conf": 0.975,
+     "verdict": null
+    },
+    "win": {
+     "metric": "win",
+     "n": 20,
+     "mean": 0.0,
+     "t_ci": [
+      0.0,
+      0.0
+     ],
+     "wilcoxon_p": null,
+     "boot_ci": [
+      0.0,
+      0.0
+     ],
+     "conf": 0.975,
+     "verdict": null
+    },
+    "own_mean_ptloss": {
+     "metric": "own_mean_ptloss",
+     "n": 20,
+     "mean": 0.12184463205436687,
+     "t_ci": [
+      -0.02190535955737745,
+      0.2655946236661112
+     ],
+     "wilcoxon_p": 0.082550048828125,
+     "boot_ci": [
+      -0.006278698306480269,
+      0.2512596898236454
+     ],
+     "conf": 0.975,
+     "verdict": null
+    },
+    "ge6": {
+     "metric": "ge6",
+     "n": 20,
+     "mean": 0.15,
+     "t_ci": [
+      -0.2150160317062443,
+      0.5150160317062443
+     ],
+     "wilcoxon_p": 0.31731050786291437,
+     "boot_ci": [
+      -0.15,
+      0.5
+     ],
+     "conf": 0.975,
+     "verdict": null
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,721 @@
+{
+ "subcommand": "calibrate",
+ "created": "2026-09-26T08:12:49",
+ "command": [
+  "katrain_debug/selfplay.py",
+  "calibrate",
+  "--size",
+  "9",
+  "--strategy",
+  "enigma9plus:enigma9plus_gamble_min_winrate=0.25,enigma9plus_gamble_until_move=20.0,enigma9plus_large_lead_max_loss=6.0,enigma9plus_max_loss=1.6,enigma9plus_overdraft_deficit=2.0,enigma9plus_overdraft_probes=6,enigma9plus_target_score=0.2",
+  "--ranks",
+  "rank_1d,rank_3d,rank_5d,rank_7d,rank_9d",
+  "--games",
+  "8",
+  "--config",
+  "experiments/selfplay/veil-open-config.json",
+  "--label",
+  "calib9",
+  "--write-pool",
+  "docs/superpowers/specs/calibration-data/selfplay/opponent_pool_9.json"
+ ],
+ "size": 9,
+ "komi": 7.0,
+ "rules": "chinese",
+ "komi_shift": 0.0,
+ "max_moves": null,
+ "watch_flags": false,
+ "timeout": 180.0,
+ "target": 0.4,
+ "arms": [
+  {
+   "name": "calib",
+   "strategy": "enigma9plus",
+   "mode": "ai:enigma9plus",
+   "settings": {
+    "enigma9plus_max_loss": 1.6,
+    "enigma9plus_large_lead_max_loss": 6.0,
+    "enigma9plus_min_winrate": 0.3,
+    "enigma9plus_net_margin": 0.0,
+    "enigma9plus_target_score": 0.2,
+    "enigma9plus_aim_jigo": false,
+    "enigma9plus_endgame_move": 30,
+    "enigma9plus_unsettled_max": 8,
+    "enigma9plus_locality_stddev": 0.0,
+    "enigma9plus_locality_slack": 0.3,
+    "enigma9plus_min_delta_e": 0.2,
+    "enigma9plus_cheap_loss": 0.3,
+    "enigma9plus_probe_extra": 6.0,
+    "enigma9plus_opening_humanstyle_moves": 0,
+    "enigma9plus_gamble_until_move": 20.0,
+    "enigma9plus_gamble_min_winrate": 0.25,
+    "enigma9plus_gamble_min_delta_e": 0.5,
+    "enigma9plus_overdraft_deficit": 2.0,
+    "enigma9plus_overdraft_answered_max": 99.0,
+    "enigma9plus_overdraft_min_fooled_lead": 1.0,
+    "enigma9plus_overdraft_probes": 6
+   },
+   "override_items": [
+    "enigma9plus_gamble_min_winrate=0.25",
+    "enigma9plus_gamble_until_move=20.0",
+    "enigma9plus_large_lead_max_loss=6.0",
+    "enigma9plus_max_loss=1.6",
+    "enigma9plus_overdraft_deficit=2.0",
+    "enigma9plus_overdraft_probes=6",
+    "enigma9plus_target_score=0.2"
+   ],
+   "strategy_class": "Enigma9PlusStrategy",
+   "settings_source": "user config",
+   "effective_settings": {
+    "enigma9plus_max_loss": 1.6,
+    "enigma9plus_large_lead_max_loss": 6.0,
+    "enigma9plus_min_winrate": 0.3,
+    "enigma9plus_net_margin": 0.0,
+    "enigma9plus_endgame_move": 30.0,
+    "enigma9plus_unsettled_max": 8.0,
+    "enigma9plus_target_score": 0.2,
+    "enigma9plus_aim_jigo": false,
+    "enigma9plus_opening_humanstyle_moves": 0.0,
+    "enigma9plus_locality_stddev": 0.0,
+    "enigma9plus_locality_slack": 0.3,
+    "enigma9plus_gamble_until_move": 20.0,
+    "enigma9plus_gamble_min_winrate": 0.25,
+    "enigma9plus_gamble_min_delta_e": 0.5,
+    "enigma9plus_overdraft_deficit": 2.0,
+    "enigma9plus_overdraft_answered_max": 99.0,
+    "enigma9plus_overdraft_min_fooled_lead": 1.0,
+    "enigma9plus_overdraft_probes": 6.0,
+    "enigma9plus_min_delta_e": 0.2,
+    "enigma9plus_cheap_loss": 0.3,
+    "enigma9plus_probe_extra": 6.0
+   },
+   "delegate": null,
+   "fingerprint": "33454441f11d8ece"
+  }
+ ],
+ "schedule": [
+  {
+   "index": 0,
+   "seed": 1000,
+   "ai_color": "B",
+   "rank": "rank_1d",
+   "opp_seed": 1842444242,
+   "strategy_seed": 425801368,
+   "resign_lead": null,
+   "resign_len": 83
+  },
+  {
+   "index": 1,
+   "seed": 1001,
+   "ai_color": "W",
+   "rank": "rank_1d",
+   "opp_seed": 251797747,
+   "strategy_seed": 850558125,
+   "resign_lead": null,
+   "resign_len": 53
+  },
+  {
+   "index": 2,
+   "seed": 1002,
+   "ai_color": "B",
+   "rank": "rank_3d",
+   "opp_seed": 1809255817,
+   "strategy_seed": 948952291,
+   "resign_lead": null,
+   "resign_len": 47
+  },
+  {
+   "index": 3,
+   "seed": 1003,
+   "ai_color": "W",
+   "rank": "rank_3d",
+   "opp_seed": 2136065134,
+   "strategy_seed": 1546147258,
+   "resign_lead": null,
+   "resign_len": 39
+  },
+  {
+   "index": 4,
+   "seed": 1004,
+   "ai_color": "B",
+   "rank": "rank_5d",
+   "opp_seed": 1808717700,
+   "strategy_seed": 456716026,
+   "resign_lead": null,
+   "resign_len": 53
+  },
+  {
+   "index": 5,
+   "seed": 1005,
+   "ai_color": "W",
+   "rank": "rank_5d",
+   "opp_seed": 2074943336,
+   "strategy_seed": 1714290689,
+   "resign_lead": null,
+   "resign_len": 37
+  },
+  {
+   "index": 6,
+   "seed": 1006,
+   "ai_color": "B",
+   "rank": "rank_7d",
+   "opp_seed": 1488721381,
+   "strategy_seed": 239849477,
+   "resign_lead": null,
+   "resign_len": 39
+  },
+  {
+   "index": 7,
+   "seed": 1007,
+   "ai_color": "W",
+   "rank": "rank_7d",
+   "opp_seed": 138391791,
+   "strategy_seed": 747480507,
+   "resign_lead": null,
+   "resign_len": 33
+  },
+  {
+   "index": 8,
+   "seed": 1008,
+   "ai_color": "B",
+   "rank": "rank_9d",
+   "opp_seed": 1911693887,
+   "strategy_seed": 1461558634,
+   "resign_lead": null,
+   "resign_len": 53
+  },
+  {
+   "index": 9,
+   "seed": 1009,
+   "ai_color": "W",
+   "rank": "rank_9d",
+   "opp_seed": 773920557,
+   "strategy_seed": 51119787,
+   "resign_lead": null,
+   "resign_len": 49
+  },
+  {
+   "index": 10,
+   "seed": 1010,
+   "ai_color": "B",
+   "rank": "rank_1d",
+   "opp_seed": 1060776327,
+   "strategy_seed": 357237790,
+   "resign_lead": null,
+   "resign_len": 37
+  },
+  {
+   "index": 11,
+   "seed": 1011,
+   "ai_color": "W",
+   "rank": "rank_1d",
+   "opp_seed": 1575912737,
+   "strategy_seed": 1089258379,
+   "resign_lead": null,
+   "resign_len": 33
+  },
+  {
+   "index": 12,
+   "seed": 1012,
+   "ai_color": "B",
+   "rank": "rank_3d",
+   "opp_seed": 1453743460,
+   "strategy_seed": 680564964,
+   "resign_lead": null,
+   "resign_len": 47
+  },
+  {
+   "index": 13,
+   "seed": 1013,
+   "ai_color": "W",
+   "rank": "rank_3d",
+   "opp_seed": 2112563513,
+   "strategy_seed": 1095634259,
+   "resign_lead": null,
+   "resign_len": 28
+  },
+  {
+   "index": 14,
+   "seed": 1014,
+   "ai_color": "B",
+   "rank": "rank_5d",
+   "opp_seed": 24487958,
+   "strategy_seed": 1027642890,
+   "resign_lead": null,
+   "resign_len": 100
+  },
+  {
+   "index": 15,
+   "seed": 1015,
+   "ai_color": "W",
+   "rank": "rank_5d",
+   "opp_seed": 445646667,
+   "strategy_seed": 1292553110,
+   "resign_lead": null,
+   "resign_len": 49
+  },
+  {
+   "index": 16,
+   "seed": 1016,
+   "ai_color": "B",
+   "rank": "rank_7d",
+   "opp_seed": 1566947659,
+   "strategy_seed": 1676968494,
+   "resign_lead": null,
+   "resign_len": 50
+  },
+  {
+   "index": 17,
+   "seed": 1017,
+   "ai_color": "W",
+   "rank": "rank_7d",
+   "opp_seed": 2067235387,
+   "strategy_seed": 1833752245,
+   "resign_lead": null,
+   "resign_len": 53
+  },
+  {
+   "index": 18,
+   "seed": 1018,
+   "ai_color": "B",
+   "rank": "rank_9d",
+   "opp_seed": 1692101561,
+   "strategy_seed": 1694873441,
+   "resign_lead": null,
+   "resign_len": 54
+  },
+  {
+   "index": 19,
+   "seed": 1019,
+   "ai_color": "W",
+   "rank": "rank_9d",
+   "opp_seed": 147155057,
+   "strategy_seed": 1426281763,
+   "resign_lead": null,
+   "resign_len": 53
+  },
+  {
+   "index": 20,
+   "seed": 1020,
+   "ai_color": "B",
+   "rank": "rank_1d",
+   "opp_seed": 484041177,
+   "strategy_seed": 105821929,
+   "resign_lead": null,
+   "resign_len": 62
+  },
+  {
+   "index": 21,
+   "seed": 1021,
+   "ai_color": "W",
+   "rank": "rank_1d",
+   "opp_seed": 765710408,
+   "strategy_seed": 1054791631,
+   "resign_lead": null,
+   "resign_len": 100
+  },
+  {
+   "index": 22,
+   "seed": 1022,
+   "ai_color": "B",
+   "rank": "rank_3d",
+   "opp_seed": 568750162,
+   "strategy_seed": 1770073179,
+   "resign_lead": null,
+   "resign_len": 50
+  },
+  {
+   "index": 23,
+   "seed": 1023,
+   "ai_color": "W",
+   "rank": "rank_3d",
+   "opp_seed": 2098359013,
+   "strategy_seed": 1940583131,
+   "resign_lead": null,
+   "resign_len": 49
+  },
+  {
+   "index": 24,
+   "seed": 1024,
+   "ai_color": "B",
+   "rank": "rank_5d",
+   "opp_seed": 82180047,
+   "strategy_seed": 2076611819,
+   "resign_lead": null,
+   "resign_len": 83
+  },
+  {
+   "index": 25,
+   "seed": 1025,
+   "ai_color": "W",
+   "rank": "rank_5d",
+   "opp_seed": 901271717,
+   "strategy_seed": 246135730,
+   "resign_lead": null,
+   "resign_len": 34
+  },
+  {
+   "index": 26,
+   "seed": 1026,
+   "ai_color": "B",
+   "rank": "rank_7d",
+   "opp_seed": 109860836,
+   "strategy_seed": 2035640867,
+   "resign_lead": null,
+   "resign_len": 100
+  },
+  {
+   "index": 27,
+   "seed": 1027,
+   "ai_color": "W",
+   "rank": "rank_7d",
+   "opp_seed": 87148235,
+   "strategy_seed": 501935715,
+   "resign_lead": null,
+   "resign_len": 53
+  },
+  {
+   "index": 28,
+   "seed": 1028,
+   "ai_color": "B",
+   "rank": "rank_9d",
+   "opp_seed": 1986859367,
+   "strategy_seed": 1690325689,
+   "resign_lead": null,
+   "resign_len": 100
+  },
+  {
+   "index": 29,
+   "seed": 1029,
+   "ai_color": "W",
+   "rank": "rank_9d",
+   "opp_seed": 1324875524,
+   "strategy_seed": 696751396,
+   "resign_lead": null,
+   "resign_len": 37
+  },
+  {
+   "index": 30,
+   "seed": 1030,
+   "ai_color": "B",
+   "rank": "rank_1d",
+   "opp_seed": 238220750,
+   "strategy_seed": 1828625275,
+   "resign_lead": null,
+   "resign_len": 28
+  },
+  {
+   "index": 31,
+   "seed": 1031,
+   "ai_color": "W",
+   "rank": "rank_1d",
+   "opp_seed": 169718212,
+   "strategy_seed": 149109310,
+   "resign_lead": null,
+   "resign_len": 29
+  },
+  {
+   "index": 32,
+   "seed": 1032,
+   "ai_color": "B",
+   "rank": "rank_3d",
+   "opp_seed": 1661007777,
+   "strategy_seed": 1820333380,
+   "resign_lead": null,
+   "resign_len": 28
+  },
+  {
+   "index": 33,
+   "seed": 1033,
+   "ai_color": "W",
+   "rank": "rank_3d",
+   "opp_seed": 899465509,
+   "strategy_seed": 1170381271,
+   "resign_lead": null,
+   "resign_len": 62
+  },
+  {
+   "index": 34,
+   "seed": 1034,
+   "ai_color": "B",
+   "rank": "rank_5d",
+   "opp_seed": 162276263,
+   "strategy_seed": 387215385,
+   "resign_lead": null,
+   "resign_len": 53
+  },
+  {
+   "index": 35,
+   "seed": 1035,
+   "ai_color": "W",
+   "rank": "rank_5d",
+   "opp_seed": 1900711432,
+   "strategy_seed": 600873723,
+   "resign_lead": null,
+   "resign_len": 100
+  },
+  {
+   "index": 36,
+   "seed": 1036,
+   "ai_color": "B",
+   "rank": "rank_7d",
+   "opp_seed": 1786330853,
+   "strategy_seed": 379922235,
+   "resign_lead": null,
+   "resign_len": 53
+  },
+  {
+   "index": 37,
+   "seed": 1037,
+   "ai_color": "W",
+   "rank": "rank_7d",
+   "opp_seed": 361928072,
+   "strategy_seed": 1889570837,
+   "resign_lead": null,
+   "resign_len": 49
+  },
+  {
+   "index": 38,
+   "seed": 1038,
+   "ai_color": "B",
+   "rank": "rank_9d",
+   "opp_seed": 485283492,
+   "strategy_seed": 305742142,
+   "resign_lead": null,
+   "resign_len": 100
+  },
+  {
+   "index": 39,
+   "seed": 1039,
+   "ai_color": "W",
+   "rank": "rank_9d",
+   "opp_seed": 801485757,
+   "strategy_seed": 815946693,
+   "resign_lead": null,
+   "resign_len": 54
+  }
+ ],
+ "order": [
+  [
+   "calib",
+   0
+  ],
+  [
+   "calib",
+   1
+  ],
+  [
+   "calib",
+   2
+  ],
+  [
+   "calib",
+   3
+  ],
+  [
+   "calib",
+   4
+  ],
+  [
+   "calib",
+   5
+  ],
+  [
+   "calib",
+   6
+  ],
+  [
+   "calib",
+   7
+  ],
+  [
+   "calib",
+   8
+  ],
+  [
+   "calib",
+   9
+  ],
+  [
+   "calib",
+   10
+  ],
+  [
+   "calib",
+   11
+  ],
+  [
+   "calib",
+   12
+  ],
+  [
+   "calib",
+   13
+  ],
+  [
+   "calib",
+   14
+  ],
+  [
+   "calib",
+   15
+  ],
+  [
+   "calib",
+   16
+  ],
+  [
+   "calib",
+   17
+  ],
+  [
+   "calib",
+   18
+  ],
+  [
+   "calib",
+   19
+  ],
+  [
+   "calib",
+   20
+  ],
+  [
+   "calib",
+   21
+  ],
+  [
+   "calib",
+   22
+  ],
+  [
+   "calib",
+   23
+  ],
+  [
+   "calib",
+   24
+  ],
+  [
+   "calib",
+   25
+  ],
+  [
+   "calib",
+   26
+  ],
+  [
+   "calib",
+   27
+  ],
+  [
+   "calib",
+   28
+  ],
+  [
+   "calib",
+   29
+  ],
+  [
+   "calib",
+   30
+  ],
+  [
+   "calib",
+   31
+  ],
+  [
+   "calib",
+   32
+  ],
+  [
+   "calib",
+   33
+  ],
+  [
+   "calib",
+   34
+  ],
+  [
+   "calib",
+   35
+  ],
+  [
+   "calib",
+   36
+  ],
+  [
+   "calib",
+   37
+  ],
+  [
+   "calib",
+   38
+  ],
+  [
+   "calib",
+   39
+  ]
+ ],
+ "opponent": {
+  "kind": "humansl",
+  "ranks": [
+   "rank_1d",
+   "rank_3d",
+   "rank_5d",
+   "rank_7d",
+   "rank_9d"
+  ],
+  "tau": 1.0,
+  "max_loss": null
+ },
+ "resign": {
+  "no_resign": false,
+  "range": null,
+  "pool": [],
+  "lengths": [
+   33,
+   34,
+   53,
+   54,
+   47,
+   28,
+   53,
+   39,
+   100,
+   33,
+   29,
+   50,
+   83,
+   37,
+   62,
+   49
+  ],
+  "start_move": null,
+  "source": "docs/superpowers/specs/calibration-data/selfplay/recon_9",
+  "model": "length"
+ },
+ "config_path": "experiments/selfplay/veil-open-config.json",
+ "write_pool": "docs/superpowers/specs/calibration-data/selfplay/opponent_pool_9.json",
+ "force_pool": false,
+ "config_snapshot": "config-snapshot.json",
+ "config_sha256": "8075cd05628176faaeee53158f7dc189a9147e43947ddc10142df459136775d6",
+ "engine": {
+  "katago": "C:\\Users\\iwaki\\.katrain\\katago-v1.18.2-cuda\\katago.exe",
+  "altcommand": "",
+  "model": "C:\\Users\\iwaki\\.katrain\\b10c384h6nbttflrs.bin.gz",
+  "humanlike_model": "C:\\Users\\iwaki\\.katrain\\b18c384nbt-humanv0.bin.gz",
+  "config": "katrain/KataGo/analysis_config.cfg",
+  "max_visits": 2500,
+  "fast_visits": 200,
+  "max_time": 8.0,
+  "wide_root_noise": 0.04,
+  "_enable_ownership": true
+ },
+ "ai_file": "katrain/core/ai.py",
+ "git": {
+  "head": "e39e3e93ea750209fab40835ad391ff08845fe14",
+  "dirty": false
+ },
+ "python": "3.12.10"
+}

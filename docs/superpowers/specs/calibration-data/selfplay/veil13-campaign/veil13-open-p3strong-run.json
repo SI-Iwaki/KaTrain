@@ -1,0 +1,805 @@
+{
+ "subcommand": "run",
+ "created": "2026-09-26T14:01:47",
+ "command": [
+  "katrain_debug/selfplay.py",
+  "run",
+  "--size",
+  "13",
+  "--pairs",
+  "20",
+  "--opponent",
+  "strategy:human:human_kyu_rank=-8,modern_style=true",
+  "--config",
+  "experiments/selfplay/veil-open-config.json",
+  "--hp-audit",
+  "rank_9d",
+  "--label",
+  "veil13-open-p3strong",
+  "--arm",
+  "local=veil13:veil13_target_rate=0.3,veil13_reserve=5.0,veil13_min_winrate=0.85,veil13_free_loss=0.4,veil13_free_wr_drop=0.03,veil13_close_drift_cap=0.0,veil13_spend_rate=1.0,veil13_max_loss=6.0,veil13_yose_max_loss=2.0,veil13_dominant_hp=1.01,veil13_dominant_max_loss=3.0,veil13_min_human_policy=0.05,veil13_natural_ratio=0.1,veil13_cost_slack=0.3,veil13_trap_mode=false,veil13_trap_min_delta_e=0.5,veil13_blunder_mode=2,veil13_blunder_max_loss=10.0,veil13_blunder_per_game=1,veil13_blunder_hp_ratio=0.7,veil13_forced_mode=2,veil13_forced_min_lead=2.0,veil13_forced_min_winrate=0.7,veil13_forced_max_loss=10.0,veil13_open_moves=0",
+  "--arm",
+  "local_open=veil13:veil13_target_rate=0.3,veil13_reserve=5.0,veil13_min_winrate=0.85,veil13_free_loss=0.4,veil13_free_wr_drop=0.03,veil13_close_drift_cap=0.0,veil13_spend_rate=1.0,veil13_max_loss=6.0,veil13_yose_max_loss=2.0,veil13_dominant_hp=1.01,veil13_dominant_max_loss=3.0,veil13_min_human_policy=0.05,veil13_natural_ratio=0.1,veil13_cost_slack=0.3,veil13_trap_mode=false,veil13_trap_min_delta_e=0.5,veil13_blunder_mode=2,veil13_blunder_max_loss=10.0,veil13_blunder_per_game=1,veil13_blunder_hp_ratio=0.7,veil13_forced_mode=2,veil13_forced_min_lead=2.0,veil13_forced_min_winrate=0.7,veil13_forced_max_loss=10.0,veil13_open_moves=30",
+  "--arm",
+  "enigma=enigma13plus"
+ ],
+ "size": 13,
+ "komi": 7.0,
+ "rules": "chinese",
+ "komi_shift": 0.0,
+ "max_moves": null,
+ "watch_flags": false,
+ "timeout": 180.0,
+ "target": 0.3,
+ "arms": [
+  {
+   "name": "local",
+   "strategy": "veil13",
+   "mode": "ai:veil13",
+   "settings": {
+    "veil13_target_rate": 0.3,
+    "veil13_reserve": 5.0,
+    "veil13_min_winrate": 0.85,
+    "veil13_free_loss": 0.4,
+    "veil13_free_wr_drop": 0.03,
+    "veil13_close_drift_cap": 0.0,
+    "veil13_spend_rate": 1.0,
+    "veil13_max_loss": 6.0,
+    "veil13_yose_max_loss": 2.0,
+    "veil13_dominant_hp": 1.01,
+    "veil13_dominant_max_loss": 3.0,
+    "veil13_min_human_policy": 0.05,
+    "veil13_natural_ratio": 0.1,
+    "veil13_cost_slack": 0.3,
+    "veil13_trap_mode": false,
+    "veil13_trap_min_delta_e": 0.5,
+    "veil13_blunder_mode": 2,
+    "veil13_blunder_max_loss": 10.0,
+    "veil13_blunder_per_game": 1,
+    "veil13_blunder_hp_ratio": 0.7,
+    "veil13_forced_mode": 2,
+    "veil13_forced_min_lead": 2.0,
+    "veil13_forced_min_winrate": 0.7,
+    "veil13_forced_max_loss": 10.0,
+    "veil13_open_moves": 0
+   },
+   "override_items": [
+    "veil13_target_rate=0.3",
+    "veil13_reserve=5.0",
+    "veil13_min_winrate=0.85",
+    "veil13_free_loss=0.4",
+    "veil13_free_wr_drop=0.03",
+    "veil13_close_drift_cap=0.0",
+    "veil13_spend_rate=1.0",
+    "veil13_max_loss=6.0",
+    "veil13_yose_max_loss=2.0",
+    "veil13_dominant_hp=1.01",
+    "veil13_dominant_max_loss=3.0",
+    "veil13_min_human_policy=0.05",
+    "veil13_natural_ratio=0.1",
+    "veil13_cost_slack=0.3",
+    "veil13_trap_mode=false",
+    "veil13_trap_min_delta_e=0.5",
+    "veil13_blunder_mode=2",
+    "veil13_blunder_max_loss=10.0",
+    "veil13_blunder_per_game=1",
+    "veil13_blunder_hp_ratio=0.7",
+    "veil13_forced_mode=2",
+    "veil13_forced_min_lead=2.0",
+    "veil13_forced_min_winrate=0.7",
+    "veil13_forced_max_loss=10.0",
+    "veil13_open_moves=0"
+   ],
+   "strategy_class": "Veil13Strategy",
+   "settings_source": "user config",
+   "effective_settings": {
+    "veil13_target_rate": 0.3,
+    "veil13_reserve": 5.0,
+    "veil13_min_winrate": 0.85,
+    "veil13_free_loss": 0.4,
+    "veil13_free_wr_drop": 0.03,
+    "veil13_close_drift_cap": 0.0,
+    "veil13_spend_rate": 1.0,
+    "veil13_max_loss": 6.0,
+    "veil13_yose_max_loss": 2.0,
+    "veil13_dominant_hp": 1.01,
+    "veil13_dominant_max_loss": 3.0,
+    "veil13_min_human_policy": 0.05,
+    "veil13_natural_ratio": 0.1,
+    "veil13_cost_slack": 0.3,
+    "veil13_trap_mode": false,
+    "veil13_trap_min_delta_e": 0.5,
+    "veil13_blunder_mode": 2.0,
+    "veil13_blunder_max_loss": 10.0,
+    "veil13_blunder_per_game": 1.0,
+    "veil13_blunder_hp_ratio": 0.7,
+    "veil13_forced_mode": 2.0,
+    "veil13_forced_min_lead": 2.0,
+    "veil13_forced_min_winrate": 0.7,
+    "veil13_forced_max_loss": 10.0,
+    "veil13_open_moves": 0.0
+   },
+   "delegate": null,
+   "fingerprint": "5c1775e11cce1180"
+  },
+  {
+   "name": "local_open",
+   "strategy": "veil13",
+   "mode": "ai:veil13",
+   "settings": {
+    "veil13_target_rate": 0.3,
+    "veil13_reserve": 5.0,
+    "veil13_min_winrate": 0.85,
+    "veil13_free_loss": 0.4,
+    "veil13_free_wr_drop": 0.03,
+    "veil13_close_drift_cap": 0.0,
+    "veil13_spend_rate": 1.0,
+    "veil13_max_loss": 6.0,
+    "veil13_yose_max_loss": 2.0,
+    "veil13_dominant_hp": 1.01,
+    "veil13_dominant_max_loss": 3.0,
+    "veil13_min_human_policy": 0.05,
+    "veil13_natural_ratio": 0.1,
+    "veil13_cost_slack": 0.3,
+    "veil13_trap_mode": false,
+    "veil13_trap_min_delta_e": 0.5,
+    "veil13_blunder_mode": 2,
+    "veil13_blunder_max_loss": 10.0,
+    "veil13_blunder_per_game": 1,
+    "veil13_blunder_hp_ratio": 0.7,
+    "veil13_forced_mode": 2,
+    "veil13_forced_min_lead": 2.0,
+    "veil13_forced_min_winrate": 0.7,
+    "veil13_forced_max_loss": 10.0,
+    "veil13_open_moves": 30
+   },
+   "override_items": [
+    "veil13_target_rate=0.3",
+    "veil13_reserve=5.0",
+    "veil13_min_winrate=0.85",
+    "veil13_free_loss=0.4",
+    "veil13_free_wr_drop=0.03",
+    "veil13_close_drift_cap=0.0",
+    "veil13_spend_rate=1.0",
+    "veil13_max_loss=6.0",
+    "veil13_yose_max_loss=2.0",
+    "veil13_dominant_hp=1.01",
+    "veil13_dominant_max_loss=3.0",
+    "veil13_min_human_policy=0.05",
+    "veil13_natural_ratio=0.1",
+    "veil13_cost_slack=0.3",
+    "veil13_trap_mode=false",
+    "veil13_trap_min_delta_e=0.5",
+    "veil13_blunder_mode=2",
+    "veil13_blunder_max_loss=10.0",
+    "veil13_blunder_per_game=1",
+    "veil13_blunder_hp_ratio=0.7",
+    "veil13_forced_mode=2",
+    "veil13_forced_min_lead=2.0",
+    "veil13_forced_min_winrate=0.7",
+    "veil13_forced_max_loss=10.0",
+    "veil13_open_moves=30"
+   ],
+   "strategy_class": "Veil13Strategy",
+   "settings_source": "user config",
+   "effective_settings": {
+    "veil13_target_rate": 0.3,
+    "veil13_reserve": 5.0,
+    "veil13_min_winrate": 0.85,
+    "veil13_free_loss": 0.4,
+    "veil13_free_wr_drop": 0.03,
+    "veil13_close_drift_cap": 0.0,
+    "veil13_spend_rate": 1.0,
+    "veil13_max_loss": 6.0,
+    "veil13_yose_max_loss": 2.0,
+    "veil13_dominant_hp": 1.01,
+    "veil13_dominant_max_loss": 3.0,
+    "veil13_min_human_policy": 0.05,
+    "veil13_natural_ratio": 0.1,
+    "veil13_cost_slack": 0.3,
+    "veil13_trap_mode": false,
+    "veil13_trap_min_delta_e": 0.5,
+    "veil13_blunder_mode": 2.0,
+    "veil13_blunder_max_loss": 10.0,
+    "veil13_blunder_per_game": 1.0,
+    "veil13_blunder_hp_ratio": 0.7,
+    "veil13_forced_mode": 2.0,
+    "veil13_forced_min_lead": 2.0,
+    "veil13_forced_min_winrate": 0.7,
+    "veil13_forced_max_loss": 10.0,
+    "veil13_open_moves": 30.0
+   },
+   "delegate": {
+    "strategy_key": "ai:enigma13plus",
+    "settings": {
+     "enigma13plus_max_loss": 3.0,
+     "enigma13plus_large_lead_max_loss": 10.0,
+     "enigma13plus_min_winrate": 0.25,
+     "enigma13plus_net_margin": 0.0,
+     "enigma13plus_target_score": 2.0,
+     "enigma13plus_aim_jigo": false,
+     "enigma13plus_endgame_move": 75,
+     "enigma13plus_unsettled_max": 16,
+     "enigma13plus_locality_stddev": 2.0,
+     "enigma13plus_locality_slack": 0.3,
+     "enigma13plus_min_delta_e": 0.2,
+     "enigma13plus_cheap_loss": 0.3,
+     "enigma13plus_probe_extra": 6.0,
+     "enigma13plus_opening_humanstyle_moves": 11.0,
+     "enigma13plus_gamble_until_move": 30.0,
+     "enigma13plus_gamble_min_winrate": 0.3,
+     "enigma13plus_gamble_min_delta_e": 0.5,
+     "enigma13plus_overdraft_deficit": 2.0,
+     "enigma13plus_overdraft_answered_max": 99.0,
+     "enigma13plus_overdraft_min_fooled_lead": 1.0,
+     "enigma13plus_overdraft_probes": 6
+    },
+    "settings_source": "user config",
+    "fingerprint": "0df30552dca4ec6e"
+   },
+   "fingerprint": "20d53f604d6c9a7b"
+  },
+  {
+   "name": "enigma",
+   "strategy": "enigma13plus",
+   "mode": "ai:enigma13plus",
+   "settings": {
+    "enigma13plus_max_loss": 3.0,
+    "enigma13plus_large_lead_max_loss": 10.0,
+    "enigma13plus_min_winrate": 0.25,
+    "enigma13plus_net_margin": 0.0,
+    "enigma13plus_target_score": 2.0,
+    "enigma13plus_aim_jigo": false,
+    "enigma13plus_endgame_move": 75,
+    "enigma13plus_unsettled_max": 16,
+    "enigma13plus_locality_stddev": 2.0,
+    "enigma13plus_locality_slack": 0.3,
+    "enigma13plus_min_delta_e": 0.2,
+    "enigma13plus_cheap_loss": 0.3,
+    "enigma13plus_probe_extra": 6.0,
+    "enigma13plus_opening_humanstyle_moves": 11.0,
+    "enigma13plus_gamble_until_move": 30.0,
+    "enigma13plus_gamble_min_winrate": 0.3,
+    "enigma13plus_gamble_min_delta_e": 0.5,
+    "enigma13plus_overdraft_deficit": 2.0,
+    "enigma13plus_overdraft_answered_max": 99.0,
+    "enigma13plus_overdraft_min_fooled_lead": 1.0,
+    "enigma13plus_overdraft_probes": 6
+   },
+   "override_items": [],
+   "strategy_class": "Enigma13PlusStrategy",
+   "settings_source": "user config",
+   "effective_settings": {
+    "enigma13plus_max_loss": 3.0,
+    "enigma13plus_large_lead_max_loss": 10.0,
+    "enigma13plus_min_winrate": 0.25,
+    "enigma13plus_net_margin": 0.0,
+    "enigma13plus_endgame_move": 75.0,
+    "enigma13plus_unsettled_max": 16.0,
+    "enigma13plus_target_score": 2.0,
+    "enigma13plus_aim_jigo": false,
+    "enigma13plus_opening_humanstyle_moves": 11.0,
+    "enigma13plus_locality_stddev": 2.0,
+    "enigma13plus_locality_slack": 0.3,
+    "enigma13plus_gamble_until_move": 30.0,
+    "enigma13plus_gamble_min_winrate": 0.3,
+    "enigma13plus_gamble_min_delta_e": 0.5,
+    "enigma13plus_overdraft_deficit": 2.0,
+    "enigma13plus_overdraft_answered_max": 99.0,
+    "enigma13plus_overdraft_min_fooled_lead": 1.0,
+    "enigma13plus_overdraft_probes": 6.0,
+    "enigma13plus_min_delta_e": 0.2,
+    "enigma13plus_cheap_loss": 0.3,
+    "enigma13plus_probe_extra": 6.0
+   },
+   "delegate": null,
+   "fingerprint": "0df30552dca4ec6e"
+  }
+ ],
+ "schedule": [
+  {
+   "index": 0,
+   "seed": 1000,
+   "ai_color": "B",
+   "rank": "strategy:human",
+   "opp_seed": 1842444242,
+   "strategy_seed": 425801368,
+   "resign_lead": null,
+   "resign_len": 78
+  },
+  {
+   "index": 1,
+   "seed": 1001,
+   "ai_color": "W",
+   "rank": "strategy:human",
+   "opp_seed": 251797747,
+   "strategy_seed": 850558125,
+   "resign_lead": null,
+   "resign_len": 79
+  },
+  {
+   "index": 2,
+   "seed": 1002,
+   "ai_color": "B",
+   "rank": "strategy:human",
+   "opp_seed": 1809255817,
+   "strategy_seed": 948952291,
+   "resign_lead": null,
+   "resign_len": 70
+  },
+  {
+   "index": 3,
+   "seed": 1003,
+   "ai_color": "W",
+   "rank": "strategy:human",
+   "opp_seed": 2136065134,
+   "strategy_seed": 1546147258,
+   "resign_lead": null,
+   "resign_len": 123
+  },
+  {
+   "index": 4,
+   "seed": 1004,
+   "ai_color": "B",
+   "rank": "strategy:human",
+   "opp_seed": 1808717700,
+   "strategy_seed": 456716026,
+   "resign_lead": null,
+   "resign_len": 81
+  },
+  {
+   "index": 5,
+   "seed": 1005,
+   "ai_color": "W",
+   "rank": "strategy:human",
+   "opp_seed": 2074943336,
+   "strategy_seed": 1714290689,
+   "resign_lead": null,
+   "resign_len": 81
+  },
+  {
+   "index": 6,
+   "seed": 1006,
+   "ai_color": "B",
+   "rank": "strategy:human",
+   "opp_seed": 1488721381,
+   "strategy_seed": 239849477,
+   "resign_lead": null,
+   "resign_len": 123
+  },
+  {
+   "index": 7,
+   "seed": 1007,
+   "ai_color": "W",
+   "rank": "strategy:human",
+   "opp_seed": 138391791,
+   "strategy_seed": 747480507,
+   "resign_lead": null,
+   "resign_len": 89
+  },
+  {
+   "index": 8,
+   "seed": 1008,
+   "ai_color": "B",
+   "rank": "strategy:human",
+   "opp_seed": 1911693887,
+   "strategy_seed": 1461558634,
+   "resign_lead": null,
+   "resign_len": 79
+  },
+  {
+   "index": 9,
+   "seed": 1009,
+   "ai_color": "W",
+   "rank": "strategy:human",
+   "opp_seed": 773920557,
+   "strategy_seed": 51119787,
+   "resign_lead": null,
+   "resign_len": 116
+  },
+  {
+   "index": 10,
+   "seed": 1010,
+   "ai_color": "B",
+   "rank": "strategy:human",
+   "opp_seed": 1060776327,
+   "strategy_seed": 357237790,
+   "resign_lead": null,
+   "resign_len": 87
+  },
+  {
+   "index": 11,
+   "seed": 1011,
+   "ai_color": "W",
+   "rank": "strategy:human",
+   "opp_seed": 1575912737,
+   "strategy_seed": 1089258379,
+   "resign_lead": null,
+   "resign_len": 123
+  },
+  {
+   "index": 12,
+   "seed": 1012,
+   "ai_color": "B",
+   "rank": "strategy:human",
+   "opp_seed": 1453743460,
+   "strategy_seed": 680564964,
+   "resign_lead": null,
+   "resign_len": 70
+  },
+  {
+   "index": 13,
+   "seed": 1013,
+   "ai_color": "W",
+   "rank": "strategy:human",
+   "opp_seed": 2112563513,
+   "strategy_seed": 1095634259,
+   "resign_lead": null,
+   "resign_len": 31
+  },
+  {
+   "index": 14,
+   "seed": 1014,
+   "ai_color": "B",
+   "rank": "strategy:human",
+   "opp_seed": 24487958,
+   "strategy_seed": 1027642890,
+   "resign_lead": null,
+   "resign_len": 45
+  },
+  {
+   "index": 15,
+   "seed": 1015,
+   "ai_color": "W",
+   "rank": "strategy:human",
+   "opp_seed": 445646667,
+   "strategy_seed": 1292553110,
+   "resign_lead": null,
+   "resign_len": 116
+  },
+  {
+   "index": 16,
+   "seed": 1016,
+   "ai_color": "B",
+   "rank": "strategy:human",
+   "opp_seed": 1566947659,
+   "strategy_seed": 1676968494,
+   "resign_lead": null,
+   "resign_len": 81
+  },
+  {
+   "index": 17,
+   "seed": 1017,
+   "ai_color": "W",
+   "rank": "strategy:human",
+   "opp_seed": 2067235387,
+   "strategy_seed": 1833752245,
+   "resign_lead": null,
+   "resign_len": 63
+  },
+  {
+   "index": 18,
+   "seed": 1018,
+   "ai_color": "B",
+   "rank": "strategy:human",
+   "opp_seed": 1692101561,
+   "strategy_seed": 1694873441,
+   "resign_lead": null,
+   "resign_len": 79
+  },
+  {
+   "index": 19,
+   "seed": 1019,
+   "ai_color": "W",
+   "rank": "strategy:human",
+   "opp_seed": 147155057,
+   "strategy_seed": 1426281763,
+   "resign_lead": null,
+   "resign_len": 63
+  }
+ ],
+ "order": [
+  [
+   "local",
+   0
+  ],
+  [
+   "local",
+   1
+  ],
+  [
+   "local",
+   2
+  ],
+  [
+   "local",
+   3
+  ],
+  [
+   "local",
+   4
+  ],
+  [
+   "local",
+   5
+  ],
+  [
+   "local",
+   6
+  ],
+  [
+   "local",
+   7
+  ],
+  [
+   "local",
+   8
+  ],
+  [
+   "local",
+   9
+  ],
+  [
+   "local_open",
+   0
+  ],
+  [
+   "local_open",
+   1
+  ],
+  [
+   "local_open",
+   2
+  ],
+  [
+   "local_open",
+   3
+  ],
+  [
+   "local_open",
+   4
+  ],
+  [
+   "local_open",
+   5
+  ],
+  [
+   "local_open",
+   6
+  ],
+  [
+   "local_open",
+   7
+  ],
+  [
+   "local_open",
+   8
+  ],
+  [
+   "local_open",
+   9
+  ],
+  [
+   "enigma",
+   0
+  ],
+  [
+   "enigma",
+   1
+  ],
+  [
+   "enigma",
+   2
+  ],
+  [
+   "enigma",
+   3
+  ],
+  [
+   "enigma",
+   4
+  ],
+  [
+   "enigma",
+   5
+  ],
+  [
+   "enigma",
+   6
+  ],
+  [
+   "enigma",
+   7
+  ],
+  [
+   "enigma",
+   8
+  ],
+  [
+   "enigma",
+   9
+  ],
+  [
+   "enigma",
+   10
+  ],
+  [
+   "enigma",
+   11
+  ],
+  [
+   "enigma",
+   12
+  ],
+  [
+   "enigma",
+   13
+  ],
+  [
+   "enigma",
+   14
+  ],
+  [
+   "enigma",
+   15
+  ],
+  [
+   "enigma",
+   16
+  ],
+  [
+   "enigma",
+   17
+  ],
+  [
+   "enigma",
+   18
+  ],
+  [
+   "enigma",
+   19
+  ],
+  [
+   "local_open",
+   10
+  ],
+  [
+   "local_open",
+   11
+  ],
+  [
+   "local_open",
+   12
+  ],
+  [
+   "local_open",
+   13
+  ],
+  [
+   "local_open",
+   14
+  ],
+  [
+   "local_open",
+   15
+  ],
+  [
+   "local_open",
+   16
+  ],
+  [
+   "local_open",
+   17
+  ],
+  [
+   "local_open",
+   18
+  ],
+  [
+   "local_open",
+   19
+  ],
+  [
+   "local",
+   10
+  ],
+  [
+   "local",
+   11
+  ],
+  [
+   "local",
+   12
+  ],
+  [
+   "local",
+   13
+  ],
+  [
+   "local",
+   14
+  ],
+  [
+   "local",
+   15
+  ],
+  [
+   "local",
+   16
+  ],
+  [
+   "local",
+   17
+  ],
+  [
+   "local",
+   18
+  ],
+  [
+   "local",
+   19
+  ]
+ ],
+ "opponent": {
+  "kind": "strategy",
+  "strategy": "human",
+  "override_items": [
+   "human_kyu_rank=-8",
+   "modern_style=true"
+  ],
+  "ranks": [
+   "strategy:human"
+  ]
+ },
+ "resign": {
+  "no_resign": false,
+  "range": null,
+  "pool": [],
+  "lengths": [
+   123,
+   59,
+   79,
+   79,
+   70,
+   31,
+   63,
+   123,
+   45,
+   89,
+   53,
+   128,
+   78,
+   87,
+   73,
+   116,
+   67,
+   81
+  ],
+  "start_move": null,
+  "source": "docs/superpowers/specs/calibration-data/selfplay/recon",
+  "model": "length"
+ },
+ "config_path": "experiments/selfplay/veil-open-config.json",
+ "shadow": null,
+ "hp_audit": "rank_9d",
+ "config_snapshot": "config-snapshot.json",
+ "config_sha256": "8075cd05628176faaeee53158f7dc189a9147e43947ddc10142df459136775d6",
+ "engine": {
+  "katago": "C:\\Users\\iwaki\\.katrain\\katago-v1.18.2-cuda\\katago.exe",
+  "altcommand": "",
+  "model": "C:\\Users\\iwaki\\.katrain\\b10c384h6nbttflrs.bin.gz",
+  "humanlike_model": "C:\\Users\\iwaki\\.katrain\\b18c384nbt-humanv0.bin.gz",
+  "config": "katrain/KataGo/analysis_config.cfg",
+  "max_visits": 2500,
+  "fast_visits": 200,
+  "max_time": 8.0,
+  "wide_root_noise": 0.04,
+  "_enable_ownership": true
+ },
+ "ai_file": "katrain/core/ai.py",
+ "git": {
+  "head": "0a6f0bfed27bf655acb7fbe8fbb6def3f20e8e0d",
+  "dirty": false
+ },
+ "python": "3.12.10"
+}

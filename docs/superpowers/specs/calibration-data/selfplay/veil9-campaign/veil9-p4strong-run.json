@@ -1,0 +1,803 @@
+{
+ "subcommand": "run",
+ "created": "2026-09-26T10:57:57",
+ "command": [
+  "katrain_debug/selfplay.py",
+  "run",
+  "--size",
+  "9",
+  "--pairs",
+  "20",
+  "--opponent",
+  "strategy:human:human_kyu_rank=-8,modern_style=true",
+  "--config",
+  "experiments/selfplay/veil-open-config.json",
+  "--hp-audit",
+  "rank_9d",
+  "--label",
+  "veil9-p4strong",
+  "--arm",
+  "layers=veil9:veil9_target_rate=0.4,veil9_reserve=3.0,veil9_min_winrate=0.85,veil9_free_loss=0.3,veil9_free_wr_drop=0.03,veil9_close_drift_cap=0.0,veil9_spend_rate=1.0,veil9_max_loss=4.0,veil9_yose_max_loss=1.5,veil9_dominant_hp=1.01,veil9_dominant_max_loss=2.0,veil9_min_human_policy=0.05,veil9_natural_ratio=0.1,veil9_cost_slack=0.3,veil9_trap_mode=false,veil9_trap_min_delta_e=0.5,veil9_blunder_mode=2,veil9_blunder_max_loss=6.0,veil9_blunder_per_game=1,veil9_blunder_hp_ratio=0.7,veil9_forced_mode=2,veil9_forced_min_lead=1.0,veil9_forced_min_winrate=0.7,veil9_forced_max_loss=5.0,veil9_open_moves=0",
+  "--arm",
+  "open=veil9:veil9_target_rate=0.4,veil9_reserve=3.0,veil9_min_winrate=0.85,veil9_free_loss=0.3,veil9_free_wr_drop=0.03,veil9_close_drift_cap=0.0,veil9_spend_rate=1.0,veil9_max_loss=4.0,veil9_yose_max_loss=1.5,veil9_dominant_hp=1.01,veil9_dominant_max_loss=2.0,veil9_min_human_policy=0.05,veil9_natural_ratio=0.1,veil9_cost_slack=0.3,veil9_trap_mode=false,veil9_trap_min_delta_e=0.5,veil9_blunder_mode=2,veil9_blunder_max_loss=6.0,veil9_blunder_per_game=1,veil9_blunder_hp_ratio=0.7,veil9_forced_mode=2,veil9_forced_min_lead=1.0,veil9_forced_min_winrate=0.7,veil9_forced_max_loss=5.0,veil9_open_moves=12",
+  "--arm",
+  "enigma=enigma9plus"
+ ],
+ "size": 9,
+ "komi": 7.0,
+ "rules": "chinese",
+ "komi_shift": 0.0,
+ "max_moves": null,
+ "watch_flags": false,
+ "timeout": 180.0,
+ "target": 0.4,
+ "arms": [
+  {
+   "name": "layers",
+   "strategy": "veil9",
+   "mode": "ai:veil9",
+   "settings": {
+    "veil9_target_rate": 0.4,
+    "veil9_reserve": 3.0,
+    "veil9_min_winrate": 0.85,
+    "veil9_free_loss": 0.3,
+    "veil9_free_wr_drop": 0.03,
+    "veil9_close_drift_cap": 0.0,
+    "veil9_spend_rate": 1.0,
+    "veil9_max_loss": 4.0,
+    "veil9_yose_max_loss": 1.5,
+    "veil9_dominant_hp": 1.01,
+    "veil9_dominant_max_loss": 2.0,
+    "veil9_min_human_policy": 0.05,
+    "veil9_natural_ratio": 0.1,
+    "veil9_cost_slack": 0.3,
+    "veil9_trap_mode": false,
+    "veil9_trap_min_delta_e": 0.5,
+    "veil9_blunder_mode": 2,
+    "veil9_blunder_max_loss": 6.0,
+    "veil9_blunder_per_game": 1,
+    "veil9_blunder_hp_ratio": 0.7,
+    "veil9_forced_mode": 2,
+    "veil9_forced_min_lead": 1.0,
+    "veil9_forced_min_winrate": 0.7,
+    "veil9_forced_max_loss": 5.0,
+    "veil9_open_moves": 0
+   },
+   "override_items": [
+    "veil9_target_rate=0.4",
+    "veil9_reserve=3.0",
+    "veil9_min_winrate=0.85",
+    "veil9_free_loss=0.3",
+    "veil9_free_wr_drop=0.03",
+    "veil9_close_drift_cap=0.0",
+    "veil9_spend_rate=1.0",
+    "veil9_max_loss=4.0",
+    "veil9_yose_max_loss=1.5",
+    "veil9_dominant_hp=1.01",
+    "veil9_dominant_max_loss=2.0",
+    "veil9_min_human_policy=0.05",
+    "veil9_natural_ratio=0.1",
+    "veil9_cost_slack=0.3",
+    "veil9_trap_mode=false",
+    "veil9_trap_min_delta_e=0.5",
+    "veil9_blunder_mode=2",
+    "veil9_blunder_max_loss=6.0",
+    "veil9_blunder_per_game=1",
+    "veil9_blunder_hp_ratio=0.7",
+    "veil9_forced_mode=2",
+    "veil9_forced_min_lead=1.0",
+    "veil9_forced_min_winrate=0.7",
+    "veil9_forced_max_loss=5.0",
+    "veil9_open_moves=0"
+   ],
+   "strategy_class": "Veil9Strategy",
+   "settings_source": "user config",
+   "effective_settings": {
+    "veil9_target_rate": 0.4,
+    "veil9_reserve": 3.0,
+    "veil9_min_winrate": 0.85,
+    "veil9_free_loss": 0.3,
+    "veil9_free_wr_drop": 0.03,
+    "veil9_close_drift_cap": 0.0,
+    "veil9_spend_rate": 1.0,
+    "veil9_max_loss": 4.0,
+    "veil9_yose_max_loss": 1.5,
+    "veil9_dominant_hp": 1.01,
+    "veil9_dominant_max_loss": 2.0,
+    "veil9_min_human_policy": 0.05,
+    "veil9_natural_ratio": 0.1,
+    "veil9_cost_slack": 0.3,
+    "veil9_trap_mode": false,
+    "veil9_trap_min_delta_e": 0.5,
+    "veil9_blunder_mode": 2.0,
+    "veil9_blunder_max_loss": 6.0,
+    "veil9_blunder_per_game": 1.0,
+    "veil9_blunder_hp_ratio": 0.7,
+    "veil9_forced_mode": 2.0,
+    "veil9_forced_min_lead": 1.0,
+    "veil9_forced_min_winrate": 0.7,
+    "veil9_forced_max_loss": 5.0,
+    "veil9_open_moves": 0.0
+   },
+   "delegate": null,
+   "fingerprint": "6b2d487160cead57"
+  },
+  {
+   "name": "open",
+   "strategy": "veil9",
+   "mode": "ai:veil9",
+   "settings": {
+    "veil9_target_rate": 0.4,
+    "veil9_reserve": 3.0,
+    "veil9_min_winrate": 0.85,
+    "veil9_free_loss": 0.3,
+    "veil9_free_wr_drop": 0.03,
+    "veil9_close_drift_cap": 0.0,
+    "veil9_spend_rate": 1.0,
+    "veil9_max_loss": 4.0,
+    "veil9_yose_max_loss": 1.5,
+    "veil9_dominant_hp": 1.01,
+    "veil9_dominant_max_loss": 2.0,
+    "veil9_min_human_policy": 0.05,
+    "veil9_natural_ratio": 0.1,
+    "veil9_cost_slack": 0.3,
+    "veil9_trap_mode": false,
+    "veil9_trap_min_delta_e": 0.5,
+    "veil9_blunder_mode": 2,
+    "veil9_blunder_max_loss": 6.0,
+    "veil9_blunder_per_game": 1,
+    "veil9_blunder_hp_ratio": 0.7,
+    "veil9_forced_mode": 2,
+    "veil9_forced_min_lead": 1.0,
+    "veil9_forced_min_winrate": 0.7,
+    "veil9_forced_max_loss": 5.0,
+    "veil9_open_moves": 12
+   },
+   "override_items": [
+    "veil9_target_rate=0.4",
+    "veil9_reserve=3.0",
+    "veil9_min_winrate=0.85",
+    "veil9_free_loss=0.3",
+    "veil9_free_wr_drop=0.03",
+    "veil9_close_drift_cap=0.0",
+    "veil9_spend_rate=1.0",
+    "veil9_max_loss=4.0",
+    "veil9_yose_max_loss=1.5",
+    "veil9_dominant_hp=1.01",
+    "veil9_dominant_max_loss=2.0",
+    "veil9_min_human_policy=0.05",
+    "veil9_natural_ratio=0.1",
+    "veil9_cost_slack=0.3",
+    "veil9_trap_mode=false",
+    "veil9_trap_min_delta_e=0.5",
+    "veil9_blunder_mode=2",
+    "veil9_blunder_max_loss=6.0",
+    "veil9_blunder_per_game=1",
+    "veil9_blunder_hp_ratio=0.7",
+    "veil9_forced_mode=2",
+    "veil9_forced_min_lead=1.0",
+    "veil9_forced_min_winrate=0.7",
+    "veil9_forced_max_loss=5.0",
+    "veil9_open_moves=12"
+   ],
+   "strategy_class": "Veil9Strategy",
+   "settings_source": "user config",
+   "effective_settings": {
+    "veil9_target_rate": 0.4,
+    "veil9_reserve": 3.0,
+    "veil9_min_winrate": 0.85,
+    "veil9_free_loss": 0.3,
+    "veil9_free_wr_drop": 0.03,
+    "veil9_close_drift_cap": 0.0,
+    "veil9_spend_rate": 1.0,
+    "veil9_max_loss": 4.0,
+    "veil9_yose_max_loss": 1.5,
+    "veil9_dominant_hp": 1.01,
+    "veil9_dominant_max_loss": 2.0,
+    "veil9_min_human_policy": 0.05,
+    "veil9_natural_ratio": 0.1,
+    "veil9_cost_slack": 0.3,
+    "veil9_trap_mode": false,
+    "veil9_trap_min_delta_e": 0.5,
+    "veil9_blunder_mode": 2.0,
+    "veil9_blunder_max_loss": 6.0,
+    "veil9_blunder_per_game": 1.0,
+    "veil9_blunder_hp_ratio": 0.7,
+    "veil9_forced_mode": 2.0,
+    "veil9_forced_min_lead": 1.0,
+    "veil9_forced_min_winrate": 0.7,
+    "veil9_forced_max_loss": 5.0,
+    "veil9_open_moves": 12.0
+   },
+   "delegate": {
+    "strategy_key": "ai:enigma9plus",
+    "settings": {
+     "enigma9plus_max_loss": 1.8,
+     "enigma9plus_large_lead_max_loss": 8.0,
+     "enigma9plus_min_winrate": 0.3,
+     "enigma9plus_net_margin": 0.0,
+     "enigma9plus_target_score": 1.0,
+     "enigma9plus_aim_jigo": false,
+     "enigma9plus_endgame_move": 30,
+     "enigma9plus_unsettled_max": 8,
+     "enigma9plus_locality_stddev": 0.0,
+     "enigma9plus_locality_slack": 0.3,
+     "enigma9plus_min_delta_e": 0.2,
+     "enigma9plus_cheap_loss": 0.3,
+     "enigma9plus_probe_extra": 6.0,
+     "enigma9plus_opening_humanstyle_moves": 0,
+     "enigma9plus_gamble_until_move": 12.0,
+     "enigma9plus_gamble_min_winrate": 0.3,
+     "enigma9plus_gamble_min_delta_e": 0.5,
+     "enigma9plus_overdraft_deficit": 1.0,
+     "enigma9plus_overdraft_answered_max": 99.0,
+     "enigma9plus_overdraft_min_fooled_lead": 1.0,
+     "enigma9plus_overdraft_probes": 8.0
+    },
+    "settings_source": "user config",
+    "fingerprint": "90e4adbeb5877e1a"
+   },
+   "fingerprint": "8296fcbc694a283b"
+  },
+  {
+   "name": "enigma",
+   "strategy": "enigma9plus",
+   "mode": "ai:enigma9plus",
+   "settings": {
+    "enigma9plus_max_loss": 1.8,
+    "enigma9plus_large_lead_max_loss": 8.0,
+    "enigma9plus_min_winrate": 0.3,
+    "enigma9plus_net_margin": 0.0,
+    "enigma9plus_target_score": 1.0,
+    "enigma9plus_aim_jigo": false,
+    "enigma9plus_endgame_move": 30,
+    "enigma9plus_unsettled_max": 8,
+    "enigma9plus_locality_stddev": 0.0,
+    "enigma9plus_locality_slack": 0.3,
+    "enigma9plus_min_delta_e": 0.2,
+    "enigma9plus_cheap_loss": 0.3,
+    "enigma9plus_probe_extra": 6.0,
+    "enigma9plus_opening_humanstyle_moves": 0,
+    "enigma9plus_gamble_until_move": 12.0,
+    "enigma9plus_gamble_min_winrate": 0.3,
+    "enigma9plus_gamble_min_delta_e": 0.5,
+    "enigma9plus_overdraft_deficit": 1.0,
+    "enigma9plus_overdraft_answered_max": 99.0,
+    "enigma9plus_overdraft_min_fooled_lead": 1.0,
+    "enigma9plus_overdraft_probes": 8.0
+   },
+   "override_items": [],
+   "strategy_class": "Enigma9PlusStrategy",
+   "settings_source": "user config",
+   "effective_settings": {
+    "enigma9plus_max_loss": 1.8,
+    "enigma9plus_large_lead_max_loss": 8.0,
+    "enigma9plus_min_winrate": 0.3,
+    "enigma9plus_net_margin": 0.0,
+    "enigma9plus_endgame_move": 30.0,
+    "enigma9plus_unsettled_max": 8.0,
+    "enigma9plus_target_score": 1.0,
+    "enigma9plus_aim_jigo": false,
+    "enigma9plus_opening_humanstyle_moves": 0.0,
+    "enigma9plus_locality_stddev": 0.0,
+    "enigma9plus_locality_slack": 0.3,
+    "enigma9plus_gamble_until_move": 12.0,
+    "enigma9plus_gamble_min_winrate": 0.3,
+    "enigma9plus_gamble_min_delta_e": 0.5,
+    "enigma9plus_overdraft_deficit": 1.0,
+    "enigma9plus_overdraft_answered_max": 99.0,
+    "enigma9plus_overdraft_min_fooled_lead": 1.0,
+    "enigma9plus_overdraft_probes": 8.0,
+    "enigma9plus_min_delta_e": 0.2,
+    "enigma9plus_cheap_loss": 0.3,
+    "enigma9plus_probe_extra": 6.0
+   },
+   "delegate": null,
+   "fingerprint": "90e4adbeb5877e1a"
+  }
+ ],
+ "schedule": [
+  {
+   "index": 0,
+   "seed": 1000,
+   "ai_color": "B",
+   "rank": "strategy:human",
+   "opp_seed": 1842444242,
+   "strategy_seed": 425801368,
+   "resign_lead": null,
+   "resign_len": 83
+  },
+  {
+   "index": 1,
+   "seed": 1001,
+   "ai_color": "W",
+   "rank": "strategy:human",
+   "opp_seed": 251797747,
+   "strategy_seed": 850558125,
+   "resign_lead": null,
+   "resign_len": 53
+  },
+  {
+   "index": 2,
+   "seed": 1002,
+   "ai_color": "B",
+   "rank": "strategy:human",
+   "opp_seed": 1809255817,
+   "strategy_seed": 948952291,
+   "resign_lead": null,
+   "resign_len": 47
+  },
+  {
+   "index": 3,
+   "seed": 1003,
+   "ai_color": "W",
+   "rank": "strategy:human",
+   "opp_seed": 2136065134,
+   "strategy_seed": 1546147258,
+   "resign_lead": null,
+   "resign_len": 39
+  },
+  {
+   "index": 4,
+   "seed": 1004,
+   "ai_color": "B",
+   "rank": "strategy:human",
+   "opp_seed": 1808717700,
+   "strategy_seed": 456716026,
+   "resign_lead": null,
+   "resign_len": 53
+  },
+  {
+   "index": 5,
+   "seed": 1005,
+   "ai_color": "W",
+   "rank": "strategy:human",
+   "opp_seed": 2074943336,
+   "strategy_seed": 1714290689,
+   "resign_lead": null,
+   "resign_len": 37
+  },
+  {
+   "index": 6,
+   "seed": 1006,
+   "ai_color": "B",
+   "rank": "strategy:human",
+   "opp_seed": 1488721381,
+   "strategy_seed": 239849477,
+   "resign_lead": null,
+   "resign_len": 39
+  },
+  {
+   "index": 7,
+   "seed": 1007,
+   "ai_color": "W",
+   "rank": "strategy:human",
+   "opp_seed": 138391791,
+   "strategy_seed": 747480507,
+   "resign_lead": null,
+   "resign_len": 33
+  },
+  {
+   "index": 8,
+   "seed": 1008,
+   "ai_color": "B",
+   "rank": "strategy:human",
+   "opp_seed": 1911693887,
+   "strategy_seed": 1461558634,
+   "resign_lead": null,
+   "resign_len": 53
+  },
+  {
+   "index": 9,
+   "seed": 1009,
+   "ai_color": "W",
+   "rank": "strategy:human",
+   "opp_seed": 773920557,
+   "strategy_seed": 51119787,
+   "resign_lead": null,
+   "resign_len": 49
+  },
+  {
+   "index": 10,
+   "seed": 1010,
+   "ai_color": "B",
+   "rank": "strategy:human",
+   "opp_seed": 1060776327,
+   "strategy_seed": 357237790,
+   "resign_lead": null,
+   "resign_len": 37
+  },
+  {
+   "index": 11,
+   "seed": 1011,
+   "ai_color": "W",
+   "rank": "strategy:human",
+   "opp_seed": 1575912737,
+   "strategy_seed": 1089258379,
+   "resign_lead": null,
+   "resign_len": 33
+  },
+  {
+   "index": 12,
+   "seed": 1012,
+   "ai_color": "B",
+   "rank": "strategy:human",
+   "opp_seed": 1453743460,
+   "strategy_seed": 680564964,
+   "resign_lead": null,
+   "resign_len": 47
+  },
+  {
+   "index": 13,
+   "seed": 1013,
+   "ai_color": "W",
+   "rank": "strategy:human",
+   "opp_seed": 2112563513,
+   "strategy_seed": 1095634259,
+   "resign_lead": null,
+   "resign_len": 28
+  },
+  {
+   "index": 14,
+   "seed": 1014,
+   "ai_color": "B",
+   "rank": "strategy:human",
+   "opp_seed": 24487958,
+   "strategy_seed": 1027642890,
+   "resign_lead": null,
+   "resign_len": 100
+  },
+  {
+   "index": 15,
+   "seed": 1015,
+   "ai_color": "W",
+   "rank": "strategy:human",
+   "opp_seed": 445646667,
+   "strategy_seed": 1292553110,
+   "resign_lead": null,
+   "resign_len": 49
+  },
+  {
+   "index": 16,
+   "seed": 1016,
+   "ai_color": "B",
+   "rank": "strategy:human",
+   "opp_seed": 1566947659,
+   "strategy_seed": 1676968494,
+   "resign_lead": null,
+   "resign_len": 50
+  },
+  {
+   "index": 17,
+   "seed": 1017,
+   "ai_color": "W",
+   "rank": "strategy:human",
+   "opp_seed": 2067235387,
+   "strategy_seed": 1833752245,
+   "resign_lead": null,
+   "resign_len": 53
+  },
+  {
+   "index": 18,
+   "seed": 1018,
+   "ai_color": "B",
+   "rank": "strategy:human",
+   "opp_seed": 1692101561,
+   "strategy_seed": 1694873441,
+   "resign_lead": null,
+   "resign_len": 54
+  },
+  {
+   "index": 19,
+   "seed": 1019,
+   "ai_color": "W",
+   "rank": "strategy:human",
+   "opp_seed": 147155057,
+   "strategy_seed": 1426281763,
+   "resign_lead": null,
+   "resign_len": 53
+  }
+ ],
+ "order": [
+  [
+   "layers",
+   0
+  ],
+  [
+   "layers",
+   1
+  ],
+  [
+   "layers",
+   2
+  ],
+  [
+   "layers",
+   3
+  ],
+  [
+   "layers",
+   4
+  ],
+  [
+   "layers",
+   5
+  ],
+  [
+   "layers",
+   6
+  ],
+  [
+   "layers",
+   7
+  ],
+  [
+   "layers",
+   8
+  ],
+  [
+   "layers",
+   9
+  ],
+  [
+   "open",
+   0
+  ],
+  [
+   "open",
+   1
+  ],
+  [
+   "open",
+   2
+  ],
+  [
+   "open",
+   3
+  ],
+  [
+   "open",
+   4
+  ],
+  [
+   "open",
+   5
+  ],
+  [
+   "open",
+   6
+  ],
+  [
+   "open",
+   7
+  ],
+  [
+   "open",
+   8
+  ],
+  [
+   "open",
+   9
+  ],
+  [
+   "enigma",
+   0
+  ],
+  [
+   "enigma",
+   1
+  ],
+  [
+   "enigma",
+   2
+  ],
+  [
+   "enigma",
+   3
+  ],
+  [
+   "enigma",
+   4
+  ],
+  [
+   "enigma",
+   5
+  ],
+  [
+   "enigma",
+   6
+  ],
+  [
+   "enigma",
+   7
+  ],
+  [
+   "enigma",
+   8
+  ],
+  [
+   "enigma",
+   9
+  ],
+  [
+   "enigma",
+   10
+  ],
+  [
+   "enigma",
+   11
+  ],
+  [
+   "enigma",
+   12
+  ],
+  [
+   "enigma",
+   13
+  ],
+  [
+   "enigma",
+   14
+  ],
+  [
+   "enigma",
+   15
+  ],
+  [
+   "enigma",
+   16
+  ],
+  [
+   "enigma",
+   17
+  ],
+  [
+   "enigma",
+   18
+  ],
+  [
+   "enigma",
+   19
+  ],
+  [
+   "open",
+   10
+  ],
+  [
+   "open",
+   11
+  ],
+  [
+   "open",
+   12
+  ],
+  [
+   "open",
+   13
+  ],
+  [
+   "open",
+   14
+  ],
+  [
+   "open",
+   15
+  ],
+  [
+   "open",
+   16
+  ],
+  [
+   "open",
+   17
+  ],
+  [
+   "open",
+   18
+  ],
+  [
+   "open",
+   19
+  ],
+  [
+   "layers",
+   10
+  ],
+  [
+   "layers",
+   11
+  ],
+  [
+   "layers",
+   12
+  ],
+  [
+   "layers",
+   13
+  ],
+  [
+   "layers",
+   14
+  ],
+  [
+   "layers",
+   15
+  ],
+  [
+   "layers",
+   16
+  ],
+  [
+   "layers",
+   17
+  ],
+  [
+   "layers",
+   18
+  ],
+  [
+   "layers",
+   19
+  ]
+ ],
+ "opponent": {
+  "kind": "strategy",
+  "strategy": "human",
+  "override_items": [
+   "human_kyu_rank=-8",
+   "modern_style=true"
+  ],
+  "ranks": [
+   "strategy:human"
+  ]
+ },
+ "resign": {
+  "no_resign": false,
+  "range": null,
+  "pool": [],
+  "lengths": [
+   33,
+   34,
+   53,
+   54,
+   47,
+   28,
+   53,
+   39,
+   100,
+   33,
+   29,
+   50,
+   83,
+   37,
+   62,
+   49
+  ],
+  "start_move": null,
+  "source": "docs/superpowers/specs/calibration-data/selfplay/recon_9",
+  "model": "length"
+ },
+ "config_path": "experiments/selfplay/veil-open-config.json",
+ "shadow": null,
+ "hp_audit": "rank_9d",
+ "config_snapshot": "config-snapshot.json",
+ "config_sha256": "8075cd05628176faaeee53158f7dc189a9147e43947ddc10142df459136775d6",
+ "engine": {
+  "katago": "C:\\Users\\iwaki\\.katrain\\katago-v1.18.2-cuda\\katago.exe",
+  "altcommand": "",
+  "model": "C:\\Users\\iwaki\\.katrain\\b10c384h6nbttflrs.bin.gz",
+  "humanlike_model": "C:\\Users\\iwaki\\.katrain\\b18c384nbt-humanv0.bin.gz",
+  "config": "katrain/KataGo/analysis_config.cfg",
+  "max_visits": 2500,
+  "fast_visits": 200,
+  "max_time": 8.0,
+  "wide_root_noise": 0.04,
+  "_enable_ownership": true
+ },
+ "ai_file": "katrain/core/ai.py",
+ "git": {
+  "head": "0a6f0bfed27bf655acb7fbe8fbb6def3f20e8e0d",
+  "dirty": false
+ },
+ "python": "3.12.10"
+}

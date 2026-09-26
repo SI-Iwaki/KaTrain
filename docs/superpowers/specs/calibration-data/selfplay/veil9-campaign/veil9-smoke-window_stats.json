@@ -1,0 +1,139 @@
+{
+ "sources": [
+  "experiments/selfplay/20260926_0840_veil9-smoke"
+ ],
+ "size": 9,
+ "window": 12,
+ "arms": {
+  "layers": {
+   "games": 2,
+   "own_in": {
+    "n": 12,
+    "rate_pooled": 0.5,
+    "rate_mean": 0.5,
+    "loss_per_move": 0.06625237261666667,
+    "ge2_per_game": 0.0,
+    "ge6_per_game": 0.0
+   },
+   "own_out": {
+    "n": 49,
+    "rate_pooled": 0.5714285714285714,
+    "rate_mean": 0.5654761904761905,
+    "loss_per_move": 0.1935203781632653,
+    "ge2_per_game": 0.0,
+    "ge6_per_game": 0.0
+   },
+   "opp_in": {
+    "n": 12,
+    "rate_pooled": 0.5,
+    "rate_mean": 0.5,
+    "loss_per_move": 0.5509644792833334,
+    "ge2_per_game": 0.5,
+    "ge6_per_game": 0.0
+   },
+   "opp_out": {
+    "n": 49,
+    "rate_pooled": 0.3469387755102041,
+    "rate_mean": 0.3526936026936027,
+    "loss_per_move": 1.4971756710204083,
+    "ge2_per_game": 5.5,
+    "ge6_per_game": 1.0
+   },
+   "lead_at_w": {
+    "n": 2,
+    "median": 4.234910279999999,
+    "p25": 3.2281072049999997,
+    "p75": 5.241713355,
+    "min": 2.22130413,
+    "negative": 0
+   },
+   "flip_in_per_game": 0.5,
+   "flip_out_per_game": 0.0,
+   "u_after_mean": 0.8604381832477808,
+   "paid_after_per_game": 4.5,
+   "open": {},
+   "open_outside": 0,
+   "open_missing_inside": 0,
+   "games_with_open": 0,
+   "book_exit": {
+    "games": 0,
+    "median": null,
+    "min": null,
+    "reasons": {},
+    "noise": {
+     "n": 0,
+     "on_best_move": 0,
+     "loss_median": null,
+     "loss_mean": null
+    }
+   },
+   "book_played_per_game": null
+  },
+  "open": {
+   "games": 2,
+   "own_in": {
+    "n": 12,
+    "rate_pooled": 0.4166666666666667,
+    "rate_mean": 0.41666666666666663,
+    "loss_per_move": 0.142095469,
+    "ge2_per_game": 0.0,
+    "ge6_per_game": 0.0
+   },
+   "own_out": {
+    "n": 58,
+    "rate_pooled": 0.5689655172413793,
+    "rate_mean": 0.5900900900900901,
+    "loss_per_move": 1.1486861129310342,
+    "ge2_per_game": 6.0,
+    "ge6_per_game": 1.0
+   },
+   "opp_in": {
+    "n": 12,
+    "rate_pooled": 0.4166666666666667,
+    "rate_mean": 0.41666666666666663,
+    "loss_per_move": 0.524635768,
+    "ge2_per_game": 0.5,
+    "ge6_per_game": 0.0
+   },
+   "opp_out": {
+    "n": 59,
+    "rate_pooled": 0.3220338983050847,
+    "rate_mean": 0.33046683046683045,
+    "loss_per_move": 3.013599383999999,
+    "ge2_per_game": 9.0,
+    "ge6_per_game": 3.5
+   },
+   "lead_at_w": {
+    "n": 2,
+    "median": 2.0133015885,
+    "p25": 1.38932648775,
+    "p75": 2.63727668925,
+    "min": 0.765351387,
+    "negative": 0
+   },
+   "flip_in_per_game": 0.5,
+   "flip_out_per_game": 0.0,
+   "u_after_mean": 0.7952930415772329,
+   "paid_after_per_game": 5.5,
+   "open": {
+    "played": 12
+   },
+   "open_outside": 0,
+   "open_missing_inside": 0,
+   "games_with_open": 2,
+   "book_exit": {
+    "games": 0,
+    "median": null,
+    "min": null,
+    "reasons": {},
+    "noise": {
+     "n": 0,
+     "on_best_move": 0,
+     "loss_median": null,
+     "loss_mean": null
+    }
+   },
+   "book_played_per_game": null
+  }
+ }
+}

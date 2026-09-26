@@ -1,0 +1,348 @@
+{
+ "run_dir": "experiments/selfplay/20260926_0812_calib9",
+ "strategy": "enigma9plus",
+ "strategy_overrides": [
+  "enigma9plus_gamble_min_winrate=0.25",
+  "enigma9plus_gamble_until_move=20.0",
+  "enigma9plus_large_lead_max_loss=6.0",
+  "enigma9plus_max_loss=1.6",
+  "enigma9plus_overdraft_deficit=2.0",
+  "enigma9plus_overdraft_probes=6",
+  "enigma9plus_target_score=0.2"
+ ],
+ "size": 9,
+ "tau": 1.0,
+ "resign_model": "length",
+ "targets": {
+  "opp_mean": 0.308,
+  "opp_sd": 0.166,
+  "opp_loss": 1.88,
+  "opp_ge2": 0.23,
+  "opp_ge5": 0.1,
+  "ai_mean": 0.628,
+  "moves_median": 48.0,
+  "bins": {
+   "cal_opening": {
+    "opp_top1": 0.233,
+    "opp_loss": 0.77
+   },
+   "cal_middle": {
+    "opp_top1": 0.332,
+    "opp_loss": 2.4
+   },
+   "cal_endgame": {
+    "opp_top1": 0.355,
+    "opp_loss": 0.78
+   }
+  }
+ },
+ "targets_games": "7/16",
+ "per_rank": {
+  "rank_1d": {
+   "games": 8,
+   "opp_mean": 0.2540175243845302,
+   "opp_sd": 0.13258959427457095,
+   "opp_pooled": 0.2727272727272727,
+   "opp_loss": 1.61820770587219,
+   "opp_ge2": 0.25339366515837103,
+   "opp_ge5": 0.09502262443438914,
+   "own_mean": 0.6240999138673557,
+   "moves_median": 53.0,
+   "bins": {
+    "cal_opening": {
+     "opp_top1": 0.29545454545454547,
+     "opp_loss": 0.6434446987772727,
+     "n": 44
+    },
+    "cal_middle": {
+     "opp_top1": 0.2803738317757009,
+     "opp_loss": 2.3287730905700936,
+     "n": 107
+    },
+    "cal_endgame": {
+     "opp_top1": 0.2463768115942029,
+     "opp_loss": 1.0985966223985506,
+     "n": 69
+    }
+   }
+  },
+  "rank_3d": {
+   "games": 8,
+   "opp_mean": 0.30906260406260405,
+   "opp_sd": 0.1532763029381948,
+   "opp_pooled": 0.3105263157894737,
+   "opp_loss": 1.1931304706772052,
+   "opp_ge2": 0.19895287958115182,
+   "opp_ge5": 0.07853403141361257,
+   "own_mean": 0.6714640567765567,
+   "moves_median": 50.5,
+   "bins": {
+    "cal_opening": {
+     "opp_top1": 0.22727272727272727,
+     "opp_loss": 0.7307334830477273,
+     "n": 44
+    },
+    "cal_middle": {
+     "opp_top1": 0.35514018691588783,
+     "opp_loss": 1.5118171988678506,
+     "n": 107
+    },
+    "cal_endgame": {
+     "opp_top1": 0.28205128205128205,
+     "opp_loss": 0.7786886753846155,
+     "n": 39
+    }
+   }
+  },
+  "rank_5d": {
+   "games": 8,
+   "opp_mean": 0.3122644548147644,
+   "opp_sd": 0.08909305100707154,
+   "opp_pooled": 0.2908366533864542,
+   "opp_loss": 1.3739644685051873,
+   "opp_ge2": 0.17857142857142858,
+   "opp_ge5": 0.06746031746031746,
+   "own_mean": 0.6330597326649958,
+   "moves_median": 56.0,
+   "bins": {
+    "cal_opening": {
+     "opp_top1": 0.2727272727272727,
+     "opp_loss": 0.4630963872090909,
+     "n": 44
+    },
+    "cal_middle": {
+     "opp_top1": 0.3565217391304348,
+     "opp_loss": 1.4429914752321737,
+     "n": 115
+    },
+    "cal_endgame": {
+     "opp_top1": 0.21739130434782608,
+     "opp_loss": 2.47448833423913,
+     "n": 92
+    }
+   }
+  },
+  "rank_7d": {
+   "games": 8,
+   "opp_mean": 0.3470910138248848,
+   "opp_sd": 0.11931339218177285,
+   "opp_pooled": 0.35398230088495575,
+   "opp_loss": 1.0004709590845926,
+   "opp_ge2": 0.1565217391304348,
+   "opp_ge5": 0.05652173913043478,
+   "own_mean": 0.6826128936423054,
+   "moves_median": 55.5,
+   "bins": {
+    "cal_opening": {
+     "opp_top1": 0.29545454545454547,
+     "opp_loss": 0.6194610745159091,
+     "n": 44
+    },
+    "cal_middle": {
+     "opp_top1": 0.37719298245614036,
+     "opp_loss": 1.2049800551922807,
+     "n": 114
+    },
+    "cal_endgame": {
+     "opp_top1": 0.35294117647058826,
+     "opp_loss": 0.8083026426676472,
+     "n": 68
+    }
+   }
+  },
+  "rank_9d": {
+   "games": 8,
+   "opp_mean": 0.38034530125047367,
+   "opp_sd": 0.16902274718770618,
+   "opp_pooled": 0.37872340425531914,
+   "opp_loss": 1.456732826218549,
+   "opp_ge2": 0.14767932489451477,
+   "opp_ge5": 0.05485232067510549,
+   "own_mean": 0.6745446001367054,
+   "moves_median": 56.0,
+   "bins": {
+    "cal_opening": {
+     "opp_top1": 0.3409090909090909,
+     "opp_loss": 0.6233032554136364,
+     "n": 44
+    },
+    "cal_middle": {
+     "opp_top1": 0.4482758620689655,
+     "opp_loss": 1.5425664647356034,
+     "n": 116
+    },
+    "cal_endgame": {
+     "opp_top1": 0.29333333333333333,
+     "opp_loss": 1.9136270664000001,
+     "n": 75
+    }
+   }
+  }
+ },
+ "choices": [
+  {
+   "ranks": [
+    "rank_1d",
+    "rank_3d",
+    "rank_9d"
+   ],
+   "opp_mean": 0.31447514323253595,
+   "opp_sd": 0.160899152259545,
+   "opp_loss": 1.4226903342559813,
+   "own_mean": 0.6567028569268726,
+   "bins": {
+    "cal_opening": {
+     "opp_top1": 0.2878787878787879,
+     "opp_loss": 0.6658271457462122
+    },
+    "cal_middle": {
+     "opp_top1": 0.3612632935868514,
+     "opp_loss": 1.794385584724516
+    },
+    "cal_endgame": {
+     "opp_top1": 0.2739204756596061,
+     "opp_loss": 1.263637454727722
+    }
+   },
+   "score": 3.8304355041233196
+  },
+  {
+   "ranks": [
+    "rank_1d",
+    "rank_5d",
+    "rank_9d"
+   ],
+   "opp_mean": 0.3155424268165894,
+   "opp_sd": 0.1438537829060422,
+   "opp_loss": 1.4829683335319757,
+   "own_mean": 0.6439014155563524,
+   "bins": {
+    "cal_opening": {
+     "opp_top1": 0.30303030303030304,
+     "opp_loss": 0.5766147804666667
+    },
+    "cal_middle": {
+     "opp_top1": 0.3617238109917004,
+     "opp_loss": 1.771443676845957
+    },
+    "cal_endgame": {
+     "opp_top1": 0.2523671497584541,
+     "opp_loss": 1.828904007679227
+    }
+   },
+   "score": 4.317165658621864
+  },
+  {
+   "ranks": [
+    "rank_1d",
+    "rank_3d",
+    "rank_7d"
+   ],
+   "opp_mean": 0.30339038075733965,
+   "opp_sd": 0.14105425611014275,
+   "opp_loss": 1.2706030452113293,
+   "own_mean": 0.659392288095406,
+   "bins": {
+    "cal_opening": {
+     "opp_top1": 0.27272727272727276,
+     "opp_loss": 0.6645464187803031
+    },
+    "cal_middle": {
+     "opp_top1": 0.33756900038257637,
+     "opp_loss": 1.6818567815434082
+    },
+    "cal_endgame": {
+     "opp_top1": 0.29378975670535773,
+     "opp_loss": 0.895195980150271
+    }
+   },
+   "score": 7.710045617260204
+  },
+  {
+   "ranks": [
+    "rank_1d",
+    "rank_7d",
+    "rank_9d"
+   ],
+   "opp_mean": 0.3271512798199629,
+   "opp_sd": 0.15161367377089538,
+   "opp_loss": 1.3584704970584438,
+   "own_mean": 0.6604191358821222,
+   "bins": {
+    "cal_opening": {
+     "opp_top1": 0.3106060606060606,
+     "opp_loss": 0.6287363429022728
+    },
+    "cal_middle": {
+     "opp_top1": 0.3686142254336023,
+     "opp_loss": 1.692106536832659
+    },
+    "cal_endgame": {
+     "opp_top1": 0.2975504404660415,
+     "opp_loss": 1.2735087771553992
+    }
+   },
+   "score": 8.537019502366206
+  },
+  {
+   "ranks": [
+    "rank_1d",
+    "rank_3d",
+    "rank_5d"
+   ],
+   "opp_mean": 0.2917815277539662,
+   "opp_sd": 0.13058267258700518,
+   "opp_loss": 1.3951008816848607,
+   "own_mean": 0.6428745677696361,
+   "bins": {
+    "cal_opening": {
+     "opp_top1": 0.26515151515151514,
+     "opp_loss": 0.612424856344697
+    },
+    "cal_middle": {
+     "opp_top1": 0.3306785859406745,
+     "opp_loss": 1.761193921556706
+    },
+    "cal_endgame": {
+     "opp_top1": 0.24860646599777034,
+     "opp_loss": 1.4505912106740988
+    }
+   },
+   "score": 9.52839060173666
+  }
+ ],
+ "best": {
+  "ranks": [
+   "rank_1d",
+   "rank_3d",
+   "rank_9d"
+  ],
+  "opp_mean": 0.31447514323253595,
+  "opp_sd": 0.160899152259545,
+  "opp_loss": 1.4226903342559813,
+  "own_mean": 0.6567028569268726,
+  "bins": {
+   "cal_opening": {
+    "opp_top1": 0.2878787878787879,
+    "opp_loss": 0.6658271457462122
+   },
+   "cal_middle": {
+    "opp_top1": 0.3612632935868514,
+    "opp_loss": 1.794385584724516
+   },
+   "cal_endgame": {
+    "opp_top1": 0.2739204756596061,
+    "opp_loss": 1.263637454727722
+   }
+  },
+  "score": 3.8304355041233196
+ },
+ "harness_drift_ai": 0.028702856926872578,
+ "integrity": {
+  "fallbacks": 0,
+  "humansl_errors": 0,
+  "hp_audit_errors": 0,
+  "shadow_errors": 0
+ },
+ "integrity_warning": null
+}

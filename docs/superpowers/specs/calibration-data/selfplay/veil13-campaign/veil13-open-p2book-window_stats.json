@@ -1,0 +1,265 @@
+{
+ "sources": [
+  "experiments/selfplay/20260926_1241_veil13-open-p2book"
+ ],
+ "size": 13,
+ "window": 30,
+ "arms": {
+  "enigma": {
+   "games": 24,
+   "own_in": {
+    "n": 360,
+    "rate_pooled": 0.45555555555555555,
+    "rate_mean": 0.45555555555555555,
+    "loss_per_move": 0.6148281546255278,
+    "ge2_per_game": 1.625,
+    "ge6_per_game": 0.20833333333333334
+   },
+   "own_out": {
+    "n": 723,
+    "rate_pooled": 0.5366528354080221,
+    "rate_mean": 0.515914524582113,
+    "loss_per_move": 1.7695284632046058,
+    "ge2_per_game": 7.5,
+    "ge6_per_game": 3.625
+   },
+   "opp_in": {
+    "n": 360,
+    "rate_pooled": 0.5722222222222222,
+    "rate_mean": 0.5722222222222222,
+    "loss_per_move": 0.7979421977275556,
+    "ge2_per_game": 2.1666666666666665,
+    "ge6_per_game": 0.25
+   },
+   "opp_out": {
+    "n": 735,
+    "rate_pooled": 0.22857142857142856,
+    "rate_mean": 0.22401337826156667,
+    "loss_per_move": 2.5462438975467077,
+    "ge2_per_game": 11.416666666666666,
+    "ge6_per_game": 4.125
+   },
+   "lead_at_w": {
+    "n": 24,
+    "median": 1.7819930099999999,
+    "p25": -0.50066314925,
+    "p75": 5.8110819675,
+    "min": -3.64754953,
+    "negative": 8
+   },
+   "flip_in_per_game": 1.4583333333333333,
+   "flip_out_per_game": 1.5833333333333333,
+   "u_after_mean": null,
+   "paid_after_per_game": 0.0,
+   "open": {},
+   "open_outside": 0,
+   "open_missing_inside": 0,
+   "games_with_open": 0,
+   "book_exit": {
+    "games": 24,
+    "median": 13.0,
+    "min": 4,
+    "reasons": {
+     "ai_loss": 23,
+     "limit": 1
+    },
+    "noise": {
+     "n": 23,
+     "on_best_move": 0,
+     "loss_median": 0.638098959,
+     "loss_mean": 0.7312065075082608
+    }
+   },
+   "book_played_per_game": 7.291666666666667
+  },
+  "local": {
+   "games": 24,
+   "own_in": {
+    "n": 360,
+    "rate_pooled": 0.5388888888888889,
+    "rate_mean": 0.5388888888888889,
+    "loss_per_move": 0.08956329443069444,
+    "ge2_per_game": 0.08333333333333333,
+    "ge6_per_game": 0.0
+   },
+   "own_out": {
+    "n": 707,
+    "rate_pooled": 0.4809052333804809,
+    "rate_mean": 0.475466476198896,
+    "loss_per_move": 0.6401819591981047,
+    "ge2_per_game": 2.7916666666666665,
+    "ge6_per_game": 0.7916666666666666
+   },
+   "opp_in": {
+    "n": 360,
+    "rate_pooled": 0.925,
+    "rate_mean": 0.9249999999999999,
+    "loss_per_move": 0.14121053726105556,
+    "ge2_per_game": 0.4166666666666667,
+    "ge6_per_game": 0.08333333333333333
+   },
+   "opp_out": {
+    "n": 717,
+    "rate_pooled": 0.3319386331938633,
+    "rate_mean": 0.3626048815562985,
+    "loss_per_move": 1.957797046050572,
+    "ge2_per_game": 7.5,
+    "ge6_per_game": 2.75
+   },
+   "lead_at_w": {
+    "n": 24,
+    "median": 0.12927039299999998,
+    "p25": -0.39039257875,
+    "p75": 0.78734128875,
+    "min": -2.55967025,
+    "negative": 10
+   },
+   "flip_in_per_game": 0.5833333333333334,
+   "flip_out_per_game": 0.08333333333333333,
+   "u_after_mean": 0.9692750650561784,
+   "paid_after_per_game": 5.583333333333333,
+   "open": {},
+   "open_outside": 0,
+   "open_missing_inside": 0,
+   "games_with_open": 0,
+   "book_exit": {
+    "games": 24,
+    "median": 35.5,
+    "min": 19,
+    "reasons": {
+     "ai_loss": 15,
+     "limit": 9
+    },
+    "noise": {
+     "n": 15,
+     "on_best_move": 7,
+     "loss_median": 0.49554993199999997,
+     "loss_mean": 0.60078647752
+    }
+   },
+   "book_played_per_game": 15.708333333333334
+  },
+  "local_open": {
+   "games": 24,
+   "own_in": {
+    "n": 360,
+    "rate_pooled": 0.475,
+    "rate_mean": 0.47500000000000003,
+    "loss_per_move": 0.5089242613430556,
+    "ge2_per_game": 1.25,
+    "ge6_per_game": 0.25
+   },
+   "own_out": {
+    "n": 677,
+    "rate_pooled": 0.3914327917282127,
+    "rate_mean": 0.37667157405529417,
+    "loss_per_move": 0.7219394584983753,
+    "ge2_per_game": 3.4583333333333335,
+    "ge6_per_game": 0.875
+   },
+   "opp_in": {
+    "n": 360,
+    "rate_pooled": 0.5722222222222222,
+    "rate_mean": 0.5722222222222222,
+    "loss_per_move": 0.6962014752847222,
+    "ge2_per_game": 1.75,
+    "ge6_per_game": 0.125
+   },
+   "opp_out": {
+    "n": 689,
+    "rate_pooled": 0.28011611030478956,
+    "rate_mean": 0.2691580026859363,
+    "loss_per_move": 1.6260673649268504,
+    "ge2_per_game": 7.208333333333333,
+    "ge6_per_game": 1.9583333333333333
+   },
+   "lead_at_w": {
+    "n": 24,
+    "median": 2.7541047599999997,
+    "p25": 0.5232415195,
+    "p75": 4.8177288825,
+    "min": -2.28038873,
+    "negative": 3
+   },
+   "flip_in_per_game": 1.0833333333333333,
+   "flip_out_per_game": 0.041666666666666664,
+   "u_after_mean": 0.8718671409434349,
+   "paid_after_per_game": 8.583333333333334,
+   "open": {
+    "played": 360
+   },
+   "open_outside": 0,
+   "open_missing_inside": 0,
+   "games_with_open": 24,
+   "book_exit": {
+    "games": 24,
+    "median": 13.0,
+    "min": 4,
+    "reasons": {
+     "ai_loss": 24
+    },
+    "noise": {
+     "n": 24,
+     "on_best_move": 1,
+     "loss_median": 0.482554136,
+     "loss_mean": 0.7589506829
+    }
+   },
+   "book_played_per_game": 6.583333333333333
+  }
+ },
+ "compare": [
+  {
+   "a": "local_open",
+   "b": "local",
+   "conf": 0.975,
+   "diffs": {
+    "own_in": {
+     "n": 24,
+     "mean": -0.06388888888888888,
+     "t_ci": [
+      -0.16034256039445755,
+      0.03256478261667978
+     ],
+     "wilcoxon_p": 0.17361006147826274
+    },
+    "own_out": {
+     "n": 24,
+     "mean": -0.09879490214360175,
+     "t_ci": [
+      -0.18933830669679091,
+      -0.008251497590412563
+     ],
+     "wilcoxon_p": 0.013452697857369689
+    },
+    "opp_in": {
+     "n": 24,
+     "mean": -0.3527777777777778,
+     "t_ci": [
+      -0.45206950676383095,
+      -0.25348604879172465
+     ],
+     "wilcoxon_p": 3.058429655933281e-05
+    },
+    "opp_out": {
+     "n": 24,
+     "mean": -0.09344687887036218,
+     "t_ci": [
+      -0.19250997718685575,
+      0.005616219446131374
+     ],
+     "wilcoxon_p": 0.0385859252068963
+    },
+    "lead_at_w": {
+     "n": 24,
+     "mean": 2.6491404986,
+     "t_ci": [
+      0.4975939885317642,
+      4.800687008668236
+     ],
+     "wilcoxon_p": 0.00433504581451416
+    }
+   }
+  }
+ ]
+}
