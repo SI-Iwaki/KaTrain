@@ -407,3 +407,22 @@ def test_every_stop_path_clears_the_watch_flags():
     assert "clear_game_watch_flags" in callees("_stop_board_watcher")
     for name in ("_board_watch_trigger", "_board_watch_idle_stopped"):
         assert "_stop_board_watcher" in callees(name), name
+
+
+def test_ring_difficulty_is_wired_through_main():
+    """静的検査（追記11）: `_board_watch_ahead` は色分け ON（設定 highlight_difficulty を毎回読む）のとき
+    `current_move_ring_kind` と `difficulty_ring_color` で色を選び、設定変更の当て直し
+    `_board_watch_highlight_refresh` は `apply_game_watch_flags` でフラグを張り直す（途中で ON にしたら今の局面から効く）"""
+    main_path = os.path.join(os.path.dirname(__file__), "..", "katrain", "__main__.py")
+    src = open(main_path, encoding="utf-8").read()
+    ahead = src.split("def _board_watch_ahead(")[1].split("\n    def ")[0]
+    assert '"highlight_difficulty"' in ahead and '"highlight_color"' in ahead
+    assert "current_move_ring_kind" in ahead and "difficulty_ring_color" in ahead
+    tree = ast.parse(src)
+    funcs = {n.name: n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+    called = [
+        getattr(c.func, "id", None) or getattr(c.func, "attr", None)
+        for c in ast.walk(funcs["_board_watch_highlight_refresh"])
+        if isinstance(c, ast.Call)
+    ]
+    assert "apply_game_watch_flags" in called

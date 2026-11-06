@@ -1640,7 +1640,8 @@ class KaTrainGui(Screen, KaTrainBase):
         （board_watch/move_cursor）で、輪「表示しない」でもカーソルだけ運べる。毎周呼ばれるので
         カーソル側は CursorParker が「新しい手のとき1回だけ」に間引く（貼り付き防止）
         """
-        from katrain.core.screen_marker import ring_color
+        from katrain.core.move_difficulty import current_move_ring_kind
+        from katrain.core.screen_marker import difficulty_ring_color, ring_color
 
         cfg = self._config.get("board_watch") or {}
         reader = getattr(self, "_board_watch_reader", None)
@@ -1648,6 +1649,11 @@ class KaTrainGui(Screen, KaTrainBase):
         marker = getattr(self, "_board_watch_marker", None)
         if marker is not None:
             color = ring_color(cfg.get("highlight_color"))  # None ＝設定「表示しない」
+            if color is not None and cfg.get("highlight_difficulty"):
+                # 局面の難しさで塗り分ける（spec 追記11）。判定は着手ノードに1回だけ記憶されるので、
+                # 着手直後・監視スレッドの毎周・設定変更のどこから呼んでも同じ色（ちらつかない）
+                kind = current_move_ring_kind(self.game, move, log=lambda message: self.log(message, OUTPUT_INFO))
+                color = difficulty_ring_color(cfg.get("highlight_color"), kind)
             if point is None or color is None:
                 marker.hide()
             else:
@@ -1662,6 +1668,8 @@ class KaTrainGui(Screen, KaTrainBase):
         watcher = getattr(self, "_board_watcher", None)
         if watcher is None or getattr(self, "_board_watch_kind", None) != "game":
             return
+        # 難易度の色分けを途中で ON/OFF したら、フラグを張り直して今の局面から効かせる（spec 追記11）
+        apply_game_watch_flags(self.game, self._config.get("board_watch"))
         self._board_watch_ahead(watcher.ahead_move)
 
     def _board_watch_marker_close(self):
