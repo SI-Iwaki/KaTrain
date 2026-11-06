@@ -1596,7 +1596,8 @@ AI の応手は<b>アプリの盤の該当する交点の真上に光る輪</b>�
 
 <h3 id="watch-highlight">AI 着手の強調表示</h3>
 <p>
-一般・エンジン設定の「AI 着手の強調表示（監視モード）」で輪の色を選べます（表示しない／シアン／マゼンタ／緑／赤／オレンジ／白）。
+一般・エンジン設定の「AI 着手の強調表示（監視）」で輪の色を選べます（表示しない／シアン／マゼンタ／緑／赤／オレンジ／白）。
+同じ行の「難易度」にチェックを入れると、AI が打つ前の局面が人間にとってどれだけ難しかったかで輪の色が変わります（<b>緑＝明らか</b>：9段の第一感が KataGo の最善手と一致して 8 割以上・次善手が 1 目以上悪い／<b>赤＝難解</b>：9段がこの局面で打つと平均 1.5 目以上損しそう／それ以外は選んだ色＝普通。選んだ色が緑なら明らかは水色、赤なら難解はマゼンタになります）。判定の根拠は対局ログに 1 手 1 行で残ります（「盤面監視: R10 の難易度 明らか（第一感 R10 92%・次善 -2.1目）」）。判定に使う 9段の第一感は相手の手が入った瞬間に先回りで取るので、輪の表示はほとんど遅れません（実測で平均約 0.02 秒。間に合わなかった手は選んだ色のままです）。
 輪は最前面のクリック透過ウィンドウなので、アプリの操作を邪魔しません。監視の自前キャプチャからは除外されているため、輪が盤の認識を狂わせることもありません。
 </p>
 
@@ -1636,6 +1637,7 @@ AI の応手は<b>アプリの盤の該当する交点の真上に光る輪</b>�
     <tr><td>active_slowdown_sec</td><td>20</td><td>相手の手をこの秒数以上待ったら確認間隔を poll_interval_ms に落とす（省電力。長考のあとの反映が最大 0.35 秒遅れるだけ。0 で無効）</td></tr>
     <tr><td>auto_stop_sec</td><td>300</td><td>対局（KaTrain の手数）がこの秒数進まなければ監視を自動停止する（0 で無効）</td></tr>
     <tr><td>highlight_color</td><td>cyan</td><td>輪の色（設定画面のドロップダウンと同じ）</td></tr>
+    <tr><td>highlight_difficulty</td><td>false</td><td>輪の色を局面の難しさで塗り分ける（明らか＝緑・難解＝赤・普通＝highlight_color。設定画面の「難易度」チェックと同じ）</td></tr>
   </tbody>
 </table>
 </div>
@@ -1690,7 +1692,7 @@ AI の応手は<b>アプリの盤の該当する交点の真上に光る輪</b>�
     <tr><th><code>trainer</code></th><td>eval_thresholds / num_undo_prompts / show_dots / save_feedback / theme / top_moves_show / low_visits / eval_on_show_last / show_move_numbers / eval_show_ai / save_analysis 等</td><td>指導・分析設定（<kbd>F6</kbd>）</td></tr>
     <tr><th><code>ai</code></th><td><code>ai:&lt;戦略&gt;</code> ごとの設定値（→ <a href="#ai">06</a>）</td><td>AI設定（<kbd>F7</kbd>）</td></tr>
     <tr><th><code>tsumego_capture</code></th><td>ホットキー・ウィンドウ名・枠・ソルバ・白番監視（→ <a href="#tsumego-settings">07</a>）</td><td>なし（直接編集）</td></tr>
-    <tr><th><code>board_watch</code></th><td>ホットキー・ポーリング・先読み・強調表示の色（→ <a href="#watch-settings">08</a>）</td><td>色のみ一般設定に</td></tr>
+    <tr><th><code>board_watch</code></th><td>ホットキー・ポーリング・先読み・強調表示の色（→ <a href="#watch-settings">08</a>）</td><td>色と難易度の色分けのみ一般設定に</td></tr>
     <tr><th><code>tsumego_autoloop</code></th><td>enabled / hotkey / adb_path / adb_serial / poll_ms / settle_ms / answer_timeout_s / capture_timeout_s / max_problems / max_consecutive_errors</td><td>なし（直接編集）</td></tr>
     <tr><th><code>contribute</code></th><td>KataGo 分散訓練（katagotraining.org）への参加設定</td><td>分散訓練（<kbd>F9</kbd>）</td></tr>
     <tr><th><code>ui_state</code></th><td>ウィンドウ位置・サイズ、モードごとのパネル状態</td><td>自動保存</td></tr>
