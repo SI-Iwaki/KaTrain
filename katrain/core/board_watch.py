@@ -351,6 +351,14 @@ def watch_settings_from_config(cfg):
 PREFETCH_REPLIES_DEFAULT = 5  # 相手の応手 top-K の子局面を先読みする既定本数（spec 追記4）
 
 
+def ring_difficulty_enabled(cfg):
+    """輪を局面の難しさで塗り分けるか（設定 highlight_difficulty が ON かつ輪が「表示しない」でない・追記11）"""
+    from katrain.core.screen_marker import ring_color
+
+    cfg = cfg or {}
+    return bool(cfg.get("highlight_difficulty", False)) and ring_color(cfg.get("highlight_color")) is not None
+
+
 def apply_game_watch_flags(game, cfg):
     """対局監視モードの Game 側フラグを張り、先読み本数を返す。
 
@@ -364,6 +372,12 @@ def apply_game_watch_flags(game, cfg):
     prefetch = int((cfg or {}).get("prefetch_replies", PREFETCH_REPLIES_DEFAULT))
     game.board_watch_active = True
     game.board_watch_prefetch_replies = prefetch
+    # 輪の難易度の色分け（追記11）。監視開始・新規対局・設定変更のどれでも、今の局面が AI の手番なら先回りを撃つ
+    # （AI 黒番の初手＝root と、対局の途中で ON にした場合を拾う。同じノードには2本撃たない）
+    game.ring_difficulty_active = ring_difficulty_enabled(cfg)
+    prefetch_hp = getattr(game, "_maybe_ring_hp_prefetch", None)
+    if prefetch_hp is not None:
+        prefetch_hp(getattr(game, "current_node", None))
     return prefetch
 
 
@@ -377,6 +391,7 @@ def clear_game_watch_flags(game):
     game.board_watch_active = False
     game.board_watch_prefetch_replies = 0
     game.board_watch_probe_warm = False
+    game.ring_difficulty_active = False
     game._cancel_board_watch_prefetch()
 
 

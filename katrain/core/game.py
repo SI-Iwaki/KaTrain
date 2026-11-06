@@ -31,10 +31,12 @@ from katrain.core.constants import (
     PRIORITY_BOARD_WATCH_PREFETCH,
     PRIORITY_REGION_PREFETCH,
     PRIORITY_TSUMEGO_SPECULATION,
+    PRIORITY_EXTRA_AI_QUERY,
 )
 from katrain.core.engine import KataGoEngine
 from katrain.core.game_node import GameNode
 from katrain.core.lang import i18n, rank_label
+from katrain.core.move_difficulty import RING_HP_PROFILE, RING_HP_VISITS
 from katrain.core.sgf_parser import SGF, Move
 from katrain.core.utils import var_to_grid, weighted_selection_without_replacement
 
@@ -480,6 +482,8 @@ class Game(BaseGame):
         # 盤面監視モードの応手先読み（追記4）。__main__ が監視 ON で設定し OFF で 0 に戻す
         self.board_watch_prefetch_replies = 0
         self.board_watch_active = False  # 対局監視スレッドが走っているか（__main__ が ON/OFF で設定）
+        # 輪の難易度の色分け（board-watch spec 追記11）。ON の間だけ AI の手番の局面に humanSL を先回りで撃つ
+        self.ring_difficulty_active = False
         # 応手先読みで ownership 付きの判定クエリも温めるか。難解モードがヨセで撃つ Probe
         # （ownership=True・wideRootNoise=0）は通常解析と ownerMap の有無が違う＝別のキャッシュ
         # エントリなので、下の応手先読み（ownership なし）では1秒も速くならない。撃つ見込みが
@@ -617,8 +621,48 @@ class Game(BaseGame):
                     self.engines[played_node.next_player],
                     analyze_fast=self._enigma_ponder_defers_own_analysis(move),
                 )
+                self._maybe_ring_hp_prefetch(played_node)
                 self._maybe_board_watch_prefetch(played_node)
         return played_node
+
+    def _maybe_ring_hp_prefetch(self, node):
+        """盤面監視の輪の難易度（board-watch spec 追記11）用に、AI が打つ局面の humanSL 9段を先回りで1本撃つ。
+
+        相手の着手が入った直後（通常解析の発行と同時）に撃つ。AI の着手生成は通常解析の完了を待ってから
+        始まる（`__main__._do_update_state`）ので、8visits のこのクエリはその間に終わる＝輪を出すときには
+        揃っていて、輪は待たない。結果は `node.ring_human_policy` に1回代入するだけ（読むのは
+        `move_difficulty.ring_difficulty_of`）。条件は難解・一致率ひかえめの親局面クエリと同一（9段・8visits・
+        ownership なし）＝それらの戦略とは NN キャッシュを共有するだけ。発火は 色分け ON × 監視中 ×
+        次番が AI × リージョンなし のときだけ（どれかが偽ならクエリ 0 本）。同じノードには1本だけ。
+        """
+        if not getattr(self, "ring_difficulty_active", False) or not getattr(self, "board_watch_active", False):
+            return
+        if node is None or self.region_of_interest:
+            return
+        if getattr(node, "ring_hp_requested", False) or getattr(node, "ring_human_policy", None) is not None:
+            return
+        players_info = getattr(self.katrain, "players_info", None)
+        try:
+            if not players_info or players_info[node.next_player].player_type != PLAYER_AI:
+                return
+        except (KeyError, AttributeError):
+            return
+        node.ring_hp_requested = True
+
+        def on_result(analysis, partial_result):
+            if not partial_result and analysis and analysis.get("humanPolicy") is not None:
+                node.ring_human_policy = analysis["humanPolicy"]
+
+        self.engines[node.next_player].request_analysis(
+            node,
+            callback=on_result,
+            error_callback=lambda *_args, **_kwargs: None,  # 失敗＝判定なし（輪は普通の色）
+            visits=RING_HP_VISITS,
+            include_policy=True,
+            ownership=False,
+            extra_settings={"humanSLProfile": RING_HP_PROFILE, "ignorePreRootHistory": False},
+            priority=PRIORITY_EXTRA_AI_QUERY,
+        )
 
     def _enigma_ponder_defers_own_analysis(self, move):
         """監視モードで難解の ponder がこの着手（自分の手）を温めるなら、自ノードの即時解析は fast だけ。
