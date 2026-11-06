@@ -28,6 +28,8 @@ import ctypes.wintypes
 import sys
 import threading
 
+from katrain.core.move_difficulty import RING_HARD, RING_OBVIOUS
+
 # 設定 board_watch.highlight_color の選択肢。キーが設定値、表示名は i18n "board_watch:highlight_color:<キー>"。
 # 既定はシアン＝黄色い盤・黒白の石のどれとも混ざらない（輪は自分のキャプチャからは除外されるので認識との衝突は無い）
 RING_COLORS = {
@@ -46,6 +48,26 @@ HIGHLIGHT_OFF = "off"  # 設定値 "off" ＝強調表示しない（ON/OFF と�
 def highlight_choices():
     """設定画面のドロップダウンの選択肢（設定値）: 表示しない ＋ 色プリセット"""
     return [HIGHLIGHT_OFF, *RING_COLORS]
+
+
+# 難易度の塗り分け（board-watch spec 追記11）: 種別 -> (既定の色, 普通の色と同じだったときの代わり)。
+# 緑・赤・水色・マゼンタは黄盤と木目盤のどちらでも見える（橙は黄盤で、白は白石と木目盤で弱い）
+DIFFICULTY_COLORS = {RING_OBVIOUS: ("lime", "cyan"), RING_HARD: ("red", "magenta")}
+
+
+def difficulty_ring_color(base_name, kind):
+    """難易度の種別 → 輪の RGB。普通（kind が None / "normal"）は設定色、設定が「表示しない」なら None。
+
+    明らか＝緑・難解＝赤。設定色がそれと同じなら代わりの色にして、3種類が必ず別の色になるようにする。
+    """
+    base = ring_color(base_name)
+    if base is None:
+        return None
+    pair = DIFFICULTY_COLORS.get(kind)
+    if pair is None:
+        return base
+    primary, alternate = (RING_COLORS[name] for name in pair)
+    return alternate if primary == base else primary
 
 
 RING_DIAMETER_RATIO = 1.0  # 輪の外径 = セル幅（隣の交点に掛からない）

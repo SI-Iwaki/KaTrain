@@ -8,6 +8,7 @@ import pytest
 
 from katrain.core.screen_marker import (
     HIGHLIGHT_OFF,
+    difficulty_ring_color,
     RING_COLOR,
     RING_COLOR_DEFAULT,
     RING_COLORS,
@@ -42,6 +43,23 @@ def test_ring_color_presets_fall_back_to_the_default_for_unknown_names():
     assert ring_color(HIGHLIGHT_OFF) is None  # "off" ＝表示しない
     assert len(RING_COLORS) >= 4 and all(len(rgb) == 3 for rgb in RING_COLORS.values())
     assert highlight_choices() == [HIGHLIGHT_OFF, *RING_COLORS]  # ドロップダウンは OFF ＋ 色
+
+
+def test_difficulty_ring_color_keeps_the_three_classes_distinct():
+    """難易度の塗り分け（board-watch spec 追記11）: 明らか＝緑・難解＝赤・普通＝設定色。設定色と重なったら
+    明らか＝水色・難解＝マゼンタに替えて、どの設定色でも3色が別になる。「表示しない」なら輪を出さない"""
+    from katrain.core.move_difficulty import RING_HARD, RING_NORMAL, RING_OBVIOUS
+
+    assert difficulty_ring_color("magenta", RING_OBVIOUS) == RING_COLORS["lime"]
+    assert difficulty_ring_color("magenta", RING_HARD) == RING_COLORS["red"]
+    assert difficulty_ring_color("magenta", RING_NORMAL) == RING_COLORS["magenta"]
+    assert difficulty_ring_color("magenta", None) == RING_COLORS["magenta"]  # 判定なし＝普通の色
+    assert difficulty_ring_color("lime", RING_OBVIOUS) == RING_COLORS["cyan"]
+    assert difficulty_ring_color("red", RING_HARD) == RING_COLORS["magenta"]
+    assert difficulty_ring_color(HIGHLIGHT_OFF, RING_HARD) is None
+    for base in [*RING_COLORS, "no-such-color"]:
+        colors = {difficulty_ring_color(base, kind) for kind in (RING_OBVIOUS, RING_NORMAL, RING_HARD)}
+        assert len(colors) == 3, base
 
 
 def test_ring_geometry_centers_the_window_on_the_point():
