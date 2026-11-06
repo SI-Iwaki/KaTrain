@@ -154,6 +154,17 @@ def test_judgement_is_stable_across_threads():
     assert len(logs) == 1
 
 
+def test_unexpected_classification_error_is_no_judgement_not_an_exception():
+    """判定が想定外の例外を出しても（数値でない humanPolicy など）、輪は普通の色で出る＝例外を外へ出さず
+    判定なしを記憶する（記憶しないと監視スレッドが毎周同じ例外を繰り返し、輪が出ないまま止まる）"""
+    _parent, node = node_pair(hp=[None] * (SIZE * SIZE + 1))
+    logs = []
+    kind, info = ring_difficulty_of(node, log=logs.append)
+    assert kind is None and info["why"] == "error"
+    assert ring_difficulty_of(node)[0] is None
+    assert len(logs) == 1 and "判定なし" in logs[0]
+
+
 def fake_game(node):
     return SimpleNamespace(current_node=node, board_size=(SIZE, SIZE))
 

@@ -39,6 +39,7 @@ _NO_JUDGEMENT_TEXT = {
     "bad_hp": "humanPolicy の形が盤と合わない",
     "no_analysis": "親局面の解析なし",
     "pass": "パス",
+    "error": "判定中にエラー",
 }
 
 _LOCK = threading.Lock()  # 着手直後（メッセージループ）と監視スレッドが同時に初回の判定をしても1回にする
@@ -110,14 +111,17 @@ def ring_difficulty_of(node, log=None):
         else:
             analysis = getattr(parent, "analysis", None) or {}
             move_infos = list((analysis.get("moves") or {}).values())
-            result = classify_ring_difficulty(
-                move_infos,
-                parent.candidate_moves if move_infos else [],
-                getattr(parent, "ring_human_policy", None),
-                gtp,
-                parent.next_player,
-                parent.board_size,
-            )
+            try:
+                result = classify_ring_difficulty(
+                    move_infos,
+                    parent.candidate_moves if move_infos else [],
+                    getattr(parent, "ring_human_policy", None),
+                    gtp,
+                    parent.next_player,
+                    parent.board_size,
+                )
+            except Exception as e:  # 判定の不具合で輪そのもの（既存の機能）を止めない＝判定なし（普通の色）を記憶
+                result = (None, {"why": "error", "error": repr(e)})
         node.ring_difficulty = result
     if log is not None:
         log(format_ring_difficulty(gtp, *result))
@@ -144,7 +148,8 @@ def format_ring_difficulty(gtp, kind, info):
     head = f"盤面監視: {gtp} の難易度"
     if kind is None:
         why = info.get("why")
-        return f"{head} 判定なし（{_NO_JUDGEMENT_TEXT.get(why, why)}）"
+        detail = f": {info['error']}" if info.get("error") else ""
+        return f"{head} 判定なし（{_NO_JUDGEMENT_TEXT.get(why, why)}{detail}）"
     first = f"第一感 {info['top']} {info['top_hp']:.0%}"
     if kind == RING_OBVIOUS:
         rest = "他に候補なし" if info["gap"] is None else f"次善 -{info['gap']:.1f}目"
