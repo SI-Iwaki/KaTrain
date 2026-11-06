@@ -236,6 +236,7 @@ kv 側で触るのは4系統: ラベルのテキスト式（`detail` を最優�
 | `backoff_factor` | `2.0` | バックオフ時に周期を何倍にするか |
 | `poll_interval_max_ms` | `2000` | バックオフの上限（成功1回で既定周期へ即復帰） |
 | `highlight_color` | `"cyan"` | AI の着手をアプリ盤の該当交点の真上に出す輪の色（追記6）。`"off"` で表示しない。値は `screen_marker.highlight_choices()`＝off / cyan / magenta / lime / red / orange / white。設定画面 general 節のドロップダウン |
+| `highlight_difficulty` | `false` | 輪の色を局面の難しさで塗り分ける（追記11）。明らか＝緑・難解＝赤・普通＝`highlight_color`。ON の間だけ相手の着手ごとに humanSL 9段 8visits を1本先回りで撃つ。設定画面は輪の色と同じ行のチェック |
 
 パッケージ `katrain/config.json` と `C:\Users\iwaki\.katrain\config.json` の**両方**に追加する（後者はマージされない: `base_katrain.py:210-238` はファイル不在か `version < CONFIG_MIN_VERSION` のときだけ丸ごとコピーし、実測でユーザーの `general.version` は `1.17.0`）。ローカル側は **KaTrain を終了した状態でメインセッションから直接編集**する（起動中の編集は終了時の全体書き戻しで消える。`base_katrain.py:254-259`）。
 
@@ -835,3 +836,32 @@ None＝従来どおり。`AppBoardReader` は直近フレームを保持し（�
 検出＝3周で1回だけ・自分で止まる・色なし/非序盤/KaTrain と同じ盤/フックなしでは発火しない・盤が変わったら
 数え直し・撮影失敗で連続が切れる・盤サイズの変化／実画面の列＝前の対局→次の対局を `AppBoardReader` から
 `on_new_game` まで本物で通す／`run()` が自分で抜ける／`__main__` 配線の静的検査）。
+
+## 追記11（2026-11-06）: 輪の色を「人間にとっての局面の難しさ」で塗り分ける（明らか／普通／難解）
+
+**動機**（ユーザー要望）: 輪（追記6）はどの手も同じ色。**どの手が人間にとって難しい局面だったかを対局中に確認したい**（学習・振り返り用）。人間なら長考するであろう局面（難解）と、他に有力候補が無く humanPolicy も圧倒的な局面（明らか）を色で分ける。**条件は「輪の表示を一切遅らせない」**＝遅くなるなら機能ごと諦める（ユーザー指定）。
+
+**前提の実測（2026-11-06・読み取りのみ）**:
+- 着手を返した時点で手元に必ずあるのは **親局面（AI が打つ前）の KataGo 通常解析だけ**（`strategy.cn` ＝ `played_node.parent`。候補手の visits・`relativePointsLost`・KataGo の policy。監視モードでも親局面はフル解析＝`_enigma_ponder_defers_own_analysis` が縮めるのは AI 自身の着手ノードだけ）。**humanPolicy は戦略が内部で取っても `generate_ai_move` が戦略オブジェクトごと捨てる**し、取らない手番も多い（一致率ひかえめの実戦 1237 判断のうち 520 で `best_hp` なし＝no_pool 232・研究外しの委譲 258 ほか。難解の admissible が空の出口はクエリ 0 本）。戦略側で回収する案は判定基準が手番ごとに混ざるので採らない。
+- 輪の色は `_do_ai_move`（着手直後）と監視スレッドの毎周（`on_ahead`・50〜400ms）と設定変更の当て直しの**3か所から**付け直される（`_board_watch_ahead` は `(i, j)` しか受け取らない）。手ごとに違う答えを返すと `ScreenMarker._apply` が毎回描き直して**輪がちらつく**＝判定は手ごとに1回だけ計算して記憶する。
+- 分布（既存データ）: 最善手の humanPolicy（9段・8visits）>= 0.8 は 実戦 一致率ひかえめ9路 24%・13路 26%・難解＋13路 20%、自己対局 28〜29%。次善手（visits>=10）との差 >= 1目は 13路 35%・9路 44%＋他に候補なし 11.4%（`calibration-data/selfplay/recon*/report_game_*.json` の `alt_min_loss`）。9段の期待損失 E（難解の子局面プローブの最善手の行・実戦 307 局面）は p50 0.56・p80 1.71・**>= 1.5目が 23%**・>= 2目 17%。KataGo の policy は humanPolicy の代用にはなりきらない（13路自己対局: prior >= 0.8 のうち hp >= 0.8 は 83%、hp >= 0.8 のうち prior >= 0.8 は 65%）。
+
+**設計（案A＝humanPolicy の先回り。案B＝KataGo の解析だけ、は速度実測で負けたときの退避先）**:
+
+1. **先回り**: 相手の手が `Game.play` に入って通常解析を発行した直後に、**その局面の humanSL（`rank_9d`・8visits・`include_policy=True`・`ownership=False`・`ignorePreRootHistory=False`）を1本**、`PRIORITY_EXTRA_AI_QUERY` で発行する（`Game._maybe_ring_hp_prefetch`）。条件は難解・一致率ひかえめ・擬態の親局面クエリ（`_probe_children(parent_hp=True)` / `_veil_parent_hp`）と同一＝それらの戦略では NN キャッシュが共有されるだけで判定の分布は変わらない（応手先読み 追記4 と同じ理屈）。結果の `humanPolicy` は**そのノードに保存**（`node.ring_human_policy`、エンジンのコールバックスレッドから1回代入＝読み手はロック不要）。AI の思考（通常解析 0.3〜1 秒＋戦略）の間に終わるので、輪を出す時点では揃っている。発火は **監視中（`board_watch_active`）× 色分け ON × 輪が「表示しない」でない × 次番が AI × リージョンなし（詰碁経路でない）** の AND。どれかが偽なら**クエリも判定も走らない＝ビット同一**。監視開始・監視中の新規対局（`apply_game_watch_flags`）と設定変更の当て直しでも現在ノードに1回撃つ（AI 黒番の初手＝root を拾うため）。
+2. **判定**（`katrain/core/move_difficulty.py` の純関数 `classify_ring_difficulty`・Kivy 非依存）: 入力は親局面の解析（生 moveInfos と `candidate_moves`）・親局面の humanPolicy・AI の着手 gtp・盤サイズ。
+   - **難解** `"hard"`: 9段がこの局面で打った場合の期待損失 `E = enigma9_expected_punish(enigma9_reply_table(親局面の moveInfos, 手番側), hp_of)` が `RING_HARD_MIN_E`(1.5目) 以上。**難解戦略の E と同じ関数**（基準は visits >= 10 の最善・算入は visits >= 2・1手の損失は 8目で頭打ち）。
+   - **明らか** `"obvious"`: (a) AI の着手が KataGo の最善手（`candidate_moves[0]`）、(b) 9段の第一感（`enigma9_human_top`）がその手で humanPolicy >= `RING_OBVIOUS_MIN_HP`(0.8)、(c) visits >= 10 の他候補の `relativePointsLost` の最小値 >= `RING_OBVIOUS_MIN_GAP`(1.0目)、または該当する他候補が無い、の AND。**AI が意図して最善手を外した手は (a) で落ちる**＝「明らか」の色を最善でない手に付けない。
+   - 優先は **難解 > 明らか**（9段の第一感が 8割でも、残り 2割が大損する局面は明らかではない）。どちらでもなければ **普通** `"normal"`。
+   - humanPolicy が無い（間に合わない・humanSL 失敗・`humanlike_model` 未設定）・親局面の解析が無い・パス、は **`None`＝判定なし**。
+3. **記憶と表示**: 判定は着手ノードに**最初の1回だけ**計算して記憶する（`node.ring_difficulty`。判定なしも記憶＝後から humanPolicy が届いても色を変えない＝ちらつかない）。`_board_watch_ahead(move)` は色分け ON なら `game.current_node` の着手が `move` と一致するときだけその判定で色を選び、一致しなければ設定色。`_do_ai_move` と監視スレッドのどちらが先に呼んでも同じ記憶を読む（監視スレッドは `generate_ai_move` 内の `game.play` 直後から ahead を見うる＝先に呼ばれても同じ答え）。計算は解析と保存済み humanPolicy を読むだけ（クエリの待ち合わせなし）。
+4. **色**: 普通＝ドロップダウンで選んだ色（従来の `highlight_color`）、明らか＝緑（lime）、難解＝赤（red）。普通の色が緑なら明らかを水色（cyan）に、赤なら難解をマゼンタに自動で替える（純関数 `difficulty_ring_colors`）。緑・赤・水色・マゼンタは黄盤・木目盤のどちらでも見える組（橙は黄盤で、白は白石と木目盤で弱い）。
+5. **ログ**: 着手ごとに1行（OUTPUT_INFO＝対局ログに残る）。例 `盤面監視: 難易度 明らか（9段の第一感 R10 92%・次善 -2.1目）` / `難易度 難解（9段の期待損失 1.8目）` / `難易度 判定なし（humanPolicy が間に合わず）`。閾値の見直しと対局中の確認に使う。
+
+**設定**: `board_watch.highlight_difficulty`（bool・既定 `false`）。パッケージ `katrain/config.json` とローカル `C:\Users\iwaki\.katrain\config.json` の両方に追加（ローカルは KaTrain を終了した状態でメインセッションから直接編集）。設定画面は**一般設定の輪の色の行に「難易度で色分け」のチェックを1つ足す**（行は増やさない＝一般設定欄は 7 行で一度重なった経緯がある・§16）。閾値 1.5 / 0.8 / 1.0 はコード定数（GUI に出さない。ログで見直す）。
+
+**速度の検証（採用ゲート）**: 実戦 SGF（9路・13路の main line）の局面で、「相手の手を `Game.play` に入れてから `generate_ai_move` が返るまで」を **色分け ON/OFF の別プロセス・ABBA** で測る（プローブ `calibration-data/board-watch/ring_difficulty_latency_probe.py`。戦略はユーザー設定の一致率ひかえめ9路／難解＋13路）。**差が run 間ノイズを超えたら案B（判定から humanPolicy を外し KataGo の policy で代用）へ切り替える**。同時に「輪を出す時点で humanPolicy が揃っていた割合」を数える（95% 未満なら先回りの発火位置を見直す）。KataGo を使うので**ユーザーが対局していない時間に**走らせる（実戦と GPU を取り合わない）。
+
+**テスト**: 判定の純関数（難解・明らか・普通・判定なし・優先順・最善手を外した手）、色の衝突回避、ちらつき防止（同じ手に対し `_board_watch_ahead` を3経路から呼んでも `set_color` が同じ色）、先回りの発火条件（監視中×ON×次番 AI のときだけ・OFF でクエリ0本）、静的テスト（`tests/test_board_watch_prefetch.py` の kv・i18n・`_board_watch_ahead` の `"highlight_color"` リテラル）。
+
+**既知の限界**: humanPolicy は別プロセス間で ±0.05〜0.09 揺れるので、閾値近くの局面は対局ごとに明らか／普通が入れ替わりうる（判定は手ごとに1回なので同じ手の中では揺れない）。E は親局面の候補手の探索の深さに依存する（浅い候補の損失は小さめ＝E は保守的に出る）。人間の実際の考慮時間との対応は未測定（記録が無い）。
