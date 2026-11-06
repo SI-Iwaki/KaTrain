@@ -472,6 +472,9 @@ msgstr "白"
 msgid "board_watch:move_cursor"
 msgstr "カーソル"
 
+msgid "board_watch:highlight_difficulty"
+msgstr "難易度"
+
 msgid "default"
 msgstr "デフォルト"
 

@@ -426,3 +426,24 @@ def test_ring_difficulty_is_wired_through_main():
         if isinstance(c, ast.Call)
     ]
     assert "apply_game_watch_flags" in called
+
+
+def test_ring_difficulty_setting_is_exposed_in_the_config_popup():
+    """静的検査（追記11）: 難易度の色分けは輪の色と**同じ行**のチェック（一般設定欄の行を増やさない）。
+    パッケージ config の既定は OFF、表示名は en/jp の両方にある"""
+    import json
+
+    root = os.path.join(os.path.dirname(__file__), "..", "katrain")
+    lines = open(os.path.join(root, "popups.kv"), encoding="utf-8").read().split("\n")
+    start = next(i for i, line in enumerate(lines) if 'input_property: "board_watch/highlight_color"' in line)
+    # 輪の色の行（MDBoxLayout の子＝インデント 16 以上）が終わるのは、インデント 12 以下の次の行
+    end = next(
+        i for i in range(start + 1, len(lines)) if lines[i].strip() and len(lines[i]) - len(lines[i].lstrip()) <= 12
+    )
+    row = "\n".join(lines[start:end])
+    assert 'input_property: "board_watch/highlight_difficulty"' in row
+    for locale in ("en", "jp"):
+        po = open(os.path.join(root, "i18n", "locales", locale, "LC_MESSAGES", "katrain.po"), encoding="utf-8").read()
+        assert 'msgid "board_watch:highlight_difficulty"' in po, locale
+    pkg = json.load(open(os.path.join(root, "config.json"), encoding="utf-8"))
+    assert pkg["board_watch"]["highlight_difficulty"] is False

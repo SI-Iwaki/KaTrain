@@ -723,6 +723,9 @@ msgstr "White"
 msgid "board_watch:move_cursor"
 msgstr "cursor"
 
+msgid "board_watch:highlight_difficulty"
+msgstr "difficulty"
+
 msgid "default"
 msgstr "default"
 
