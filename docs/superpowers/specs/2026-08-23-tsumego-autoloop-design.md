@@ -208,7 +208,7 @@ _save_answer_line(game, moves)   # 記録ボタンの保存分岐と同じ（can
 | `_do_ai_move` | `generate_ai_move` の返り値の `move` を `self._autoloop.on_black_move(move)` へ（黒番・詰碁中のみ） |
 | `_do_tsumego_record_toggle` の保存分岐 | `_save_answer_line(game, moves, source)` に切り出し、ボタンと AutoLoop で共用 |
 | `_stop_board_watcher` | 収穫に入る前に AutoLoop が呼ぶ（既存 API のまま）。再開は不要＝次の問題のキャプチャが `_start_tsumego_watch` を呼ぶ |
-| 盤上バナー | 既存 `_tsumego_message` で状態を出す（「自動ループ: 12問目 正解 9 / 誤答 3 / 収穫 3」） |
+| 盤上バナー | 既存 `_tsumego_message` で状態を出す（「自動ループ: 解答中（12問目 正解 9（記録 6） / 誤答 3（収穫 3））」。記録＝正解して回答帳へ新しく記録した数〈book／duplicate は数えない・2026-11-08 追加〉、収穫＝誤答からヒント歩きで保存した数） |
 
 AutoLoop 本体（`katrain/core/tsumego_autoloop.py`）は Kivy 非依存で、GUI への作用はすべてコールバック
 （`trigger_capture` / `save_line` / `stop_watch` / `start_watch` / `notify`）経由。純関数（画面判定・座標変換・

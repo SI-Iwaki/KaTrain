@@ -91,6 +91,7 @@ ADB（BlueStacks の <code>HD-Adb.exe</code>）でアプリを直接操作し、
 <ul>
   <li>開始／停止はどちらも <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd>。開始時に ADB へ接続し、詰碁アプリが前面の BlueStacks インスタンスを自動で選びます（<code>tsumego_autoloop.adb_serial</code> で固定も可）。</li>
   <li>BlueStacks 側で「ADB アクセス」を有効にしておく必要があります（設定 → 詳細 → Android デバッグブリッジ）。</li>
+  <li>盤の上の帯に進み具合が出ます（例「自動ループ: 解答中（12問目 正解 9（記録 6） / 誤答 3（収穫 3））」）。<b>記録</b>は正解した問題のうち回答帳へ新しく記録した数、<b>収穫</b>は不正解の問題からヒントをたどって回答帳へ保存した数です。回答帳どおりに解いた再出題は記録に数えません。</li>
   <li>1 問 1 行の台帳が <code>~/.katrain/tsumego_ledger.jsonl</code> に、失敗時のスクリーンショットが <code>~/.katrain/logs/autoloop/</code> に残ります。</li>
   <li><code>max_problems</code>（0＝無制限）で問題数を、<code>max_consecutive_errors</code>（既定 3）で連続エラー時の自動停止を決めます。</li>
   <li>アプリの UI（ボタン位置・ポップアップの見た目）が変わると判定が外れます。その場合は <code>python -m katrain.core.tsumego_autoloop probe</code> で画面判定のしきい値を確認し直します。</li>

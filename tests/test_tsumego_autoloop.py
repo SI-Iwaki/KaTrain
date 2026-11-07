@@ -608,6 +608,25 @@ def test_controller_correct_record_skips_book_answer(tmp_path):
     assert rec["harvest"] == "book" and rec["line_len"] is None
 
 
+@pytest.mark.parametrize("result,recorded", [(("saved", 3), 1), (("duplicate", 3), 0), (("book", 0), 0)])
+def test_controller_correct_record_counts_only_new_lines(tmp_path, result, recorded):
+    """正解して回答帳へ新しく記録した手順だけを stats["recorded"] に数える（book／重複は数えない）"""
+    gui = FakeGui()
+    gui.record_result = result
+    c, gui, adb, clock = _controller(_correct_frames(), tmp_path, gui=gui)
+    _drive_to_result(c)
+    c.step()
+    assert c.state == "NEXT" and c.stats["correct"] == 1 and c.stats["recorded"] == recorded
+
+
+def test_controller_banner_shows_recorded_and_harvested_counts(tmp_path):
+    """帯は 正解のうち回答帳へ記録した数 と 誤答のうち収穫した数 を並べて出す"""
+    c, gui, adb, clock = _controller([{"grid": BASE}], tmp_path)
+    c.activate()
+    c.stats.update(problems=6, correct=4, recorded=3, wrong=2, harvested=1)
+    assert c._banner("解答中") == "自動ループ: 解答中（6問目 正解 4（記録 3） / 誤答 2（収穫 1））"
+
+
 def test_controller_correct_record_failure_still_advances(tmp_path):
     gui = FakeGui()
     gui.record_error = RuntimeError("boom")
@@ -826,7 +845,7 @@ def test_controller_activate_resets_stats(tmp_path):
     c.activate()
     c.stats["correct"] = 5
     c.activate()
-    assert c.stats == {"problems": 0, "correct": 0, "wrong": 0, "harvested": 0, "failed": 0}
+    assert c.stats == {"problems": 0, "correct": 0, "wrong": 0, "harvested": 0, "recorded": 0, "failed": 0}
 
 
 def test_controller_capture_failed_counts_toward_max_problems(tmp_path):

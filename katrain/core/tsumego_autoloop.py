@@ -821,7 +821,7 @@ class AutoLoopController:
     def __init__(self, adb, vision, gui, settings, ledger, clock=time.monotonic):
         self.adb, self.vision, self.gui, self.settings, self.ledger, self.clock = adb, vision, gui, settings, ledger, clock
         self.state = "IDLE"
-        self.stats = {"problems": 0, "correct": 0, "wrong": 0, "harvested": 0, "failed": 0}
+        self.stats = {"problems": 0, "correct": 0, "wrong": 0, "harvested": 0, "recorded": 0, "failed": 0}
         self._events = queue.Queue()
         self._wake = threading.Event()
         self._stop = threading.Event()
@@ -860,7 +860,7 @@ class AutoLoopController:
     def activate(self):
         """状態だけ AWAIT_PROBLEM にする（テスト・start から使う）"""
         self.state = "AWAIT_PROBLEM"
-        self.stats = {"problems": 0, "correct": 0, "wrong": 0, "harvested": 0, "failed": 0}
+        self.stats = {"problems": 0, "correct": 0, "wrong": 0, "harvested": 0, "recorded": 0, "failed": 0}
         self._errors = 0
         self._await_prev = None
         self._await_retapped = False
@@ -1196,6 +1196,10 @@ class AutoLoopController:
                 line_len = n or None
             except Exception as e:
                 harvest = f"skipped:record_failed:{e!r}"
+            if harvest == "saved":
+                # 帯に出す「正解のうち回答帳へ新しく記録した数」。回答帳どおりの解答（book）と
+                # 既にある手順（duplicate）は回答帳が増えていないので数えない
+                self.stats["recorded"] += 1
         self._record(p, "correct" if verdict == "correct" else "unknown_popup", harvest=harvest, line_len=line_len)
         self.state = "NEXT"
 
@@ -1437,7 +1441,11 @@ class AutoLoopController:
 
     def _banner(self, what):
         s = self.stats
-        return f"自動ループ: {what}（{s['problems']}問目 正解 {s['correct']} / 誤答 {s['wrong']} / 収穫 {s['harvested']}）"
+        # 回答帳へ入った数は 正解→自動記録（記録）と 誤答→ヒント歩き（収穫）の2経路があるので、それぞれの親に添える
+        return (
+            f"自動ループ: {what}（{s['problems']}問目 正解 {s['correct']}（記録 {s['recorded']}） / "
+            f"誤答 {s['wrong']}（収穫 {s['harvested']}））"
+        )
 
     def _record(self, p, outcome, harvest=None, line_len=None):
         rec = {
