@@ -2149,6 +2149,7 @@ class KaTrainGui(Screen, KaTrainBase):
         # 枠あり設定でもその回だけ枠なしに落ちる（_choose_tsumego_frame が None を返す）。
         # new-game と解析発行は同一メッセージ内で行う
         # （分割すると new-game で game_id が変わり後続メッセージが破棄されるため）
+        from katrain.core import tsumego_answer_book as answer_book
         from katrain.core.tsumego_capture import CaptureError, capture_settings_for_frame_mode, grid_to_sgf
 
         settings = self._config.get("tsumego_capture") or {}
@@ -2184,6 +2185,19 @@ class KaTrainGui(Screen, KaTrainBase):
             # （部分表示は切れた辺の先の石が原理的に見えないので、誤答調査で最初に確認する）
             self.log(f"tsumego_capture: {capture_note}", OUTPUT_INFO)
         board, analysis_region = None, None
+        # 回答帳（スペック 2026-08-02-tsumego-answer-book-design.md）は枠を張る**前**の認識石で照合する。
+        # ここで引いておくのは、枠の採否（下）で「記録手順が枠の足した石に乗るか」を見るため（追記4）。
+        # game への取り付けは _do_new_game の後（新しい game に付ける）
+        book_key = book_transforms = book_entry = book_stones = None
+        try:
+            from katrain.core.tsumego_problem import grid_to_stones
+
+            bk_black, bk_white, (bk_size, _) = grid_to_stones(grid)
+            book_key, book_transforms = answer_book.canonicalize(bk_black, bk_white, bk_size, "B")
+            book_stones = (bk_black, bk_white, bk_size)
+            book_entry = answer_book.get_book(lambda msg: self.log(msg, OUTPUT_INFO)).lookup(book_key)
+        except Exception as e:
+            self.log(f"tsumego_capture: 回答帳の照合に失敗（{e}）", OUTPUT_INFO)
         # 死活ソルバモード（スペック 2026-08-01-tsumego-solver-design.md）: KataGo を使わず問題を
         # 静的に抽出できたら、枠を張らず盤面をそのまま出題する（§3。枠の採否判定 KataGo 最大5本が消える）。
         # 抽出できない盤は従来どおり枠張り経路へ（§9.2 フォールバック）
@@ -2274,6 +2288,27 @@ class KaTrainGui(Screen, KaTrainBase):
             # 枠の採否は解析を数本回すのでキャプチャの待ち時間に直接乗る。遅いと感じたときに
             # どこが効いているか分かるように必ず出す（読み直しは1本 3〜4 秒）
             self.log(f"tsumego_capture: 枠の採否判定に {time.time() - started:.1f} 秒", OUTPUT_INFO)
+            if chosen is not None and book_entry is not None:
+                # 回答帳 追記4: 記録手順（黒白どちらの手も）が枠の足した石に乗る問題は、枠なし
+                # （hotkey_noframe と同じ設定＝use_frame False・region_pad=noframe_region_pad）で出題する。
+                # 枠は「認識石の bbox+margin」の閉じた箱で、`fit_margin` が枠外に代償地帯を要るぶん
+                # 大型問題では margin が縮み、壁が正解手順の通り道に乗る（case AG）。初見では
+                # 判定できない（hotkey_noframe はそのための手動指定）が、回答帳に手順があるなら
+                # 枠を張る前に分かる。実測 2026-11-07 回答帳キー 452e79c7de…: 白 17手目 B4 /
+                # 19手目 A4 が黒の壁石で、黒が記録どおり 9 手打ったあと白の注入が
+                # "Space occupied" で止まり誤答（2026-08-24 にも同一）。解析条件はこの問題だけ変わる
+                collisions = answer_book.line_frame_collisions(
+                    book_entry, book_transforms, book_stones[2], answer_book.frame_added_points(grid, chosen[0])
+                )
+                if collisions:
+                    settings = capture_settings_for_frame_mode(settings, True)
+                    hits = "・".join(f"{n + 1}手目 {'黒' if p == 'B' else '白'} {g}" for n, p, g in collisions)
+                    self.log(
+                        f"tsumego_capture: 回答帳の記録手順が枠の石と重なるため（{hits}）、この問題は枠なしで"
+                        f"出題します（解析リージョンは region_pad={settings.get('region_pad')}）",
+                        OUTPUT_INFO,
+                    )
+                    chosen = None
             if chosen is not None:
                 board, analysis_region = chosen
         if board is None:  # 枠なし設定、または枠が詰碁を壊していると判定された場合
@@ -2300,31 +2335,24 @@ class KaTrainGui(Screen, KaTrainBase):
         # 設定され、照合に失敗すると設定されないため（監視の基準を別機能の副産物にしない）
         self.game.tsumego_app_grid = grid
         # 回答帳（スペック 2026-08-02-tsumego-answer-book-design.md）: 枠を張る前の認識石で
-        # 正規化キーを計算して照合。ヒットしたら戦略が記録手順を0秒で再生する。
-        # 枠張り・ソルバゲートの判断は従来どおり（スペック§5）
-        try:
-            from katrain.core import tsumego_answer_book as answer_book
-            from katrain.core.tsumego_problem import grid_to_stones
-
-            bk_black, bk_white, (bk_size, _) = grid_to_stones(grid)
-            key, transforms = answer_book.canonicalize(bk_black, bk_white, bk_size, "B")
-            self.game.tsumego_book_key = key
-            self.game.tsumego_book_transforms = transforms
-            self.game.tsumego_book_stones = (bk_black, bk_white, bk_size)
-            entry = answer_book.get_book(lambda msg: self.log(msg, OUTPUT_INFO)).lookup(key)
-            self.game.tsumego_book_entry = entry
+        # 計算した正規化キーと照合結果（上）を新しい game に取り付ける。ヒットしたら戦略が
+        # 記録手順を0秒で再生する。枠張り・ソルバゲートの判断は従来どおり（スペック§5）＝
+        # 例外は記録手順が枠の石に乗る問題だけ枠なしに落とす（追記4・上の枠の採否の中）
+        if book_key is not None:
+            self.game.tsumego_book_key = book_key
+            self.game.tsumego_book_transforms = book_transforms
+            self.game.tsumego_book_stones = book_stones
+            self.game.tsumego_book_entry = book_entry
             # キーはログと回答帳（~/.katrain/tsumego_answers.json）を join する唯一の手掛かり。
             # 保護したログから正解手順を引くために、ヒットの有無に関係なく必ず出す
-            self.log(f"tsumego_capture: 回答帳キー {key}", OUTPUT_INFO)
-            if entry is not None:
+            self.log(f"tsumego_capture: 回答帳キー {book_key}", OUTPUT_INFO)
+            if book_entry is not None:
                 self.log(
-                    f"tsumego_capture: 回答帳にヒット（記録 {len(entry['lines'])} 手順）。"
+                    f"tsumego_capture: 回答帳にヒット（記録 {len(book_entry['lines'])} 手順）。"
                     f"黒は記録どおりに打ちます",
                     OUTPUT_INFO,
                 )
             Clock.schedule_once(lambda _dt: setattr(self, "tsumego_book_ready", True), 0)
-        except Exception as e:
-            self.log(f"tsumego_capture: 回答帳の照合に失敗（{e}）", OUTPUT_INFO)
         if solver_problem is not None:
             # 投機実行（§8.3-7）: GUI 描画と並行して root を解き、証明ストアを温めておく。
             # 結果は捨ててもよい（着手時の solve がキャッシュ/温TTで速くなる）

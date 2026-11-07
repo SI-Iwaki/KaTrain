@@ -8,7 +8,9 @@ from katrain.core.ai import tsumego_book_next_move, tsumego_book_status
 from katrain.core.tsumego_answer_book import (
     AnswerBook,
     canonicalize,
+    frame_added_points,
     gtp_to_point,
+    line_frame_collisions,
     inverse_transform,
     line_status,
     moves_to_canonical,
@@ -326,3 +328,78 @@ class TestBookStatusFromGame:
         assert tsumego_book_status(_fake_game(REF_BLACK, REF_WHITE, REF_LINE, SIZE, entry, transforms)) == "done"
         deviated = _fake_game(REF_BLACK, REF_WHITE, [REF_LINE[0], (6, 6)], SIZE, entry, transforms)
         assert tsumego_book_status(deviated) == "off"
+
+
+class TestFrameCollisions:
+    """回答帳の記録手順が枠の足した石に乗る問題（2026-11-07 実測・回答帳キー 452e79c7de…）。
+
+    13路・黒が攻め方。認識石の bbox が 8行×7列で `fit_margin` が margin 4→2 に縮め、黒の壁が
+    row 4 に来る。記録手順（21手）の白 17手目 B4・19手目 A4 はその壁の上なので、再生は
+    黒 9手を打ったあと白 B4 の注入が "Space occupied" で止まり、以後の黒手が打てず誤答になる
+    （ログ tsumego_20261107_014749 / 2026-08-24 にも同一の失敗）。
+    """
+
+    SIZE = 13
+    BLACK = "A8 B8 C7 C9 D7 E12 E13 E6 E9 F10 F11 F7 F9 G12 G8".split()
+    WHITE = "B10 B12 D12 D8 D9 E10 E11 E8".split()
+    # 回答帳に入っている標準形向きの手順（盤の向きでは C11 C12 B11 C10 A10 D11 A11 A12 A9 C8 B9
+    # B7 D10 B6 B5 C5 C6 **B4** A5 **A4** C10）
+    LINE = "C3 B3 C2 D3 D1 C4 C1 B1 E1 F3 E2 G2 D4 H2 J2 J3 H3 K2 J1 K1 D3".split()
+
+    def _grid(self):
+        g = [["-"] * self.SIZE for _ in range(self.SIZE)]
+        for stones, c in ((self.BLACK, "B"), (self.WHITE, "W")):
+            for gtp in stones:
+                x, y = gtp_to_point(gtp)
+                g[self.SIZE - 1 - y][x] = c
+        return g
+
+    def _entry_and_transforms(self):
+        from katrain.core.tsumego_problem import grid_to_stones
+
+        black, white, (size, _) = grid_to_stones(self._grid())
+        _key, transforms = canonicalize(black, white, size, "B")
+        entry = {"size": size, "to_play": "B", "lines": [list(self.LINE)]}
+        return entry, transforms
+
+    def _framed(self):
+        from katrain.core.tsumego_frame import tsumego_frame_board
+
+        board, _region = tsumego_frame_board(self._grid(), 7.0, True, ko_p=False, margin=4)
+        return board
+
+    def test_frame_added_points_are_wall_and_fill_only(self):
+        grid = self._grid()
+        added = frame_added_points(grid, self._framed())
+        assert added, "枠が1子も足していない"
+        for x, y in added:
+            assert grid[self.SIZE - 1 - y][x] == "-", "認識石の点を『枠が足した』と数えている"
+        assert gtp_to_point("B4") in added and gtp_to_point("A4") in added, "前提: 壁が row 4 に来る"
+
+    def test_recorded_white_replies_land_on_the_wall(self):
+        entry, transforms = self._entry_and_transforms()
+        hits = line_frame_collisions(entry, transforms, self.SIZE, frame_added_points(self._grid(), self._framed()))
+        assert hits == [(17, "W", "B4"), (19, "W", "A4")]
+
+    def test_no_collision_when_line_stays_inside(self):
+        entry, transforms = self._entry_and_transforms()
+        entry["lines"] = [list(self.LINE[:16])]  # B4 の手前まで
+        blocked = frame_added_points(self._grid(), self._framed())
+        assert line_frame_collisions(entry, transforms, self.SIZE, blocked) == []
+
+    def test_no_entry_or_no_blocked_points(self):
+        entry, transforms = self._entry_and_transforms()
+        assert line_frame_collisions(None, transforms, self.SIZE, {(0, 0)}) == []
+        assert line_frame_collisions(entry, transforms, self.SIZE, set()) == []
+        assert line_frame_collisions(entry, [], self.SIZE, {(0, 0)}) == []
+
+    def test_symmetric_position_tries_every_transform(self):
+        # 対称な配置では盤→標準形の変換がタイになる。どの変換で読んでも枠に乗る手を見落とさない
+        black = {(4, 4)}  # 9路の天元＝8対称すべてで不変
+        white = set()
+        _key, transforms = canonicalize(black, white, 9, "B")
+        assert len(transforms) == 8
+        entry = {"size": 9, "to_play": "B", "lines": [["A1"]]}
+        # A1 の軌道は4隅。どれか1つだけ枠石でも衝突として拾う
+        hits = line_frame_collisions(entry, transforms, 9, {(8, 8)})
+        assert hits == [(0, "B", "J9")]

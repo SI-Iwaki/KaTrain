@@ -15,6 +15,7 @@ BOOK_VERSION = 1
 PASS = "pass"
 
 _GTP_COLS = "ABCDEFGHJKLMNOPQRSTUVWXYZ"  # KataGo GTP 準拠（I を飛ばす）
+BLACK_WHITE = ("B", "W")
 
 
 def transform_point(p: Point, t: int, size: int) -> Point:
@@ -124,6 +125,51 @@ def should_record_line(entry, transforms, moves, size) -> bool:
     if not entry or not transforms:
         return True
     return line_status(entry, transforms, moves, size) == "off"
+
+
+def frame_added_points(grid: Sequence[Sequence[str]], framed: Sequence[Sequence[str]]) -> Set[Point]:
+    """枠が盤に**足した**石の点（壁・充填・コウダテ形）を盤の向きの (x, y) で返す。
+
+    grid / framed は `grid[i][j]`・i は上からの行（`grid_to_stones` と同じ向き）。"B" / "W" 以外は
+    空点として扱う（認識グリッドは "-" や "." を使う）。枠が**消した**非コア石の点は含めない
+    （そこは元の盤でも石なので記録手順が打つことはない）。
+    """
+    size = len(grid)
+    added: Set[Point] = set()
+    for i in range(size):
+        for j in range(size):
+            if grid[i][j] not in (BLACK_WHITE) and framed[i][j] in BLACK_WHITE:
+                added.add((j, size - 1 - i))
+    return added
+
+
+def line_frame_collisions(
+    entry: Optional[dict], transforms: Sequence[int], size: int, blocked: Set[Point]
+) -> List[Tuple[int, str, str]]:
+    """回答帳の記録手順のうち blocked（枠が足した石の点・盤の向き）に乗る手を返す。
+
+    返り値は (手順上の index, "B"/"W", 盤の向きの GTP) を index 順。**黒白どちらの手も**対象＝
+    白の応手が壁に乗れば再生は注入の "Space occupied" で止まり、以後の黒手も打てない
+    （実測 2026-11-07 回答帳キー 452e79c7de…: 白 17手目 B4 / 19手目 A4 が黒の壁石で、黒が
+    記録どおり 9 手打ったあと白の注入が止まって誤答。2026-08-24 にも同一の失敗）。
+    対称な配置で変換がタイのときは全有効変換で試し、どれかで乗れば衝突とする（安全側）。
+    """
+    if not entry or not transforms or not blocked:
+        return []
+    to_play = entry.get("to_play", "B")
+    other = "W" if to_play == "B" else "B"
+    hits: dict = {}
+    for t in transforms:
+        inv = inverse_transform(t)
+        for line in entry.get("lines") or []:
+            for n, mv in enumerate(line):
+                p = gtp_to_point(mv)
+                if p is None:
+                    continue
+                q = transform_point(p, inv, size)
+                if q in blocked:
+                    hits.setdefault((n, point_to_gtp(q)), to_play if n % 2 == 0 else other)
+    return sorted((n, player, gtp) for (n, gtp), player in hits.items())
 
 
 DEFAULT_PATH = os.path.expanduser("~/.katrain/tsumego_answers.json")
