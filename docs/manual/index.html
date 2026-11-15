@@ -210,6 +210,7 @@
 <li><a href="#watch-setup">準備と使い方</a></li>
 <li><a href="#watch-highlight">AI 着手の強調表示</a></li>
 <li><a href="#watch-limits">できること・できないこと</a></li>
+<li><a href="#watch-spectate">観戦モード（プロの対局などを分析する）</a></li>
 <li><a href="#watch-speed">応答速度のしくみ</a></li>
 <li><a href="#watch-settings">主な設定（config.json の board_watch）</a></li>
 </ul></li>
@@ -1617,6 +1618,25 @@ AI の応手は<b>アプリの盤の該当する交点の真上に光る輪</b>�
 </table>
 </div>
 
+<h3 id="watch-spectate">観戦モード（プロの対局などを分析する）</h3>
+<p>
+黒白とも画面から来る対局（プロ同士の対局の観戦など）の盤面を KaTrain に取り込み、<b>勝率・目差と各手の分析を見るためだけ</b>のモードです。AI は打たず、輪やカーソルも出ません。対応する盤は黄色い盤・明るい木目盤・野狐囲碁の PC 版です。
+</p>
+<ol class="steps">
+  <li>観戦したい対局の画面を開き、KaTrain と並べて両方見える状態にします。</li>
+  <li><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>W</kbd> を押すと、いまの盤面が取り込まれ、解析モードで観戦が始まります。盤の下に操作バーが出ます。</li>
+  <li>操作バーのボタン: <b>自動反映</b>（ON の間は新しい着手を自動で追記）／<b>今すぐ反映</b>（OFF の間に溜まった手をまとめて追記）／<b>対局情報</b>（ルール・コミ・黒白のアゲハマ・次の手番を入力）／<b>終了</b>（観戦を終え、対局者の設定を元に戻す）。</li>
+</ol>
+<p>
+自動反映を OFF にしている間に何手か進んだ場合は、まとめて追記します。静止画からは手の順序が分からないので、<b>順序は推定</b>になります（該当する手に「順序は推定」というコメントが付きます）。正確な順序が必要なときは、こまめに反映してください。
+</p>
+<p>
+ルール・コミ・アゲハマは「対局情報」に入力します。<b>野狐囲碁は窓のタイトルと画面の文字から自動で読み取りますが、読み違いがありうるので、バーで一度確認してください</b>。日本ルールなど地を数えるルールではアゲハマが目差に反映されます（中国ルールでは結果に影響しません）。
+</p>
+<p>
+限界: 取り込んだ局面より前の手は分析できません。パスや、石数が変わらない動きは検出できず、そのときは盤面を取り込み直します。観戦中は AI の応手・輪・自動停止はありません。新しい対局を始めたり棋譜を開いたりすると観戦は終了します。
+</p>
+
 <h3 id="watch-speed">応答速度のしくみ</h3>
 <p>
 監視中は「相手が考えている間」に相手の有力応手（humanSL 9 段の順で上位 5 手）の局面を先読みして KataGo のキャッシュを温めるため、相手が打った直後の AI 応手が 0.5 秒前後で返ります（先読みが外れたときは通常どおり 1.5〜3 秒）。
@@ -1637,6 +1657,8 @@ AI の応手は<b>アプリの盤の該当する交点の真上に光る輪</b>�
     <tr><td>stall_warn_sec</td><td>20</td><td>何も変化しないまま経過したら警告する秒数</td></tr>
     <tr><td>active_slowdown_sec</td><td>20</td><td>相手の手をこの秒数以上待ったら確認間隔を poll_interval_ms に落とす（省電力。長考のあとの反映が最大 0.35 秒遅れるだけ。0 で無効）</td></tr>
     <tr><td>auto_stop_sec</td><td>300</td><td>対局（KaTrain の手数）がこの秒数進まなければ監視を自動停止する（0 で無効）</td></tr>
+    <tr><td>spectate_hotkey</td><td>ctrl+alt+w</td><td>観戦モードのトグル</td></tr>
+    <tr><td>spectate_poll_ms</td><td>1000</td><td>観戦モードのポーリング周期</td></tr>
     <tr><td>highlight_color</td><td>cyan</td><td>輪の色（設定画面のドロップダウンと同じ）</td></tr>
     <tr><td>highlight_difficulty</td><td>false</td><td>輪の色を局面の難しさで塗り分ける（明らか＝緑・難解＝赤・普通＝highlight_color。設定画面の「難易度」チェックと同じ）</td></tr>
   </tbody>
@@ -1776,6 +1798,7 @@ python -m katrain_debug --sgf 棋譜.sgf --strategy enigma13 --batch --player W 
     <tr><td><kbd>F4</kbd> 系（設定可）</td><td>詰碁キャプチャ（自動推定／攻め方／守り方／枠なし）</td></tr>
     <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd></td><td>盤面監視のトグル（詰碁の白番監視の停止にも）</td></tr>
     <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>A</kbd></td><td>詰碁の自動ループのトグル</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>W</kbd></td><td>観戦モードのトグル</td></tr>
   </tbody>
 </table>
 </div>

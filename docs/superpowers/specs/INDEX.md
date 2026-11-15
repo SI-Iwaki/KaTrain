@@ -126,6 +126,7 @@
 | `2026-08-18-board-watch-design.md` | 🟢 **97KB**・`board_watch.py`。対局アプリの着手を検出して人間側の手として片方向注入（トグル `ctrl+alt+d`）。追記10 で連続対局（対局者アイコンから KaTrain の AI の色を自動判定・次の対局で監視を自動で張り直す）、追記11 で輪の色を局面の難しさ（明らか／普通／難解・humanSL 9段の先回り）で塗り分け |
 | `2026-08-22-tsumego-white-auto-apply-design.md` | 🟢 `board_watch.py` + `__main__.py`。詰碁モードでアプリの白の応手を自動反映（影グリッド方式・`reconcile` は無変更） |
 | `2026-08-23-tsumego-autoloop-design.md` | 🟢 実装済み。詰碁の自動ループ（ADB でアプリを操作し 出題→回答→正誤→誤答なら ヒント歩きで回答帳へ自動収穫→次の問題）。前提実測（ADB 疎通・役割推定誤り 3.7%・再出題率）と台帳 `tsumego_ledger.jsonl` |
+| `2026-11-15-spectate-watch-design.md` | 🟢 実装済み。観戦モード（トグル `ctrl+alt+w`）: 黒白とも画面から来る対局を取り込んで分析するだけ。`board_spectate.py` / `screen_ocr.py`。野狐は窓タイトルと文字認識でルール・コミ・アゲハマを読む。アゲハマのコミ換算は KataGo で検証済み（§5.4） |
 
 ---
 

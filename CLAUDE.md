@@ -14,7 +14,7 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 |---|---|---|
 | Human-like AI 戦略 | 悪手フィルタに加え、力戦派 / 攻城 / 狩猟 / 一致率低減 / 持碁 / 一致率追随（9路）/ 難解（9・13・19路）/ 難解＋（9・13・19路＝罠探索の拡張＋ΔE 床の改良版・`EnigmaPlusMixin`）/ 擬態（13路＝相手より低い一致率で勝つ・`Mimic13Strategy`）/ 一致率ひかえめ（旧名 韜晦・9・13・19路＝勝ち優先で自分の一致率を絶対目標まで下げる・序盤の窓を難解＋に任せる研究外しの層〈既定 OFF〉つき・`Veil9Strategy`） | `.claude/rules/ai-strategies.md`（設計と実測）<br>`.claude/rules/ai-parameters.md`（全パラメータ値）<br>`.claude/rules/ai-humanstyle.md`（フィルタ実装） |
 | 詰碁 | 画面キャプチャ→盤面認識→枠→着手選択 `ai:tsumego`→死活ソルバ（Rust df-pn）→回答帳 | `.claude/rules/tsumego.md`（設計と落とし穴）<br>`.claude/rules/tsumego-parameters.md`（パラメータ値） |
-| 盤面監視 | `board_watch.py`: BlueStacks 上の対局アプリ（黄盤＝囲碁クエスト系／明るい木目盤／野狐囲碁の PC 版）の着手を検出して人間側の手として片方向注入（トグル `ctrl+alt+d`）。AI の色の自動判定と連続対局、AI の着手をアプリ盤の真上に示す輪（`screen_marker.py`・難易度の色分けは `move_difficulty.py`）、交点へのカーソル移動（`screen_cursor.py`・クリックはしない）、5分進まなければ自動停止 ／ `tsumego_autoloop.py`: 詰碁の自動ループ（ADB でアプリを操作。トグルは `ctrl+alt+a`。spec `2026-08-23-tsumego-autoloop-design.md`） | `.claude/rules/board-watch.md`（機能の全体像と設定キー）<br>`docs/superpowers/specs/2026-08-18-board-watch-design.md` |
+| 盤面監視 | `board_watch.py`: BlueStacks 上の対局アプリ（黄盤＝囲碁クエスト系／明るい木目盤／野狐囲碁の PC 版）の着手を検出して人間側の手として片方向注入（トグル `ctrl+alt+d`）。AI の色の自動判定と連続対局、AI の着手をアプリ盤の真上に示す輪（`screen_marker.py`・難易度の色分けは `move_difficulty.py`）、交点へのカーソル移動（`screen_cursor.py`・クリックはしない）、5分進まなければ自動停止 ／ `tsumego_autoloop.py`: 詰碁の自動ループ（ADB でアプリを操作。トグルは `ctrl+alt+a`。spec `2026-08-23-tsumego-autoloop-design.md`） ／ 観戦モード: 黒白とも画面から来る対局（プロの対局など）を取り込んで分析するだけ（`board_spectate.py`・トグル `ctrl+alt+w`・spec `2026-11-15-spectate-watch-design.md`） | `.claude/rules/board-watch.md`（機能の全体像と設定キー）<br>`docs/superpowers/specs/2026-08-18-board-watch-design.md` |
 
 ## 盤面テーマ（盤・碁石のデザイン）
 
@@ -70,6 +70,8 @@ katrain/
     sgf_parser.py     -- SGFパーサ
     base_katrain.py   -- 設定管理・アプリベース
     board_watch.py    -- 対局盤面の監視モード（アプリ側の着手を検出し人間側の手として注入。トグル ctrl+alt+d）
+    board_spectate.py -- 観戦モード（黒白とも画面から来る対局を取り込んで分析。同期判定・取り込み・対局情報。トグル ctrl+alt+w）
+    screen_ocr.py     -- Windows 標準 OCR（screen_ocr.ps1）で野狐のパネルからコミ・アゲハマを読む（観戦の開始時と再取り込み時のみ）
     screen_marker.py  -- 対局監視で AI の着手をアプリ盤の真上に輪で示す（Win32 の最前面・クリック透過窓。Kivy 非依存）
     screen_cursor.py  -- 対局監視で AI の着手の交点へマウスカーソルを運ぶ（SetCursorPos のみ・クリックしない。Kivy 非依存）
     tsumego_autoloop.py  -- 詰碁の自動ループ（ADB 操作・正誤検知・ヒント歩きで回答帳へ自動収穫・台帳 ~/.katrain/tsumego_ledger.jsonl。トグル ctrl+alt+a）

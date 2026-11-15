@@ -17,7 +17,7 @@
 - 対応盤は野狐 PC 版と BlueStacks 上の黄盤／木目盤のみ。新しい検出器は作らない
 - 既定値: ホットキー `ctrl+alt+w`（`board_watch.spectate_hotkey`）、周期 1000ms（`board_watch.spectate_poll_ms`）、確定は既存 `stable_frames`（2）
 - OCR を呼ぶのは開始時と取り込み直し時だけ。GUI スレッドで呼ばない
-- 推定で並べた手のノードにはコメント「順序は推定（自動反映 OFF の間の N 手）」を付ける
+- 推定で並べた手のノードにはコメント「順序は推定（まとめて反映した N 手）」を付ける
 - 既存の `.py`（`__main__.py` / `engine.py` / `board_watch.py` / `tsumego_capture.py` 等）は CRLF かつ black 未整形。Edit/Write すると PostToolUse フックが全体を再整形するので、**既存ファイルの変更は CRLF 対応の Python パッチスクリプトを Bash で流す**。新規ファイルは普通に Write してよい（line-length 120）
 - Kivy ウィジェットは作り直さない（kv に静的に置き、プロパティで出し入れする）
 - コミットメッセージは日本語の Conventional Commits。末尾に `Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>`
@@ -366,7 +366,7 @@ def test_append_plan_keeps_cursor_when_user_is_browsing():
 1. **開始**（ホットキーのワーカースレッド `_spectate_trigger`。`_board_watch_trigger` と同じ 2 秒デバウンス・busy ガード。観戦中なら `spectate-stop` を投げて終わり）: `AppBoardReader` で盤を読み、`read_spectate_info` を呼び（OCR はこのスレッドで）、`spectate-start` を投げる
 2. **`_do_spectate_start`**: 動いている監視があれば `_stop_board_watcher()`。両者の `(player_type, player_subtype)` を覚えて両方 `PLAYER_HUMAN / PLAYING_NORMAL` にする。ROI を解除。`spectate_root(...)` で **`engine_komi_offset` を付けた root を作ってから** `_do_new_game(move_tree=root)`（解析モードに入る。新規対局の時点で root の解析が出るので、後から付けると最初の解析が補正なしになる。取り込み直しも同じ順）。欠けた値は `game/komi`・`game/rules`・0・「石数が同じなら黒番、黒が 1 多ければ白番、それ以外は黒番」で仮置きし、`info` のコミか手番が `None` のときは取り込み後に入力欄を開く（`self("spectate-info-popup")`）。game に `capture_base` を設定。「取り込み後に数えた分」は常に `counted_captures(root, tip)`（`spectate_info_values()` と `_do_spectate_info` の両方）。`_board_watch_kind = "spectate"`、`spectate_active = True`、`spectate_auto = True`、セッション dict（`reader`・`tip`（root）・`base_move_number`・`agehama_base_b/w`・`saved_players`）を保持して `SpectateWatcher` を起動
 3. **`_do_new_game` のフック**: 観戦中に呼ばれたら観戦を終える。ただし観戦自身の取り込み（開始・取り込み直し）は除外する（セッションに「取り込み中」フラグを立てて区別）
-4. **`_do_spectate_append`**: `append_plan` に従う。`tip_in_tree` は「`tip` から親をたどって `game.root` に着くか」。追記は `cur = game.current_node` → `game.set_current_node(tip)` → 各手を `game.play(Move(grid_to_move(i, j, size), player=color))` → 新しい末尾を `tip` に記録 → `append_keep_cursor` なら `game.set_current_node(cur)`。`estimated` なら追記した最初のノードの `note` に「順序は推定（自動反映 OFF の間の N 手）」。`tip.depth != tip_depth` なら捨てる。`IllegalMoveException` は警告を出して `reimport` に回す。最後に `update_state(redraw_board=True)`
+4. **`_do_spectate_append`**: `append_plan` に従う。`tip_in_tree` は「`tip` から親をたどって `game.root` に着くか」。追記は `cur = game.current_node` → `game.set_current_node(tip)` → 各手を `game.play(Move(grid_to_move(i, j, size), player=color))` → 新しい末尾を `tip` に記録 → `append_keep_cursor` なら `game.set_current_node(cur)`。`estimated` なら追記した最初のノードの `note` に「順序は推定（まとめて反映した N 手）」。`tip.depth != tip_depth` なら捨てる。`IllegalMoveException` は警告を出して `reimport` に回す。最後に `update_state(redraw_board=True)`
 5. **`_do_spectate_reimport`**: 対局者設定は触らず、同じルール・コミで取り込み直す。野狐は `info` のアゲハマで `agehama_base` を置き直し、それ以外は直前の累計を引き継いで「アゲハマを確認してください」。手番は `info.next_player`、無ければ直前の末尾の手番から交互が続いたと仮定して「手番を確認してください」。バナーに「手順を追えなかったため局面を取り込み直しました」。OCR は `on_reimport` を受けた監視スレッド側で `read_spectate_info` を呼んでからメッセージを投げる
 6. **`_do_spectate_info`**: ルール・コミを root の `RU` / `KM` に書き、`agehama_base = agehama_base(入力値, 取り込み後に数えた分)`、`engine_komi_offset` を計算し直す。手番が変わったら root の `PL` を書き換えて取り込み直す（手順が無いときだけ許す。手順があるときは手番欄を無効にするのは Task 6）。値が変わったら `game.analyze_all_nodes(even_if_present=True)`
 7. **`_do_spectate_toggle_auto`**: OFF＝ウォッチャを `stop()`（セッションは残す）、ON＝同じ reader で新しい `SpectateWatcher` を起動。**`_do_spectate_sync_now`**: ワーカースレッドで `step_once()` 相当を 1 回（自動 ON 中は何もしない）
