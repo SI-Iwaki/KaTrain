@@ -455,6 +455,9 @@ class KaTrainGui(Screen, KaTrainBase):
         self.update_state(redraw_board=True)
 
     def _do_katago_contribute(self):
+        # 観戦中なら先に終える（対局を差し替えるうえ、貢献モード中は spectate-stop がメッセージの許可一覧で止められる）。
+        # 観戦していなければ何もしない
+        self._spectate_end()
         if self.contributing and not self.engine.server_error and self.engine.katago_process is not None:
             return
         self.contributing = self.animate_contributing = True  # special mode
@@ -2029,7 +2032,8 @@ class KaTrainGui(Screen, KaTrainBase):
         """観戦の開始。動いている監視を止め、両者を人間にして局面を取り込み、監視を起動する。
 
         取り込みと監視の起動を 1 メッセージで済ませる（new-game で game_id が変わると後続のメッセージは捨てられる）。
-        読めなかった項目は game/komi・game/rules・0・石数から仮置きし、コミか手番が読めなければ入力欄を開く
+        読めなかった項目は game/komi・game/rules・0・石数から仮置きし、どれか（ルール・コミ・アゲハマ・手番）が
+        読めなければ入力欄を開く
         """
         from katrain.core.board_spectate import SpectateInfo, fallback_next_player
 
@@ -2074,7 +2078,7 @@ class KaTrainGui(Screen, KaTrainBase):
             f"アゲハマ 黒{agehama[0]} 白{agehama[1]}・アプリの手数={info.app_move_number}）",
             OUTPUT_INFO,
         )
-        if info.komi is None or info.next_player is None:
+        if None in (info.rules, info.komi, info.agehama_b, info.agehama_w, info.next_player):
             self._spectate_open_info_popup()
 
     def _spectate_import(self, session, grid, rules, komi, next_player, agehama, base_move_number):
@@ -2109,6 +2113,10 @@ class KaTrainGui(Screen, KaTrainBase):
         session["base_move_number"] = base_move_number
         session["tip"] = root
         session["line"] = None
+        # 観戦中は両者とも人間。回答帳の記録モードのまま始めると、取り込みの新規対局（_do_new_game）が記録を放棄して
+        # 黒を記録前の対局者（AI）に戻すので、取り込むたびに揃え直す
+        for bw in "BW":
+            self.update_player(bw, player_type=PLAYER_HUMAN, player_subtype=PLAYING_NORMAL)
         return True
 
     def _spectate_start_watcher(self, session):
@@ -2185,9 +2193,11 @@ class KaTrainGui(Screen, KaTrainBase):
     def _spectate_hints(self, reader):
         """SpectateWatcher の hints_fn: (直前手の色, 野狐の窓タイトルの手数)。監視スレッドから read() の直後に呼ばれる"""
         from katrain.core.board_spectate import parse_fox_title
+        from katrain.core.board_watch import BOARD_PROFILES
 
         number = None
-        if reader.profile_name() == "fox":
+        profile = BOARD_PROFILES.get(reader.profile_name())
+        if profile is not None and profile.reads_info:
             title = reader.window_title_text()
             if title:
                 number = parse_fox_title(title)[0]
@@ -2268,11 +2278,8 @@ class KaTrainGui(Screen, KaTrainBase):
         self._spectate_props(spectate_text=text)
 
     def _spectate_open_info_popup(self):
-        """対局情報の入力欄を開く（読めなかった項目があるとき）。入力欄は別タスクの実装なので、無ければログだけ"""
-        if hasattr(self, "_do_spectate_info_popup"):
-            self("spectate-info-popup")
-        else:
-            self.log("spectate: 読めなかった対局情報を既定値で仮置きしました（入力欄は未実装）", OUTPUT_INFO)
+        """対局情報の入力欄を開く（読めなかった項目があるとき）"""
+        self("spectate-info-popup")
 
     def spectate_info_values(self):
         """対局情報の入力欄の初期値 {rules, komi, agehama_b, agehama_w, next_player}。
@@ -2306,7 +2313,7 @@ class KaTrainGui(Screen, KaTrainBase):
     def _do_spectate_append(self, moves, tip_depth, estimated, tip=None):
         """監視スレッドが確定したアプリ側の着手を本譜の末尾へ足す。表示は末尾を見ているときだけ進める（過去の手を
         検討中なら表示位置は動かさない）。末尾の手数が期待と違えば捨てる（既存の注入と同じ再検証）"""
-        from katrain.core.board_spectate import ESTIMATED_NOTE, append_plan, node_in_tree
+        from katrain.core.board_spectate import ESTIMATED_NOTE, append_plan, node_in_tree, promote_to_main_line
         from katrain.core.board_watch import STATUS_WATCHING, grid_to_move
 
         session = getattr(self, "_spectate_session", None)
@@ -2339,6 +2346,7 @@ class KaTrainGui(Screen, KaTrainBase):
         first = None
         node = current_tip
         played = []
+        appended = []  # game.play が返したノード（同じ手の子があれば使い回される＝新しいとは限らない）
         try:
             game.set_current_node(current_tip)
             for i, j, color in moves:
@@ -2350,6 +2358,7 @@ class KaTrainGui(Screen, KaTrainBase):
                 node = child
                 first = first or child
                 played.append(move.gtp())
+                appended.append(child)
         except IllegalMoveException as e:
             # 途中まで足した手は末尾にしない（session["tip"] は動かしていない）。こちらが動かした表示位置は戻してから
             # 取り込み直しへ（取り込み直しが失敗しても、ユーザーは元の局面・セッションは元の末尾のまま）
@@ -2365,10 +2374,16 @@ class KaTrainGui(Screen, KaTrainBase):
             self._spectate_retry(session)
             return
         session["tip"] = node
+        # 本物の手を本筋（children[0]）にする。末尾でユーザーが候補を検討していると game.play は子を末尾に足すので、
+        # そのままでは本筋・「次へ」・保存した棋譜がユーザーの変化をたどる（変化は 2 番目以降の枝として残す）
+        with game._lock:
+            promoted = promote_to_main_line(appended)
         if plan == "append_keep_cursor":
             if game.current_node is node:
                 game.set_current_node(cursor)
-            # 表示位置が変わらないと棋譜ツリーは描き直されない（current_node の変化にだけ bind している）
+        if plan == "append_keep_cursor" or promoted:
+            # 表示位置が変わらないと棋譜ツリーは描き直されない（current_node の変化にだけ bind している）。
+            # 枝の並べ替えも同じ
             Clock.schedule_once(lambda _dt: self.controls.move_tree.redraw(), 0)
         if estimated and first is not None:
             note = ESTIMATED_NOTE.format(n=len(moves))

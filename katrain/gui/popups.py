@@ -381,6 +381,7 @@ class NewGamePopup(QuickConfigGui):
         elif self.mode == "editgame":
             root = self.katrain.game.root
             changed = False
+            rules_changed = self.normalized_rules() != props["game/rules"]
             for k, currentval, newval in [
                 ("RU", self.normalized_rules(), props["game/rules"]),
                 ("KM", root.komi, props["game/komi"]),
@@ -392,6 +393,16 @@ class NewGamePopup(QuickConfigGui):
                         OUTPUT_INFO,
                     )
                     self.katrain.game.root.set_property(k, newval)
+            if rules_changed:
+                # 観戦の棋譜はアゲハマをエンジンへのコミに畳んでいる（地を数えるルールだけ）。新しいルールで計算し直す。
+                # 取り石の下駄（capture_base）が無い棋譜では何もしない（遅延 import＝循環を避ける）
+                from katrain.core.board_spectate import komi_offset_after_rules_change
+
+                offset = komi_offset_after_rules_change(
+                    props["game/rules"], getattr(self.katrain.game, "capture_base", None)
+                )
+                if offset is not None:
+                    root.engine_komi_offset = offset
             if changed:
                 self.katrain.engine.on_new_game()
                 self.katrain.game.analyze_all_nodes(analyze_fast=True)

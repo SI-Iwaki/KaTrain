@@ -1,10 +1,13 @@
 import ast
 import os
+from types import SimpleNamespace
 
 import pytest
 
 from katrain.core.board_spectate import (
+    BEHIND_TEXT,
     ESTIMATED_NOTE,
+    SpectateInfo,
     agehama_base,
     agehama_totals,
     append_plan,
@@ -14,6 +17,8 @@ from katrain.core.board_spectate import (
     fallback_next_player,
     node_in_tree,
     popup_players_after_spectate,
+    promote_to_main_line,
+    read_spectate_info,
     replay_counting,
     spectate_status_text,
     next_player_from,
@@ -86,7 +91,6 @@ def test_order_that_needs_capture_first_is_found():
     [
         (G0, G0_PLUS_BB, {}),  # 黒 2 手＝交互にならない
         (KO_BEFORE, CAPTURE_NOT_REFLECTED, {}),  # 取りが盤に反映されていない盤
-        (G0, G0_MINUS_STONE, {}),  # 石が消えただけ
         (G0, G0_PLUS_B, {"last_mover": "W"}),  # 直前手の印と色が合わない
         (G0, G0_PLUS_B, {"app_move_number": 12, "tip_move_number": 10}),  # 手数が合わない
         (G0, GAP_RECOLOURED, {}),  # tip の石の色が変わっている（黒 (1,1) が白）＋黒 1 子
@@ -248,14 +252,14 @@ def test_flicker_frame_is_ignored():
 
 
 def test_reimport_needs_two_identical_frames_and_fires_once():
-    w, calls = make_watcher(frames=[G0_MINUS_STONE] * 4)
+    w, calls = make_watcher(frames=[G0_PLUS_BB] * 4)
     for _ in range(4):
         w.step()
     assert len(calls.reimports) == 1
 
 
 def test_reimport_is_confirmed_at_idle_interval_not_fast():
-    w, calls = make_watcher(frames=[G0_MINUS_STONE] * 2)
+    w, calls = make_watcher(frames=[G0_PLUS_BB] * 2)
     w.step()
     assert w.interval_ms == w.settings.poll_interval_ms and calls.reimports == []
 
@@ -310,7 +314,7 @@ def test_step_once_applies_without_waiting():
 
 
 def test_step_once_reimport_and_failure():
-    w, calls = make_watcher(frames=[G0_MINUS_STONE])
+    w, calls = make_watcher(frames=[G0_PLUS_BB])
     assert w.step_once().kind == "reimport" and len(calls.reimports) == 1
     w, calls = make_watcher(frames=[PermanentCaptureError("x")])
     assert w.step_once() is None and calls.status[-1][0] == STATUS_WARN
@@ -334,7 +338,7 @@ def test_watching_status_restored_after_warning():
 
 
 def test_confirmation_must_be_consecutive_across_fired_key():
-    w, calls = make_watcher(frames=[G0_PLUS_B, G0_PLUS_B, G0_MINUS_STONE, G0_PLUS_B, G0_MINUS_STONE])
+    w, calls = make_watcher(frames=[G0_PLUS_B, G0_PLUS_B, G0_PLUS_BB, G0_PLUS_B, G0_PLUS_BB])
     for _ in range(5):
         w.step()
     assert len(calls.moves) == 1 and calls.reimports == []
@@ -555,3 +559,163 @@ def test_new_game_popup_ends_spectating_before_reading_the_player_widgets():
     assert names and max(names) < end_line < min(line for line, name in calls if name == "update_playerinfo")
     guards = [n for n in ast.walk(func) if isinstance(n, ast.If) and n.lineno < end_line <= n.end_lineno]
     assert any("editgame" in ast.get_source_segment(src, g.test) for g in guards)
+
+
+# --- 最終レビュー指摘 1: アプリが過去の局面・変化図を表示しても棋譜を消さない（behind） ---
+
+
+def test_app_stepped_back_before_the_import_point_is_behind():
+    # 野狐の ◀ で取り込み時点より前に戻った盤＝石が消えただけ（本譜の過去の局面には無い）
+    v = spectate_sync(G0, G0_MINUS_STONE, "B")
+    assert v.kind == "behind" and v.reason
+    v = spectate_sync(G0, G0_MINUS_STONE, "B", app_move_number=7, tip_move_number=10)
+    assert v.kind == "behind" and v.reason
+
+
+def test_only_recoloured_cells_is_behind():
+    recoloured = g("...../.W.../...../...W./.....")  # tip の黒 (1,1) が白に変わっただけ
+    assert spectate_sync(G0, recoloured, "B").kind == "behind"
+
+
+def test_recoloured_cell_plus_an_added_stone_still_follows_the_old_logic():
+    assert spectate_sync(G0, GAP_RECOLOURED, "B").kind == "reimport"
+
+
+def test_earlier_position_with_a_reappearing_stone_is_behind_by_the_move_number():
+    # 黒が (1,0) で白 (0,0) を取る前の局面＝取られた白が盤に戻る（増えた石がある）。アプリの手数が本譜の末尾より前
+    v = spectate_sync(AFTER_CAPTURE, ATARI, "W", app_move_number=9, tip_move_number=10)
+    assert v.kind == "behind" and v.reason
+    assert spectate_sync(AFTER_CAPTURE, ATARI, "W").kind == "reimport"  # 手数が読めない盤では従来どおり
+
+
+def test_variation_diagram_is_behind_when_the_move_number_does_not_advance():
+    # 変化図: 石が増えたのに窓タイトルの [N手目] が進まない（本物の着手は必ず手数を進める）
+    v = spectate_sync(G0, G0_PLUS_B, "B", last_mover="B", app_move_number=10, tip_move_number=10)
+    assert v.kind == "behind" and v.reason
+    v = spectate_sync(G0, G0_PLUS_BWB, "B", last_mover="B", app_move_number=10, tip_move_number=10)
+    assert v.kind == "behind"
+
+
+def test_variation_like_added_stone_without_move_numbers_follows_the_old_logic():
+    # 手数が読めない盤（野狐以外）では変化図と本物の着手を区別できない（既知の限界）
+    assert spectate_sync(G0, G0_PLUS_B, "B", last_mover="B").kind == "moves"
+    assert spectate_sync(G0, G0_PLUS_B, "B", app_move_number=10).kind == "moves"  # 片方だけでは比べない
+    assert spectate_sync(G0, G0_PLUS_B, "B", tip_move_number=10).kind == "moves"
+    assert spectate_sync(G0, G0_PLUS_BB, "B").kind == "reimport"
+
+
+def test_move_number_ahead_but_inconsistent_still_reimports():
+    assert spectate_sync(G0, G0_PLUS_B, "B", app_move_number=12, tip_move_number=10).kind == "reimport"
+
+
+def test_ancestor_behind_carries_a_reason():
+    v = spectate_sync(G0_PLUS_BWB, G0_PLUS_B, "W", ancestor_grids=(G0, G0_PLUS_B, G0_PLUS_BW))
+    assert v.kind == "behind" and v.reason
+
+
+def test_watcher_waits_while_the_app_shows_an_earlier_position():
+    w, calls = make_watcher(frames=[G0_MINUS_STONE] * 3)
+    for _ in range(3):
+        w.step()
+    assert calls.moves == [] and calls.reimports == []
+    assert calls.status == [(STATUS_WATCHING, BEHIND_TEXT)]
+    assert w.interval_ms == w.settings.poll_interval_ms
+
+
+def test_watcher_waits_while_the_app_shows_a_variation_diagram():
+    # 窓タイトルの手数（ヒント）が本譜の末尾（10 手目）のまま石が増えた
+    w, calls = make_watcher(frames=[G0_PLUS_B] * 3, hints=lambda: ("B", 10))
+    for _ in range(3):
+        w.step()
+    assert calls.moves == [] and calls.reimports == [] and calls.status == [(STATUS_WATCHING, BEHIND_TEXT)]
+    assert w.interval_ms == w.settings.poll_interval_ms
+    assert w.step_once().kind == "behind" and calls.moves == [] and calls.reimports == []
+
+
+# --- 最終レビュー指摘 3: 本物の手を本筋（children[0]）にする ---
+
+
+def test_promote_to_main_line_moves_each_node_to_the_front_and_keeps_the_others():
+    root = _Node()
+    user = _Node(root)  # 末尾でユーザーが検討した変化
+    real = _Node(root)  # アプリの本物の手（game.play は children の末尾に足す）
+    after = _Node(real)
+    assert promote_to_main_line([real, after])
+    assert root.children == [real, user] and real.children == [after]
+    assert not promote_to_main_line([real, after])  # 既に本筋なら何もしない
+
+
+# --- 最終レビュー指摘 M4: read_spectate_info は例外を外へ出さない ---
+
+
+class _FoxInfoReader:
+    """read_spectate_info 用の野狐の偽リーダー。fail に挙げた口が例外を投げる"""
+
+    _board_rect = (0, 0, 100, 100)
+
+    def __init__(self, fail=()):
+        self.fail = set(fail)
+
+    def _maybe_fail(self, name):
+        if name in self.fail:
+            raise RuntimeError(name)
+
+    def last_mover_color(self):
+        self._maybe_fail("last_mover")
+        return "W"
+
+    def profile_name(self):
+        return "fox"
+
+    def window_title_text(self):
+        self._maybe_fail("title")
+        return "> [高級対局室1] > 46372号対局室 観戦中 [98手目] - レーティング - 中国ルール"
+
+    def last_image(self):
+        self._maybe_fail("image")
+        return SimpleNamespace(size=(300, 100), crop=lambda box: ("panel", box))
+
+
+def _ocr_ok(_img):
+    return ["黒コミ3又3/4子", "0子アゲハマ3子"]
+
+
+def _ocr_boom(_img):
+    raise RuntimeError("OCR が落ちた")
+
+
+def test_read_spectate_info_reads_the_fake_fox_window():
+    assert read_spectate_info(_FoxInfoReader(), ocr=_ocr_ok) == SpectateInfo("chinese", 7.5, 3, 0, "B", 98)
+
+
+def test_read_spectate_info_keeps_the_title_when_the_screenshot_fails():
+    got = read_spectate_info(_FoxInfoReader(fail={"image"}), ocr=_ocr_ok)
+    assert got == SpectateInfo(rules="chinese", next_player="B", app_move_number=98)
+
+
+def test_read_spectate_info_keeps_the_title_when_ocr_fails():
+    got = read_spectate_info(_FoxInfoReader(), ocr=_ocr_boom)
+    assert got == SpectateInfo(rules="chinese", next_player="B", app_move_number=98)
+
+
+def test_read_spectate_info_never_raises():
+    assert read_spectate_info(_FoxInfoReader(fail={"last_mover", "title", "image"}), ocr=_ocr_ok) == SpectateInfo()
+    got = read_spectate_info(_FoxInfoReader(fail={"last_mover"}), ocr=_ocr_ok)
+    assert got.app_move_number == 98 and got.next_player == "B" and got.komi == 7.5  # 手番は手数の偶奇から
+    got = read_spectate_info(_FoxInfoReader(fail={"title"}), ocr=_ocr_ok)
+    assert got == SpectateInfo("chinese", 7.5, 3, 0, "B", None)  # パネルは読む・ルールはコミの表記から
+
+
+# --- 最終レビュー指摘 M3: 対局の編集でルールを変えたらエンジンへのコミ補正を計算し直す ---
+
+
+def test_edit_game_recomputes_the_komi_offset_before_reanalysing():
+    path = os.path.join(os.path.dirname(__file__), "..", "katrain", "gui", "popups.py")
+    with open(path, encoding="utf-8") as f:
+        src = f.read()
+    cls = next(n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.ClassDef) and n.name == "NewGamePopup")
+    func = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "update_config")
+    calls = _calls(func)
+    recompute = [line for line, name in calls if name == "komi_offset_after_rules_change"]
+    discard = min(line for line, name in calls if name == "on_new_game")
+    assert recompute and max(recompute) < discard

@@ -17,7 +17,7 @@ import pytest
 import katrain.core.board_spectate as board_spectate
 import katrain.core.board_watch as board_watch
 from katrain.core.base_katrain import KaTrainBase
-from katrain.core.board_spectate import SpectateInfo, SpectateWatcher
+from katrain.core.board_spectate import BEHIND_TEXT, SpectateInfo, SpectateWatcher
 from katrain.core.board_watch import STATUS_WARN, STATUS_WATCHING, apply_game_watch_flags, clear_game_watch_flags
 from katrain.core.constants import (
     AI_DEFAULT,
@@ -30,11 +30,17 @@ from katrain.core.constants import (
     PLAYER_HUMAN,
     PLAYING_NORMAL,
 )
-from katrain.core.game import Game, IllegalMoveException
+from katrain.core.game import BaseGame, Game, IllegalMoveException
 from katrain.core.sgf_parser import Move, ParseError
 
 _MAIN = os.path.join(os.path.dirname(__file__), "..", "katrain", "__main__.py")
-_EXTRA = {"_do_new_game", "_stop_board_watcher", "_board_watch_marker_close", "_board_watch_trigger"}
+_EXTRA = {
+    "_do_new_game",
+    "_stop_board_watcher",
+    "_board_watch_marker_close",
+    "_board_watch_trigger",
+    "_do_katago_contribute",
+}
 HUMAN = (PLAYER_HUMAN, PLAYING_NORMAL)
 AI = (PLAYER_AI, AI_DEFAULT)
 
@@ -55,6 +61,13 @@ class SyncThread:
         self.target(*self.args)
 
 
+class FakeContributeEngine:
+    """_do_katago_contribute が作る KataGoContributeEngine の代わり（KataGo は起動しない）"""
+
+    def __init__(self, katrain):
+        self.katrain = katrain
+
+
 _GLOBALS = {
     "Clock": ImmediateClock,
     "time": time,
@@ -73,6 +86,10 @@ _GLOBALS = {
     "Game": Game,
     "apply_game_watch_flags": apply_game_watch_flags,
     "clear_game_watch_flags": clear_game_watch_flags,
+    "PLAYER_AI": PLAYER_AI,
+    "AI_DEFAULT": AI_DEFAULT,
+    "BaseGame": BaseGame,
+    "KataGoContributeEngine": FakeContributeEngine,
 }
 
 
@@ -95,8 +112,15 @@ METHODS = _load_methods()
 
 
 class MockEngine:
+    server_error = None
+    katago_process = None
+
     def __init__(self):
         self.new_games = 0
+        self.shut_down = False
+
+    def shutdown(self, finish=False):
+        self.shut_down = True
 
     def request_analysis(self, *args, **kwargs):
         pass
@@ -145,6 +169,7 @@ class Harness(KaTrainBase):
             set_status=lambda *a, **k: None,
         )
         self.tsumego_recording = False
+        self.contributing = self.pondering = False
         self._tsumego_flash_event = None
         self._spectate_session = None
         self._spectate_importing = False
@@ -265,11 +290,7 @@ def test_stop_restores_players_and_keeps_the_game_attributes(h):
 def test_unread_komi_and_turn_fall_back_and_ask(h):
     start(h, info=SpectateInfo())
     assert h.game.root.next_player == "W" and h.game.root.komi == h.config("game/komi")
-    assert ("spectate-info-popup", (), {}) in h.messages  # 入力欄（Task 6）の _do_spectate_info_popup がある
-    h2 = Harness()
-    h2._do_spectate_info_popup = lambda: None
-    start(h2, info=SpectateInfo())
-    assert ("spectate-info-popup", (), {}) in h2.messages
+    assert ("spectate-info-popup", (), {}) in h.messages
 
 
 def test_new_game_and_stop_board_watcher_end_spectating(h):
@@ -595,3 +616,128 @@ def test_game_watch_hotkey_ends_spectating_then_starts(h, monkeypatch):
     h.board_watch_status = STATUS_WATCHING  # 観戦のバナーが出ていても「消すだけ」に落ちない
     h._board_watch_trigger()
     assert [m[0] for m in h.messages] == ["spectate-stop", "board-watch-start"]
+
+
+# --- 最終レビュー指摘 ---
+
+
+class FoxReader(FakeReader):
+    """野狐の観戦窓の偽物: 窓タイトルに [N手目] がある（_spectate_hints が手数を読む）"""
+
+    def __init__(self, grid, number):
+        super().__init__(grid)
+        self.number = number
+
+    def profile_name(self):
+        return "fox"
+
+    def window_title_text(self):
+        return f"> [高級対局室1] > 46453号大会対局室 観戦中 [{self.number}手目] - 大会"
+
+
+def steps(h, watcher, n):
+    for _ in range(n):
+        watcher.step()
+    h.dispatch()
+
+
+def test_app_showing_a_variation_or_an_earlier_position_keeps_the_record(h):
+    # 指摘 1: 変化図（石が増えたのに手数が進まない）も ◀ で取り込み時点より前に戻った盤も、棋譜を消さずに待つ
+    reader = FoxReader(G0, 40)
+    h._do_spectate_start(reader, G0, 9, INFO)
+    s = h._spectate_session
+    root, watcher = h.game.root, s["watcher"]
+    reader.grid, reader.last_mover = put(G0, (4, 4, "W")), "W"
+    steps(h, watcher, 3)
+    assert h.game.root is root and s["tip"] is root and h.banner[-1] == (STATUS_WATCHING, BEHIND_TEXT)
+    reader.number = 41  # 本物の着手: 手数が進む
+    steps(h, watcher, 2)
+    tip = s["tip"]
+    assert tip.depth == 1 and h.game.root is root
+    reader.grid, reader.number, reader.last_mover = put(G0, (2, 6, ".")), 38, None
+    steps(h, watcher, 3)
+    assert h.game.root is root and s["tip"] is tip and h.banner[-1] == (STATUS_WATCHING, BEHIND_TEXT)
+    reader.grid, reader.number, reader.last_mover = put(G0, (4, 4, "W")), 41, "W"  # 最新の局面に戻った
+    steps(h, watcher, 1)
+    assert s["tip"] is tip and h.banner[-1] == ("", "")
+
+
+def test_hints_read_the_move_number_only_for_boards_that_read_info(h):
+    # 指摘 M5: 盤種の表（reads_info）で決める
+    assert h._spectate_hints(FoxReader(G0, 41)) == (None, 41)
+    quest = FakeReader(G0)
+    quest.last_mover = "B"
+    quest.window_title_text = lambda: pytest.fail("黄盤の窓タイトルは読まない")
+    assert h._spectate_hints(quest) == ("B", None)
+
+
+def test_unread_captures_or_rules_open_the_info_popup(h):
+    # 指摘 2: コミと手番が読めても、ルールかアゲハマが読めなければ入力欄を開く
+    start(h, info=INFO._replace(agehama_b=None, agehama_w=None))
+    assert ("spectate-info-popup", (), {}) in h.messages
+    h2 = Harness()
+    start(h2, info=INFO._replace(rules=None))
+    assert ("spectate-info-popup", (), {}) in h2.messages
+
+
+def test_real_move_becomes_the_main_line_over_a_user_variation_at_the_tip(h):
+    # 指摘 3: 末尾でユーザーが候補を検討していても、アプリの本物の手が本筋（children[0]）になる
+    reader = start(h)
+    root = h.game.root
+    variation = h.game.play(Move(coords=(0, 0), player="W"))  # 表示位置は変化の上（検討中）
+    app_moves(h, reader, put(G0, (4, 4, "W")), "W")
+    tip = h._spectate_session["tip"]
+    assert tip.depth == 1 and root.children[0] is tip and root.ordered_children[0] is tip
+    assert [c is variation for c in root.children] == [False, True]  # 変化は 2 番目の枝として残る
+    assert h.game.current_node is variation  # 検討中は表示位置を動かさない
+    h.game.set_current_node(root)
+    h.game.redo(1)
+    assert h.game.current_node is tip  # 「次へ」は本物の手をたどる
+
+
+def test_real_move_already_explored_by_the_user_is_promoted_to_the_main_line(h):
+    # game.play は同じ手の子があれば使い回す＝ユーザーが 2 番目の変化として打っていた手も本筋に上げる
+    reader = start(h)
+    root = h.game.root
+    other = h.game.play(Move(coords=(0, 0), player="W"))
+    h.game.set_current_node(root)
+    same = h.game.play(Move(coords=(4, 4), player="W"))
+    assert [c is other for c in root.children] == [True, False]
+    app_moves(h, reader, put(G0, (4, 4, "W")), "W")
+    s = h._spectate_session
+    assert s["tip"] is same and root.children[0] is same and root.children[1] is other
+    assert h.game.current_node is same
+
+
+def test_contribute_mode_ends_spectating(h):
+    # 指摘 M1: 貢献モードは対局を差し替え、spectate-stop をメッセージの許可一覧で止める＝先に観戦を終える
+    start(h)
+    watcher = h._spectate_session["watcher"]
+    h._do_katago_contribute()
+    assert h._spectate_session is None and not h.spectate_active and watcher._stopped.is_set()
+    assert h._board_watcher is None and h.contributing and h.engine.katrain is h
+    assert h.players() == {"B": AI, "W": AI}
+
+
+def test_contribute_mode_without_spectating_is_unchanged():
+    h = Harness()
+    engine = h.engine
+    h._do_katago_contribute()
+    assert engine.shut_down and h.contributing and h._spectate_session is None
+    assert h.players() == {"B": AI, "W": AI} and not h.logs
+
+
+def test_start_in_answer_book_recording_mode_keeps_both_players_human(h):
+    # 指摘 M2: 記録モード中（黒を一時的に人間にしている）に観戦を始めると、取り込みの新規対局が記録を放棄して黒を
+    # 記録前（AI）に戻す。観戦中は両者とも人間のままにする（取り込み直しの後も）
+    h.tsumego_recording = True
+    h._tsumego_record_prev_black = AI
+    h.update_player("B", player_type=PLAYER_HUMAN, player_subtype=PLAYING_NORMAL)
+    reader = start(h)
+    assert h.players() == {"B": HUMAN, "W": HUMAN} and h._tsumego_record_prev_black is None
+    h._do_spectate_toggle_auto()
+    assert app_moves(h, reader, put(E9, (4, 4, "B"), (3, 3, "W")), "W").kind == "reimport"
+    assert h.players() == {"B": HUMAN, "W": HUMAN}
+    h._do_spectate_stop()
+    # 終了で戻すのは観戦を始めたときの設定（記録モード中の黒＝人間）。記録前の AI ではない
+    assert h.players() == {"B": HUMAN, "W": HUMAN}

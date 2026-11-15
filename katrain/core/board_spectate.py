@@ -60,6 +60,15 @@ def spectate_sync(
     tip_move_number=None,
     ancestor_grids=(),
 ):
+    """アプリの盤（observed）が本譜の末尾（tip_grid）からどう進んだか。
+
+    判定の順: 盤サイズ → in_sync → 本譜の過去の局面（behind）→ 次の 3 つも behind（アプリが過去の局面か変化図を
+    表示している。棋譜を消して取り込み直さない）→ 交互の着手で説明できれば moves、できなければ reimport。
+      1. 増えた石が無い（消えた・色が変わっただけ）。本物の着手は必ず石を 1 つ増やす＝取り込み時点より前に戻った盤
+      2. アプリの手数（野狐の窓タイトルの [N手目]）が本譜の末尾の手数より小さい
+      3. 同じなのに盤が違う。本物の着手は必ず手数を進める＝変化図
+    手数が読めない盤（野狐以外）は 1 だけ（変化図と本物の着手は区別できない）
+    """
     if len(observed) != len(tip_grid) or any(len(r) != len(tip_grid) for r in observed):
         return SpectateVerdict("reimport", reason="盤サイズが違う")
     if observed == tip_grid:
@@ -76,7 +85,12 @@ def spectate_sync(
     ]
     n = len(added)
     if n == 0:
-        return SpectateVerdict("reimport", reason="増えた石が無い")
+        return SpectateVerdict("behind", reason="増えた石が無い（取り込み時点より前の局面）")
+    if app_move_number is not None and tip_move_number is not None:
+        if app_move_number < tip_move_number:
+            return SpectateVerdict("behind", reason="アプリの手数が本譜の末尾より前")
+        if app_move_number == tip_move_number:
+            return SpectateVerdict("behind", reason="手数が進まないのに石が増えた（変化図）")
 
     other = WHITE if to_play == BLACK else BLACK
     colors = [to_play if k % 2 == 0 else other for k in range(n)]
@@ -188,26 +202,38 @@ def read_spectate_info(reader, ocr=None):
     """観戦の取り込みに使う対局情報。野狐以外は直前手の色から手番だけ、野狐は窓タイトル→パネル OCR の順に埋める。
 
     OCR は遅い（1〜2 秒）ので開始時と再取り込みのときだけ、GUI スレッド以外から呼ぶこと。
-    読めない項目は None のまま（呼び出し側が入力欄の値を使う）。ルールは窓タイトル優先
+    読めない項目は None のまま（呼び出し側が入力欄の値を使う）。ルールは窓タイトル優先。
+    例外は外へ出さない（呼ぶのはホットキーと監視のスレッド）: 直前手の色・窓タイトル・パネルの段ごとに、
+    失敗した段を None のまま飛ばして読めたところまでを返す
     """
-    last_mover = reader.last_mover_color()
-    profile = BOARD_PROFILES.get(reader.profile_name())
-    if profile is None or not profile.reads_info:
-        return SpectateInfo(next_player=next_player_from(last_mover, None))
-    if ocr is None:
-        from katrain.core import screen_ocr
+    last_mover = move_number = rules = komi = agehama_b = agehama_w = None
+    reads_info = False
+    try:
+        last_mover = reader.last_mover_color()
+    except Exception:
+        pass
+    try:
+        profile = BOARD_PROFILES.get(reader.profile_name())
+        reads_info = profile is not None and profile.reads_info
+        if reads_info:
+            title = reader.window_title_text()
+            if title:
+                move_number, rules = parse_fox_title(title)
+    except Exception:
+        pass
+    if reads_info:
+        try:
+            if ocr is None:
+                from katrain.core import screen_ocr
 
-        ocr = screen_ocr.ocr_lines
-    move_number = rules = None
-    title = reader.window_title_text()
-    if title:
-        move_number, rules = parse_fox_title(title)
-    komi = agehama_b = agehama_w = None
-    panel = _fox_panel_crop(reader)
-    lines = ocr(panel) if panel is not None else None
-    if lines:
-        komi, panel_rules, agehama_b, agehama_w = parse_fox_panel(lines)
-        rules = rules or panel_rules
+                ocr = screen_ocr.ocr_lines
+            panel = _fox_panel_crop(reader)
+            lines = ocr(panel) if panel is not None else None
+            if lines:
+                komi, panel_rules, agehama_b, agehama_w = parse_fox_panel(lines)
+                rules = rules or panel_rules
+        except Exception:
+            pass
     return SpectateInfo(rules, komi, agehama_b, agehama_w, next_player_from(last_mover, move_number), move_number)
 
 
@@ -480,6 +506,32 @@ def append_plan(cursor_is_tip, tip_in_tree, insert_mode):
     if not tip_in_tree:
         return "reimport"
     return "append_follow" if cursor_is_tip else "append_keep_cursor"
+
+
+def promote_to_main_line(nodes):
+    """各ノードを親の children の先頭へ移す（KaTrain の本筋＝children[0]。棋譜ツリーの「本筋にする」と同じ並べ替え）。
+    並べ替えたら True。親の children は 1 文で差し替える（自分が抜けた途中の children を他のスレッドに見せない）。
+    呼び出し側は Game._lock の中で呼ぶ"""
+    moved = False
+    for node in nodes:
+        parent = node.parent
+        if parent is None or not parent.children or parent.children[0] is node:
+            continue
+        parent.children = [node] + [c for c in parent.children if c is not node]
+        moved = True
+    return moved
+
+
+def komi_offset_after_rules_change(rules, capture_base):
+    """対局の編集（popups.NewGamePopup の editgame）でルールが変わったときのエンジンへのコミ補正。
+
+    capture_base（Game.capture_base・キーは**取られた石の色**＝黒のアゲハマは "W"）から新しいルールで計算し直す。
+    下駄が無い（観戦以外の棋譜・すべて 0）なら None＝root に触らない
+    """
+    base = capture_base or {}
+    if not any(base.values()):
+        return None
+    return engine_komi_offset(spectate_rules(rules), base.get(WHITE, 0), base.get(BLACK, 0))
 
 
 def node_in_tree(node, root):

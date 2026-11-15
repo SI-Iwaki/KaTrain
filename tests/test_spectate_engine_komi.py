@@ -11,7 +11,14 @@ import time
 import pytest
 
 from katrain.core.base_katrain import KaTrainBase
-from katrain.core.board_spectate import counted_captures, spectate_line, spectate_root, spectate_rules
+from katrain.core.board_spectate import (
+    capture_base_for,
+    counted_captures,
+    komi_offset_after_rules_change,
+    spectate_line,
+    spectate_root,
+    spectate_rules,
+)
 from katrain.core.engine import BaseEngine, KataGoEngine
 from katrain.core.game import Game, KaTrainSGF
 
@@ -198,3 +205,20 @@ def test_prisoner_count_tolerates_games_built_without_init():
     game._lock = threading.RLock()
     game.prisoners = []
     assert game.prisoner_count == {"B": 0, "W": 0}
+
+
+# --- 対局の編集でルールを変えたとき（最終レビュー指摘 M3） ---
+
+
+def test_komi_offset_after_rules_change_recomputes_from_the_capture_base():
+    base = capture_base_for(3, 1)  # 黒のアゲハマ 3・白のアゲハマ 1（キーは取られた石の色）
+    assert komi_offset_after_rules_change("japanese", base) == -2.0
+    assert komi_offset_after_rules_change("jp", base) == -2.0
+    assert komi_offset_after_rules_change("korean", base) == -2.0
+    assert komi_offset_after_rules_change("chinese", base) == 0.0
+
+
+def test_komi_offset_after_rules_change_is_a_no_op_without_a_capture_base():
+    # 観戦以外の棋譜（下駄が 0）は root に触らない
+    assert komi_offset_after_rules_change("japanese", {"B": 0, "W": 0}) is None
+    assert komi_offset_after_rules_change("japanese", None) is None
