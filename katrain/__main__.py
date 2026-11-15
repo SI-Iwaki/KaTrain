@@ -2042,7 +2042,8 @@ class KaTrainGui(Screen, KaTrainBase):
             "syncing": False,
             "watcher": None,
         }
-        if not self._spectate_import(session, grid, rules, komi, next_player):
+        if not self._spectate_import(session, grid, rules, komi, next_player, agehama, info.app_move_number):
+            # 取り込めなかった（警告は _spectate_import が出した）＝観戦は始めない。対局者設定を開始前に戻す
             for bw, (player_type, player_subtype) in saved.items():
                 self.update_player(bw, player_type=player_type, player_subtype=player_subtype)
             return
@@ -2060,30 +2061,38 @@ class KaTrainGui(Screen, KaTrainBase):
         if info.komi is None or info.next_player is None:
             self._spectate_open_info_popup()
 
-    def _spectate_import(self, session, grid, rules, komi, next_player):
+    def _spectate_import(self, session, grid, rules, komi, next_player, agehama, base_move_number):
         """観戦の取り込み（開始・取り込み直し・手番の訂正で共通）。成功したら True。
 
         コミ補正（engine_komi_offset）を付けた root を作ってから新規対局にする: Game の生成と同時に root の解析が
         走る（Game.__init__ の analyze_all_nodes）ので、後から付けると最初の解析が補正なしになる。
-        アゲハマは session["agehama_base"]（取り込み時点の分）を使う
+        agehama は取り込み時点の (黒が取った数, 白が取った数)。セッション（tip・アゲハマ・アプリの手数）は取り込めた
+        ときだけ書き換える＝失敗しても前の状態のまま。失敗は ParseError に限らない: 石を取るアニメーションの途中を
+        撮ると呼吸点の無い石が残った盤になり、Game の生成が例外になる（BaseGame._calculate_groups の
+        "Unexpected illegal move"）
         """
         from katrain.core.board_spectate import capture_base_for, spectate_root
 
-        agehama_b, agehama_w = session["agehama_base"]
-        try:
-            root = spectate_root(grid, komi, rules, next_player, agehama_b, agehama_w)
-        except ParseError as e:
-            self.log(f"spectate: 取り込み SGF の解析に失敗: {e}", OUTPUT_ERROR)
-            self._board_watch_status(BW_STATUS_WARN, f"局面を取り込めません: {e}")
-            return False
+        agehama_b, agehama_w = agehama
+        root = None
         self._spectate_importing = True  # _do_new_game の「観戦を終える」フックを外す
         try:
+            root = spectate_root(grid, komi, rules, next_player, agehama_b, agehama_w)
             self._do_new_game(move_tree=root)  # move_tree ありの新規対局は解析モードに入る
-            self.game.capture_base = capture_base_for(agehama_b, agehama_w)
-            session["tip"] = root
-            session["line"] = None
+        except Exception as e:
+            if root is None or self.game.root is not root:
+                self.log(f"spectate: 局面を取り込めません: {e}", OUTPUT_ERROR)
+                self._spectate_banner(session, BW_STATUS_WARN, f"局面を取り込めません: {e}")
+                return False
+            # 新しい対局はできている（その後の画面まわりで失敗した）＝取り込みとしては成立している
+            self.log(f"spectate: 取り込みの後始末でエラーが発生しました: {e}", OUTPUT_ERROR)
         finally:
             self._spectate_importing = False
+        self.game.capture_base = capture_base_for(agehama_b, agehama_w)
+        session["agehama_base"] = (agehama_b, agehama_w)
+        session["base_move_number"] = base_move_number
+        session["tip"] = root
+        session["line"] = None
         return True
 
     def _spectate_start_watcher(self, session):
@@ -2128,6 +2137,9 @@ class KaTrainGui(Screen, KaTrainBase):
         tip = session["tip"]  # 1 回だけ束縛する（取り込み直し・追記とすれ違っても同じ tip から読む）
         if game is None or tip is None or tip.root is not game.root:
             return None  # 取り込み直しの途中
+        if game.insert_mode:
+            # 挿入モード中は表示位置を動かせない（追記できない）。判定を保留し、抜けたら通常どおり確定・発火させる
+            return None
         line = self._spectate_line(session, tip)
         if line is None:
             return None
@@ -2193,6 +2205,36 @@ class KaTrainGui(Screen, KaTrainBase):
 
         Clock.schedule_once(_set, 0)
 
+    def _spectate_retry(self, session):
+        """追記できなかった確定済みの手を、監視にもう一度確定・発火させる（自動反映 OFF なら次の「今すぐ反映」で）"""
+        watcher = session.get("watcher")
+        if watcher is not None:
+            watcher.forget_fired()
+
+    def spectate_end_for_new_game(self, player_setup):
+        """新規対局ポップアップ（新規対局・局面の設定）が対局者の欄を読む直前に呼ばれる（popups.NewGamePopup.update_config）。
+
+        観戦中なら観戦を終え、ユーザーがポップアップで触っていない色の欄を観戦前の対局者設定に書き直す。欄の同期
+        （PlayerSetupBlock.update_player_info）は Clock で次のフレームに回るので、書き直さないと直後の
+        update_playerinfo が観戦中の「人間・人間」を読み戻し、_do_new_game のフックが戻した設定を上書きする。
+        Kivy スレッドから呼ばれる。観戦していなければ何もしない
+        """
+        from katrain.core.board_spectate import popup_players_after_spectate
+
+        session = getattr(self, "_spectate_session", None)
+        if session is None:
+            return
+        widgets = {}
+        for bw, setup in player_setup.players.items():
+            dump = setup.player_type_dump
+            widgets[bw] = (dump["player_type"], dump["player_subtype"])
+        current = {bw: (info.player_type, info.player_subtype) for bw, info in self.players_info.items()}
+        chosen = popup_players_after_spectate(widgets, current, session["saved_players"])
+        self._spectate_end()
+        for bw, (player_type, player_subtype) in chosen.items():
+            if widgets[bw] != (player_type, player_subtype):
+                player_setup.update_player_params(bw, {"player_type": player_type, "player_subtype": player_subtype})
+
     def _spectate_counted(self, session):
         """取り込み後に KaTrain が数えた取り石（本譜の末尾まで・キーは取られた石の色）"""
         line = self._spectate_line(session, session["tip"])
@@ -2248,7 +2290,7 @@ class KaTrainGui(Screen, KaTrainBase):
     def _do_spectate_append(self, moves, tip_depth, estimated, tip=None):
         """監視スレッドが確定したアプリ側の着手を本譜の末尾へ足す。表示は末尾を見ているときだけ進める（過去の手を
         検討中なら表示位置は動かさない）。末尾の手数が期待と違えば捨てる（既存の注入と同じ再検証）"""
-        from katrain.core.board_spectate import append_plan, node_in_tree
+        from katrain.core.board_spectate import ESTIMATED_NOTE, append_plan, node_in_tree
         from katrain.core.board_watch import STATUS_WATCHING, grid_to_move
 
         session = getattr(self, "_spectate_session", None)
@@ -2269,32 +2311,51 @@ class KaTrainGui(Screen, KaTrainBase):
             insert_mode=game.insert_mode,
         )
         if plan == "skip":
+            # 安全網（挿入モード中は _spectate_state が None を返すので、ふつうはここに来ない）。挿入モードの直前に
+            # 確定した手。発火済みを忘れさせて、挿入モードを抜けたら同じ手をもう一度確定させる
             self.log(f"spectate: 挿入モード中のため {len(moves)} 手の追記を見送りました", OUTPUT_INFO)
+            self._spectate_retry(session)
             return
         if plan == "reimport":
             self._spectate_reimport_after_moves(session, current_tip, moves, "本譜の末尾が削除されたため")
             return
         size = session["size"]
         first = None
+        node = current_tip
         played = []
         try:
             game.set_current_node(current_tip)
             for i, j, color in moves:
                 move = Move(grid_to_move(i, j, size), player=color)
-                node = game.play(move)
-                first = first or node
-                session["tip"] = node
+                # expected_node: 着手の間に棋譜ツリーのクリック（Kivy スレッド）が表示位置を動かしたら打たない（None）
+                child = game.play(move, expected_node=node)
+                if child is None:
+                    break
+                node = child
+                first = first or child
                 played.append(move.gtp())
         except IllegalMoveException as e:
+            # 途中まで足した手は末尾にしない（session["tip"] は動かしていない）。こちらが動かした表示位置は戻してから
+            # 取り込み直しへ（取り込み直しが失敗しても、ユーザーは元の局面・セッションは元の末尾のまま）
+            if game.current_node is node:
+                game.set_current_node(cursor)
             self.log(f"spectate: 着手 {played} の次が非合法と判定されたため取り込み直します: {e}", OUTPUT_INFO)
             self._spectate_reimport_after_moves(session, current_tip, moves, f"着手が非合法と判定されたため（{e}）")
             return
+        if len(played) < len(moves):
+            # 表示位置がユーザーの操作で動いた。末尾は進めず、表示位置もユーザーのまま（足せた途中の手は末尾の下の枝に
+            # 残り、もう一度足すときは SGFNode.play が同じ子を使う）。監視には同じ手をもう一度確定させる
+            self.log(f"spectate: 追記の途中で表示位置が動いたため {played} で止めて再試行します", OUTPUT_INFO)
+            self._spectate_retry(session)
+            return
+        session["tip"] = node
         if plan == "append_keep_cursor":
-            game.set_current_node(cursor)
+            if game.current_node is node:
+                game.set_current_node(cursor)
             # 表示位置が変わらないと棋譜ツリーは描き直されない（current_node の変化にだけ bind している）
             Clock.schedule_once(lambda _dt: self.controls.move_tree.redraw(), 0)
         if estimated and first is not None:
-            note = f"順序は推定（自動反映 OFF の間の {len(moves)} 手）"
+            note = ESTIMATED_NOTE.format(n=len(moves))
             first.note = note
             self._spectate_banner(session, STATUS_WATCHING, note)
         elif session.get("notice"):
@@ -2358,11 +2419,8 @@ class KaTrainGui(Screen, KaTrainBase):
         root = self.game.root
         rules = root.get_property("RU", self.config("game/rules", "japanese"))
         komi = root.komi
-        previous = (session["agehama_base"], session["base_move_number"])
-        session["agehama_base"] = tuple(agehama)
-        session["base_move_number"] = base_move_number
-        if not self._spectate_import(session, grid, rules, komi, next_player):
-            session["agehama_base"], session["base_move_number"] = previous
+        if not self._spectate_import(session, grid, rules, komi, next_player, tuple(agehama), base_move_number):
+            # 取り込めなかった＝セッション（末尾・アゲハマ・アプリの手数）は前のまま。警告は _spectate_import が出した
             return
         text = "手順を追えなかったため局面を取り込み直しました"
         if checks:
@@ -2399,8 +2457,8 @@ class KaTrainGui(Screen, KaTrainBase):
         if next_player in ("B", "W") and next_player != tip.next_player:
             line = self._spectate_line(session, tip)
             if tip is root and line is not None:
-                session["agehama_base"] = base
-                if self._spectate_import(session, line[0][0], rules, komi, next_player):
+                number = session["base_move_number"]
+                if self._spectate_import(session, line[0][0], rules, komi, next_player, base, number):
                     self._spectate_refresh_text(session)
                     self.log(f"spectate: 手番を {next_player} にして取り込み直しました", OUTPUT_INFO)
                 return

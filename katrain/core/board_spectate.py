@@ -219,6 +219,9 @@ def next_player_from(last_mover, app_move_number):
 
 
 BEHIND_TEXT = "アプリが過去の局面を表示中のため反映を待っています"
+# 推定で並べた手順の最初のノードに付けるコメント（バナーにも 1 回出す）。自動反映 OFF の間に限らず、ON でも確定待ちの
+# 間に 2 手来れば推定になる
+ESTIMATED_NOTE = "順序は推定（まとめて反映した {n} 手）"
 
 
 class SpectateState(NamedTuple):
@@ -348,6 +351,12 @@ class SpectateWatcher(BoardWatcher):
         self._reset_confirmation()
         self._fired = key
         self._fire(verdict, observed, state)
+
+    def forget_fired(self):
+        """発火済みの判定を忘れる。反映側が取り込めなかった（挿入モード中・棋譜ツリーのクリックとすれ違い）とき、
+        同じ盤でもう一度確定させて発火させるために呼ぶ。別スレッドから呼ぶので代入だけにする（ロックを待たない）"""
+        self._fired = None
+        self._reset_confirmation()
 
     def step_once(self):
         """確定待ちをせず 1 回だけ判定して即コールバックする（「今すぐ反映」用）"""
@@ -481,6 +490,15 @@ def node_in_tree(node, root):
             return False
         n = parent
     return True
+
+
+def popup_players_after_spectate(widgets, current, saved):
+    """観戦中に新規対局ポップアップから新しい対局を始めるときの対局者 {色: (種別, 細目)}。
+
+    ポップアップの欄は観戦中の設定（両者とも人間）を写しているので、欄が今の設定のままの色＝ユーザーが触っていない
+    色は観戦前の設定（saved）に戻し、欄で選び直した色はその選択を使う
+    """
+    return {bw: (saved[bw] if widgets[bw] == current.get(bw) else widgets[bw]) for bw in widgets}
 
 
 def fallback_next_player(grid):

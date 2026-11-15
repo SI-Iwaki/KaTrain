@@ -4,6 +4,7 @@ import os
 import pytest
 
 from katrain.core.board_spectate import (
+    ESTIMATED_NOTE,
     agehama_base,
     agehama_totals,
     append_plan,
@@ -12,6 +13,7 @@ from katrain.core.board_spectate import (
     engine_komi_offset,
     fallback_next_player,
     node_in_tree,
+    popup_players_after_spectate,
     replay_counting,
     spectate_status_text,
     next_player_from,
@@ -508,3 +510,48 @@ def test_info_change_discards_old_komi_queries_before_reanalysing():
     discard = min(line for line, name in calls if name == "on_new_game")
     reanalyse = min(line for line, name in calls if name == "analyze_all_nodes")
     assert discard < reanalyse
+
+
+def test_forget_fired_lets_the_same_verdict_fire_again():
+    # 反映側が取り込めなかった（挿入モード・クリックとのすれ違い）とき、同じ盤でもう一度確定・発火させる
+    w, calls = make_watcher(frames=[G0_PLUS_B] * 8)
+    for _ in range(4):
+        w.step()
+    assert len(calls.moves) == 1  # 発火済みの判定は投げ直さない
+    w.forget_fired()
+    w.step()
+    assert len(calls.moves) == 1  # 確定は改めて stable_frames 周
+    w.step()
+    assert len(calls.moves) == 2
+
+
+def test_estimated_note_does_not_claim_auto_was_off():
+    # 自動反映 ON でも確定待ちの間に 2 手来れば推定になる
+    assert ESTIMATED_NOTE.format(n=2) == "順序は推定（まとめて反映した 2 手）"
+
+
+def test_popup_players_after_spectate_restores_the_colours_the_user_did_not_touch():
+    human, ai = ("player:human", "game:normal"), ("player:ai", "ai:default")
+    saved = {"B": ai, "W": human}
+    current = {"B": human, "W": human}  # 観戦中は両者とも人間
+    assert popup_players_after_spectate(dict(current), current, saved) == saved
+    jigo = ("player:ai", "ai:jigo")
+    assert popup_players_after_spectate({"B": human, "W": jigo}, current, saved) == {"B": ai, "W": jigo}
+
+
+def test_new_game_popup_ends_spectating_before_reading_the_player_widgets():
+    # NewGamePopup.update_config は欄を読む（update_playerinfo）→ 新規対局 → 欄をもう一度読む。欄の同期は Clock で
+    # 遅れるので、1 回目に読む前に観戦を終えて欄を直す。対局の編集（editgame）では観戦を終えない
+    path = os.path.join(os.path.dirname(__file__), "..", "katrain", "gui", "popups.py")
+    with open(path, encoding="utf-8") as f:
+        src = f.read()
+    cls = next(n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.ClassDef) and n.name == "NewGamePopup")
+    func = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == "update_config")
+    names = [
+        n.lineno for n in ast.walk(func) if isinstance(n, ast.Constant) and n.value == "spectate_end_for_new_game"
+    ]
+    calls = _calls(func)
+    end_line = min(line for line, name in calls if name == "end_spectate")  # getattr(katrain, ...) で引いた口
+    assert names and max(names) < end_line < min(line for line, name in calls if name == "update_playerinfo")
+    guards = [n for n in ast.walk(func) if isinstance(n, ast.If) and n.lineno < end_line <= n.end_lineno]
+    assert any("editgame" in ast.get_source_segment(src, g.test) for g in guards)

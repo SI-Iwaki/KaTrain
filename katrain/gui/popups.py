@@ -321,6 +321,12 @@ class NewGamePopup(QuickConfigGui):
         super().update_config(save_to_file=save_to_file, close_popup=close_popup)
         props = self.collect_properties(self)
         self.katrain.log(f"Mode: {self.mode}, settings: {self.katrain.config('game')}", OUTPUT_DEBUG)
+        if self.mode != "editgame":
+            # 観戦中に新しい対局を始める: 欄を読む前に観戦を終え、触っていない対局者の欄を観戦前の設定に戻す
+            # （spectate spec §5.3）。観戦していなければ何もしない
+            end_spectate = getattr(self.katrain, "spectate_end_for_new_game", None)
+            if end_spectate is not None:
+                end_spectate(self.player_setup)
         self.update_playerinfo()  # type
         if self.mode == "newgame":
             if self.restart.active:
