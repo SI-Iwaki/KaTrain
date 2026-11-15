@@ -137,6 +137,10 @@ class KaTrainGui(Screen, KaTrainBase):
     # 既存バナーの status は i18n と色辞書の列挙キーなので可変文言を載せられない
     board_watch_status = StringProperty("")
     board_watch_detail = StringProperty("")
+    # 観戦モード（spectate spec §4）の帯が読む状態: 観戦中か・自動反映 ON/OFF・帯の文言（手数・ルール・コミ・アゲハマ）
+    spectate_active = BooleanProperty(False)
+    spectate_auto = BooleanProperty(True)
+    spectate_text = StringProperty("")
     controls = ObjectProperty(None)
 
     def __init__(self, **kwargs):
@@ -165,6 +169,8 @@ class KaTrainGui(Screen, KaTrainBase):
         self._autoloop = None  # 詰碁自動ループのコントローラ（ctrl+alt+a で開始/停止）
         self._autoloop_lock = threading.Lock()  # ホットキーの二重起動を排他（起動処理は数秒かかる）
         self._autoloop_instances = []  # 起動したコントローラ全部（孤児が出ても停止で取りこぼさない）
+        self._spectate_session = None  # 観戦モードのセッション（dict）。None＝観戦していない
+        self._spectate_importing = False  # 観戦自身の取り込み中（_do_new_game の「観戦を終える」フックを外す）
 
     def log(self, message, level=OUTPUT_INFO):
         super().log(message, level)
@@ -391,6 +397,10 @@ class KaTrainGui(Screen, KaTrainBase):
                 self.message_queue.put([self.game.game_id, message, args, kwargs])
 
     def _do_new_game(self, move_tree=None, analyze_fast=False, sgf_filename=None, _log=True):
+        if getattr(self, "_spectate_session", None) is not None and not getattr(self, "_spectate_importing", False):
+            # 観戦中に新規対局・棋譜の読み込み・詰碁の出題などでゲームが作り直された＝観戦を終える（spectate spec §5.3）。
+            # 観戦自身の取り込み（開始・取り込み直し）は除く。対局者設定はここで観戦の開始前に戻る
+            self._spectate_end()
         # 詰碁の白番自動反映は局面に紐づくので、新しい局面になったら止める。次のキャプチャが
         # 張り直す。対局監視モード（kind="game"）は巻き添えにしない
         if self._stop_board_watcher(kinds=("tsumego",)):
@@ -1105,6 +1115,8 @@ class KaTrainGui(Screen, KaTrainBase):
             # ホットキーは Theme.KEY_* と重ねないこと（RegisterHotKey はフォーカス窓から
             # キーを奪うので、重ねると KaTrain 本体のショートカットが黙って死ぬ）
             specs.append((watch, "board_watch", "hotkey", "ctrl+alt+d", "_board_watch_trigger", (), "盤面監視トグル"))
+            # 観戦モード（spectate spec §4）。w は KEY_ANALYSIS_CONTROLS_EVAL だが ctrl なしのときだけ働く＝重ならない
+            specs.append((watch, "board_watch", "spectate_hotkey", "ctrl+alt+w", "_spectate_trigger", (), "観戦モード トグル"))
         if autoloop.get("enabled", False):
             # F キーは使わない（Theme.KEY_* と重なると KaTrain 本体のショートカットが黙って死ぬ）
             specs.append((autoloop, "tsumego_autoloop", "hotkey", "ctrl+alt+a", "_autoloop_trigger", (), "詰碁自動ループ トグル"))
@@ -1766,6 +1778,9 @@ class KaTrainGui(Screen, KaTrainBase):
             game = getattr(self, "game", None)
             if game is not None:
                 clear_game_watch_flags(game)
+        if stopped_kind == "spectate":
+            # 観戦の監視を止める経路（他の監視・詰碁の開始など）はどれも観戦そのものを終える＝対局者設定を戻す
+            self._spectate_end()
         return True
 
     def _tsumego_watch_state(self, watch_game):
@@ -1910,9 +1925,14 @@ class KaTrainGui(Screen, KaTrainBase):
         if getattr(self, "_board_watch_busy", False):
             return
         watcher = getattr(self, "_board_watcher", None)
+        spectating = getattr(self, "_spectate_session", None) is not None
+        if spectating:
+            # 観戦中は観戦を終えてから対局監視を始める（spectate spec §5.3）。終了はこのあと投げる board-watch-start
+            # より先にメッセージループで処理される（観戦の監視・帯のバナーで下の「停止／消すだけ」に落とさない）
+            self("spectate-stop")
         # 自動停止のお知らせ（STATUS_IDLE）は下の「バナーだけ消す」に落とさず、そのまま再開する
         # （お知らせが「ホットキーで再開」と案内している＝watch_toggle_action）
-        if watch_toggle_action(watcher is not None, self.board_watch_status) != "start":
+        if not spectating and watch_toggle_action(watcher is not None, self.board_watch_status) != "start":
             # watcher が None でも banner が残っていることがある（認識失敗・AI判定不成立・
             # SGF解析失敗の3経路は watcher を作らず warn を出して return するため、次のトグルは
             # ここではなく START 分岐に落ちてバナーが一生消えなかった＝Finding A）。
@@ -1946,6 +1966,539 @@ class KaTrainGui(Screen, KaTrainBase):
             self("board-watch-start", reader, grid, reader.size, confirmed_near_color(near, far))
         finally:
             self._board_watch_busy = False
+
+    # --- 観戦モード（spec 2026-11-15-spectate-watch-design.md §4・§5.3・§5.4） ---
+    # セッションは self._spectate_session（dict）に持つ。監視スレッド（SpectateWatcher）は既存の監視と同じく
+    # _board_watcher（kind="spectate"）に置き、自動反映 OFF の間も止めた監視をセッションに残す（「今すぐ反映」の
+    # step_once に使う）。判断は board_spectate の純関数に置き、ここは配線だけにする。
+    # セッションの鍵: reader / size / tip（本譜の末尾ノード）/ base_move_number（取り込み時のアプリの手数・読めなければ
+    # None）/ agehama_base（取り込み時点のアゲハマ (黒が取った数, 白が取った数)）/ saved_players / line（tip までの
+    # 再生のキャッシュ）/ notice（バナーにセッション自身のお知らせが出ている）/ auto / syncing / watcher
+
+    def _spectate_trigger(self):
+        """観戦モードのホットキー（既定 ctrl+alt+w）のワーカースレッド。観戦中なら終了、そうでなければ盤と対局情報を
+        読んで開始する（文字認識は 1〜2 秒かかるのでこのスレッドで済ませ、反映はメッセージループに投げる）"""
+        from katrain.core.board_spectate import read_spectate_info
+        from katrain.core.board_watch import AppBoardReader
+
+        now = time.time()
+        if now - getattr(self, "_spectate_last_trigger", 0.0) < 2.0:
+            return
+        self._spectate_last_trigger = now
+        if getattr(self, "_spectate_session", None) is not None:
+            self("spectate-stop")
+            return
+        if getattr(self, "_board_watch_busy", False):
+            return  # 対局監視・観戦の開始（盤の読み取り）が走っている
+        self._board_watch_busy = True
+        try:
+            settings = self._config.get("board_watch") or {}
+            tsumego = self._config.get("tsumego_capture") or {}
+            title = settings.get("window_title") or tsumego.get("window_title", "BlueStacks")
+            sizes = [int(s) for s in (tsumego.get("board_sizes") or [9, 13, 19])]
+            reader = AppBoardReader(title, sizes)
+            try:
+                grid = reader.read()
+            except Exception as e:
+                self.log(f"spectate: 盤面を認識できないため観戦を開始しません: {e}", OUTPUT_ERROR)
+                self._board_watch_status(BW_STATUS_WARN, f"盤面を認識できません: {e}")
+                return
+            info = read_spectate_info(reader)
+            self.log(f"spectate: 対局情報 {info}", OUTPUT_INFO)
+            self("spectate-start", reader, grid, reader.size, info)
+        finally:
+            self._board_watch_busy = False
+
+    def _do_spectate_start(self, reader, grid, size, info):
+        """観戦の開始。動いている監視を止め、両者を人間にして局面を取り込み、監視を起動する。
+
+        取り込みと監視の起動を 1 メッセージで済ませる（new-game で game_id が変わると後続のメッセージは捨てられる）。
+        読めなかった項目は game/komi・game/rules・0・石数から仮置きし、コミか手番が読めなければ入力欄を開く
+        """
+        from katrain.core.board_spectate import SpectateInfo, fallback_next_player
+
+        self._spectate_end()  # 二重開始なら前の観戦を終えて（対局者設定を戻して）から
+        if self._stop_board_watcher():
+            self.log("spectate: 実行中の監視を停止してから観戦を始めます", OUTPUT_INFO)
+        info = info or SpectateInfo()
+        saved = {bw: (p.player_type, p.player_subtype) for bw, p in self.players_info.items()}
+        for bw in "BW":
+            # 観戦中は AI を一切打たせない（両者を人間にする。終了時に saved へ戻す）
+            self.update_player(bw, player_type=PLAYER_HUMAN, player_subtype=PLAYING_NORMAL)
+        rules = info.rules or self.config("game/rules", "japanese")
+        komi = info.komi if info.komi is not None else self.config("game/komi", 6.5)
+        agehama = (info.agehama_b or 0, info.agehama_w or 0)
+        next_player = info.next_player or fallback_next_player(grid)
+        session = {
+            "reader": reader,
+            "size": size,
+            "tip": None,
+            "base_move_number": info.app_move_number,
+            "agehama_base": agehama,
+            "saved_players": saved,
+            "line": None,
+            "notice": False,
+            "auto": True,
+            "syncing": False,
+            "watcher": None,
+        }
+        if not self._spectate_import(session, grid, rules, komi, next_player):
+            for bw, (player_type, player_subtype) in saved.items():
+                self.update_player(bw, player_type=player_type, player_subtype=player_subtype)
+            return
+        self._spectate_session = session
+        self._spectate_start_watcher(session)
+        # 詰碁ビュー（右パネルを隠す）のままだと形勢グラフ・候補手の欄が見えない
+        self._spectate_props(spectate_active=True, spectate_auto=True, tsumego_view=False)
+        self._board_watch_status("", "")
+        self._spectate_refresh_text(session)
+        self.log(
+            f"spectate: 観戦を開始しました（{size}路・手番={next_player}・{rules}・コミ{komi}・"
+            f"アゲハマ 黒{agehama[0]} 白{agehama[1]}・アプリの手数={info.app_move_number}）",
+            OUTPUT_INFO,
+        )
+        if info.komi is None or info.next_player is None:
+            self._spectate_open_info_popup()
+
+    def _spectate_import(self, session, grid, rules, komi, next_player):
+        """観戦の取り込み（開始・取り込み直し・手番の訂正で共通）。成功したら True。
+
+        コミ補正（engine_komi_offset）を付けた root を作ってから新規対局にする: Game の生成と同時に root の解析が
+        走る（Game.__init__ の analyze_all_nodes）ので、後から付けると最初の解析が補正なしになる。
+        アゲハマは session["agehama_base"]（取り込み時点の分）を使う
+        """
+        from katrain.core.board_spectate import capture_base_for, spectate_root
+
+        agehama_b, agehama_w = session["agehama_base"]
+        try:
+            root = spectate_root(grid, komi, rules, next_player, agehama_b, agehama_w)
+        except ParseError as e:
+            self.log(f"spectate: 取り込み SGF の解析に失敗: {e}", OUTPUT_ERROR)
+            self._board_watch_status(BW_STATUS_WARN, f"局面を取り込めません: {e}")
+            return False
+        self._spectate_importing = True  # _do_new_game の「観戦を終える」フックを外す
+        try:
+            self._do_new_game(move_tree=root)  # move_tree ありの新規対局は解析モードに入る
+            self.game.capture_base = capture_base_for(agehama_b, agehama_w)
+            session["tip"] = root
+            session["line"] = None
+        finally:
+            self._spectate_importing = False
+        return True
+
+    def _spectate_start_watcher(self, session):
+        watcher = self._spectate_new_watcher(session)
+        session["watcher"] = watcher
+        self._board_watcher = watcher
+        self._board_watch_kind = "spectate"
+        watcher.start()
+
+    def _spectate_new_watcher(self, session):
+        """SpectateWatcher を作る（起動はしない）。コールバックは監視スレッドで呼ばれるので、メッセージを投げるだけにする"""
+        from katrain.core.board_spectate import SpectateWatcher, read_spectate_info, spectate_watch_settings
+
+        reader = session["reader"]
+        stash = {}  # get_state_fn が読んだ tip。同じ周の on_moves / on_reimport が持たせて投げる（すれ違いの検出用）
+
+        def on_moves(moves, tip_depth, estimated):
+            self("spectate-append", moves, tip_depth, estimated, tip=stash.get("tip"))
+
+        def on_reimport(grid, reason):
+            info = read_spectate_info(reader)  # 野狐は文字認識（1〜2 秒）。メッセージループ・GUI スレッドを塞がない
+            self("spectate-reimport", grid, reason, info, tip=stash.get("tip"))
+
+        return SpectateWatcher(
+            capture_fn=reader.read,
+            get_state_fn=lambda: self._spectate_state(session, stash),
+            on_moves=on_moves,
+            on_reimport=on_reimport,
+            on_status=lambda kind, text: self._spectate_watch_status(session, kind, text),
+            settings=spectate_watch_settings(self._config.get("board_watch")),
+            hints_fn=lambda: self._spectate_hints(reader),
+        )
+
+    def _spectate_state(self, session, stash):
+        """監視スレッドが読む観戦のスナップショット。比較の基準は本譜の末尾（tip）までの再生で、表示中の局面
+        （game.stones）は使わない＝ユーザーが過去の手を検討していても判定は変わらない"""
+        from katrain.core.board_spectate import SpectateState
+
+        if getattr(self, "_spectate_session", None) is not session or getattr(self, "_spectate_importing", False):
+            return None
+        game = self.game
+        tip = session["tip"]  # 1 回だけ束縛する（取り込み直し・追記とすれ違っても同じ tip から読む）
+        if game is None or tip is None or tip.root is not game.root:
+            return None  # 取り込み直しの途中
+        line = self._spectate_line(session, tip)
+        if line is None:
+            return None
+        grids, _captured = line
+        stash["tip"] = tip
+        base = session["base_move_number"]
+        return SpectateState(
+            tip_grid=grids[-1],
+            to_play=tip.next_player,
+            tip_move_number=None if base is None else base + tip.depth,
+            tip_depth=tip.depth,
+            board_size=session["size"],
+            ancestor_grids=tuple(grids[:-1]),
+        )
+
+    def _spectate_line(self, session, tip):
+        """root の配置＋root→tip の再生（盤の列, 取り込み後に取られた石）。tip が同じ間はキャッシュを返す（監視は毎周呼ぶ）"""
+        from katrain.core.board_spectate import spectate_line
+
+        cached = session.get("line")
+        if cached is not None and cached[0] is tip:
+            return cached[1]
+        line = spectate_line(tip.root, tip)
+        session["line"] = (tip, line)
+        return line
+
+    def _spectate_hints(self, reader):
+        """SpectateWatcher の hints_fn: (直前手の色, 野狐の窓タイトルの手数)。監視スレッドから read() の直後に呼ばれる"""
+        from katrain.core.board_spectate import parse_fox_title
+
+        number = None
+        if reader.profile_name() == "fox":
+            title = reader.window_title_text()
+            if title:
+                number = parse_fox_title(title)[0]
+        return reader.last_mover_color(), number
+
+    def _spectate_watch_status(self, session, kind, text):
+        """SpectateWatcher の on_status。観戦中であることは帯が示すので、手順どおり（in_sync）の表示はバナーに出さない。
+        監視が出した警告・過去局面の表示だけを消し、セッション自身のお知らせ（取り込み直し・順序の推定）は残す"""
+        from katrain.core.board_watch import STATUS_WATCHING, WATCHING_TEXT
+
+        if getattr(self, "_spectate_session", None) is not session:
+            return
+        if kind == STATUS_WATCHING and text == WATCHING_TEXT:
+            if not session.get("notice"):
+                self._board_watch_status("", "")
+            return
+        session["notice"] = False
+        self._board_watch_status(kind, text)
+
+    def _spectate_banner(self, session, kind, text):
+        """セッション自身のお知らせをバナーに出す（次の監視の in_sync では消えない＝_spectate_watch_status）"""
+        session["notice"] = True
+        self._board_watch_status(kind, text)
+
+    def _spectate_props(self, **values):
+        """観戦の Kivy プロパティを Kivy スレッドで更新する（ハンドラはメッセージループのスレッドで動く）"""
+
+        def _set(_dt):
+            for name, value in values.items():
+                setattr(self, name, value)
+
+        Clock.schedule_once(_set, 0)
+
+    def _spectate_counted(self, session):
+        """取り込み後に KaTrain が数えた取り石（本譜の末尾まで・キーは取られた石の色）"""
+        line = self._spectate_line(session, session["tip"])
+        return dict(line[1]) if line is not None else {"B": 0, "W": 0}
+
+    def _spectate_refresh_text(self, session):
+        from katrain.core.board_spectate import agehama_totals, spectate_rules, spectate_status_text
+
+        tip = session["tip"]
+        root = tip.root
+        agehama_b, agehama_w = agehama_totals(*session["agehama_base"], self._spectate_counted(session))
+        text = spectate_status_text(
+            tip.depth, session["base_move_number"], spectate_rules(root.ruleset), root.komi, agehama_b, agehama_w
+        )
+        self._spectate_props(spectate_text=text)
+
+    def _spectate_open_info_popup(self):
+        """対局情報の入力欄を開く（読めなかった項目があるとき）。入力欄は別タスクの実装なので、無ければログだけ"""
+        if hasattr(self, "_do_spectate_info_popup"):
+            self("spectate-info-popup")
+        else:
+            self.log("spectate: 読めなかった対局情報を既定値で仮置きしました（入力欄は未実装）", OUTPUT_INFO)
+
+    def spectate_info_values(self):
+        """対局情報の入力欄の初期値 {rules, komi, agehama_b, agehama_w, next_player}。
+
+        アゲハマは「取り込み時点の分＋取り込み後に KaTrain が数えた分」＝アプリに出ている累計（欄にはアプリの数を
+        そのまま入れられる）。手番は本譜の末尾の手番
+        """
+        from katrain.core.board_spectate import agehama_totals, spectate_rules
+
+        session = getattr(self, "_spectate_session", None)
+        if session is None or session.get("tip") is None:
+            return {
+                "rules": self.config("game/rules", "japanese"),
+                "komi": self.config("game/komi", 6.5),
+                "agehama_b": 0,
+                "agehama_w": 0,
+                "next_player": "B",
+            }
+        tip = session["tip"]
+        root = tip.root
+        rules = spectate_rules(root.ruleset)
+        agehama_b, agehama_w = agehama_totals(*session["agehama_base"], self._spectate_counted(session))
+        return {
+            "rules": rules if isinstance(rules, str) else root.ruleset,
+            "komi": root.komi,
+            "agehama_b": agehama_b,
+            "agehama_w": agehama_w,
+            "next_player": tip.next_player,
+        }
+
+    def _do_spectate_append(self, moves, tip_depth, estimated, tip=None):
+        """監視スレッドが確定したアプリ側の着手を本譜の末尾へ足す。表示は末尾を見ているときだけ進める（過去の手を
+        検討中なら表示位置は動かさない）。末尾の手数が期待と違えば捨てる（既存の注入と同じ再検証）"""
+        from katrain.core.board_spectate import append_plan, node_in_tree
+        from katrain.core.board_watch import STATUS_WATCHING, grid_to_move
+
+        session = getattr(self, "_spectate_session", None)
+        if session is None:
+            return
+        game = self.game
+        current_tip = session["tip"]
+        if (tip is not None and tip is not current_tip) or current_tip.depth != tip_depth:
+            self.log(
+                f"spectate: 追記を破棄しました（末尾の手数 {current_tip.depth}!={tip_depth} か、取り込み直しとすれ違い）",
+                OUTPUT_INFO,
+            )
+            return
+        cursor = game.current_node
+        plan = append_plan(
+            cursor_is_tip=cursor is current_tip,
+            tip_in_tree=node_in_tree(current_tip, game.root),
+            insert_mode=game.insert_mode,
+        )
+        if plan == "skip":
+            self.log(f"spectate: 挿入モード中のため {len(moves)} 手の追記を見送りました", OUTPUT_INFO)
+            return
+        if plan == "reimport":
+            self._spectate_reimport_after_moves(session, current_tip, moves, "本譜の末尾が削除されたため")
+            return
+        size = session["size"]
+        first = None
+        played = []
+        try:
+            game.set_current_node(current_tip)
+            for i, j, color in moves:
+                move = Move(grid_to_move(i, j, size), player=color)
+                node = game.play(move)
+                first = first or node
+                session["tip"] = node
+                played.append(move.gtp())
+        except IllegalMoveException as e:
+            self.log(f"spectate: 着手 {played} の次が非合法と判定されたため取り込み直します: {e}", OUTPUT_INFO)
+            self._spectate_reimport_after_moves(session, current_tip, moves, f"着手が非合法と判定されたため（{e}）")
+            return
+        if plan == "append_keep_cursor":
+            game.set_current_node(cursor)
+            # 表示位置が変わらないと棋譜ツリーは描き直されない（current_node の変化にだけ bind している）
+            Clock.schedule_once(lambda _dt: self.controls.move_tree.redraw(), 0)
+        if estimated and first is not None:
+            note = f"順序は推定（自動反映 OFF の間の {len(moves)} 手）"
+            first.note = note
+            self._spectate_banner(session, STATUS_WATCHING, note)
+        elif session.get("notice"):
+            session["notice"] = False  # 前のお知らせ（取り込み直し等）は手順どおりの着手が来たら下ろす
+            self._board_watch_status("", "")
+        self._spectate_refresh_text(session)
+        self.log(f"spectate: {' '.join(played)} を反映しました（{plan}・推定={estimated}）", OUTPUT_INFO)
+        self.update_state(redraw_board=True)
+
+    def _do_spectate_reimport(self, grid, reason, info, tip=None):
+        """監視スレッドが手順で説明できないと確定した観測盤を取り込み直す（対局者設定は触らない）。
+
+        ルール・コミは今の root のまま。野狐は監視スレッドが読み直した info のアゲハマ・手番を使い、読めない盤では
+        直前の累計と「末尾から交互に続いた」手番を仮定して確認を促す
+        """
+        from katrain.core.board_spectate import SpectateInfo, agehama_totals, assumed_next_player
+
+        session = getattr(self, "_spectate_session", None)
+        if session is None:
+            return
+        current_tip = session["tip"]
+        if tip is not None and tip is not current_tip:
+            self.log("spectate: 取り込み直しを破棄しました（追記・取り込み直しとすれ違い）", OUTPUT_INFO)
+            return
+        line = self._spectate_line(session, current_tip)
+        tip_grid = line[0][-1] if line is not None else None
+        if tip_grid == grid:
+            return  # 先に積まれた追記で既に一致している
+        info = info or SpectateInfo()
+        checks = []
+        if info.agehama_b is not None and info.agehama_w is not None:
+            agehama = (info.agehama_b, info.agehama_w)
+        else:
+            agehama = agehama_totals(*session["agehama_base"], line[1] if line is not None else {})
+            checks.append("アゲハマ")
+        next_player = info.next_player
+        if next_player is None:
+            next_player = assumed_next_player(current_tip.next_player, tip_grid or grid, grid)
+            checks.append("手番")
+        self._spectate_reimport(session, grid, next_player, agehama, info.app_move_number, reason, checks)
+
+    def _spectate_reimport_after_moves(self, session, tip, moves, why):
+        """確定した着手を本譜に足せなかった（末尾が削除された・非合法と判定された）ので、着手後の盤を取り込み直す。
+        アゲハマと手番は手順から正確に分かる（盤の再生で数える）"""
+        from katrain.core.board_spectate import agehama_totals, replay_counting
+
+        line = self._spectate_line(session, tip)
+        replayed = replay_counting(line[0][-1], moves) if line is not None else None
+        if replayed is None:
+            self._spectate_banner(session, BW_STATUS_WARN, "着手を反映できませんでした（観戦をいったん終えて開始し直してください）")
+            return
+        grid, new_captured = replayed
+        counted = {color: line[1][color] + new_captured[color] for color in ("B", "W")}
+        agehama = agehama_totals(*session["agehama_base"], counted)
+        base = session["base_move_number"]
+        number = None if base is None else base + tip.depth + len(moves)
+        next_player = "W" if moves[-1][2] == "B" else "B"
+        self._spectate_reimport(session, grid, next_player, agehama, number, why, [])
+
+    def _spectate_reimport(self, session, grid, next_player, agehama, base_move_number, reason, checks):
+        root = self.game.root
+        rules = root.get_property("RU", self.config("game/rules", "japanese"))
+        komi = root.komi
+        previous = (session["agehama_base"], session["base_move_number"])
+        session["agehama_base"] = tuple(agehama)
+        session["base_move_number"] = base_move_number
+        if not self._spectate_import(session, grid, rules, komi, next_player):
+            session["agehama_base"], session["base_move_number"] = previous
+            return
+        text = "手順を追えなかったため局面を取り込み直しました"
+        if checks:
+            text += "（" + "・".join(checks) + "を確認してください）"
+        self._spectate_banner(session, BW_STATUS_WARN, text)
+        self._spectate_refresh_text(session)
+        self.log(
+            f"spectate: 局面を取り込み直しました（{reason}・手番={next_player}・アゲハマ 黒{agehama[0]} 白{agehama[1]}・"
+            f"アプリの手数={base_move_number}・要確認={checks}）",
+            OUTPUT_INFO,
+        )
+
+    def _do_spectate_info(self, rules, komi, agehama_b, agehama_w, next_player):
+        """対局情報の入力欄の反映。ルール・コミは root（RU・KM）に書き、アゲハマは入力値（アプリに出ている累計）から
+        取り込み後に数えた分を引いて「取り込み時点の分」に直して持つ（途中で開いて今の数を入れても二重に数えない）。
+        手番は手順が無いときだけ取り込み直して変える。エンジンに渡すものが変わったら解析をやり直す"""
+        from katrain.core.board_spectate import agehama_base, capture_base_for, engine_komi_offset, spectate_rules
+
+        session = getattr(self, "_spectate_session", None)
+        if session is None:
+            return
+        game = self.game
+        root = game.root
+        tip = session["tip"]
+        counted = self._spectate_counted(session)
+        totals_b, totals_w = (agehama_b, agehama_w)
+        rules = rules or root.ruleset
+        komi = float(komi) if komi is not None else root.komi
+        old_b, old_w = session["agehama_base"]
+        base = (
+            agehama_base(int(totals_b), counted["W"]) if totals_b is not None else old_b,
+            agehama_base(int(totals_w), counted["B"]) if totals_w is not None else old_w,
+        )
+        if next_player in ("B", "W") and next_player != tip.next_player:
+            line = self._spectate_line(session, tip)
+            if tip is root and line is not None:
+                session["agehama_base"] = base
+                if self._spectate_import(session, line[0][0], rules, komi, next_player):
+                    self._spectate_refresh_text(session)
+                    self.log(f"spectate: 手番を {next_player} にして取り込み直しました", OUTPUT_INFO)
+                return
+            self.log("spectate: 取り込み後の手順があるため手番の変更は反映しません", OUTPUT_INFO)
+        before = (spectate_rules(root.ruleset), root.komi, root.engine_komi_offset)
+        root.set_property("RU", rules)
+        root.set_property("KM", komi)
+        root.engine_komi_offset = engine_komi_offset(spectate_rules(rules), *base)
+        session["agehama_base"] = base
+        game.capture_base = capture_base_for(*base)
+        if (spectate_rules(root.ruleset), root.komi, root.engine_komi_offset) != before:
+            game.analyze_all_nodes(even_if_present=True)  # ルールかエンジンに渡すコミが変わった
+        self._spectate_refresh_text(session)
+        self.log(
+            f"spectate: 対局情報を反映しました（{rules}・コミ{komi}・取り込み時点のアゲハマ 黒{base[0]} 白{base[1]}・"
+            f"エンジンへのコミ補正 {root.engine_komi_offset:+g}）",
+            OUTPUT_INFO,
+        )
+
+    def _do_spectate_toggle_auto(self):
+        """自動反映の ON/OFF。OFF は監視スレッドを止めるだけ（セッションは残す）、ON は同じ reader で監視を作り直す"""
+        session = getattr(self, "_spectate_session", None)
+        if session is None:
+            return
+        if session["auto"]:
+            session["auto"] = False
+            watcher = session.get("watcher")
+            if watcher is not None:
+                watcher.stop()  # 止めた監視はセッションに残す（「今すぐ反映」が step_once に使う）
+            if not session.get("notice"):
+                self._board_watch_status("", "")  # 止めた監視の表示（過去局面など）を残さない
+            self._spectate_props(spectate_auto=False)
+            self.log("spectate: 自動反映を OFF にしました", OUTPUT_INFO)
+            return
+        session["auto"] = True
+        self._spectate_start_watcher(session)
+        self._spectate_props(spectate_auto=True)
+        self.log("spectate: 自動反映を ON にしました", OUTPUT_INFO)
+
+    def _do_spectate_sync_now(self):
+        """「今すぐ反映」: 自動反映 OFF の間に 1 回だけ読み取り、同じ判定・同じ反映経路に流す（確定待ちはしない）。
+        撮影・文字認識はワーカースレッドで行う。自動反映 ON の間は何もしない"""
+        from katrain.core.board_spectate import BEHIND_TEXT
+        from katrain.core.board_watch import STATUS_WATCHING, WATCHING_TEXT
+
+        session = getattr(self, "_spectate_session", None)
+        if session is None or session["auto"] or session.get("syncing"):
+            return
+        watcher = session.get("watcher")
+        if watcher is None:
+            return
+        session["syncing"] = True
+
+        def work():
+            try:
+                verdict = watcher.step_once()
+            except Exception as e:
+                self.log(f"spectate: 今すぐ反映でエラーが発生しました: {e}", OUTPUT_ERROR)
+                verdict = None
+            finally:
+                session["syncing"] = False
+            if verdict is None:
+                self._spectate_watch_status(session, BW_STATUS_WARN, "アプリの盤面を読み取れませんでした（今すぐ反映）")
+            elif verdict.kind == "in_sync":
+                self._spectate_watch_status(session, STATUS_WATCHING, WATCHING_TEXT)
+                self.log("spectate: 今すぐ反映: 変化はありません", OUTPUT_INFO)
+            elif verdict.kind == "behind":
+                self._spectate_watch_status(session, STATUS_WATCHING, BEHIND_TEXT)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _do_spectate_stop(self):
+        """観戦の終了（帯の「終了」・ホットキーの再押下）。対局者設定を開始前に戻す。棋譜とコミ補正・取り石の下駄は
+        その棋譜の属性なので残す"""
+        if not self._spectate_end():
+            self._spectate_props(spectate_active=False)
+
+    def _spectate_end(self):
+        """観戦を終える（終了・ホットキー・新規対局・他の監視の開始のどこからでも）。終えたら True。
+
+        セッションを最初に外すので、_stop_board_watcher・_do_new_game から入り直しても 1 回だけ走る
+        """
+        session = getattr(self, "_spectate_session", None)
+        if session is None:
+            return False
+        self._spectate_session = None
+        watcher = session.get("watcher")
+        if watcher is not None:
+            watcher.stop()
+            if getattr(self, "_board_watcher", None) is watcher:
+                self._board_watcher = None
+                self._board_watch_kind = None
+        for bw, (player_type, player_subtype) in session["saved_players"].items():
+            self.update_player(bw, player_type=player_type, player_subtype=player_subtype)
+        self._spectate_props(spectate_active=False, spectate_auto=True, spectate_text="")
+        self._board_watch_status("", "")
+        self.log("spectate: 観戦を終了しました（対局者設定を開始前に戻しました）", OUTPUT_INFO)
+        return True
 
     def _autoloop_trigger(self):
         """ctrl+alt+a のワーカースレッド。OFF なら ADB に接続して開始、ON なら停止する。

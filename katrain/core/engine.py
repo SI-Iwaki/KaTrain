@@ -501,7 +501,7 @@ class KataGoEngine(BaseEngine):
             "priority": self.base_priority + priority,
             "analyzeTurns": [len(moves)],
             "maxVisits": visits,
-            "komi": analysis_node.komi,
+            "komi": analysis_node.komi + analysis_node.root.engine_komi_offset,  # 補正は観戦モード専用（既定 0.0）
             "boardXSize": size_x,
             "boardYSize": size_y,
             "includeOwnership": ownership and not next_move,

@@ -1,8 +1,19 @@
+import ast
+import os
+
 import pytest
 
 from katrain.core.board_spectate import (
     agehama_base,
+    agehama_totals,
+    append_plan,
+    assumed_next_player,
+    capture_base_for,
     engine_komi_offset,
+    fallback_next_player,
+    node_in_tree,
+    replay_counting,
+    spectate_status_text,
     next_player_from,
     parse_fox_panel,
     parse_fox_title,
@@ -353,3 +364,139 @@ def test_state_advance_clears_dedupe():
     w.step()
     assert [m[0] for m in calls.moves] == [((0, 0, "B"),), ((4, 0, "W"),)]
     assert calls.moves[1][1] == 1
+
+
+# --- 観戦セッションの判断（__main__ の観戦ハンドラが使う純関数） ---
+
+
+def test_append_plan_keeps_cursor_when_user_is_browsing():
+    assert append_plan(cursor_is_tip=False, tip_in_tree=True, insert_mode=False) == "append_keep_cursor"
+    assert append_plan(cursor_is_tip=True, tip_in_tree=True, insert_mode=False) == "append_follow"
+    assert append_plan(cursor_is_tip=False, tip_in_tree=False, insert_mode=False) == "reimport"  # 末尾ノードが削除された
+    assert append_plan(cursor_is_tip=True, tip_in_tree=True, insert_mode=True) == "skip"
+
+
+def test_append_plan_skips_in_insert_mode_even_when_the_tip_is_gone():
+    # 挿入モード中は表示位置を動かせない（Game.set_current_node が拒否する）＝取り込み直しも見送る
+    assert append_plan(cursor_is_tip=False, tip_in_tree=False, insert_mode=True) == "skip"
+
+
+class _Node:
+    def __init__(self, parent=None):
+        self.parent = parent
+        self.children = []
+        if parent is not None:
+            parent.children.append(self)
+
+
+def test_node_in_tree_follows_the_children_lists_not_only_the_parent_pointers():
+    root = _Node()
+    a = _Node(root)
+    b = _Node(a)
+    assert node_in_tree(b, root) and node_in_tree(root, root)
+    # KaTrain の「ノードを削除」は親の children から外すだけで parent は残る（movetree.delete_selected_node）
+    root.children.remove(a)
+    assert not node_in_tree(b, root) and not node_in_tree(a, root)
+
+
+def test_node_in_tree_rejects_a_node_of_another_tree():
+    assert not node_in_tree(_Node(_Node()), _Node())
+
+
+@pytest.mark.parametrize(
+    "rows, expected",
+    [
+        ("...../...../...../...../.....", "B"),
+        ("B..../...../...../...../.....", "W"),
+        ("B..../.W.../...../...../.....", "B"),
+        ("BB.../...../...../...../.....", "B"),  # 取りが起きた形＝決まらないので黒番に仮置き
+        ("WW.../...../...../...../.....", "B"),
+    ],
+)
+def test_fallback_next_player_from_stone_counts(rows, expected):
+    assert fallback_next_player(g(rows)) == expected
+
+
+def test_assumed_next_player_continues_alternation_from_the_tip():
+    # 末尾は黒番。黒 1・白 1 が増えた＝黒番に戻る／黒だけ 1 増えた＝白番
+    assert assumed_next_player("B", G0, G0_PLUS_BW) == "B"
+    assert assumed_next_player("B", G0, G0_PLUS_B) == "W"
+    assert assumed_next_player("W", G0, G0_PLUS_BWB) == "W"  # 交互から外れていても、多く増えた色（黒）の逆
+    assert assumed_next_player("W", G0, G0) == "W"
+
+
+def test_replay_counting_counts_captured_stones_by_their_colour():
+    grid, captured = replay_counting(ATARI, ((1, 0, "B"),))
+    assert grid == AFTER_CAPTURE and captured == {"B": 0, "W": 1}
+
+
+def test_replay_counting_gives_none_for_an_unplayable_move():
+    assert replay_counting(G0, ((1, 1, "W"),)) is None  # 石がある点
+
+
+def test_agehama_totals_and_capture_base_cross_the_keys_like_prisoner_count():
+    # 黒のアゲハマ＝取られた白石。prisoner_count / capture_base のキーは取られた石の色
+    assert agehama_totals(3, 1, {"B": 2, "W": 5}) == (8, 3)
+    assert capture_base_for(3, 1) == {"W": 3, "B": 1}
+
+
+def test_status_text_with_the_app_move_number():
+    text = spectate_status_text(2, 85, "chinese", 7.5, 3, 0)
+    assert text == "観戦中 87手目  中国ルール コミ7.5  アゲハマ 黒3 白0"
+
+
+def test_status_text_without_the_app_move_number():
+    text = spectate_status_text(4, None, "japanese", 6.5, 0, 2)
+    assert text == "観戦中（取り込みから 4 手）  日本ルール コミ6.5  アゲハマ 黒0 白2"
+
+
+def test_status_text_rules_label_falls_back_to_the_name():
+    assert "aga ルール" not in spectate_status_text(0, None, "aga", 7, 0, 0)
+    assert "AGAルール コミ7 " in spectate_status_text(0, None, "aga", 7, 0, 0)
+    assert "独自ルール" in spectate_status_text(0, None, {"scoring": "AREA"}, 7.5, 0, 0)
+
+
+# --- __main__ の配線（静的検査。__main__ は Kivy 依存で import できない） ---
+
+_MAIN = os.path.join(os.path.dirname(__file__), "..", "katrain", "__main__.py")
+
+
+def _main_source():
+    with open(_MAIN, encoding="utf-8") as f:
+        return f.read()
+
+
+def _main_functions():
+    tree = ast.parse(_main_source())
+    return {n.name: n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)}
+
+
+def _calls(func):
+    return [
+        (n.lineno, n.func.id if isinstance(n.func, ast.Name) else getattr(n.func, "attr", None))
+        for n in ast.walk(func)
+        if isinstance(n, ast.Call)
+    ]
+
+
+def test_spectate_hotkey_is_in_the_board_watch_hotkey_table():
+    assert '"spectate_hotkey", "ctrl+alt+w", "_spectate_trigger"' in _main_source()
+    assert "_spectate_trigger" in _main_functions()
+
+
+def test_spectate_import_puts_the_offset_on_the_root_before_the_new_game():
+    calls = _calls(_main_functions()["_spectate_import"])
+    root_line = min(line for line, name in calls if name == "spectate_root")
+    new_game_line = min(line for line, name in calls if name == "_do_new_game")
+    assert root_line < new_game_line
+
+
+def test_rebuilding_the_game_and_stopping_the_watcher_end_the_spectate_session():
+    funcs = _main_functions()
+    for name in ("_do_new_game", "_stop_board_watcher", "_do_spectate_stop"):
+        assert "_spectate_end" in [callee for _line, callee in _calls(funcs[name])], name
+
+
+def test_game_watch_hotkey_ends_spectating_before_starting():
+    trigger = ast.get_source_segment(_main_source(), _main_functions()["_board_watch_trigger"])
+    assert "_spectate_session" in trigger and '"spectate-stop"' in trigger

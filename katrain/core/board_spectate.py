@@ -18,6 +18,9 @@ from katrain.core.board_watch import (
     BoardWatcher,
     PermanentCaptureError,
     apply_move_to_grid,
+    board_sgf,
+    move_to_grid,
+    stones_to_grid,
     watch_settings_from_config,
 )
 
@@ -371,3 +374,159 @@ class SpectateWatcher(BoardWatcher):
             self._fired = self._verdict_key(verdict, observed, state)
             self._fire(verdict, observed, state)
         return verdict
+
+
+# --- 観戦セッションの判断（__main__ の観戦ハンドラが使う純関数） ---
+
+
+def spectate_rules(rules):
+    """KaTrain のルール指定（"jp" などの略記・大文字を含む）を KataGo のルール名にする（無ければ None）。
+
+    engine_komi_offset は "japanese" / "korean" だけを地を数えるルールとみなすので、略記のまま渡すと補正が黙って 0 になる
+    """
+    if not rules:
+        return None
+    from katrain.core.engine import BaseEngine  # engine は Kivy を引くので遅延 import（このモジュールは Kivy 非依存）
+
+    return BaseEngine.get_rules(str(rules))
+
+
+def spectate_root(grid, komi, rules, next_player, agehama_b, agehama_w):
+    """観戦の取り込み局面（配置のみ）の root。エンジンに渡すコミの補正を付けて返す。
+
+    Game の生成と同時に root の解析が走る（Game.__init__ の analyze_all_nodes）ので、補正は新規対局の前に root に
+    付けておく。アゲハマは取り込み時点の値（黒が取った数・白が取った数）
+    """
+    from katrain.core.game import KaTrainSGF  # game はエンジン（Kivy）を引くので遅延 import
+
+    root = KaTrainSGF.parse_sgf(board_sgf(grid, komi, rules, next_player))
+    root.engine_komi_offset = engine_komi_offset(spectate_rules(rules), agehama_b, agehama_w)
+    return root
+
+
+def replay_counting(grid, moves):
+    """grid に (i, j, color) の着手列を打ち、(最後の盤, 取られた石の数) を返す。打てない手があれば None。
+
+    取られた石の数のキーは Game.prisoner_count と同じ**取られた石の色**（黒が白を取れば "W"）
+    """
+    captured = {BLACK: 0, WHITE: 0}
+    for i, j, color in moves:
+        new = apply_move_to_grid(grid, i, j, color)
+        if new is None:
+            return None
+        opponent = WHITE if color == BLACK else BLACK
+        captured[opponent] += sum(
+            1 for r, row in enumerate(grid) for c, v in enumerate(row) if v == opponent and new[r][c] == EMPTY
+        )
+        grid = new
+    return grid, captured
+
+
+def spectate_line(root, tip):
+    """root の配置に root→tip の着手列を再生した (盤の列, 取られた石の数)。再生できなければ None。
+
+    盤の列は root の盤から tip の盤まで 1 ノード 1 枚（パスのノードは同じ盤）。比較の基準は表示中の局面
+    （game.stones）ではなく本譜の末尾＝ユーザーが過去の手を見ていても変わらない。取られた石の数は
+    取り込み後に KaTrain が数えた分だけで、取り込み時点の下駄（Game.capture_base）は含まない
+    """
+    size = root.board_size[0]
+    grid = stones_to_grid(((m.coords, m.player) for m in root.move_with_placements), size)
+    grids = [grid]
+    captured = {BLACK: 0, WHITE: 0}
+    for node in tip.nodes_from_root[1:]:
+        moves = [(*move_to_grid(m.coords, size), m.player) for m in node.moves if m.coords is not None]
+        replayed = replay_counting(grid, moves)
+        if replayed is None:
+            return None
+        grid, node_captured = replayed
+        for color, n in node_captured.items():
+            captured[color] += n
+        grids.append(grid)
+    return grids, captured
+
+
+def counted_captures(root, tip):
+    """取り込み後に KaTrain が数えた取り石（root→tip）。キーは取られた石の色。表示位置にも下駄にもよらない"""
+    line = spectate_line(root, tip)
+    return dict(line[1]) if line is not None else {BLACK: 0, WHITE: 0}
+
+
+def agehama_totals(base_b, base_w, counted):
+    """アプリに出ている累計のアゲハマ (黒が取った数, 白が取った数)＝取り込み時点の分＋取り込み後に数えた分"""
+    return base_b + counted.get(WHITE, 0), base_w + counted.get(BLACK, 0)
+
+
+def capture_base_for(base_b, base_w):
+    """取り込み時点のアゲハマ (黒が取った数, 白が取った数) を Game.capture_base（キーは取られた石の色）にする"""
+    return {WHITE: base_b, BLACK: base_w}
+
+
+def append_plan(cursor_is_tip, tip_in_tree, insert_mode):
+    """確定した着手の足し方。"append_follow"（末尾を見ている＝表示も進む）/ "append_keep_cursor"（過去の手を
+    検討中＝末尾に足すだけ）/ "reimport"（本譜の末尾ノードが削除された）/ "skip"（挿入モード中は表示位置を動かせない）"""
+    if insert_mode:
+        return "skip"
+    if not tip_in_tree:
+        return "reimport"
+    return "append_follow" if cursor_is_tip else "append_keep_cursor"
+
+
+def node_in_tree(node, root):
+    """node が今も root の木に繋がっているか。KaTrain のノード削除は親の children から外すだけで parent は残すので、
+    親をたどるだけでなく各段で親の children に自分がいるかを見る"""
+    n = node
+    while n is not root:
+        parent = n.parent
+        if parent is None or not any(c is n for c in parent.children):
+            return False
+        n = parent
+    return True
+
+
+def fallback_next_player(grid):
+    """手番が読めないときの仮置き: 石数が同じなら黒番、黒が 1 多ければ白番、それ以外は黒番"""
+    stones = [v for row in grid for v in row]
+    return WHITE if stones.count(BLACK) - stones.count(WHITE) == 1 else BLACK
+
+
+def assumed_next_player(to_play, tip_grid, observed):
+    """取り込み直しで手番が読めないとき、本譜の末尾（to_play の番）から交互に打ち続けたと仮定した次の手番。
+
+    末尾の盤から増えた石を色ごとに数え、同数なら to_play、違えば多く増えた色の逆。取りやコウで外れうる推定なので、
+    呼び出し側は「手番を確認してください」と出す
+    """
+    added = {BLACK: 0, WHITE: 0}
+    for row_tip, row_obs in zip(tip_grid, observed):
+        for before, after in zip(row_tip, row_obs):
+            if after in added and before != after:
+                added[after] += 1
+    if added[BLACK] == added[WHITE]:
+        return to_play
+    return WHITE if added[BLACK] > added[WHITE] else BLACK
+
+
+_RULES_LABELS = {
+    "japanese": "日本ルール",
+    "chinese": "中国ルール",
+    "korean": "韓国ルール",
+    "aga": "AGAルール",
+    "new zealand": "ニュージーランドルール",
+    "tromp-taylor": "Tromp-Taylorルール",
+    "stone_scoring": "古代中国ルール",
+}
+
+
+def spectate_status_text(tip_depth, base_move_number, rules, komi, agehama_b, agehama_w):
+    """観戦の帯の文言。手数は取り込み時のアプリの手数＋取り込み後の手数（読めなければ取り込みからの手数）。
+
+    アゲハマは累計（取り込み時点の分＋取り込み後に数えた分）。文字認識の読み違いが一目で分かるように常に出す
+    """
+    if base_move_number is not None:
+        head = f"観戦中 {base_move_number + tip_depth}手目"
+    else:
+        head = f"観戦中（取り込みから {tip_depth} 手）"
+    if isinstance(rules, str):
+        label = _RULES_LABELS.get(rules, f"{rules}ルール")
+    else:
+        label = "独自ルール"  # RU に JSON で書かれたルール
+    return f"{head}  {label} コミ{float(komi):g}  アゲハマ 黒{agehama_b} 白{agehama_w}"

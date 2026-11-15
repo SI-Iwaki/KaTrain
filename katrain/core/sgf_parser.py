@@ -82,6 +82,10 @@ class Move:
 
 
 class SGFNode:
+    # エンジンに渡すコミの補正（root に置く）。観戦モード（spectate spec §5.4）が地を数えるルールで取り込み前の
+    # アゲハマを畳むのに使う。画面に出すコミ（KM・komi）は変えない。SGF には書かない＝読み込んだ棋譜は 0.0
+    engine_komi_offset = 0.0
+
     def __init__(self, parent=None, properties=None, move=None):
         self.children = []
         self.properties = defaultdict(list)
