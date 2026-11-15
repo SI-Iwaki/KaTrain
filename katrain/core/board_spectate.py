@@ -5,6 +5,7 @@
 
 import re
 from itertools import permutations
+import threading
 import time
 from typing import NamedTuple, Optional
 
@@ -262,6 +263,11 @@ class SpectateWatcher(BoardWatcher):
         self._cand_count = 0
         self._fired = None  # 発火済みの鍵（状態か観測盤が変わるまで投げ直さない）
         self._mode = None  # 直近の状態表示 ("in_sync" / "behind")
+        self._lock = threading.RLock()  # step（監視スレッド）と step_once（別スレッド）の排他
+
+    def _warn(self, message):
+        self._mode = None  # 警告のあとの in_sync / behind は表示の復帰として必ず出し直す
+        super()._warn(message)
 
     def _hints(self):
         if self.hints_fn is None:
@@ -301,6 +307,10 @@ class SpectateWatcher(BoardWatcher):
         self._cand_count = 0
 
     def step(self):
+        with self._lock:
+            self._step()
+
+    def _step(self):
         try:
             observed = self.capture_fn()
         except Exception as e:
@@ -320,10 +330,11 @@ class SpectateWatcher(BoardWatcher):
             return
         self._mode = None
         key = self._verdict_key(verdict, observed, state)
+        if key == self._fired:
+            self._reset_confirmation()  # 確定は連続した周だけで数える
+            return
         if verdict.kind == "moves":
             self._active()  # 確定待ちは速く回す（reimport は通常周期のまま）
-        if key == self._fired:
-            return
         if key == self._cand:
             self._cand_count += 1
         else:
@@ -337,16 +348,24 @@ class SpectateWatcher(BoardWatcher):
 
     def step_once(self):
         """確定待ちをせず 1 回だけ判定して即コールバックする（「今すぐ反映」用）"""
+        with self._lock:
+            return self._step_once()
+
+    def _step_once(self):
         try:
             observed = self.capture_fn()
         except Exception as e:
             self._on_capture_failure(str(e), permanent=isinstance(e, PermanentCaptureError))
             return None
         self._on_capture_success()
-        state = self.get_state_fn()
-        if state is None:
+        try:
+            state = self.get_state_fn()
+            if state is None:
+                return None
+            verdict = self._verdict(observed, state)
+        except Exception as e:
+            self._warn(f"観戦の判定でエラーが発生しました: {e}")
             return None
-        verdict = self._verdict(observed, state)
         if verdict.kind in ("moves", "reimport"):
             self._reset_confirmation()
             self._fired = self._verdict_key(verdict, observed, state)

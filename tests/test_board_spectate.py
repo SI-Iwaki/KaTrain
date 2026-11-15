@@ -9,7 +9,7 @@ from katrain.core.board_spectate import (
     spectate_sync,
 )
 from katrain.core.board_spectate import SpectateState, SpectateWatcher, spectate_watch_settings
-from katrain.core.board_watch import STATUS_WARN, PermanentCaptureError, apply_move_to_grid, watch_settings_from_config
+from katrain.core.board_watch import STATUS_IDLE, STATUS_WARN, STATUS_WATCHING, PermanentCaptureError, apply_move_to_grid, watch_settings_from_config
 
 
 def g(s):
@@ -180,13 +180,11 @@ class Calls:
         self.moves = []
         self.reimports = []
         self.status = []
-        self.idle_stops = 0
 
 
 def make_watcher(frames, ancestors=(), clock_step=0.0, hints=None):
     calls = Calls()
     seq = list(frames)
-    state = SpectateState(G0, "B", 10, 0, 5, tuple(ancestors))
     t = [0.0]
 
     def clock():
@@ -201,7 +199,7 @@ def make_watcher(frames, ancestors=(), clock_step=0.0, hints=None):
 
     w = SpectateWatcher(
         capture,
-        lambda: state,
+        lambda: w.state,
         lambda moves, depth, est: calls.moves.append((moves, depth, est)),
         lambda observed, reason: calls.reimports.append((observed, reason)),
         lambda kind, text: calls.status.append((kind, text)),
@@ -210,6 +208,7 @@ def make_watcher(frames, ancestors=(), clock_step=0.0, hints=None):
         clock=clock,
     )
     w.calls = calls
+    w.state = SpectateState(G0, "B", 10, 0, 5, tuple(ancestors))
     return w, calls
 
 
@@ -272,7 +271,7 @@ def test_never_auto_stops_and_never_warns_stall():
     w, calls = make_watcher(frames=[G0] * 3, clock_step=3600.0)
     for _ in range(3):
         w.step()
-    assert calls.idle_stops == 0 and not any(k == STATUS_WARN for k, _ in calls.status)
+    assert not any(k in (STATUS_WARN, STATUS_IDLE) for k, _ in calls.status)
     assert not w._stopped.is_set()
 
 
@@ -312,3 +311,45 @@ def test_hints_exception_is_swallowed():
     w.step()
     w.step()
     assert len(calls.moves) == 1
+
+
+def test_watching_status_restored_after_warning():
+    w, calls = make_watcher(frames=[G0, PermanentCaptureError("x"), G0])
+    for _ in range(3):
+        w.step()
+    assert [k for k, _ in calls.status] == [STATUS_WATCHING, STATUS_WARN, STATUS_WATCHING]
+
+
+def test_confirmation_must_be_consecutive_across_fired_key():
+    w, calls = make_watcher(frames=[G0_PLUS_B, G0_PLUS_B, G0_MINUS_STONE, G0_PLUS_B, G0_MINUS_STONE])
+    for _ in range(5):
+        w.step()
+    assert len(calls.moves) == 1 and calls.reimports == []
+
+
+def test_no_fast_polling_after_fired_move_without_advance():
+    w, calls = make_watcher(frames=[G0_PLUS_B] * 3)
+    for _ in range(3):
+        w.step()
+    assert len(calls.moves) == 1 and w.interval_ms == w.settings.poll_interval_ms
+
+
+def test_step_once_state_exception_warns_and_returns_none():
+    w, calls = make_watcher(frames=[G0])
+
+    def boom():
+        raise RuntimeError("x")
+
+    w.get_state_fn = boom
+    assert w.step_once() is None and calls.status[-1][0] == STATUS_WARN
+
+
+def test_state_advance_clears_dedupe():
+    w, calls = make_watcher(frames=[G0_PLUS_B, G0_PLUS_B, G0_PLUS_BW, G0_PLUS_BW])
+    w.step()
+    w.step()
+    w.state = SpectateState(G0_PLUS_B, "W", 11, 1, 5)
+    w.step()
+    w.step()
+    assert [m[0] for m in calls.moves] == [((0, 0, "B"),), ((4, 0, "W"),)]
+    assert calls.moves[1][1] == 1
