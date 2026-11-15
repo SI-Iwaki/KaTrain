@@ -71,13 +71,19 @@ function Invoke-Warmup {
     for ($attempt = 1; $attempt -le $MaxAttempts -and $pending.Count -gt 0; $attempt++) {
         $stillBlocked = [System.Collections.ArrayList]@()
         foreach ($exe in $pending) {
-            $null = & $exe version 2>&1
+            # exe そのものが拒否されると & が例外を投げ、$LASTEXITCODE は前の exe の値のまま残る
+            # （実測 2026-11-13: 拒否された eigen / opencl / trt が直前の 0 を拾って OK と記録されていた）。
+            # 毎回リセットし、例外も拒否として数える。exe は起動して DLL が拒否された場合は
+            # 0xC0E90002（= -1058471934）で終了する（trt1016 の abseil_dll.dll / libprotobuf.dll）
+            $global:LASTEXITCODE = $null
+            $launchError = $null
+            try { $null = & $exe version 2>&1 } catch { $launchError = $_.Exception.Message }
             $code = $LASTEXITCODE
-            if ($code -eq 0) {
+            if (-not $launchError -and $code -eq 0) {
                 Write-Log ('OK       {0}' -f $exe)
             } else {
-                # 4551 は 0xC0000428 相当のポリシー拒否として -1073740760 等で返る
-                Write-Log ('BLOCKED  {0} (exit {1}, attempt {2}/{3})' -f $exe, $code, $attempt, $MaxAttempts)
+                $why = if ($launchError) { 'launch refused' } else { 'exit {0}' -f $code }
+                Write-Log ('BLOCKED  {0} ({1}, attempt {2}/{3})' -f $exe, $why, $attempt, $MaxAttempts)
                 [void]$stillBlocked.Add($exe)
             }
         }
