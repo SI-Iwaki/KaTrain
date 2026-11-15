@@ -425,6 +425,14 @@ class PlayerInfo(MDBoxLayout, BackgroundMixin):
         super().__init__(**kwargs)
         self.bind(player_type=self.set_label, player_subtype=self.set_label, name=self.set_label, rank=self.set_label)
 
+    def on_kv_post(self, _base_widget):
+        """kv の子（subtype_label）ができてから初期ラベルを描く（上流 1.20.1）。
+
+        __init__ 中の bind 発火は subtype_label がまだ無いので set_label が素通りし、
+        名前・段位が次にプロパティが変わるまで出なかった。
+        """
+        self.set_label()
+
     def set_label(self, *args):
         if not self.subtype_label:  # building
             return
