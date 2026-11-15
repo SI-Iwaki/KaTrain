@@ -33,8 +33,11 @@ NEEDS_ORDER_AFTER = g("B.B../WB.../...../...../....W")
 
 # コウ形: 白 (1,1) が黒 3 子に囲まれてアタリ。黒 (1,2) で取れる
 KO_BEFORE = g(".BW../BW.W./.BW../...../.....")
-# 取った (1,2) の黒と、取られたはずの白 (1,1) が同居＝1 手では作れない盤
-KO_AFTER_TWO = g(".BW../BWBW./.BW../...../.....")
+# 黒が新しく置いた (1,2) の石があるのに、取られるはずの白 (1,1) が盤に残っている（取りが盤に反映されていない）
+CAPTURE_NOT_REFLECTED = g(".BW../BWBW./.BW../...../.....")
+
+# tip の黒 (1,1) が白に変わり、黒 (4,0) が増えた盤
+GAP_RECOLOURED = g("...../.W.../...../...W./B....")
 
 
 def test_in_sync():
@@ -61,10 +64,11 @@ def test_order_that_needs_capture_first_is_found():
     "tip,obs,kw",
     [
         (G0, G0_PLUS_BB, {}),  # 黒 2 手＝交互にならない
-        (KO_BEFORE, KO_AFTER_TWO, {}),  # コウ絡みの説明できない盤
+        (KO_BEFORE, CAPTURE_NOT_REFLECTED, {}),  # 取りが盤に反映されていない盤
         (G0, G0_MINUS_STONE, {}),  # 石が消えただけ
         (G0, G0_PLUS_B, {"last_mover": "W"}),  # 直前手の印と色が合わない
         (G0, G0_PLUS_B, {"app_move_number": 12, "tip_move_number": 10}),  # 手数が合わない
+        (G0, GAP_RECOLOURED, {}),  # tip の石の色が変わっている（黒 (1,1) が白）＋黒 1 子
         (G0, G7, {}),  # 盤サイズ違い
     ],
 )
@@ -79,3 +83,19 @@ def test_app_showing_earlier_mainline_position_is_behind_not_reimport():  # Revi
 
 def test_move_number_check_passes_when_consistent():
     assert spectate_sync(G0, G0_PLUS_B, "B", app_move_number=11, tip_move_number=10).kind == "moves"
+
+
+def test_real_ko_take_and_retake_is_in_sync():
+    # 黒が取り、白が取り返すと tip に戻る。この 2 手は記録されない（既知の限界）
+    taken = apply_move_to_grid(KO_BEFORE, 1, 2, "B")
+    retaken = apply_move_to_grid(taken, 1, 1, "W")
+    assert retaken == KO_BEFORE
+    assert spectate_sync(KO_BEFORE, retaken, "B").kind == "in_sync"
+
+
+def test_stone_played_and_captured_during_gap_is_reimport_not_moves():
+    tip = g("...../...../...../....W/.....")
+    after_b = apply_move_to_grid(tip, 4, 4, "B")
+    observed = apply_move_to_grid(after_b, 4, 3, "W")
+    assert observed[4][4] == "." and observed[4][3] == "W"  # 黒は取られて消え、白 1 子だけ増えた
+    assert spectate_sync(tip, observed, "B").kind == "reimport"

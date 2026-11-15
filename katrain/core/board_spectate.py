@@ -51,7 +51,12 @@ def spectate_sync(
         return SpectateVerdict("behind", reason="本譜の過去の局面")
 
     size = len(tip_grid)
-    added = [(i, j, observed[i][j]) for i in range(size) for j in range(size) if tip_grid[i][j] == EMPTY and observed[i][j] != EMPTY]
+    added = [
+        (i, j, observed[i][j])
+        for i in range(size)
+        for j in range(size)
+        if tip_grid[i][j] == EMPTY and observed[i][j] != EMPTY
+    ]
     n = len(added)
     if n == 0:
         return SpectateVerdict("reimport", reason="増えた石が無い")
