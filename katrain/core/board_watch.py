@@ -62,7 +62,7 @@ def board_sgf(grid, komi, rules, next_player):
     return sgf + ")"
 
 
-def import_next_player(grid, human_color):
+def import_next_player(grid, human_color, last_mover=None):
     """取り込み時の手番と、その根拠（ログ用の文字列）を返す（spec §3.2 / §12）。
 
     石数パリティは一般には手番を表さない: 盤上石数 b, w と取られた石数 cb, cw の
@@ -99,6 +99,9 @@ def import_next_player(grid, human_color):
     player = opening_next_player(grid)
     if player is not None:
         return player, "2子以内なので石数から確定"
+    if last_mover in (BLACK, WHITE):
+        # アプリの盤に直前手の印がある（野狐囲碁・囲碁クエスト・木目盤アプリ・spec 追記14）＝最後に打った色が分かるので手番は確定
+        return (WHITE if last_mover == BLACK else BLACK), "直前手の印から確定"
     return human_color, "人間側に固定"
 
 
@@ -824,6 +827,20 @@ def _wood_api():
     return detect_wood_board, detect_wood_grid, classify_wood_intersections
 
 
+def _board_is_pale(img, board_rect):
+    """黄盤として検出できた盤が、実は格子線検出で読むべき「淡い黄の盤」（野狐囲碁）か（spec 追記12）。
+
+    判別できない（例外）なら False＝従来の黄盤経路。_wood_api を通さないのは、黄盤の対局で
+    木目盤経路の関数に一切触れないという既存の保証をそのまま残すため
+    """
+    try:
+        from katrain.core.tsumego_capture import is_pale_wood_board
+
+        return bool(is_pale_wood_board(img, board_rect))
+    except Exception:
+        return False
+
+
 def intersection_screen_point(window_rect, board_rect, size, i, j):
     """交点 (i, j) の画面座標 (x, y) とセル幅を返す（純関数）。
 
@@ -926,6 +943,108 @@ def confirmed_near_color(near, far):
     return near
 
 
+# 野狐囲碁の PC 版: ユーザー一覧で自分の行だけに付く赤いピン（名前・石アイコン・ピンの順）から自分の色を読む
+# （spec 追記13）。対局者パネルの左右は色で決まり自分の側ではない（観戦でも自分の対局でも左が白だった）ので使えない。
+# 寸法は実測の画素（窓の大きさを変えても一覧の文字・アイコンは拡縮しない＝1181 幅と 1171 幅で同寸）
+FOX_PIN_SEARCH_GAP = 20  # 盤の右端からこの px より右を探す（盤の上の赤い印を拾わない）
+FOX_PIN_WIDTH = (9, 13)  # 赤い画素のかたまりの外接矩形（実測 11x11・50 画素。尾の暗い赤は閾値の外）
+FOX_PIN_HEIGHT = (9, 13)
+FOX_PIN_PIXELS = (35, 70)
+FOX_PIN_STONE_GAP = 4  # ピンの左端から石アイコンの右端まで
+FOX_PIN_STONE_SIZE = 14  # 石アイコンの一辺
+FOX_PIN_BLACK_MIN = 60  # 石アイコンの箱（196 画素）のうち暗い画素がこれ以上で黒石
+FOX_PIN_WHITE_RIM_MIN = 12  # 白石の縁（灰色 170〜205）の画素数の下限。一覧の地（236）や名前の文字には無い
+FOX_PIN_WHITE_BODY_MIN = 100  # 白石の面（205 超の無彩色）の画素数の下限
+
+
+def _fox_pin_clusters(img, x_from):
+    """img の x_from より右にある「ピンらしい大きさの赤いかたまり」の外接矩形 (x0, y0, x1, y1) の列"""
+    from PIL import ImageChops
+
+    w, h = img.size
+    if x_from >= w:
+        return []
+    crop = img.crop((x_from, 0, w, h)).convert("RGB")
+    r, g, b = crop.split()
+    mask = ImageChops.multiply(
+        r.point(lambda v: 255 if v > 170 else 0),
+        ImageChops.multiply(g.point(lambda v: 255 if v < 110 else 0), b.point(lambda v: 255 if v < 110 else 0)),
+    )
+    data = mask.tobytes()
+    cw = crop.size[0]
+    todo = {i for i, v in enumerate(data) if v}
+    boxes = []
+    while todo:
+        stack = [todo.pop()]
+        xs, ys, n = [], [], 0
+        while stack:
+            i = stack.pop()
+            x, y = i % cw, i // cw
+            xs.append(x)
+            ys.append(y)
+            n += 1
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    nx = x + dx
+                    j = (y + dy) * cw + nx
+                    if 0 <= nx < cw and j in todo:
+                        todo.remove(j)
+                        stack.append(j)
+        bw, bh = max(xs) - min(xs) + 1, max(ys) - min(ys) + 1
+        if (
+            FOX_PIN_WIDTH[0] <= bw <= FOX_PIN_WIDTH[1]
+            and FOX_PIN_HEIGHT[0] <= bh <= FOX_PIN_HEIGHT[1]
+            and FOX_PIN_PIXELS[0] <= n <= FOX_PIN_PIXELS[1]
+        ):
+            boxes.append((x_from + min(xs), min(ys), x_from + max(xs), max(ys)))
+    return boxes
+
+
+def _fox_stone_left_of(rgb, box):
+    """赤いかたまり box がピン（輪の中が一覧の地の色）で、その左隣に石アイコンがあれば "B"/"W"。無ければ None"""
+    x0, y0, x1, _y1 = box
+    px = rgb.load()
+    cr, cg, cb = px[(x0 + x1) // 2, y0 + 4]  # ピンの輪の中は抜けていて一覧の地（明るい無彩色）が見える
+    if min(cr, cg, cb) < 215 or max(cr, cg, cb) - min(cr, cg, cb) > 12:
+        return None
+    sx1 = x0 - FOX_PIN_STONE_GAP
+    sx0 = sx1 - FOX_PIN_STONE_SIZE
+    if sx0 < 0 or y0 + FOX_PIN_STONE_SIZE > rgb.size[1]:
+        return None
+    dark = rim = body = 0
+    for y in range(y0, y0 + FOX_PIN_STONE_SIZE):
+        for x in range(sx0, sx1):
+            pr, pg, pb = px[x, y]
+            brightness = (pr + pg + pb) / 3
+            if brightness < 70:
+                dark += 1
+            elif max(pr, pg, pb) - min(pr, pg, pb) < 12:
+                if 170 < brightness < 205:
+                    rim += 1
+                elif brightness >= 205:
+                    body += 1
+    if dark >= FOX_PIN_BLACK_MIN:
+        return BLACK
+    if rim >= FOX_PIN_WHITE_RIM_MIN and body >= FOX_PIN_WHITE_BODY_MIN and dark == 0:
+        return WHITE
+    return None
+
+
+def fox_self_color(img, board_rect):
+    """野狐囲碁の対局画面で自分（＝KaTrain の AI が打つ側）の色 "B"/"W"。読めなければ None。
+
+    ユーザー一覧の自分の行は「名前・石アイコン・赤いピン」と並ぶ。観戦中は自分の行に石アイコンが無い＝None。
+    石つきのピンがちょうど1つのときだけ確定する（0 個・複数は判定しない側に倒す）
+    """
+    rgb = img.convert("RGB")
+    found = []
+    for box in _fox_pin_clusters(rgb, board_rect[2] + FOX_PIN_SEARCH_GAP):
+        color = _fox_stone_left_of(rgb, box)
+        if color is not None:
+            found.append(color)
+    return found[0] if len(found) == 1 else None
+
+
 class AppBoardReader:
     """アプリ窓を撮って観測グリッドを返す。盤矩形・盤サイズ・直前フレームをキャッシュする。
 
@@ -959,6 +1078,7 @@ class AppBoardReader:
         # フル検出（_full_detect）が detect_board の成否で決める＝設定キーは無い
         self._profile = None
         self._lines = None  # wood の格子幾何 (縦線 x のタプル, 横線 y のタプル)。quest では None
+        self._pale = False  # 淡い黄の盤（野狐囲碁）として読んでいる＝自分の色はユーザー一覧のピンから読む
         # screen_point は監視スレッド以外（GUI の `_do_ai_move`・設定変更）からも呼ばれる。
         # 窓矩形・盤矩形・盤サイズを別々に読むと「新しい窓矩形＋古い盤矩形」という
         # ありえない組み合わせを引けてしまい、輪が窓の移動量ぶんずれる。まとめて
@@ -1013,21 +1133,38 @@ class AppBoardReader:
         try:
             board_rect = detect_board(img)
         except Exception as yellow_err:
-            detect_wood_board, detect_wood_grid, classify_wood_intersections = _wood_api()
-            try:
-                board_rect = detect_wood_board(img)
-            except Exception:
-                raise yellow_err from None
-            size, xs, ys = detect_wood_grid(img, board_rect, self.board_sizes)
-            grid = classify_wood_intersections(img, xs, ys)
-            self.size = size
-            self._profile = "wood"
-            self._lines = (xs, ys)
-            return board_rect, grid
+            return self._full_detect_lines(img, yellow_err)
+        if _board_is_pale(img, board_rect):
+            # 淡い黄の盤（野狐囲碁）は黄盤検出も通るが、必ず格子線検出で読む＝フレームごとに経路が
+            # 入れ替わらない。黄盤経路へは戻さない（直前手の印・カーソル印を誤読し、囲碁クエスト用の
+            # 対局者アイコン読みが別アプリの画面に対して動いてしまう）
+            found = self._full_detect_lines(img, None)
+            self._pale = True
+            return found
         size, grid = detect_size_and_classify(img, board_rect, self.board_sizes)
         self.size = size
         self._profile = "quest"
         self._lines = None
+        return board_rect, grid
+
+    def _full_detect_lines(self, img, yellow_err):
+        """格子線検出の経路（明るい木目盤・淡い黄の盤）でのフル検出。プロファイルは "wood"。
+
+        yellow_err は黄盤検出の失敗（あれば）。盤そのものが見つからないときはそれを投げ直す＝
+        盤以外の画面での診断は従来どおり黄盤側の文言になる
+        """
+        detect_wood_board, detect_wood_grid, classify_wood_intersections = _wood_api()
+        try:
+            board_rect = detect_wood_board(img)
+        except Exception:
+            if yellow_err is None:
+                raise
+            raise yellow_err from None
+        size, xs, ys = detect_wood_grid(img, board_rect, self.board_sizes)
+        grid = classify_wood_intersections(img, xs, ys)
+        self.size = size
+        self._profile = "wood"
+        self._lines = (xs, ys)
         return board_rect, grid
 
     def _classify_frame(self, img, detect_size_and_classify):
@@ -1086,6 +1223,7 @@ class AppBoardReader:
         self._calibration = None
         self._profile = None
         self._lines = None
+        self._pale = False
 
     def screen_point(self, i, j):
         """交点 (i, j) の画面座標 (x, y, セル幅)。盤矩形がまだ確定していなければ None"""
@@ -1104,9 +1242,38 @@ class AppBoardReader:
         失敗した周は (None, None)。read() と同じスレッドから呼ぶこと（直近のフレームを共有する）
         """
         img, board_rect = self._last_img, self._board_rect
-        if img is None or board_rect is None or self._profile != "quest":
+        if img is None or board_rect is None:
+            return None, None
+        if self._pale:
+            # 野狐囲碁（spec 追記13）: 自分の色が読めたら (自分, 逆の色) の形で返す＝呼び出し側は黄盤と同じ
+            own = fox_self_color(img, board_rect)
+            return (own, WHITE if own == BLACK else BLACK) if own else (None, None)
+        if self._profile != "quest":
             return None, None
         return player_icon_colors(img, board_rect)
+
+    def last_mover_color(self):
+        """直近のフレームで直前手の印が付いている石の色（spec 追記14）。読めなければ None。
+
+        対応する盤すべてが対象: 黄盤（囲碁クエスト系＝石の中心の赤い四角）、格子線検出で読む盤
+        （野狐囲碁＝石の上の三角・残り秒数／木目盤アプリ＝石の上の輪。どちらも石と逆の明るさで描かれる）。
+        read() が返した盤と同じフレームを見る
+        """
+        img, lines, grid, board_rect = self._last_img, self._lines, self._grid, self._board_rect
+        if img is None or grid is None or board_rect is None:
+            return None
+        try:
+            if self._profile == "quest":
+                from katrain.core.tsumego_capture import quest_last_move_color
+
+                return quest_last_move_color(img, board_rect, grid)
+            if self._profile == "wood" and lines is not None:
+                from katrain.core.tsumego_capture import wood_last_move_color
+
+                return wood_last_move_color(img, lines[0], lines[1], grid)
+        except Exception:
+            pass
+        return None
 
     def near_player_color(self):
         """手前の対局者（＝KaTrain の AI が打つ側）の色。確定できなければ None（BoardWatcher の player_color_fn）"""

@@ -771,7 +771,9 @@ class KaTrainGui(Screen, KaTrainBase):
             # そのままログへ出す（詳細は board_watch.import_next_player の docstring）
             komi = self.config("game/komi", 6.5)
             rules = self.config("game/rules", "japanese")
-            next_player, reason = import_next_player(grid, human_color)
+            # 対応する盤（囲碁クエスト・木目盤アプリ・野狐囲碁）はどれも直前手の印から最後に打った色が分かる（spec 追記14）。読めなければ None＝従来どおり
+            last_mover = reader.last_mover_color() if hasattr(reader, "last_mover_color") else None
+            next_player, reason = import_next_player(grid, human_color, last_mover)
             try:
                 move_tree = KaTrainSGF.parse_sgf(board_sgf(grid, komi, rules, next_player))
             except ParseError as e:

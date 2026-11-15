@@ -94,7 +94,7 @@
     "board_watch": {
         "enabled": true,
         "hotkey": "ctrl+alt+d",
-        "window_title": "",
+        "window_title": "BlueStacks,Puzzle Run,PlayGo,\u5bfe\u5c40\u5ba4",
         "poll_interval_ms": 400,
         "poll_interval_active_ms": 50,
         "prefetch_replies": 5,

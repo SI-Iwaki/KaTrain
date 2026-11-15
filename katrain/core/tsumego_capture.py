@@ -767,12 +767,41 @@ WOOD_FIT_MAX_RESIDUAL = 3.0  # 等差フィットからの許容ずれ[px]（実
 WOOD_GAP_TOLERANCE = 0.1  # 縦横のセル幅の許容差（比）
 WOOD_STONE_PATCH_RATIO = 0.25  # 分類パッチ半径 = セル×この値（classify_intersections と同比率）
 WOOD_MARKER_PATCH_RATIO = 0.08  # "?" 再判定の小半径。直前着手マーカー（石上の輪）の内側の石地色を拾う
+# 石と読んだ交点の検算: 交点から斜め4方向へ セル×この値 ずらした点（中心から 0.42 セル＝石の半径 0.5 の内側）が
+# 木地なら石ではない＝空点に出るカーソル印（野狐囲碁の四角・一辺 約 0.49 セル）。斜めなのは格子線を踏まないため。
+# 実測（野狐4枚＋木目盤4枚の全 162 石）: 0.26〜0.32 で本物の石は木地 0/4、四角は 4/4。0.35 から石の縁が混じる
+WOOD_STONE_CHECK_RATIO = 0.3
+WOOD_STONE_CHECK_MIN = 3  # 斜め4点のうちこの数以上が木地なら石ではない
+WOOD_PALE_SAMPLE = 64  # is_pale_wood_board が盤矩形を縮める一辺（画素）
+WOOD_PALE_MIN_SHARE = 0.5  # 黄色い画素のうち木目盤の色域にも入る割合がこれ以上なら「淡い黄の盤」
 
 
 def _is_bright_wood(r, g, b):
     # 実測の木地 median RGB≈(227,208,159)（明るい暖色・彩度は黄盤より低い）。黄盤 (247,193,62) は
     # b>100 を満たさず、r-b≈185 も上限 130 を超える＝ _is_yellow と両立しない（自動ディスパッチの要）
     return r > 180 and g > 150 and b > 100 and 30 < (r - b) < 130
+
+
+def is_pale_wood_board(img, board_rect):
+    """detect_board が返した盤矩形が「淡い黄の盤」（黄盤と木目盤の両方の色域に入る盤）なら True。
+
+    野狐囲碁の盤（実測 RGB≈(247,217,138)）は _is_yellow も _is_bright_wood も満たすので黄盤検出が
+    通ってしまうが、規則配置の割り算と平均色の分類は直前手の印・空点のカーソル印で壊れる＝格子線検出の
+    経路へ回す判別に使う。囲碁クエスト系の黄盤（b≈62）は木目盤の色域に入らない（実測の割合 0.00〜0.02、
+    野狐 0.94）ので False＝従来経路のまま
+    """
+    x0, y0, x1, y1 = board_rect
+    crop = img.convert("RGB").crop((x0, y0, x1 + 1, y1 + 1))
+    thumb = crop.resize((WOOD_PALE_SAMPLE, WOOD_PALE_SAMPLE), Image.NEAREST)
+    px = thumb.load()
+    yellow = wood = 0
+    for y in range(WOOD_PALE_SAMPLE):
+        for x in range(WOOD_PALE_SAMPLE):
+            if _is_yellow(*px[x, y][:3]):
+                yellow += 1
+                if _is_bright_wood(*px[x, y][:3]):
+                    wood += 1
+    return yellow > 0 and wood >= yellow * WOOD_PALE_MIN_SHARE
 
 
 def detect_wood_board(img):
@@ -941,6 +970,96 @@ def _classify_wood_patch(rgb, cx, cy, rad):
     return "?", (mr, mg, mb)
 
 
+def _wood_diagonal_verdict(rgb, cx, cy, cell):
+    """交点から斜め4方向へ セル×WOOD_STONE_CHECK_RATIO ずらした4点の多数決。"B"/"W"/"."、割れたら None。
+
+    本物の石は交点から斜め 0.42 セルまで石の色が続く。中心パッチだけで決めると2通りに誤読する:
+    (1) 空点の上の小さい印（カーソルの四角）は中心パッチを丸ごと覆って石になる＝4点は木地。reconcile が
+        「相手が打った」「自分がもう打った」と誤読する（カーソルを AI の着手点へ運ぶ設定では、ちょうど
+        その点に AI の色の四角が出る）
+    (2) 直前手の石の上の残り秒数（野狐囲碁）は 2 桁だと中心を広く覆い、"?" や逆の色の石になる
+        （合成で確認: 黒石の上の白い太字 2 桁が "W"）＝4点は石の地色
+    どちらも印や数字が届かない石の縁の色が正しいので、4点中 WOOD_STONE_CHECK_MIN 以上が揃えばそれを採る
+    """
+    off = cell * WOOD_STONE_CHECK_RATIO
+    labels = [_classify_wood_patch(rgb, cx + dx, cy + dy, 1)[0] for dx in (-off, off) for dy in (-off, off)]
+    for verdict in (".", "B", "W"):
+        if labels.count(verdict) >= WOOD_STONE_CHECK_MIN:
+            return verdict
+    return None
+
+
+WOOD_LAST_MOVE_RATIO = 0.3  # 直前手の印を探す円の半径 = セル×この値（石の内側）
+WOOD_LAST_MOVE_MIN_SHARE = 0.05  # 円の中の「逆の明るさ」の画素の割合がこれ以上なら印つき
+
+
+def wood_last_move_color(img, xs, ys, grid):
+    """直前手の印（野狐囲碁の三角・残り秒数／木目盤アプリの輪）が付いた石の色。ちょうど1つでなければ None。
+
+    黒石の上の印は白、白石の上の印は黒で描かれる＝石の内側に「逆の明るさ」の画素がある石が直前手。
+    実測: 野狐囲碁 7 枚の印つきの石は割合 0.16〜0.86、木目盤アプリ 4 枚は 0.09〜0.24、ほかの石は全部 0.000
+    """
+    rgb = img.convert("RGB")
+    px = rgb.load()
+    w, h = rgb.size
+    cell = min((xs[-1] - xs[0]) / (len(xs) - 1), (ys[-1] - ys[0]) / (len(ys) - 1))
+    rad = max(2, int(cell * WOOD_LAST_MOVE_RATIO))
+    marked = []
+    for i, cy in enumerate(ys):
+        for j, cx in enumerate(xs):
+            stone = grid[i][j]
+            if stone not in ("B", "W"):
+                continue
+            hit = total = 0
+            for dy in range(-rad, rad + 1):
+                for dx in range(-rad, rad + 1):
+                    x, y = round(cx) + dx, round(cy) + dy
+                    if dx * dx + dy * dy > rad * rad or not (0 <= x < w and 0 <= y < h):
+                        continue
+                    total += 1
+                    brightness = sum(px[x, y]) / 3
+                    if (brightness > 200) if stone == "B" else (brightness < 80):
+                        hit += 1
+            if total and hit / total >= WOOD_LAST_MOVE_MIN_SHARE:
+                marked.append(stone)
+    return marked[0] if len(marked) == 1 else None
+
+
+QUEST_LAST_MOVE_RATIO = 0.2  # 囲碁クエストの直前手の印（石の中心の赤い四角）を探す円の半径 = セル×この値
+QUEST_LAST_MOVE_MIN_SHARE = 0.1  # 円の中の赤い画素の割合がこれ以上なら印つき（実測 0.35〜0.38・ほかの石は 0.000）
+
+
+def quest_last_move_color(img, board_rect, grid):
+    """黄盤（囲碁クエスト系・規則配置）で直前手の印（赤い四角）が付いた石の色。ちょうど1つでなければ None"""
+    rgb = img.convert("RGB")
+    px = rgb.load()
+    w, h = rgb.size
+    size = len(grid)
+    x0, y0, x1, y1 = board_rect
+    cell_w = (x1 - x0 + 1) / size
+    cell_h = (y1 - y0 + 1) / size
+    rad = max(2, int(min(cell_w, cell_h) * QUEST_LAST_MOVE_RATIO))
+    marked = []
+    for i in range(size):
+        for j in range(size):
+            if grid[i][j] not in ("B", "W"):
+                continue
+            cx, cy = round(x0 + cell_w * (j + 0.5)), round(y0 + cell_h * (i + 0.5))
+            hit = total = 0
+            for dy in range(-rad, rad + 1):
+                for dx in range(-rad, rad + 1):
+                    x, y = cx + dx, cy + dy
+                    if dx * dx + dy * dy > rad * rad or not (0 <= x < w and 0 <= y < h):
+                        continue
+                    total += 1
+                    r, g, b = px[x, y]
+                    if r > 180 and g < 100 and b < 120:
+                        hit += 1
+            if total and hit / total >= QUEST_LAST_MOVE_MIN_SHARE:
+                marked.append(grid[i][j])
+    return marked[0] if len(marked) == 1 else None
+
+
 def classify_wood_intersections(img, xs, ys):
     """検出済み格子線位置 (xs, ys) の全交点を分類したグリッドを返す（classify_intersections の木目盤版）。
 
@@ -962,6 +1081,8 @@ def classify_wood_intersections(img, xs, ys):
             label, means = _classify_wood_patch(rgb, cx, cy, rad)
             if label == "?":
                 label, means = _classify_wood_patch(rgb, cx, cy, marker_rad)
+            if label != ".":  # 空点と読んだ交点には掛けない（大半が空点＝毎フレームの分類時間を増やさない）
+                label = _wood_diagonal_verdict(rgb, cx, cy, cell) or label
             if label == "?":
                 ambiguous.append((i, j, tuple(round(m) for m in means)))
             row.append(label)
