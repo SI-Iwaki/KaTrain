@@ -410,3 +410,42 @@ def test_wood_app_last_mover_is_read_from_ring(monkeypatch):
         reader.read()
         assert reader._profile == "wood" and not reader._pale
         assert reader.last_mover_color() == expected, name
+
+
+SPECTATE1 = os.path.join(_DATA_DIR, "board_watch_fox_spectate1.png")
+SPECTATE2 = os.path.join(_DATA_DIR, "board_watch_fox_spectate2.png")
+# 実スクショのパネルを Windows OCR で読んだ行（0 は「ロ」と読まれる）。OCR 自体は実 OCR テスト側で通す
+FAKE_LINES = {
+    SPECTATE1: ["黒 コ ミ 3 又 3 / 4 子", "30 分", "九 段 ・ 一 一 七 段 王 澤 錦", "ロ 子 ア ゲ ハ マ ロ 子"],
+    SPECTATE2: ["黒 コ ミ 3 又 3 / 4 子", "1 分", "9 段 の い ・ 9 段", "ロ 子 ア ゲ ハ マ 3 子"],
+}
+
+
+def _count(grid, color):
+    return sum(row.count(color) for row in grid)
+
+
+def test_spectate_screenshots_read_board_and_info(monkeypatch):
+    """観戦中の野狐の実スクショ2枚（盤の石数・プロファイル・窓タイトルの手数と手番・パネルのコミ）"""
+    from katrain.core.board_spectate import read_spectate_info
+
+    for path, title, counts, info in [
+        (SPECTATE1, "> [高級対局室1] > 46453号大会対局室　観戦中 [85手目] - 大会", (43, 42), (85, "W")),
+        (SPECTATE2, "> [高級対局室1] > 46372号対局室　観戦中 [98手目] - レーティング - 中国ルール", (49, 46), (98, "B")),
+    ]:
+        reader = _reader_on(monkeypatch, _open(path))
+        grid = reader.read()
+        assert (_count(grid, "B"), _count(grid, "W")) == counts and reader.profile_name() == "fox"
+        monkeypatch.setattr(reader, "window_title_text", lambda t=title: t)
+        got = read_spectate_info(reader, ocr=lambda img, p=path: FAKE_LINES[p])
+        assert (got.app_move_number, got.next_player) == info and got.komi == 7.5
+
+
+def test_non_fox_reader_gives_only_next_player(monkeypatch):
+    from katrain.core.board_spectate import read_spectate_info
+
+    reader = _reader_on(monkeypatch, _open(_YELLOW[0]))
+    reader.read()
+    assert reader.profile_name() == "quest"
+    got = read_spectate_info(reader, ocr=lambda img: pytest.fail("OCR must not run for non-fox"))
+    assert got.komi is None and got.rules is None and got.app_move_number is None

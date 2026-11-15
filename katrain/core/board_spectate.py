@@ -113,6 +113,11 @@ def parse_fox_title(title):
     return (int(m.group(1)) if m else None), rules
 
 
+def _ocr_count(text):
+    """OCR は数字の 0 を「ロ」「〇」「O」と読むことがある（実測 2026-11-15: 実スクショ 2 枚とも「ロ子アゲハマロ子」）"""
+    return int(text.translate(str.maketrans("ロ〇Oo", "0000")))
+
+
 def parse_fox_panel(lines):
     """対局者パネルの OCR 行から（コミ, ルール, 黒のアゲハマ, 白のアゲハマ）を読む。
 
@@ -127,9 +132,9 @@ def parse_fox_panel(lines):
             break
     agehama_b = agehama_w = None
     for x in squashed:
-        m = re.search(r"(\d+)子アゲハマ(\d+)子", x)
+        m = re.search(r"([0-9ロ〇Oo]+)子アゲ.{0,3}マ([0-9ロ〇Oo]+)子", x)
         if m:
-            agehama_w, agehama_b = int(m.group(1)), int(m.group(2))
+            agehama_w, agehama_b = _ocr_count(m.group(1)), _ocr_count(m.group(2))
             break
     return komi, rules, agehama_b, agehama_w
 
@@ -142,6 +147,51 @@ def engine_komi_offset(rules, agehama_b, agehama_w):
 def agehama_base(entered, counted_since_import):
     """取り込み時点のアゲハマ基準値（入力値から、取り込み後に KaTrain が数えた分を引く）"""
     return max(0, entered - counted_since_import)
+
+
+# 野狐の対局者パネル（コミとアゲハマの行がある）の切り出し。盤矩形の幅 bw・高さ bh に対する割合:
+# (x の左端＝盤の右端からの距離, y の上端, x の右端＝窓の右端からの余白, y の下端)。
+# 右のサイドバー（棋譜鑑賞・絶芸…）を入れてはいけない＝実測 2026-11-15: 窓の右端まで切ると 1 枚目でコミの行が消えた
+FOX_PANEL_BOX = (0.07, 0.04, 0.10, 0.35)
+
+
+def _fox_panel_crop(reader):
+    img, board_rect = reader.last_image(), getattr(reader, "_board_rect", None)
+    if img is None or board_rect is None:
+        return None
+    bx0, by0, bx1, by1 = board_rect
+    bw, bh = bx1 - bx0, by1 - by0
+    left, top, right_margin, bottom = FOX_PANEL_BOX
+    box = (round(bx1 + left * bw), round(top * bh), round(img.size[0] - right_margin * bw), round(bottom * bh))
+    if box[2] <= box[0] or box[3] <= box[1]:
+        return None
+    return img.crop(box)
+
+
+def read_spectate_info(reader, ocr=None):
+    """観戦の取り込みに使う対局情報。野狐以外は直前手の色から手番だけ、野狐は窓タイトル→パネル OCR の順に埋める。
+
+    OCR は遅い（1〜2 秒）ので開始時と再取り込みのときだけ、GUI スレッド以外から呼ぶこと。
+    読めない項目は None のまま（呼び出し側が入力欄の値を使う）。ルールは窓タイトル優先
+    """
+    last_mover = reader.last_mover_color()
+    if reader.profile_name() != "fox":
+        return SpectateInfo(next_player=next_player_from(last_mover, None))
+    if ocr is None:
+        from katrain.core import screen_ocr
+
+        ocr = screen_ocr.ocr_lines
+    move_number = rules = None
+    title = reader.window_title_text()
+    if title:
+        move_number, rules = parse_fox_title(title)
+    komi = agehama_b = agehama_w = None
+    panel = _fox_panel_crop(reader)
+    lines = ocr(panel) if panel is not None else None
+    if lines:
+        komi, panel_rules, agehama_b, agehama_w = parse_fox_panel(lines)
+        rules = rules or panel_rules
+    return SpectateInfo(rules, komi, agehama_b, agehama_w, next_player_from(last_mover, move_number), move_number)
 
 
 def next_player_from(last_mover, app_move_number):

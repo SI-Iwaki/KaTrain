@@ -1279,6 +1279,25 @@ class AppBoardReader:
         """手前の対局者（＝KaTrain の AI が打つ側）の色。確定できなければ None（BoardWatcher の player_color_fn）"""
         return confirmed_near_color(*self.player_icon_colors())
 
+    def profile_name(self):
+        """認識プロファイル名。"quest"（黄盤）/ "wood"（明るい木目盤）/ "fox"（野狐囲碁＝淡い木目盤）。未確定は None"""
+        if self._profile == "wood" and self._pale:
+            return "fox"
+        return self._profile
+
+    def window_title_text(self):
+        """監視対象の窓のタイトル全文。窓が無い・取れない場合は None"""
+        try:
+            from katrain.core.tsumego_capture import find_window_title
+
+            return find_window_title(self.window_title)
+        except Exception:
+            return None
+
+    def last_image(self):
+        """直近に撮ったフレーム（窓全体の PIL 画像）。まだ撮っていなければ None"""
+        return self._last_img
+
     def _remember_frame(self, fingerprint, grid):
         self._fingerprint = fingerprint
         self._grid = grid
