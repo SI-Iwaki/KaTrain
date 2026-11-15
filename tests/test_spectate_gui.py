@@ -40,7 +40,9 @@ def block(text, header):
 def test_spectate_bar_is_static_and_hidden_when_inactive():
     kv = read("katrain/gui.kv")
     bar = block(kv, "SpectateBar:")
-    assert "height: dp(34) if root.spectate_active else 0" in bar
+    assert "height: dp(58) if root.spectate_active else 0" in bar
+    # ボタンは高さとフォントを固定する（未指定だと文字が巨大化して上のパネルへはみ出す＝実機 2026-11-15）
+    assert bar.count("size_hint: None, None") == 4 and bar.count("_font_size: sp(14)") == 4
     assert "opacity: 1 if root.spectate_active else 0" in bar and "disabled: not root.spectate_active" in bar
     assert "root.spectate_text" in bar
     assert "disabled: root.spectate_auto" in bar  # 「今すぐ反映」は自動反映 ON の間は無効

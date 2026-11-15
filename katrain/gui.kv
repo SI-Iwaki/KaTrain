@@ -1207,12 +1207,18 @@
                         SpectateBar:
                             id: spectate_bar
                             size_hint_y: None
-                            height: dp(34) if root.spectate_active else 0
+                            # 2 段（上＝状態の文言・下＝ボタン）。1 段だと分割表示の狭い窓で文言とボタンが収まらない。
+                            # ボタンは高さとフォントを固定する＝SizedButton の既定（フォント=高さの 0.6 倍・高さ未指定）の
+                            # ままだと高さが決まらず文字が巨大化して上のパネルへはみ出す（実機 2026-11-15）
+                            orientation: 'vertical'
+                            height: dp(58) if root.spectate_active else 0
                             opacity: 1 if root.spectate_active else 0
                             disabled: not root.spectate_active
                             Label:
+                                size_hint_y: None
+                                height: dp(24) if root.spectate_active else 0
                                 font_name: i18n.font_name
-                                font_size: min(sp(16), 0.6 * self.height)
+                                font_size: sp(14)
                                 color: Theme.TEXT_COLOR
                                 text_size: self.width, None
                                 halign: 'left'
@@ -1220,34 +1226,47 @@
                                 shorten: True
                                 shorten_from: 'right'
                                 text: root.spectate_text
-                            AutoSizedRectangleButton:
-                                id: spectate_auto_button
-                                size_hint_x: None
-                                width: self.label.texture_size[0] + dp(16)
-                                text: i18n._('spectate:auto')
-                                background_color: Theme.LIGHTER_BACKGROUND_COLOR if root.spectate_auto else Theme.BACKGROUND_COLOR
-                                outline_color: Theme.BUTTON_BORDER_COLOR if root.spectate_auto else Theme.BUTTON_INACTIVE_COLOR
-                                on_left_press: root("spectate-toggle-auto")
-                            AutoSizedRectangleButton:
-                                id: spectate_sync_button
-                                size_hint_x: None
-                                width: self.label.texture_size[0] + dp(16)
-                                text: i18n._('spectate:sync-now')
-                                disabled: root.spectate_auto
-                                opacity: 0.4 if self.disabled else 1
-                                on_left_press: root("spectate-sync-now")
-                            AutoSizedRectangleButton:
-                                id: spectate_info_button
-                                size_hint_x: None
-                                width: self.label.texture_size[0] + dp(16)
-                                text: i18n._('spectate:info')
-                                on_left_press: root("spectate-info-popup")
-                            AutoSizedRectangleButton:
-                                id: spectate_stop_button
-                                size_hint_x: None
-                                width: self.label.texture_size[0] + dp(16)
-                                text: i18n._('spectate:stop')
-                                on_left_press: root("spectate-stop")
+                            MDBoxLayout:
+                                size_hint_y: None
+                                height: dp(28) if root.spectate_active else 0
+                                spacing: dp(6)
+                                AutoSizedRectangleButton:
+                                    id: spectate_auto_button
+                                    size_hint: None, None
+                                    height: dp(26) if root.spectate_active else 0
+                                    _font_size: sp(14)
+                                    width: self.label.texture_size[0] + dp(16)
+                                    text: i18n._('spectate:auto')
+                                    background_color: Theme.LIGHTER_BACKGROUND_COLOR if root.spectate_auto else Theme.BACKGROUND_COLOR
+                                    outline_color: Theme.BUTTON_BORDER_COLOR if root.spectate_auto else Theme.BUTTON_INACTIVE_COLOR
+                                    on_left_press: root("spectate-toggle-auto")
+                                AutoSizedRectangleButton:
+                                    id: spectate_sync_button
+                                    size_hint: None, None
+                                    height: dp(26) if root.spectate_active else 0
+                                    _font_size: sp(14)
+                                    width: self.label.texture_size[0] + dp(16)
+                                    text: i18n._('spectate:sync-now')
+                                    disabled: root.spectate_auto
+                                    opacity: 0.4 if self.disabled else 1
+                                    on_left_press: root("spectate-sync-now")
+                                AutoSizedRectangleButton:
+                                    id: spectate_info_button
+                                    size_hint: None, None
+                                    height: dp(26) if root.spectate_active else 0
+                                    _font_size: sp(14)
+                                    width: self.label.texture_size[0] + dp(16)
+                                    text: i18n._('spectate:info')
+                                    on_left_press: root("spectate-info-popup")
+                                AutoSizedRectangleButton:
+                                    id: spectate_stop_button
+                                    size_hint: None, None
+                                    height: dp(26) if root.spectate_active else 0
+                                    _font_size: sp(14)
+                                    width: self.label.texture_size[0] + dp(16)
+                                    text: i18n._('spectate:stop')
+                                    on_left_press: root("spectate-stop")
+                                Widget:
                         TsumegoBookBanner:
                             id: tsumego_book_banner
                             status: root.tsumego_book_status
