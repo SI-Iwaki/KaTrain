@@ -5,7 +5,7 @@
 KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 
 - 上流リポジトリ: https://github.com/sanderland/katrain
-- 上流との同期: git remote `upstream`（`git fetch upstream --tags` で最新を取る。fork は v1.17.1.1 の tarball 起点で git 履歴を共有しないので merge はできず、cherry-pick も効かない＝差分を読んで手で移植する）。**2026-09-04 に v1.20.0 までの修正を移植済み**: エンジンのスレッド競合修正（`query_generation`・RLock・stdin flush をロック外へ）、`Game` のロック整理と `expected_node`、AI 待ちループの `raise_if_discarded`（新規対局中に AI が考えていると固まるバグ）、未知の戦略名のフォールバック、GIB パーサ、`show_move_numbers` / `anim_pv_moves` 設定、KataGo ダウンロード一覧 v1.18.1。**移植しなかったもの**: KivyMD 撤去（`widgets/material/`）、`pysgf` への置換、リモートエンジン（websocket）、ruff 整形、Ctrl+H への reset-analysis 移動、同梱エンジン／モデルの更新（TensorRT 版は手動管理＝解析条件が変わるので校正のやり直しが要る。**2026-09-04 に A/B 実測のうえ v1.18.2 CUDA＋transformer b10c384 へ切替**: 難解の E 尺度は不変、解析は +34〜54% 速いが、詰碁 E2E の回帰点 2 件〈F2@4・AA@6〉がネット起因で 3/3 壊れた。**同日に詰碁を再校正済み**（同ディレクトリの results §8）: AA@6 は PV コウ検出の「打つ側の既存コウ」除外〈判定のみ・解析不変〉で 3/3 回復、F2@4 はネットの読みそのもの＝既知限界、O@0 は PV 依存の揺れ 1〜2/3。回答帳 538 手順は 320→302〈破損 60・回復 42＝機構別の失敗率は不変の拡散した揺れ〉、閾値〈gain_epsilon / points_epsilon〉は反実仮想で差引 +4 以下＝動かさない。記録と切替用 config は `docs/superpowers/specs/calibration-data/engine-ab/`）
+- 上流との同期: git remote `upstream`（`git fetch upstream --tags`。fork は git 履歴を共有しないので merge も cherry-pick もできない＝差分を読んで手で移植する）。2026-09-04 に v1.20.0 までの修正を移植済み。移植した／しなかったものの一覧と、同日のエンジン切替（v1.18.2 CUDA＋transformer b10c384）・詰碁再校正の経緯は `.claude/rules/environment.md`
 - ランタイム設定: `C:\Users\iwaki\.katrain\`
 
 主な改修は3系統。該当 rules は `paths:` frontmatter で対象ファイルに触れた時点でロードされる（**コンテキストに無ければ着手前に Read**＝「開発ワークフロー」節参照）:
@@ -14,7 +14,7 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 |---|---|---|
 | Human-like AI 戦略 | 悪手フィルタに加え、力戦派 / 攻城 / 狩猟 / 一致率低減 / 持碁 / 一致率追随（9路）/ 難解（9・13・19路）/ 難解＋（9・13・19路＝罠探索の拡張＋ΔE 床の改良版・`EnigmaPlusMixin`）/ 擬態（13路＝相手より低い一致率で勝つ・`Mimic13Strategy`）/ 一致率ひかえめ（旧名 韜晦・9・13・19路＝勝ち優先で自分の一致率を絶対目標まで下げる・序盤の窓を難解＋に任せる研究外しの層〈既定 OFF〉つき・`Veil9Strategy`） | `.claude/rules/ai-strategies.md`（設計と実測）<br>`.claude/rules/ai-parameters.md`（全パラメータ値）<br>`.claude/rules/ai-humanstyle.md`（フィルタ実装） |
 | 詰碁 | 画面キャプチャ→盤面認識→枠→着手選択 `ai:tsumego`→死活ソルバ（Rust df-pn）→回答帳 | `.claude/rules/tsumego.md`（設計と落とし穴）<br>`.claude/rules/tsumego-parameters.md`（パラメータ値） |
-| 盤面監視 | `board_watch.py`: BlueStacks 上の対局アプリの着手を検出して人間側の手として片方向注入（トグル `ctrl+alt+d`）。**KaTrain の AI の色は対局画面の手前（下）の対局者アイコンから自動判定**して設定中の戦略をその色へ移し、監視中にアプリで次の対局が始まれば〈2子以内の序盤形＋逆色のアイコン＋3周〉自動で新規対局に張り直す＝連続対局〈黄盤のみ・木目盤は設定どおり＝spec 追記10〉。AI の着手はアプリ盤の該当交点の真上に輪を出して示す（`screen_marker.py`・設定画面 general 節のドロップダウン〈表示しない／6色〉＝`board_watch.highlight_color`。同じ行の「難易度」チェック〈`board_watch.highlight_difficulty`〉で輪を局面の難しさで塗り分ける＝明らか緑／難解赤／普通は設定色・相手の着手と同時に humanSL 9段 8visits を先回り＝輪は待たない・判定は `katrain/core/move_difficulty.py`・spec 追記11。監視の自前キャプチャからは `WDA_EXCLUDEFROMCAPTURE` で除外＝spec 追記6。対応盤は黄盤〈囲碁クエスト系〉＋明るい木目盤アプリ〈detect_board 失敗時に格子線検出へ自動フォールバック・9/13/19路〉＝spec 追記7、＋野狐囲碁の PC 版〈淡い黄の盤＝黄盤検出も通るので盤の色で判別して必ず格子線検出で読む・空点の四角カーソルは石にしない・窓は `board_watch.window_title` の「対局室」〈config.json には JSON のエスケープで書く＝Kivy の JsonStore は cp932 で読むので生の日本語は化ける〉・自分の色はユーザー一覧の自分の行の赤いピンの左隣の石アイコンから読む〈`fox_self_color`・黄盤と同じく AI の色の入れ替えと連続対局が動く・自分が黒の実物は未確認＝spec 追記13〉・途中から ON にしたときの手番は直前手の印から読む〈`last_mover_color`・囲碁クエストの赤い四角・木目盤アプリの輪も同じ＝対応する盤すべて＝spec 追記14〉・観戦は対象外＝spec 追記12〉。さらにその交点へ**マウスカーソルも運ぶ**〈`screen_cursor.py`・同じ行のチェック`board_watch.move_cursor`・既定 OFF。`SetCursorPos` だけでクリックはしない／新しい手のとき1回だけ＝毎周運ぶとカーソルが貼り付く／アプリが前面のときだけ＝前面化はしない＝spec 追記8〉。対局が5分進まなければ監視は自動停止〈`board_watch.auto_stop_sec`・相手待ちが20秒を超えたら 50ms→400ms に減速＝アプリの投了・時間切れは KaTrain に伝わらないので終局後の空回り対策・spec 追記9〉）／ `tsumego_autoloop.py`: 詰碁の自動ループ（ADB でアプリを操作。トグル `ctrl+alt+d` ではなく `ctrl+alt+a`。spec `2026-08-23-tsumego-autoloop-design.md`） | `docs/superpowers/specs/2026-08-18-board-watch-design.md` |
+| 盤面監視 | `board_watch.py`: BlueStacks 上の対局アプリ（黄盤＝囲碁クエスト系／明るい木目盤／野狐囲碁の PC 版）の着手を検出して人間側の手として片方向注入（トグル `ctrl+alt+d`）。AI の色の自動判定と連続対局、AI の着手をアプリ盤の真上に示す輪（`screen_marker.py`・難易度の色分けは `move_difficulty.py`）、交点へのカーソル移動（`screen_cursor.py`・クリックはしない）、5分進まなければ自動停止 ／ `tsumego_autoloop.py`: 詰碁の自動ループ（ADB でアプリを操作。トグルは `ctrl+alt+a`。spec `2026-08-23-tsumego-autoloop-design.md`） | `.claude/rules/board-watch.md`（機能の全体像と設定キー）<br>`docs/superpowers/specs/2026-08-18-board-watch-design.md` |
 
 ## 盤面テーマ（盤・碁石のデザイン）
 
@@ -123,7 +123,7 @@ uv sync          # 依存パッケージのインストール
 python -m katrain
 ```
 
-**起動が `[WinError 4551] アプリケーション制御ポリシーによってこのファイルがブロックされました` で失敗したら**: Smart App Control（SAC）が未署名の katago を止めている。**2026-11-13 にユーザーが SAC をオフにした**（`HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy` の `VerifiedAndReputablePolicyState` = 0。累積更新 KB5083769〈2026-04〉以降は再インストールなしでオン／オフできる＝Windows セキュリティ → アプリとブラウザーの制御 → スマート アプリ コントロール）ので、4551 が出たらまずこの値が 1 に戻っていないかを見る。SAC オンのときの仕組み（実測 2026-11-13）: 許可判定は NTFS 拡張属性 `$KERNEL.PURGE.ESBCACHE` に載り、オフセット 0x20 の FILETIME が**許可の有効期限**（前回の許可から約24時間・DLL によっては数日。期限切れのファイルは全部止まり期限内は全部通る、で全ファイル一致）。**再起動しなくても期限切れの次の起動でクラウドに再照会され、拒否されうる**（11/12 20:09 に通った cuda 版が 22:02 に期限切れ → 00:44 の KaTrain 起動で拒否。新しいコピーを作って照会し直させてもその場で拒否、13分待っても回復しなかった）。拒否の直後の再試行はクラウドに聞き直さない（イベント 3118 の `DefenderMadeCloudCall=false`）。期限内に起動しても期限は延びないので、ログオン時に空打ちする `tools/warm_katago_sac.ps1`（タスク `KaTrain-WarmKataGoSAC`・ログ `~/.katrain/logs/sac_warmup.log`。SAC オフの間は無害な no-op）では日中の期限切れを防げない。旧記述の「再起動後の初回だけ止まり数分で自然回復」は一部の現象でしかない（2026-09-09 の実測はそうだった）。同スクリプトは 2026-11-13 まで、exe が拒否されると直前の exe の終了コードを読んで **OK と誤記録**していた（修正済み）。**自己署名では効かない**（信頼された CA の証明書による署名なら通る）。切り分けは `Get-WinEvent -LogName Microsoft-Windows-CodeIntegrity/Operational` の 3077/3033（ブロック・ファイル名入り）と 3118（`DefenderMadeCloudCall` / `DefenderCloudHTTPCode`）、`fsutil file queryEA <exe>`。CLAUDE.md 内の `cargo` の `os error 4551` も同じ SAC が原因
+**起動が `[WinError 4551] アプリケーション制御ポリシーによってこのファイルがブロックされました` で失敗したら**: Smart App Control（SAC）が未署名の katago を止めている。2026-11-13 にユーザーが SAC をオフにしたので、まず `HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy` の `VerifiedAndReputablePolicyState` が 1 に戻っていないかを見る。SAC オン時の仕組み（許可の約24時間の期限）と切り分け手順は `.claude/rules/environment.md`。CLAUDE.md 内の `cargo` の `os error 4551` も同じ SAC が原因
 
 テスト: `pytest`（SGFパーサ、盤面ロジック、AI着手生成のユニットテスト）。AI系テスト（`test_ai.py`）はhumanSLモデルが必要なため、モデル未配置の環境では `pytest --ignore=tests/test_ai.py` で除外する
 
@@ -161,31 +161,14 @@ python -m katrain_debug --sgf FILE --strategy hunt --batch --settings hunt_max_l
 
 **自己対局ハーネス**（`python -m katrain_debug.selfplay`・spec `2026-09-23-selfplay-harness-design.md`）: 戦略 vs humanSL ボット（実戦の相手に校正）を無人で N 局打たせ、本物の `game_report` で両者の一致率・勝敗・目差を集計する。**実戦中の KaTrain と同時に走らせない**（起動中の katago.exe があれば止まる。GPU を取り合うと実戦の AI が maxTime に当たる）。
 ```bash
-# A/B（全アームが同じ seed＝色・相手・投了の条件を対にする。10 seed ごとに ABBA）。相手は既定で calibration-data/selfplay/opponent_pool_13.json
-# 今のプール（2026-09-24 08:22 の校正）は length の投了モデルで合わせたもの（手数中央値 81 vs 実戦 78.5・AI 側のずれ -0.8pt。結果 calibration-data/selfplay/selfplay-calibration-results-20260924-length.md）。終盤（85手以降）の相手の一致率は実戦より約 15pt 低い
-# --pairs 20 は3段位のプールで層が 8/6/6 局になり unbalanced の警告が出る（想定内＝停止規則の 20/40 ペア。層を揃えるなら 18 / 24）
+# A/B（全アームが同じ seed。アームの書式は <名前>=<runner の戦略名>[:key=val,...]）
 python -m katrain_debug.selfplay run --arm A=enigma13plus --arm B=enigma13plus:enigma13plus_max_loss=2.0 --size 13 --pairs 20 --label maxloss-ab
-# 投了は既定で length モデル（実戦 13路 18局の手数から局ごとに L を引き、L 以降に AI 勝率 >= 0.90 かつリード >= 2.5目が AI の2手番続けば投了）。
-# 以前のリード R のモデルは --resign-model lead（--resign-lead LO:HI はこのときだけ）。投了モデルの違う実行は summarize で合わせない
-# 投了なし（必須の感度アーム）・接戦ストレス層（AI 不利のコミ＋強めの相手）
-python -m katrain_debug.selfplay run --arm A=enigma13plus --size 13 --pairs 20 --no-resign --label nores
-python -m katrain_debug.selfplay run --arm A=enigma13plus --size 13 --pairs 20 --komi-shift 4 --ranks rank_5d,rank_9d --opp-max-loss 2 --label stress
-# 集計し直し・対の差（既定 97.5% 区間＝2回見る停止規則。2アームの run は終了時にも出す）・落ちた実行の再開
+# 集計し直し・対の差／落ちた実行の再開／実戦の保存 SGF の両者のレポート
 python -m katrain_debug.selfplay summarize experiments/selfplay/<dir> --compare A B
-python -m katrain_debug.selfplay run --resume experiments/selfplay/<dir>   # --retry-aborted で aborted の局も打ち直す。--allow-mixed は下の計測の基準の違いを許す
-# 停止規則の延長（差の区間が ±3pt の線をまたぐとき 40 ペアへ）: seed をずらした 20 ペアを足し、2本を合わせて集計
-python -m katrain_debug.selfplay run --arm A=enigma13plus --arm B=enigma13plus:enigma13plus_max_loss=2.0 --size 13 --seed-base 1020 --pairs 20 --label maxloss-ab-ext
-python -m katrain_debug.selfplay summarize experiments/selfplay/<dir> experiments/selfplay/<ext の dir> --compare A B
-# 相手ボットの校正（13路 6段位×8局・約2時間。計測の健全性の数が 0 でなければ --write-pool は上書きせず <path>.suspect に書く＝--force-pool で上書き）・実戦の保存 SGF の両者のレポート
-python -m katrain_debug.selfplay calibrate --size 13 --strategy enigma13plus --games 8 --write-pool docs/superpowers/specs/calibration-data/selfplay/opponent_pool_13.json
-# 9路（spec 韜晦 §16）: 投了の手数は recon_9/（難解＋9路の実戦・縮めない）。calibrate --strategy NAME:key=v,... で AI の設定を上書きする
-python -m katrain_debug.selfplay calibrate --size 9 --strategy enigma9plus:enigma9plus_max_loss=1.6,enigma9plus_target_score=0.2,enigma9plus_gamble_until_move=20 --ranks rank_1d,rank_3d,rank_5d,rank_7d,rank_9d --games 8 --write-pool docs/superpowers/specs/calibration-data/selfplay/opponent_pool_9.json
-# 定跡を知る相手（手数 < B の間、AI の手がすべて X 目以下なら KataGo の最善手・既定 X 0.3）と序盤の窓の指標
-python -m katrain_debug.selfplay run --arm A=veil9:veil9_open_moves=0 --arm B=veil9:veil9_open_moves=12 --size 9 --pairs 24 --book-moves 24 --label book
-python docs/superpowers/specs/calibration-data/selfplay/window_stats.py experiments/selfplay/<dir> --compare B A
+python -m katrain_debug.selfplay run --resume experiments/selfplay/<dir>
 python -m katrain_debug.selfplay report-sgf FILE.sgf
 ```
-出力は `experiments/selfplay/<YYYYMMDD_HHMM>_<label>/`（`run.json`＝解決済み設定とハッシュ・ai.py の場所・git HEAD、`games.jsonl`＝1局1行、`moves.jsonl`＝1手1行、`sgf/`＝KT 解析つき、`logs/`＝戦略自身の `[XxxStrategy]` 行（`Rate:` / `Decision:` / 着手時間）とエラー、`summary.txt`（ASCII）/ `summary.json`）。主指標は **WATCH 木（末尾のパスを除く＝監視対局の木と同じ）の局ごとの一致率**。アームの書式は `<名前>=<runner の戦略名>[:key=val,...]`（綴り間違いのキーと、戦略が実際に使う設定（コードの既定値＋ユーザー config＋上書き。6 と 6.0 は同じ）が同一のアーム＝null 実験は開始前に止まる。戦略の節がユーザー config に無い＝コードの既定値で走るアームは計画時に `note: ... settings_source = code defaults ...` を出す）。`--shadow B` は他アームの各手番で B の判断を同じ局面で記録（打たない）、`--hp-audit rank_9d` は外した手の 9段 hp を測る。summary.txt とコンソールは、相手が humanSL の失敗や `--opp-max-loss` で候補切れのため KataGo の最善手にフォールバックした回数や hp 監査・影判定の失敗があれば `WARN integrity: arm <名前>: ...` を出す（`--opp-max-loss` 使用時は `fallbacks` だけの WARN は想定内）。再開（`--resume`）と複数の実行の `summarize` は、計測の基準＝エンジン設定（katago・model・humanlike_model・max_visits・max_time・wide_root_noise）とコードの版（git HEAD・ai.py の場所）が run.json と違えば違いを出して止まる（`--allow-mixed` で続行）。`--ranks` / `--hp-audit` の段位は `rank_<N>k|d`・`preaz_<N>k|d`・`proyear_<YYYY>` の形でなければエンジンを起こす前に止まる。1局 13路 約1〜6分（投了あり。手数で大きく変わる＝実測 83秒/49手・319秒/157手）。seed の数は 2 × 相手の段位数 の倍数にする（層の局数が揃わないと警告）。KataGo の探索は非決定的＝seed は開始条件の対で再現ではない（最低 20 ペアで比べる）。run / calibrate は使った config の写し `config-snapshot.json` を出力ディレクトリに置き、`--resume` はその写しを読む（中身が run.json の sha256 と違えば止まる）。`<prefix>_open_moves` > 0 の韜晦のアームは、窓を任せる難解＋の節（戦略キー・設定・指紋）を run.json の `delegate` に持ち、再開と `summarize` の合算で違えば止まる（アームの上書きは任せる先に効かない＝難解＋の節はユーザー config のまま。計画時に `note: ... opening window delegated to ...` を出す）。
+出力は `experiments/selfplay/<YYYYMMDD_HHMM>_<label>/`（`summary.txt` / `games.jsonl` / `moves.jsonl` / `sgf/` / `logs/`）。主指標は WATCH 木の局ごとの一致率。KataGo の探索は非決定的なので**最低 20 ペアで比べる**。**走らせる前に `.claude/rules/selfplay.md` を Read すること**（投了モデル・投了なし／接戦ストレス層・停止規則の延長・相手ボットの校正・9路・定跡を知る相手・再開と合算の検査・`WARN integrity` の読み方・全コマンド例）。
 
 ## コーディング規約
 
@@ -236,6 +219,9 @@ python -m katrain_debug.selfplay report-sgf FILE.sgf
   | `katrain/core/constants.py` / `katrain/config.json` | `ai-settings-gui.md`（AI設定追加手順） |
   | `katrain/core/base_katrain.py` | `base-katrain-config.md`（JsonStore構造・起動時リセットパターン） |
   | `**/*.log` の分析 | `log-analysis.md`（Grepパターン、サブエージェントテンプレート） |
+  | 盤面監視（`board_watch.py` / `screen_marker.py` / `screen_cursor.py` / `move_difficulty.py`） | `board-watch.md`（機能の全体像と設定キー） |
+  | 自己対局ハーネス（`katrain_debug/selfplay*.py`・走らせるときも） | `selfplay.md`（全コマンド例・投了モデル・校正・再開の検査） |
+  | 上流の移植・エンジン／モデルの差し替え・WinError 4551 | `environment.md`（上流同期・エンジン切替・Smart App Control） |
 - **i18n変更時は `.po` 編集後に `python tools/compile_mo.py` で `.mo` を再コンパイルすること**
 - **パラメータ変更時はテーブルも同時に更新すること**: 戦略は `.claude/rules/ai-parameters.md`、詰碁は `.claude/rules/tsumego-parameters.md`
 - **独立した追加解析クエリは1本ずつ待たない**: KataGo はパッケージ同梱 `katrain/KataGo/analysis_config.cfg`（実効値。`~/.katrain/analysis_config.cfg` はエンジンに参照されない＝「ランタイム設定ファイル」節参照）の `numAnalysisThreads=12` で複数クエリを並列処理できる。詰碁の子局面解析は `_start_region_root` / `_wait_region_roots`（`ai.py`）で全部発行してからまとめて待つ形になっているので、解析を追加するときもこの形に合わせる（1本ずつ `_analyze_region_root` を呼ぶループに戻さない）

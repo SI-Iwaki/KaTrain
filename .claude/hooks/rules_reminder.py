@@ -35,6 +35,21 @@ RULES = [
     ),
     (lambda p, b: b == "base_katrain.py", ["base-katrain-config.md"], "JsonStore構造・起動時リセットパターン"),
     (lambda p, b: b.endswith(".log"), ["log-analysis.md"], "ログ解析のGrepパターン"),
+    (
+        lambda p, b: b in ("board_watch.py", "screen_marker.py", "screen_cursor.py", "move_difficulty.py"),
+        ["board-watch.md"],
+        "盤面監視の機能の全体像と設定キー",
+    ),
+    (
+        lambda p, b: b.startswith("selfplay") and b.endswith(".py"),
+        ["selfplay.md"],
+        "自己対局ハーネスの全コマンド例と検査",
+    ),
+    (
+        lambda p, b: b in ("engine.py", "warm_katago_sac.ps1"),
+        ["environment.md"],
+        "上流同期・エンジン切替・Smart App Control",
+    ),
 ]
 
 
