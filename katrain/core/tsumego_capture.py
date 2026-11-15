@@ -122,15 +122,10 @@ def grid_to_sgf(grid, komi=6.5):
     return sgf + ")"
 
 
-def find_window_rect(title_substring):
-    """タイトル部分一致（大小無視）で可視ウィンドウを探し、画面座標 (left, top, right, bottom) を返す。
-
-    カンマ区切りで複数の候補を指定でき（例 "BlueStacks,Puzzle Run"）、先に書いた候補を優先する
-    （BlueStacks とブラウザの両方が開いていても従来どおり BlueStacks が選ばれる）
-    """
+def _enum_window_matches(titles):
+    """可視・非最小化のウィンドウを列挙し、小文字の候補 t -> (窓矩形, タイトル全文) を返す（候補ごとに最初に当たった窓）"""
     user32 = ctypes.windll.user32
-    titles = [t.strip().lower() for t in title_substring.split(",") if t.strip()]
-    matches = {}  # タイトル候補 -> 最初に見つかったウィンドウ矩形
+    matches = {}
 
     @ctypes.WINFUNCTYPE(ctypes.wintypes.BOOL, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM)
     def enum_cb(hwnd, _lparam):
@@ -145,14 +140,34 @@ def find_window_rect(title_substring):
                         rect = ctypes.wintypes.RECT()
                         user32.GetWindowRect(hwnd, ctypes.byref(rect))
                         if rect.right - rect.left > 200 and rect.bottom - rect.top > 200:
-                            matches[t] = (rect.left, rect.top, rect.right, rect.bottom)
+                            matches[t] = ((rect.left, rect.top, rect.right, rect.bottom), buf.value)
         return True
 
     user32.EnumWindows(enum_cb, 0)
+    return matches
+
+
+def _find_window(title_substring):
+    titles = [t.strip().lower() for t in title_substring.split(",") if t.strip()]
+    matches = _enum_window_matches(titles)
     for t in titles:
         if t in matches:
             return matches[t]
     raise CaptureError(f"ウィンドウが見つかりません: {title_substring}（起動・最小化解除を確認してください）")
+
+
+def find_window_rect(title_substring):
+    """タイトル部分一致（大小無視）で可視ウィンドウを探し、画面座標 (left, top, right, bottom) を返す。
+
+    カンマ区切りで複数の候補を指定でき（例 "BlueStacks,Puzzle Run"）、先に書いた候補を優先する
+    （BlueStacks とブラウザの両方が開いていても従来どおり BlueStacks が選ばれる）
+    """
+    return _find_window(title_substring)[0]
+
+
+def find_window_title(title_substring):
+    """find_window_rect と同じ候補順で最初に当たった窓のタイトル全文を返す（無ければ CaptureError）"""
+    return _find_window(title_substring)[1]
 
 
 def capture_screen_rect(rect):

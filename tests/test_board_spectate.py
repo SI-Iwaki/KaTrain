@@ -1,6 +1,13 @@
 import pytest
 
-from katrain.core.board_spectate import spectate_sync
+from katrain.core.board_spectate import (
+    agehama_base,
+    engine_komi_offset,
+    next_player_from,
+    parse_fox_panel,
+    parse_fox_title,
+    spectate_sync,
+)
 from katrain.core.board_watch import apply_move_to_grid
 
 
@@ -99,3 +106,66 @@ def test_stone_played_and_captured_during_gap_is_reimport_not_moves():
     observed = apply_move_to_grid(after_b, 4, 3, "W")
     assert observed[4][4] == "." and observed[4][3] == "W"  # 黒は取られて消え、白 1 子だけ増えた
     assert spectate_sync(tip, observed, "B").kind == "reimport"
+
+
+def test_parse_fox_title():
+    assert parse_fox_title("> [高級対局室1] > 46372号対局室　観戦中 [98手目] - レーティング - 中国ルール") == (98, "chinese")
+    assert parse_fox_title("> [高級対局室1] > 46453号大会対局室　観戦中 [85手目] - 大会") == (85, None)
+    assert parse_fox_title("BlueStacks App Player") == (None, None)
+
+
+def test_parse_fox_panel_real_ocr_lines():
+    # 実測 2026-11-15 の OCR 出力（文字間に空白が入る・誤読行が混ざる）
+    lines = ["噌 起", "黒 コ ミ 3 又 3 / 4 子", "1 分", "10 秒 1 回", "1 回 。 矜 読 み 1 回", "0 子 ア ゲ ハ マ 3 子"]
+    assert parse_fox_panel(lines) == (7.5, "chinese", 3, 0)  # 左＝白が取った数、右＝黒が取った数
+
+
+@pytest.mark.parametrize(
+    "text,komi,rules", [("黒コミ6目半", 6.5, "japanese"), ("黒コミ7目半", 7.5, None), ("黒コミ3又3/4子", 7.5, "chinese")]
+)
+def test_komi_table(text, komi, rules):
+    assert parse_fox_panel([text])[:2] == (komi, rules)
+
+
+def test_komi_is_found_even_when_the_label_is_misread():
+    # 実測: 1 枚目の本番の切り出しでは「黒 。 ミ 3 又 3 / 4 子」と「コ」を読み違えた
+    assert parse_fox_panel(["黒 。 ミ 3 又 3 / 4 子", "0 子 ア ゲ ハ マ 0 子"]) == (7.5, "chinese", 0, 0)
+
+
+def test_unknown_komi_text_is_none_not_a_guess():
+    assert parse_fox_panel(["黒コミ2又1/4子", "アゲハマ"]) == (None, None, None, None)
+
+
+def test_engine_komi_offset_only_for_territory_rules():
+    assert engine_komi_offset("japanese", 3, 0) == -3.0
+    assert engine_komi_offset("korean", 0, 2) == 2.0
+    assert engine_komi_offset("chinese", 3, 0) == 0.0
+
+
+def test_agehama_base_does_not_double_count():
+    assert agehama_base(5, 2) == 3 and agehama_base(1, 4) == 0
+
+
+def test_next_player_from():
+    assert next_player_from("B", None) == "W"
+    assert next_player_from(None, 85) == "W"  # 奇数手目＝黒が打った直後
+    assert next_player_from(None, 98) == "B"
+    assert next_player_from(None, None) is None
+
+
+def test_find_window_title_uses_same_candidate_order_as_rect(monkeypatch):
+    from katrain.core import tsumego_capture as tc
+
+    seen = []
+
+    def fake_enum(titles):
+        seen.append(titles)
+        return {"bluestacks": ((0, 0, 300, 300), "BlueStacks App Player"), "fox": ((1, 1, 500, 500), "Fox Go")}
+
+    monkeypatch.setattr(tc, "_enum_window_matches", fake_enum)
+    assert tc.find_window_title("Fox, BlueStacks") == "Fox Go"
+    assert tc.find_window_rect("Fox, BlueStacks") == (1, 1, 500, 500)
+    assert tc.find_window_title("BlueStacks,Fox") == "BlueStacks App Player"
+    assert seen[0] == ["fox", "bluestacks"]
+    with pytest.raises(tc.CaptureError):
+        tc.find_window_title("nonexistent")
