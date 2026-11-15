@@ -8,7 +8,8 @@ from katrain.core.board_spectate import (
     parse_fox_title,
     spectate_sync,
 )
-from katrain.core.board_watch import apply_move_to_grid
+from katrain.core.board_spectate import SpectateState, SpectateWatcher, spectate_watch_settings
+from katrain.core.board_watch import STATUS_WARN, PermanentCaptureError, apply_move_to_grid, watch_settings_from_config
 
 
 def g(s):
@@ -169,3 +170,145 @@ def test_find_window_title_uses_same_candidate_order_as_rect(monkeypatch):
     assert seen[0] == ["fox", "bluestacks"]
     with pytest.raises(tc.CaptureError):
         tc.find_window_title("nonexistent")
+
+
+ANCESTOR = g("...../.B.../...../...../.....")
+
+
+class Calls:
+    def __init__(self):
+        self.moves = []
+        self.reimports = []
+        self.status = []
+        self.idle_stops = 0
+
+
+def make_watcher(frames, ancestors=(), clock_step=0.0, hints=None):
+    calls = Calls()
+    seq = list(frames)
+    state = SpectateState(G0, "B", 10, 0, 5, tuple(ancestors))
+    t = [0.0]
+
+    def clock():
+        t[0] += clock_step
+        return t[0]
+
+    def capture():
+        f = seq.pop(0) if len(seq) > 1 else seq[0]
+        if isinstance(f, Exception):
+            raise f
+        return f
+
+    w = SpectateWatcher(
+        capture,
+        lambda: state,
+        lambda moves, depth, est: calls.moves.append((moves, depth, est)),
+        lambda observed, reason: calls.reimports.append((observed, reason)),
+        lambda kind, text: calls.status.append((kind, text)),
+        spectate_watch_settings({}),
+        hints_fn=hints,
+        clock=clock,
+    )
+    w.calls = calls
+    return w, calls
+
+
+def test_settings():
+    s = spectate_watch_settings({"spectate_poll_ms": 700, "auto_stop_sec": 60})
+    assert s.poll_interval_ms == 700 and s.auto_stop_sec == 0
+    assert spectate_watch_settings(None).poll_interval_ms == 1000
+    assert s.stable_frames == watch_settings_from_config({}).stable_frames
+
+
+def test_move_needs_two_identical_frames():
+    w, calls = make_watcher(frames=[G0_PLUS_B, G0_PLUS_B])
+    w.step()
+    assert calls.moves == []
+    w.step()
+    assert calls.moves == [(((0, 0, "B"),), 0, False)]
+
+
+def test_flicker_frame_is_ignored():
+    w, calls = make_watcher(frames=[G0_PLUS_B, G0, G0])
+    for _ in range(3):
+        w.step()
+    assert calls.moves == [] and calls.reimports == []
+
+
+def test_reimport_needs_two_identical_frames_and_fires_once():
+    w, calls = make_watcher(frames=[G0_MINUS_STONE] * 4)
+    for _ in range(4):
+        w.step()
+    assert len(calls.reimports) == 1
+
+
+def test_reimport_is_confirmed_at_idle_interval_not_fast():
+    w, calls = make_watcher(frames=[G0_MINUS_STONE] * 2)
+    w.step()
+    assert w.interval_ms == w.settings.poll_interval_ms and calls.reimports == []
+
+
+def test_moves_confirmation_is_fast():
+    w, calls = make_watcher(frames=[G0_PLUS_B] * 2)
+    w.step()
+    assert w.interval_ms == w.settings.poll_interval_active_ms
+
+
+def test_behind_does_nothing_and_shows_hint():
+    w, calls = make_watcher(frames=[ANCESTOR] * 3, ancestors=(ANCESTOR,))
+    for _ in range(3):
+        w.step()
+    assert calls.moves == [] and calls.reimports == [] and "過去の局面" in calls.status[-1][1]
+
+
+def test_no_second_append_until_state_advances():
+    w, calls = make_watcher(frames=[G0_PLUS_B] * 5)
+    for _ in range(5):
+        w.step()
+    assert len(calls.moves) == 1
+
+
+def test_never_auto_stops_and_never_warns_stall():
+    w, calls = make_watcher(frames=[G0] * 3, clock_step=3600.0)
+    for _ in range(3):
+        w.step()
+    assert calls.idle_stops == 0 and not any(k == STATUS_WARN for k, _ in calls.status)
+    assert not w._stopped.is_set()
+
+
+def test_in_sync_status_only_on_transition():
+    w, calls = make_watcher(frames=[G0] * 3)
+    for _ in range(3):
+        w.step()
+    assert len(calls.status) == 1
+
+
+def test_capture_failure_warns_but_keeps_running():
+    w, calls = make_watcher(frames=[PermanentCaptureError("窓が無い"), G0])
+    w.step()
+    assert calls.status[-1][0] == STATUS_WARN
+    w.step()
+    assert calls.moves == [] and calls.reimports == []
+
+
+def test_step_once_applies_without_waiting():
+    w, calls = make_watcher(frames=[G0_PLUS_BWB])
+    assert w.step_once().kind == "moves" and len(calls.moves) == 1
+    assert calls.moves[0][2] is True
+
+
+def test_step_once_reimport_and_failure():
+    w, calls = make_watcher(frames=[G0_MINUS_STONE])
+    assert w.step_once().kind == "reimport" and len(calls.reimports) == 1
+    w, calls = make_watcher(frames=[PermanentCaptureError("x")])
+    assert w.step_once() is None and calls.status[-1][0] == STATUS_WARN
+
+
+def test_hints_exception_is_swallowed():
+    def bad():
+        raise RuntimeError("x")
+
+    w, calls = make_watcher(frames=[G0_PLUS_B] * 2, hints=bad)
+    w.step()
+    w.step()
+    assert len(calls.moves) == 1

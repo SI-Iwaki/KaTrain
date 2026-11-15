@@ -5,9 +5,20 @@
 
 import re
 from itertools import permutations
+import time
 from typing import NamedTuple, Optional
 
-from katrain.core.board_watch import BLACK, EMPTY, WHITE, apply_move_to_grid
+from katrain.core.board_watch import (
+    BLACK,
+    EMPTY,
+    STATUS_WATCHING,
+    WATCHING_TEXT,
+    WHITE,
+    BoardWatcher,
+    PermanentCaptureError,
+    apply_move_to_grid,
+    watch_settings_from_config,
+)
 
 # これを超える手数の差は並べ替えを試さず、走査順だけ試す
 SPECTATE_MAX_PERMUTE = 6
@@ -201,3 +212,143 @@ def next_player_from(last_mover, app_move_number):
     if app_move_number is not None:
         return "W" if app_move_number % 2 == 1 else "B"
     return None
+
+
+BEHIND_TEXT = "アプリが過去の局面を表示中のため反映を待っています"
+
+
+class SpectateState(NamedTuple):
+    tip_grid: list
+    to_play: str
+    tip_move_number: Optional[int]
+    tip_depth: int
+    board_size: int
+    ancestor_grids: tuple = ()
+
+
+def spectate_watch_settings(cfg):
+    """観戦用の監視設定。周期は spectate_poll_ms、自動停止は無し、他は対局監視と同じ"""
+    d = cfg or {}
+    base = watch_settings_from_config(d)
+    return base._replace(poll_interval_ms=int(d.get("spectate_poll_ms", 1000)), auto_stop_sec=0)
+
+
+def _key(grid):
+    return tuple("".join(row) for row in grid)
+
+
+class SpectateWatcher(BoardWatcher):
+    """観戦用の監視ループ。アプリ盤が本譜の末尾から進んだ分を on_moves / on_reimport で知らせる"""
+
+    def __init__(
+        self, capture_fn, get_state_fn, on_moves, on_reimport, on_status, settings, hints_fn=None, clock=time.monotonic
+    ):
+        super().__init__(
+            capture_fn,
+            get_state_fn,
+            None,
+            on_status,
+            settings,
+            clock=clock,
+            active_kinds=(),
+            on_idle_stop=None,
+            player_color_fn=None,
+            on_new_game=None,
+        )
+        self.on_moves = on_moves
+        self.on_reimport = on_reimport
+        self.hints_fn = hints_fn
+        self._cand = None  # 確認中の判定の鍵
+        self._cand_count = 0
+        self._fired = None  # 発火済みの鍵（状態か観測盤が変わるまで投げ直さない）
+        self._mode = None  # 直近の状態表示 ("in_sync" / "behind")
+
+    def _hints(self):
+        if self.hints_fn is None:
+            return None, None
+        try:
+            last_mover, number = self.hints_fn()
+            return last_mover, number
+        except Exception:
+            return None, None
+
+    def _verdict(self, observed, state):
+        last_mover, number = self._hints()
+        return spectate_sync(
+            state.tip_grid,
+            observed,
+            state.to_play,
+            last_mover=last_mover,
+            app_move_number=number,
+            tip_move_number=state.tip_move_number,
+            ancestor_grids=state.ancestor_grids,
+        )
+
+    @staticmethod
+    def _verdict_key(verdict, observed, state):
+        if verdict.kind == "moves":
+            return ("moves", verdict.moves, state.tip_depth, _key(observed))
+        return ("reimport", _key(observed), _key(state.tip_grid))
+
+    def _fire(self, verdict, observed, state):
+        if verdict.kind == "moves":
+            self.on_moves(verdict.moves, state.tip_depth, verdict.estimated)
+        else:
+            self.on_reimport([row[:] for row in observed], verdict.reason)
+
+    def _reset_confirmation(self):
+        self._cand = None
+        self._cand_count = 0
+
+    def step(self):
+        try:
+            observed = self.capture_fn()
+        except Exception as e:
+            self._on_capture_failure(str(e), permanent=isinstance(e, PermanentCaptureError))
+            return
+        self._on_capture_success()
+        state = self.get_state_fn()
+        if state is None:
+            return
+        verdict = self._verdict(observed, state)
+        if verdict.kind in ("in_sync", "behind"):
+            self._reset_confirmation()
+            self._fired = None
+            if self._mode != verdict.kind:
+                self._mode = verdict.kind
+                self.on_status(STATUS_WATCHING, WATCHING_TEXT if verdict.kind == "in_sync" else BEHIND_TEXT)
+            return
+        self._mode = None
+        key = self._verdict_key(verdict, observed, state)
+        if verdict.kind == "moves":
+            self._active()  # 確定待ちは速く回す（reimport は通常周期のまま）
+        if key == self._fired:
+            return
+        if key == self._cand:
+            self._cand_count += 1
+        else:
+            self._cand = key
+            self._cand_count = 1
+        if self._cand_count < self.settings.stable_frames:
+            return
+        self._reset_confirmation()
+        self._fired = key
+        self._fire(verdict, observed, state)
+
+    def step_once(self):
+        """確定待ちをせず 1 回だけ判定して即コールバックする（「今すぐ反映」用）"""
+        try:
+            observed = self.capture_fn()
+        except Exception as e:
+            self._on_capture_failure(str(e), permanent=isinstance(e, PermanentCaptureError))
+            return None
+        self._on_capture_success()
+        state = self.get_state_fn()
+        if state is None:
+            return None
+        verdict = self._verdict(observed, state)
+        if verdict.kind in ("moves", "reimport"):
+            self._reset_confirmation()
+            self._fired = self._verdict_key(verdict, observed, state)
+            self._fire(verdict, observed, state)
+        return verdict
