@@ -1,3 +1,12 @@
+---
+description: 詰碁の着手選択 ai:tsumego と死活ソルバのパラメータ値（詰碁関連ファイル編集時に参照。値を変更したらこのファイルも同時に更新すること）
+paths:
+  - "katrain/core/tsumego*.py"
+  - "katrain/core/tsumego_solver/**"
+  - "native/tsumego/**"
+  - "tests/test_tsumego*.py"
+  - "docs/superpowers/specs/calibration-data/tsumego/**"
+---
 # 詰碁パラメータ リファレンス
 
 `ai:tsumego`（着手選択）と `ai:tsumego_solver`（死活ソルバ）のパラメータ値。

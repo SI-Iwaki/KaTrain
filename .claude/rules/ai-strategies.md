@@ -1,3 +1,8 @@
+---
+description: AI戦略（Human-like AI 拡張）の設計と実測（ai.py編集時に参照）
+paths:
+  - "katrain/core/ai.py"
+---
 # AI 戦略（Human-like AI 拡張）
 
 `katrain/core/ai.py` の戦略クラスを触る前に読む。パラメータの具体値は `ai-parameters.md`、

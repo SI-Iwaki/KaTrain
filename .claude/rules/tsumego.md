@@ -1,3 +1,12 @@
+---
+description: 詰碁（キャプチャ・出題・着手選択・死活ソルバ・回答帳）の設計と落とし穴・回帰手順（詰碁関連ファイル編集時に参照）
+paths:
+  - "katrain/core/tsumego*.py"
+  - "katrain/core/tsumego_solver/**"
+  - "native/tsumego/**"
+  - "tests/test_tsumego*.py"
+  - "docs/superpowers/specs/calibration-data/tsumego/**"
+---
 # 詰碁（キャプチャ・出題・着手選択・死活ソルバ・回答帳）
 
 `katrain/core/tsumego_*.py`、`katrain/core/tsumego_solver/`、`native/tsumego/`、

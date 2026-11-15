@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """PostToolUse hook: 触ったファイルに対応する .claude/rules/*.md を読むよう促す。
 
-`.claude/rules/` は Claude Code の組み込み機能ではなく自動ロードされないので、
+`.claude/rules/` の rules は `paths:` frontmatter で自動ロードされる想定だが、効かなかった実測（2026-08-21）があるので保険として、
 Read/Edit/Write が対象ファイルに触った時点で additionalContext に「読め」を注入する。
 セッションごとに rules 1本につき1回だけ出す（同じ促しの連投を避ける）。
 
@@ -89,7 +89,7 @@ def main():
 
     msg = (
         "[rules] `%s` に触りました。**着手する前に以下を Read すること**"
-        "（`.claude/rules/` は自動ロードされません）:\n%s" % (base, "\n".join(lines))
+        "（既にコンテキストにあれば不要です）:\n%s" % (base, "\n".join(lines))
     )
     print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": msg}}))
 

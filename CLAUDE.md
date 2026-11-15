@@ -8,7 +8,7 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 - 上流との同期: git remote `upstream`（`git fetch upstream --tags` で最新を取る。fork は v1.17.1.1 の tarball 起点で git 履歴を共有しないので merge はできず、cherry-pick も効かない＝差分を読んで手で移植する）。**2026-09-04 に v1.20.0 までの修正を移植済み**: エンジンのスレッド競合修正（`query_generation`・RLock・stdin flush をロック外へ）、`Game` のロック整理と `expected_node`、AI 待ちループの `raise_if_discarded`（新規対局中に AI が考えていると固まるバグ）、未知の戦略名のフォールバック、GIB パーサ、`show_move_numbers` / `anim_pv_moves` 設定、KataGo ダウンロード一覧 v1.18.1。**移植しなかったもの**: KivyMD 撤去（`widgets/material/`）、`pysgf` への置換、リモートエンジン（websocket）、ruff 整形、Ctrl+H への reset-analysis 移動、同梱エンジン／モデルの更新（TensorRT 版は手動管理＝解析条件が変わるので校正のやり直しが要る。**2026-09-04 に A/B 実測のうえ v1.18.2 CUDA＋transformer b10c384 へ切替**: 難解の E 尺度は不変、解析は +34〜54% 速いが、詰碁 E2E の回帰点 2 件〈F2@4・AA@6〉がネット起因で 3/3 壊れた。**同日に詰碁を再校正済み**（同ディレクトリの results §8）: AA@6 は PV コウ検出の「打つ側の既存コウ」除外〈判定のみ・解析不変〉で 3/3 回復、F2@4 はネットの読みそのもの＝既知限界、O@0 は PV 依存の揺れ 1〜2/3。回答帳 538 手順は 320→302〈破損 60・回復 42＝機構別の失敗率は不変の拡散した揺れ〉、閾値〈gain_epsilon / points_epsilon〉は反実仮想で差引 +4 以下＝動かさない。記録と切替用 config は `docs/superpowers/specs/calibration-data/engine-ab/`）
 - ランタイム設定: `C:\Users\iwaki\.katrain\`
 
-主な改修は3系統。**着手する前に該当 rules を Read すること**（`.claude/rules/` は自動ロードされない＝「開発ワークフロー」節参照）:
+主な改修は3系統。該当 rules は `paths:` frontmatter で対象ファイルに触れた時点でロードされる（**コンテキストに無ければ着手前に Read**＝「開発ワークフロー」節参照）:
 
 | 系統 | 内容 | 触る前に読む |
 |---|---|---|
@@ -78,15 +78,18 @@ katrain/
     tsumego_solver/      -- 死活ソルバ本体（model/board/reference=Python参照実装、native=Rustカーネルctypesラッパ+DLL）
     tsumego_solver_api.py -- ソルバセッション（§9.1照会プロトコル・コウ禁回避・再抽出・投機・永続キャッシュ）
     tsumego_answer_book.py -- 回答帳（正解手順の記録と、盤の8対称キーで一致する再出題の0秒再生）
+    log_archive.py    -- 30日より古い詰碁ログを logs/archive/tsumego_YYYYMM.zip へ畳む
+    move_difficulty.py -- 盤面監視の輪の難易度判定（明らか／普通／難解）
     ...               -- utils.py, lang.py, contribute_engine.py, tsumego_frame.py 等
   gui/                -- Kivy GUIウィジェット
     theme_manager.py  -- 盤面テーマ（盤・碁石）の一覧と切り替え（設定 general/board_theme）
     ai_help.py        -- AI設定画面の説明欄（概要＋「■ 英語キー（日本語名）［既定］: 解説」の一覧。訳文は .po の aiopt:<key>）
   themes/             -- 同梱の盤面テーマ（koast / lizzie / milos。1テーマ=1ディレクトリ）
-native/tsumego/       -- 死活ソルバの Rust カーネル（DFS+df-pn。ビルド: cargo build --release --target x86_64-pc-windows-gnu → katrain/core/tsumego_solver/katrain_tsumego.dll へコピー）
   config.json         -- パッケージ同梱のデフォルト設定
   i18n/               -- 多言語リソース
+native/tsumego/       -- 死活ソルバの Rust カーネル（DFS+df-pn。ビルド: cargo build --release --target x86_64-pc-windows-gnu → katrain/core/tsumego_solver/katrain_tsumego.dll へコピー）
 tests/                -- テスト
+tools/                -- compile_mo.py（.po→.mo）/ build_manual.py / manual_screenshots.py / grep_tsumego_logs.py / warm_katago_sac.ps1
 katrain_debug/        -- 戦略デバッグCLIツール（KaTrain本体と独立）
   cli.py              -- argparseエントリポイント
   runner.py           -- SGF→局面構築→戦略実行パイプライン（単一局面）
@@ -102,7 +105,7 @@ katrain_debug/        -- 戦略デバッグCLIツール（KaTrain本体と独立
 
 **利用者向けマニュアル**: `docs/manual/index.html`（ブラウザで開く。本文は `docs/manual/src/*.html`、`python tools/build_manual.py` で連結、スクショは `python tools/manual_screenshots.py` で KaTrain を起動して自動撮影＝spec `2026-08-29-user-manual-design.md`）。戦略・設定を変えたらここも更新する
 
-**設計・実測の一次記録**: `docs/superpowers/specs/` に全55本。索引は `docs/superpowers/specs/INDEX.md`（実装済み／REJECT／未実装の別つき）。**大きい spec は全読みせず Grep で該当節だけ引く**（最大は詰碁の ownership 199KB / solver 150KB）
+**設計・実測の一次記録**: `docs/superpowers/specs/`。索引は `docs/superpowers/specs/INDEX.md`（実装済み／REJECT／未実装の別つき）。**大きい spec は全読みせず Grep で該当節だけ引く**（最大は詰碁の ownership 199KB / solver 150KB）
 
 **校正・ベースラインデータ**: `docs/superpowers/specs/calibration-data/<機能名>/` のサブディレクトリに機能別で格納。命名規則: `<モード>-vs-<相手>-<YYYYMMDD>[-<色>].sgf`、結果は `<機能>-results-<YYYYMMDD>.md`。既存 SGF は `clean_sgf_main_line.py` で main-line 化してから使う
 
@@ -136,7 +139,7 @@ python -m katrain
 ```bash
 python -m katrain_debug --sgf FILE --move N --strategy hunt [--settings key=val ...] [--output text|json]
 ```
-対応戦略: `human`, `pro`, `fighting`, `siege`, `hunt`, `hunt_diverge`, `diverge` 等26種。`--output json` でパース可能な構造化出力。
+対応戦略: `human`, `pro`, `fighting`, `siege`, `hunt`, `hunt_diverge`, `diverge` 等（一覧は `katrain_debug/runner.py` の `STRATEGY_NAME_MAP`）。`--output json` でパース可能な構造化出力。
 
 **バッチ評価モード（`--batch`）**: 1局通しでAI最善手一致率・平均損失・正確度を算出。パラメータ調整に使用:
 ```bash
@@ -224,7 +227,7 @@ python -m katrain_debug.selfplay report-sgf FILE.sgf
 
 ## 開発ワークフロー
 
-- 詳細な実装ガイド・チェックリストは `.claude/rules/` に格納。**これらは自動ではコンテキストに入らない**（`.claude/rules/` は Claude Code の組み込み機能ではない。`.claude/settings.json` の PostToolUse フック `.claude/hooks/rules_reminder.py` が触った時点で**読めと促すだけ**で、中身は入らない）。**対象を触る前に自分で Read すること**:
+- 詳細な実装ガイド・チェックリストは `.claude/rules/` に格納。`.claude/rules/` は Claude Code の組み込み機能で、**`paths:` frontmatter の無い rules は毎セッション全文がロードされる**（2026-11-15 の実測: frontmatter の無かった3本＝187KB が常時ロードされていた）ので、全 rules に `paths:` を付けてある＝対象ファイルに触れた時点でロードされる。ただし 2026-08-21 に「`paths:` つきの rules が一度もロードされていなかった」実測があるため、保険として `.claude/settings.json` の PostToolUse フック `.claude/hooks/rules_reminder.py` が触った時点で読めと促す。**rules を足すときは必ず `paths:` を付ける**。**該当 rules がコンテキストに無ければ、対象を触る前に自分で Read すること**:
 
   | 触る対象 | 読む rules |
   |---|---|
@@ -268,4 +271,4 @@ python -m katrain_debug --sgf tests/data/panda1.sgf --strategy hunt --batch --pl
 
 ## 現在のパラメータ値
 
-戦略は `.claude/rules/ai-parameters.md`、詰碁は `.claude/rules/tsumego-parameters.md`。**自動ロードされないので `ai.py` を触る前に Read すること**。
+戦略は `.claude/rules/ai-parameters.md`、詰碁は `.claude/rules/tsumego-parameters.md`。**コンテキストに無ければ `ai.py` を触る前に Read すること**。
