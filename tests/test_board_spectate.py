@@ -500,3 +500,11 @@ def test_rebuilding_the_game_and_stopping_the_watcher_end_the_spectate_session()
 def test_game_watch_hotkey_ends_spectating_before_starting():
     trigger = ast.get_source_segment(_main_source(), _main_functions()["_board_watch_trigger"])
     assert "_spectate_session" in trigger and '"spectate-stop"' in trigger
+
+
+def test_info_change_discards_old_komi_queries_before_reanalysing():
+    # GameNode.set_analysis は世代を見ない＝古いコミのクエリの遅れた結果が、消したばかりの解析に混ざる
+    calls = _calls(_main_functions()["_do_spectate_info"])
+    discard = min(line for line, name in calls if name == "on_new_game")
+    reanalyse = min(line for line, name in calls if name == "analyze_all_nodes")
+    assert discard < reanalyse

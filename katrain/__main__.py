@@ -2412,7 +2412,11 @@ class KaTrainGui(Screen, KaTrainBase):
         session["agehama_base"] = base
         game.capture_base = capture_base_for(*base)
         if (spectate_rules(root.ruleset), root.komi, root.engine_komi_offset) != before:
-            game.analyze_all_nodes(even_if_present=True)  # ルールかエンジンに渡すコミが変わった
+            # ルールかエンジンに渡すコミが変わった＝解析をやり直す。走っている古いコミのクエリは先に捨てる
+            # （set_analysis は世代を見ないので、遅れて届いた結果が消したばかりの解析に混ざる。対局の編集
+            # ポップアップの再解析〈popups.NewGamePopup.update_config〉と同じ順）
+            self.engine.on_new_game()
+            game.analyze_all_nodes(even_if_present=True)
         self._spectate_refresh_text(session)
         self.log(
             f"spectate: 対局情報を反映しました（{rules}・コミ{komi}・取り込み時点のアゲハマ 黒{base[0]} 白{base[1]}・"
