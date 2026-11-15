@@ -51,6 +51,9 @@ def test_spectate_bar_is_static_and_hidden_when_inactive():
     assert "opacity: 1 if root.spectate_active else 0" in bar and "disabled: not root.spectate_active" in bar
     assert "root.spectate_text" in bar
     assert "disabled: root.spectate_auto" in bar  # 「今すぐ反映」は自動反映 ON の間は無効
+    # kv の root は WeakProxy で、直接は呼べない（押した瞬間に TypeError: WeakProxy object is not callable＝実機 2026-11-15）。
+    # メッセージは app.gui(...) で送る
+    assert 'root("' not in kv
     for msg in ("spectate-toggle-auto", "spectate-sync-now", "spectate-info-popup", "spectate-stop"):
         assert msg in bar
     # バーは TsumegoBookBanner の直前（既存レイアウトの並びを変えない）
@@ -61,7 +64,7 @@ def test_auto_button_follows_property_not_own_state():
     bar = block(read("katrain/gui.kv"), "SpectateBar:")
     # 行の先頭は「盤を拡大」なので、id で自動反映ボタンのブロックを取る
     auto = bar[bar.index("id: spectate_auto_button") : bar.index("id: spectate_sync_button")]
-    assert "root.spectate_auto" in auto and 'root("spectate-toggle-auto")' in auto and "ToggleButton" not in bar
+    assert "root.spectate_auto" in auto and 'app.gui("spectate-toggle-auto")' in auto and "ToggleButton" not in bar
 
 
 def test_info_popup_layout_in_popups_kv():

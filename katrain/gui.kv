@@ -1247,7 +1247,7 @@
                                     text: i18n._('spectate:auto')
                                     background_color: Theme.LIGHTER_BACKGROUND_COLOR if root.spectate_auto else Theme.BACKGROUND_COLOR
                                     outline_color: Theme.BUTTON_BORDER_COLOR if root.spectate_auto else Theme.BUTTON_INACTIVE_COLOR
-                                    on_left_press: root("spectate-toggle-auto")
+                                    on_left_press: app.gui("spectate-toggle-auto")
                                 AutoSizedRectangleButton:
                                     id: spectate_sync_button
                                     size_hint: None, None
@@ -1257,7 +1257,7 @@
                                     text: i18n._('spectate:sync-now')
                                     disabled: root.spectate_auto
                                     opacity: 0.4 if self.disabled else 1
-                                    on_left_press: root("spectate-sync-now")
+                                    on_left_press: app.gui("spectate-sync-now")
                                 AutoSizedRectangleButton:
                                     id: spectate_info_button
                                     size_hint: None, None
@@ -1265,7 +1265,7 @@
                                     _font_size: sp(13)
                                     width: self.label.texture_size[0] + dp(12)
                                     text: i18n._('spectate:info')
-                                    on_left_press: root("spectate-info-popup")
+                                    on_left_press: app.gui("spectate-info-popup")
                                 AutoSizedRectangleButton:
                                     id: spectate_stop_button
                                     size_hint: None, None
@@ -1273,7 +1273,7 @@
                                     _font_size: sp(13)
                                     width: self.label.texture_size[0] + dp(12)
                                     text: i18n._('spectate:stop')
-                                    on_left_press: root("spectate-stop")
+                                    on_left_press: app.gui("spectate-stop")
                                 Widget:
                         TsumegoBookBanner:
                             id: tsumego_book_banner
