@@ -11,6 +11,7 @@ from typing import NamedTuple, Optional
 
 from katrain.core.board_watch import (
     BLACK,
+    BOARD_PROFILES,
     EMPTY,
     STATUS_WATCHING,
     WATCHING_TEXT,
@@ -190,7 +191,8 @@ def read_spectate_info(reader, ocr=None):
     読めない項目は None のまま（呼び出し側が入力欄の値を使う）。ルールは窓タイトル優先
     """
     last_mover = reader.last_mover_color()
-    if reader.profile_name() != "fox":
+    profile = BOARD_PROFILES.get(reader.profile_name())
+    if profile is None or not profile.reads_info:
         return SpectateInfo(next_player=next_player_from(last_mover, None))
     if ocr is None:
         from katrain.core import screen_ocr

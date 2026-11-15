@@ -110,7 +110,9 @@
         "poll_interval_max_ms": 2000,
         "highlight_color": "cyan",
         "move_cursor": false,
-        "highlight_difficulty": false
+        "highlight_difficulty": false,
+        "spectate_hotkey": "ctrl+alt+w",
+        "spectate_poll_ms": 1000
     },
     "tsumego_autoloop": {
         "enabled": true,

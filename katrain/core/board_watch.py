@@ -8,6 +8,7 @@ KaTrain の Move.coords = (x, y) は **y が下origin**（sgf_parser.py:31-39）
 この変換漏れは実測済みのバグ源なので、変換は必ずこのモジュールの純関数を通す。
 """
 
+import os
 import threading
 import time
 from typing import NamedTuple, Optional, Tuple
@@ -1355,3 +1356,80 @@ def watch_toggle_action(running, banner_kind):
     if banner_kind and banner_kind != STATUS_IDLE:
         return "clear"
     return "start"
+
+
+# --- 盤種プロファイルの表（AppBoardReader.profile_name() の戻り値と対応。観戦の対局情報を読むかの判定に使う） ---
+class BoardProfile(NamedTuple):
+    name: str
+    label: str
+    reads_info: bool  # 窓タイトル・パネルから対局情報（ルール・コミ・アゲハマ）を読めるか
+
+
+BOARD_PROFILES = {
+    "quest": BoardProfile("quest", "黄盤（囲碁クエスト系）", False),
+    "wood": BoardProfile("wood", "明るい木目盤", False),
+    "fox": BoardProfile("fox", "野狐囲碁 PC 版", True),
+}
+
+
+def save_sample(window_title, out_dir):
+    """対局窓を1枚撮って out_dir/sample_<YYYYMMDD_HHMMSS>.png に保存し、そのパスを返す（新しい盤種の調査用）。
+
+    窓が見つからなければ RuntimeError。Kivy・KataGo には依存しない
+    """
+    find_window_rect, capture_screen_rect, _detect_board, _classify = _capture_api()
+    rect = find_window_rect(window_title)
+    if rect is None:
+        raise RuntimeError("window not found: %s" % window_title)
+    img = capture_screen_rect(rect)
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, "sample_%s.png" % time.strftime("%Y%m%d_%H%M%S"))
+    img.save(path)
+    return path
+
+
+def _default_window_title():
+    """ユーザー設定の board_watch.window_title、読めなければ同梱設定の値"""
+    import json
+
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    for path in (os.path.join(os.path.expanduser("~"), ".katrain", "config.json"), os.path.join(here, "config.json")):
+        try:
+            with open(path, encoding="utf-8") as f:
+                title = json.load(f)["board_watch"]["window_title"]
+            if title:
+                return title
+        except Exception:
+            continue
+    return ""
+
+
+def _main(argv=None):
+    import argparse
+
+    ap = argparse.ArgumentParser(prog="python -m katrain.core.board_watch")
+    ap.add_argument(
+        "--save-sample",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="WINDOW_TITLE",
+        help="capture the game window once and save a PNG (default title: board_watch.window_title)",
+    )
+    ap.add_argument("--out-dir", default=os.path.join(os.path.expanduser("~"), ".katrain", "board_samples"))
+    args = ap.parse_args(argv)
+    if args.save_sample is None:
+        ap.print_help()
+        return 0
+    title = args.save_sample or _default_window_title()
+    try:
+        path = save_sample(title, args.out_dir)
+    except Exception as e:
+        print("save-sample failed: %s" % (str(e).encode("ascii", "replace").decode("ascii"),))
+        return 1
+    print("saved: %s" % (path.encode("ascii", "replace").decode("ascii"),))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())

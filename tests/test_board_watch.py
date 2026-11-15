@@ -1701,3 +1701,33 @@ def test_toggle_restarts_right_away_after_auto_stop():
 
 def test_toggle_starts_when_nothing_is_shown():
     assert bw.watch_toggle_action(running=False, banner_kind="") == "start"
+
+
+def test_every_reader_profile_is_registered():
+    assert set(bw.BOARD_PROFILES) == {"quest", "wood", "fox"} and bw.BOARD_PROFILES["fox"].reads_info
+    assert not bw.BOARD_PROFILES["quest"].reads_info and not bw.BOARD_PROFILES["wood"].reads_info
+
+
+def test_save_sample_writes_png(tmp_path, monkeypatch):
+    from PIL import Image
+
+    monkeypatch.setattr(
+        bw, "_capture_api", lambda: (lambda t: (0, 0, 300, 300), lambda r: Image.new("RGB", (300, 300)), None, None)
+    )
+    out = tmp_path / "nested" / "samples"
+    path = bw.save_sample("x", str(out))
+    assert os.path.basename(path).startswith("sample_") and path.endswith(".png")
+    assert Image.open(path).size == (300, 300)
+
+
+def test_save_sample_without_window_raises(tmp_path, monkeypatch):
+    monkeypatch.setattr(bw, "_capture_api", lambda: (lambda t: None, None, None, None))
+    with pytest.raises(RuntimeError):
+        bw.save_sample("x", str(tmp_path))
+
+
+def test_packaged_config_has_spectate_keys():
+    import json
+
+    cfg = json.load(open("katrain/config.json", encoding="utf-8"))["board_watch"]
+    assert cfg["spectate_hotkey"] == "ctrl+alt+w" and cfg["spectate_poll_ms"] == 1000
