@@ -1880,3 +1880,27 @@ msgstr "Match-Rate Reduction"
 
 msgid "aihelp:diverge_move"
 msgstr "Human-like play that lowers the AI best-move match rate in the game report. Each candidate's humanPolicy is multiplied by (KataGo rank + 1) to the power of divergence_power, so moves ranked lower by KataGo are boosted. Moves losing more than diverge_score_filter points are excluded. human_kyu_rank sets the human profile. Requires the human-like model."
+
+msgid "spectate:auto"
+msgstr "Auto sync"
+
+msgid "spectate:sync-now"
+msgstr "Sync now"
+
+msgid "spectate:info"
+msgstr "Game info"
+
+msgid "spectate:stop"
+msgstr "Stop"
+
+msgid "spectate:info-title"
+msgstr "Game info (spectate)"
+
+msgid "spectate:agehama-b"
+msgstr "Black captures"
+
+msgid "spectate:agehama-w"
+msgstr "White captures"
+
+msgid "spectate:next-player"
+msgstr "Next player"

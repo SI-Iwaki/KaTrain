@@ -108,7 +108,7 @@ from katrain.core.game import (
     region_analysis_extra_settings,
 )
 from katrain.core.sgf_parser import Move, ParseError
-from katrain.gui.popups import ConfigPopup, LoadSGFPopup, NewGamePopup, ConfigAIPopup
+from katrain.gui.popups import ConfigPopup, LoadSGFPopup, NewGamePopup, ConfigAIPopup, SpectateInfoPopup
 from katrain.gui import theme_manager
 from katrain.gui.theme import Theme
 from kivymd.app import MDApp
@@ -154,6 +154,7 @@ class KaTrainGui(Screen, KaTrainBase):
         self.ai_settings_popup = None
         self.teacher_settings_popup = None
         self.timer_settings_popup = None
+        self.spectate_info_popup = None
         self.contribute_popup = None
 
         self.pondering = False
@@ -890,6 +891,21 @@ class KaTrainGui(Screen, KaTrainBase):
             ).__self__
             self.timer_settings_popup.content.popup = self.timer_settings_popup
         self.timer_settings_popup.open()
+
+    def _do_spectate_info_popup(self):
+        """観戦の対局情報の入力欄を開く（Kivy スレッド）。ポップアップは初回だけ作り、開くたびに現在値を入れ直す"""
+        session = getattr(self, "_spectate_session", None)
+        if session is None:
+            return
+        if not self.spectate_info_popup:
+            self.spectate_info_popup = I18NPopup(
+                title_key="spectate:info-title", size=[dp(600), dp(560)], content=SpectateInfoPopup(self)
+            ).__self__
+            self.spectate_info_popup.content.popup = self.spectate_info_popup
+        tip = session.get("tip")
+        has_moves = tip is not None and tip is not tip.root
+        self.spectate_info_popup.content.load_values(self.spectate_info_values(), has_moves)
+        self.spectate_info_popup.open()
 
     def _do_teacher_popup(self):
         self.controls.timer.paused = True

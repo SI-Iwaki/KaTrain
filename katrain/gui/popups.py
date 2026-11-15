@@ -278,6 +278,51 @@ class ConfigTimerPopup(QuickConfigGui):
         self.katrain.update_state()
 
 
+class SpectateInfoPopup(MDBoxLayout):
+    """観戦の対局情報（ルール・コミ・アゲハマ・次の手番）の入力欄。ウィジェットは作り直さず、開くたびに値を入れ直す"""
+
+    def __init__(self, katrain, **kwargs):
+        super().__init__(**kwargs)
+        self.katrain = katrain
+        self.popup = None
+        self.rules_spinner.value_refs = [name for abbr, name in katrain.engine.RULESETS_ABBR]
+        self.next_player_spinner.value_refs = ["B", "W"]
+
+    def load_values(self, values, has_moves):
+        """spectate_info_values() の値を欄へ入れる。手順が 1 手でもあれば次の手番は変えられない"""
+        self.rules_spinner.select_key(values["rules"])
+        self.komi_input.text = f"{values['komi']:g}"
+        self.agehama_b_input.text = str(values["agehama_b"])
+        self.agehama_w_input.text = str(values["agehama_w"])
+        self.next_player_spinner.select_key(values["next_player"])
+        self.next_player_spinner.disabled = bool(has_moves)
+        for field in (self.komi_input, self.agehama_b_input, self.agehama_w_input):
+            field.error = False
+
+    def confirm(self):
+        from katrain.core.board_spectate import (
+            parse_spectate_captures,
+            parse_spectate_info_inputs,
+            parse_spectate_komi,
+        )
+
+        parsed = parse_spectate_info_inputs(
+            self.rules_spinner.selected[1],
+            self.komi_input.text,
+            self.agehama_b_input.text,
+            self.agehama_w_input.text,
+            self.next_player_spinner.selected[1],
+        )
+        self.komi_input.error = parse_spectate_komi(self.komi_input.text) is None
+        self.agehama_b_input.error = parse_spectate_captures(self.agehama_b_input.text) is None
+        self.agehama_w_input.error = parse_spectate_captures(self.agehama_w_input.text) is None
+        if parsed is None:
+            return  # 数値でない入力は確定させない（欄を赤くして開いたまま）
+        self.katrain("spectate-info", *parsed)
+        if self.popup:
+            self.popup.dismiss()
+
+
 class NewGamePopup(QuickConfigGui):
     mode = StringProperty("newgame")
 

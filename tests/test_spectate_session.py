@@ -265,7 +265,7 @@ def test_stop_restores_players_and_keeps_the_game_attributes(h):
 def test_unread_komi_and_turn_fall_back_and_ask(h):
     start(h, info=SpectateInfo())
     assert h.game.root.next_player == "W" and h.game.root.komi == h.config("game/komi")
-    assert any("入力欄は未実装" in m for m in h.logs)  # 入力欄（Task 6）が無ければログだけ
+    assert ("spectate-info-popup", (), {}) in h.messages  # 入力欄（Task 6）の _do_spectate_info_popup がある
     h2 = Harness()
     h2._do_spectate_info_popup = lambda: None
     start(h2, info=SpectateInfo())

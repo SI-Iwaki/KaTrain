@@ -548,3 +548,28 @@ def spectate_status_text(tip_depth, base_move_number, rules, komi, agehama_b, ag
     else:
         label = "独自ルール"  # RU に JSON で書かれたルール
     return f"{head}  {label} コミ{float(komi):g}  アゲハマ 黒{agehama_b} 白{agehama_w}"
+
+
+def parse_spectate_komi(text):
+    """対局情報の入力欄のコミ。有限の数でなければ None"""
+    try:
+        value = float(str(text).strip())
+    except (TypeError, ValueError):
+        return None
+    return value if value == value and abs(value) != float("inf") else None
+
+
+def parse_spectate_captures(text):
+    """対局情報の入力欄のアゲハマ。0 以上の整数（数字だけ）でなければ None"""
+    t = str(text).strip()
+    return int(t) if t.isascii() and t.isdigit() else None
+
+
+def parse_spectate_info_inputs(rules, komi_text, agehama_b_text, agehama_w_text, next_player):
+    """対局情報の入力欄の検証。通れば (rules, komi, agehama_b, agehama_w, next_player)、どれか不正なら None"""
+    komi = parse_spectate_komi(komi_text)
+    agehama_b = parse_spectate_captures(agehama_b_text)
+    agehama_w = parse_spectate_captures(agehama_w_text)
+    if not rules or komi is None or agehama_b is None or agehama_w is None or next_player not in ("B", "W"):
+        return None
+    return rules, komi, agehama_b, agehama_w, next_player

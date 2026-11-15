@@ -2704,3 +2704,27 @@ msgid "aiopt:tie_ko_screen"
 msgstr ""
 "コウ経路の検査（クラスの裁定）\n"
 "ON で、選んだ手がコウになる手順につながるかを子局面の解析で構造的に検査し、コウでない（無条件の）対抗馬が目数の同着幅の中にいて、しかも実際に成立しているならそちらへ差し替えます（詰碁の順序: 無条件 > コウ）。逆に、選んだ手が無条件でも詰碁として失敗しているなら、コウの手へ格上げします。"
+
+msgid "spectate:auto"
+msgstr "自動反映"
+
+msgid "spectate:sync-now"
+msgstr "今すぐ反映"
+
+msgid "spectate:info"
+msgstr "対局情報"
+
+msgid "spectate:stop"
+msgstr "終了"
+
+msgid "spectate:info-title"
+msgstr "対局情報（観戦）"
+
+msgid "spectate:agehama-b"
+msgstr "黒のアゲハマ"
+
+msgid "spectate:agehama-w"
+msgstr "白のアゲハマ"
+
+msgid "spectate:next-player"
+msgstr "次の手番"

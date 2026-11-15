@@ -719,6 +719,61 @@
 <HideyBoxLayout@BoxLayout>:
     opacity: 1 if self.size_hint_y > EPSILON else 0
 
+<SpectateInfoPopup>:
+    orientation: 'vertical'
+    spacing: CP_SPACING
+    padding: 4*CP_PADDING, CP_PADDING, 4*CP_PADDING, CP_PADDING
+    rules_spinner: rules_spinner
+    komi_input: komi_input
+    agehama_b_input: agehama_b_input
+    agehama_w_input: agehama_w_input
+    next_player_spinner: next_player_spinner
+    GridLayout:
+        cols: 2
+        rows: 5
+        spacing: CP_SPACING
+        DescriptionLabel:
+            text: i18n._("ruleset")
+        AnchorLayout:
+            LabelledSpinner:
+                size_hint: 0.95, 0.8
+                font_size: sp(Theme.DESC_FONT_SIZE)
+                id: rules_spinner
+        DescriptionLabel:
+            text: i18n._("komi")
+        AnchorLayout:
+            LabelledTextInput:
+                text: '6.5'
+                id: komi_input
+                write_tab: False
+                size_hint: 0.5, None
+        DescriptionLabel:
+            text: i18n._("spectate:agehama-b")
+        AnchorLayout:
+            LabelledIntInput:
+                text: '0'
+                id: agehama_b_input
+        DescriptionLabel:
+            text: i18n._("spectate:agehama-w")
+        AnchorLayout:
+            LabelledIntInput:
+                text: '0'
+                id: agehama_w_input
+        DescriptionLabel:
+            text: i18n._("spectate:next-player")
+        AnchorLayout:
+            LabelledSpinner:
+                size_hint: 0.95, 0.8
+                font_size: sp(Theme.DESC_FONT_SIZE)
+                id: next_player_spinner
+    AnchorLayout:
+        size_hint_y: 0.4
+        AutoSizedRoundedRectangleButton:
+            padding_x: 15
+            size_hint: None, 0.8
+            text: i18n._("update settings")
+            on_press: root.confirm()
+
 <NewGamePopup>:
     restart: restart
     rules_spinner: rules_spinner

@@ -343,6 +343,12 @@
         text: root.flash if root.flash else (root.watch_detail if root.watch_detail else (i18n._('tsumego:book-playing') if root.status=='playing' else (i18n._('tsumego:book-done') if root.status=='done' else (i18n._('tsumego:book-off') if root.status=='off' else ''))))
 
 
+# 観戦バー: 観戦中だけ盤の上に出る静的な帯（作り直さない）。観戦していないときは高さ0・不透明度0・無効
+<SpectateBar@MDBoxLayout+BackgroundMixin>:
+    background_color: Theme.BOX_BACKGROUND_COLOR
+    padding: [dp(6), dp(2), dp(6), dp(2)]
+    spacing: dp(6)
+
 <HamburgerButton@TransparentIconButton>:
     icon: 'hamburger.png'
     width: self.height
@@ -1198,6 +1204,50 @@
                             size_hint_y: None
                             height: 1 if root.zen > 0 or root.tsumego_view else max(sp(Theme.CONTROLS_PANEL_MIN_HEIGHT),min(sp(Theme.CONTROLS_PANEL_MAX_HEIGHT),self.width / Theme.CONTROLS_PANEL_ASPECT_RATIO))
                             opacity: 0 if root.zen > 0 or root.tsumego_view else 1
+                        SpectateBar:
+                            id: spectate_bar
+                            size_hint_y: None
+                            height: dp(34) if root.spectate_active else 0
+                            opacity: 1 if root.spectate_active else 0
+                            disabled: not root.spectate_active
+                            Label:
+                                font_name: i18n.font_name
+                                font_size: min(sp(16), 0.6 * self.height)
+                                color: Theme.TEXT_COLOR
+                                text_size: self.width, None
+                                halign: 'left'
+                                valign: 'middle'
+                                shorten: True
+                                shorten_from: 'right'
+                                text: root.spectate_text
+                            AutoSizedRectangleButton:
+                                id: spectate_auto_button
+                                size_hint_x: None
+                                width: self.label.texture_size[0] + dp(16)
+                                text: i18n._('spectate:auto')
+                                background_color: Theme.LIGHTER_BACKGROUND_COLOR if root.spectate_auto else Theme.BACKGROUND_COLOR
+                                outline_color: Theme.BUTTON_BORDER_COLOR if root.spectate_auto else Theme.BUTTON_INACTIVE_COLOR
+                                on_left_press: root("spectate-toggle-auto")
+                            AutoSizedRectangleButton:
+                                id: spectate_sync_button
+                                size_hint_x: None
+                                width: self.label.texture_size[0] + dp(16)
+                                text: i18n._('spectate:sync-now')
+                                disabled: root.spectate_auto
+                                opacity: 0.4 if self.disabled else 1
+                                on_left_press: root("spectate-sync-now")
+                            AutoSizedRectangleButton:
+                                id: spectate_info_button
+                                size_hint_x: None
+                                width: self.label.texture_size[0] + dp(16)
+                                text: i18n._('spectate:info')
+                                on_left_press: root("spectate-info-popup")
+                            AutoSizedRectangleButton:
+                                id: spectate_stop_button
+                                size_hint_x: None
+                                width: self.label.texture_size[0] + dp(16)
+                                text: i18n._('spectate:stop')
+                                on_left_press: root("spectate-stop")
                         TsumegoBookBanner:
                             id: tsumego_book_banner
                             status: root.tsumego_book_status
