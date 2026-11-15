@@ -2717,6 +2717,12 @@ msgstr "対局情報"
 msgid "spectate:stop"
 msgstr "終了"
 
+msgid "spectate:panel-hide"
+msgstr "盤を拡大"
+
+msgid "spectate:panel-show"
+msgstr "盤を戻す"
+
 msgid "spectate:info-title"
 msgstr "対局情報（観戦）"
 

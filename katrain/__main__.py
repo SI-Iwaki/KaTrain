@@ -141,6 +141,9 @@ class KaTrainGui(Screen, KaTrainBase):
     spectate_active = BooleanProperty(False)
     spectate_auto = BooleanProperty(True)
     spectate_text = StringProperty("")
+    # 観戦中に右パネルを畳んで盤を広げる（帯のボタン）。畳んでいる間は勝率・目差を帯の文言に添える
+    spectate_panel_hidden = BooleanProperty(False)
+    spectate_eval = StringProperty("")
     controls = ObjectProperty(None)
 
     def __init__(self, **kwargs):
@@ -262,6 +265,8 @@ class KaTrainGui(Screen, KaTrainBase):
 
         self.controls.players["W"].captures = prisoners["W"]
         self.controls.players["B"].captures = prisoners["B"]
+        if self.spectate_active:  # 右パネルを畳んでいても形勢が読めるように（帯が表示する）
+            self.spectate_eval = "  ".join(t for t in (cn.format_winrate(), cn.format_score()) if t)
 
         # update engine status dot
         if not self.engine or not self.engine.check_alive():

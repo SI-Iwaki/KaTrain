@@ -1893,6 +1893,12 @@ msgstr "Game info"
 msgid "spectate:stop"
 msgstr "Stop"
 
+msgid "spectate:panel-hide"
+msgstr "Bigger board"
+
+msgid "spectate:panel-show"
+msgstr "Show panel"
+
 msgid "spectate:info-title"
 msgstr "Game info (spectate)"
 

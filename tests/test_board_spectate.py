@@ -81,6 +81,12 @@ def test_three_moves_are_alternated_and_marked_estimated():
     assert replay(G0, v.moves) == G0_PLUS_BWB
 
 
+def test_two_moves_one_per_colour_have_a_determined_order():
+    # 早碁では確定待ちの間に 2 手進む。黒白 1 手ずつなら順序は 1 通り＝推定ではない
+    v = spectate_sync(G0, G0_PLUS_BW, "B", last_mover="W")
+    assert v.kind == "moves" and [m[2] for m in v.moves] == ["B", "W"] and not v.estimated
+
+
 def test_order_that_needs_capture_first_is_found():
     v = spectate_sync(NEEDS_ORDER, NEEDS_ORDER_AFTER, "B")
     assert v.kind == "moves" and replay(NEEDS_ORDER, v.moves) == NEEDS_ORDER_AFTER
@@ -143,6 +149,26 @@ def test_parse_fox_panel_real_ocr_lines():
 )
 def test_komi_table(text, komi, rules):
     assert parse_fox_panel([text])[:2] == (komi, rules)
+
+
+def test_japanese_room_komi_notation():
+    # 実機 2026-11-15: 日本ルールの部屋は「黒6.5目コミ出し」。見出しを読み違えても数字で拾う
+    assert parse_fox_panel(["黒 6 . 5 目 コ ミ 出 し"])[:2] == (6.5, "japanese")
+    assert parse_fox_panel(["黒6.5目。ミ出し", "0子アゲハマ2子"]) == (6.5, "japanese", 2, 0)
+    assert parse_fox_panel(["黒7目コミ出し"])[:2] == (7.0, "japanese")
+
+
+def test_full_width_digits_are_accepted_in_the_info_inputs():
+    from katrain.core.board_spectate import (
+        numeric_input_filter,
+        parse_spectate_captures,
+        parse_spectate_komi,
+    )
+
+    assert parse_spectate_komi("６．５") == 6.5 and parse_spectate_captures("１２") == 12
+    assert numeric_input_filter(True)("７．５", False) == "7.5"
+    assert numeric_input_filter(True)("あ6.5目", False) == "6.5"
+    assert numeric_input_filter(False)("３.2", False) == "32"
 
 
 def test_komi_is_found_even_when_the_label_is_misread():

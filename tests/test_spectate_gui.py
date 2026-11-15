@@ -13,6 +13,8 @@ KEYS = [
     "spectate:sync-now",
     "spectate:info",
     "spectate:stop",
+    "spectate:panel-hide",
+    "spectate:panel-show",
     "spectate:info-title",
     "spectate:agehama-b",
     "spectate:agehama-w",
@@ -42,7 +44,10 @@ def test_spectate_bar_is_static_and_hidden_when_inactive():
     bar = block(kv, "SpectateBar:")
     assert "height: dp(58) if root.spectate_active else 0" in bar
     # ボタンは高さとフォントを固定する（未指定だと文字が巨大化して上のパネルへはみ出す＝実機 2026-11-15）
-    assert bar.count("size_hint: None, None") == 4 and bar.count("_font_size: sp(14)") == 4
+    assert bar.count("size_hint: None, None") == 5 and bar.count("_font_size: sp(13)") == 5
+    # 右パネルを畳んで盤を広げるボタン（観戦中だけ効く）と、畳んでいる間の形勢の表示
+    assert "root.spectate_panel_hidden = not root.spectate_panel_hidden" in bar and "root.spectate_eval" in bar
+    assert kv.count("(root.spectate_active and root.spectate_panel_hidden)") == 2
     assert "opacity: 1 if root.spectate_active else 0" in bar and "disabled: not root.spectate_active" in bar
     assert "root.spectate_text" in bar
     assert "disabled: root.spectate_auto" in bar  # 「今すぐ反映」は自動反映 ON の間は無効
@@ -54,8 +59,9 @@ def test_spectate_bar_is_static_and_hidden_when_inactive():
 
 def test_auto_button_follows_property_not_own_state():
     bar = block(read("katrain/gui.kv"), "SpectateBar:")
-    auto = block(bar, "AutoSizedRectangleButton:")
-    assert "root.spectate_auto" in auto and "ToggleButton" not in bar
+    # 行の先頭は「盤を拡大」なので、id で自動反映ボタンのブロックを取る
+    auto = bar[bar.index("id: spectate_auto_button") : bar.index("id: spectate_sync_button")]
+    assert "root.spectate_auto" in auto and 'root("spectate-toggle-auto")' in auto and "ToggleButton" not in bar
 
 
 def test_info_popup_layout_in_popups_kv():

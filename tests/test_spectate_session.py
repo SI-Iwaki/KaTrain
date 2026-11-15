@@ -325,10 +325,19 @@ def test_append_keeps_the_cursor_while_browsing_and_redraws_the_tree(h):
 
 def test_estimated_moves_get_the_batch_note(h):
     reader = start(h)
+    # 白が 2 手入る 3 手ぶんの差＝白どうしの順序が分からない（各色 1 手ずつの 2 手は順序が決まるので推定にしない）
+    verdict = app_moves(h, reader, put(G0, (4, 4, "W"), (0, 0, "B"), (8, 8, "W")), "W")
+    first = h._spectate_session["tip"].parent.parent
+    assert verdict.estimated and first.note == "順序は推定（まとめて反映した 3 手）"
+    assert h.banner[-1] == (STATUS_WATCHING, "順序は推定（まとめて反映した 3 手）")
+
+
+def test_two_moves_one_per_colour_are_not_estimated(h):
+    reader = start(h)
     verdict = app_moves(h, reader, put(G0, (4, 4, "W"), (0, 0, "B")), "B")
-    first = h._spectate_session["tip"].parent
-    assert verdict.estimated and first.note == "順序は推定（まとめて反映した 2 手）"
-    assert h.banner[-1] == (STATUS_WATCHING, "順序は推定（まとめて反映した 2 手）")
+    tip = h._spectate_session["tip"]
+    assert verdict.kind == "moves" and not verdict.estimated and tip.depth == 2
+    assert not tip.note and not tip.parent.note
 
 
 def test_captures_after_import_add_to_the_totals(h):

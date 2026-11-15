@@ -287,6 +287,12 @@ class SpectateInfoPopup(MDBoxLayout):
         self.popup = None
         self.rules_spinner.value_refs = [name for abbr, name in katrain.engine.RULESETS_ABBR]
         self.next_player_spinner.value_refs = ["B", "W"]
+        # 日本語入力のまま打った全角数字は半角にして受ける（そのままだと欄のフォントに無く豆腐になる）
+        from katrain.core.board_spectate import numeric_input_filter
+
+        self.komi_input.input_filter = numeric_input_filter(True)
+        self.agehama_b_input.input_filter = numeric_input_filter(False)
+        self.agehama_w_input.input_filter = numeric_input_filter(False)
 
     def load_values(self, values, has_moves):
         """spectate_info_values() の値を欄へ入れる。手順が 1 手でもあれば次の手番は変えられない"""

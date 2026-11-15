@@ -4,6 +4,7 @@
 """
 
 import re
+import unicodedata
 from itertools import permutations
 import threading
 import time
@@ -103,7 +104,9 @@ def spectate_sync(
     if app_move_number is not None and tip_move_number is not None and tip_move_number + n != app_move_number:
         return SpectateVerdict("reimport", reason="手数が合わない")
 
-    estimated = n >= 2
+    # 各色 1 手ずつまでなら交互の順序は 1 通りに決まる（早碁では確定待ちの間に 2 手進むのが普通）。
+    # 同じ色が 2 手以上あるときだけ、その色の中の順序が分からない＝推定
+    estimated = len(blacks) >= 2 or len(whites) >= 2
     moves = _interleave(blacks, whites, colors)
     if _replay(tip_grid, moves) == observed:
         return SpectateVerdict("moves", moves, estimated)
@@ -160,6 +163,13 @@ def parse_fox_panel(lines):
         if any(key in x for x in squashed):
             komi, rules = k, r
             break
+    if komi is None:
+        # 日本ルールの部屋の表記「黒6.5目コミ出し」（実機 2026-11-15）。見出しの読み違いに備えて「コミ」には頼らない
+        for x in squashed:
+            m = re.search(r"(?<![\d.])(\d+(?:\.\d)?)目.{0,3}出し", x)
+            if m:
+                komi, rules = float(m.group(1)), "japanese"
+                break
     agehama_b = agehama_w = None
     for x in squashed:
         m = re.search(r"([0-9ロ〇Oo]+)子アゲ.{0,3}マ([0-9ロ〇Oo]+)子", x)
@@ -607,7 +617,7 @@ def spectate_status_text(tip_depth, base_move_number, rules, komi, agehama_b, ag
 def parse_spectate_komi(text):
     """対局情報の入力欄のコミ。有限の数でなければ None"""
     try:
-        value = float(str(text).strip())
+        value = float(unicodedata.normalize("NFKC", str(text)).strip())
     except (TypeError, ValueError):
         return None
     return value if value == value and abs(value) != float("inf") else None
@@ -615,8 +625,21 @@ def parse_spectate_komi(text):
 
 def parse_spectate_captures(text):
     """対局情報の入力欄のアゲハマ。0 以上の整数（数字だけ）でなければ None"""
-    t = str(text).strip()
+    t = unicodedata.normalize("NFKC", str(text)).strip()
     return int(t) if t.isascii() and t.isdigit() else None
+
+
+def numeric_input_filter(allow_dot):
+    """入力欄用のフィルタ（Kivy の input_filter）。日本語入力のままの全角数字を半角に直し、数字（と小数点）以外を捨てる。
+
+    捨てないと全角文字が欄のフォントに無く、豆腐（□）で表示される（実機 2026-11-15）
+    """
+    allowed = "0123456789." if allow_dot else "0123456789"
+
+    def _filter(substring, _from_undo=False):
+        return "".join(ch for ch in unicodedata.normalize("NFKC", substring) if ch in allowed)
+
+    return _filter
 
 
 def parse_spectate_info_inputs(rules, komi_text, agehama_b_text, agehama_w_text, next_player):
