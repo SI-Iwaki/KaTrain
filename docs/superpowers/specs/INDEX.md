@@ -167,4 +167,5 @@
 - `tsumego-web/` — Web キャプチャの実スクショ回帰（`validate_web_capture.py`）
 - `jigo-speedup/` `jigo-endgame/` `parity9/` `enigma9/` `board-watch/` `runs/` — 各機能の校正結果
 - `enigma-overdraft/` — 難解「捨て身の罠」の在庫の反実仮想（ハーネス `overdraft_cf.py`・集計 `overdraft_cf_report.py`・復元 SGF 18 局）
+- `enigma-relax/` — ⛔ **見送り**（2026-11-17）難解＋の余裕外し（大差の勝勢で最善手を自然な手へ外して一致率を下げる案。直後の数手番の罠が減るので本体から外した）: 結果 `enigma-relax-results-20261116.md`・実装の差分 `relax-implementation-20261116.patch`・判定の純関数 `relax_pick.py`・ログ反実仮想（`log_turns.py`・`relax_cf.py`）・自己対局 A/B の集計（`relax_ab_report.py`・`relax_ab_split.py`）・同じ局面の 2 分岐の反実仮想（`relax_branch_cf.py`）
 - `selfplay/` — 自己対局ハーネス（`python -m katrain_debug.selfplay`）: 実戦 13路 18局の復元 SGF と事後 2500v レポート（`recon/`）・校正目標 `calib_targets.py`・相手ボットのプール `opponent_pool_13.json`（calibrate の出力）・試作と計測・韜晦の反実仮想・9路（`recon_9/`・`window_stats.py`・調査の集計 `enigma9_log_stats.py` / `opp_bot_match9.py`・韜晦 spec §16）（`README.md` に一覧）

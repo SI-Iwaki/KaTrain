@@ -1,0 +1,3710 @@
+[
+ {
+  "best": "C3",
+  "relax": "J9",
+  "source": "would_fire",
+  "arm": "A",
+  "seed": 1000,
+  "color": "B",
+  "depth": 55,
+  "played": "C3",
+  "lead": 30.53,
+  "best_turns": [
+   {
+    "reply": "B11",
+    "move": "C7",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 4.49,
+    "trap_e1": 1.0,
+    "played_e": 4.49,
+    "admissible": 14,
+    "lead": 29.94
+   },
+   {
+    "reply": "J9",
+    "move": "J8",
+    "kind": "no_pool",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": 0,
+    "lead": 25.44
+   },
+   {
+    "reply": "J11",
+    "move": "K8",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 4.21,
+    "admissible": 24,
+    "lead": 25.59
+   },
+   {
+    "reply": "C12",
+    "move": "D12",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 3.38,
+    "admissible": 6,
+    "lead": 24.51
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "L6",
+    "move": "L7",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 2.58,
+    "trap_e1": 1.0,
+    "played_e": 2.58,
+    "admissible": 18,
+    "lead": 30.34
+   },
+   {
+    "reply": "B6",
+    "move": "C7",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 6.98,
+    "trap_e1": 1.0,
+    "played_e": 6.98,
+    "admissible": 22,
+    "lead": 26.31
+   },
+   {
+    "reply": "F4",
+    "move": "G6",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 2.18,
+    "trap_e1": 1.0,
+    "played_e": 2.18,
+    "admissible": 28,
+    "lead": 20.25
+   },
+   {
+    "reply": "F6",
+    "move": "F7",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 4.84,
+    "trap_e1": 1.0,
+    "played_e": 4.84,
+    "admissible": 30,
+    "lead": 15.86
+   }
+  ]
+ },
+ {
+  "best": "K4",
+  "relax": "M5",
+  "source": "would_fire",
+  "arm": "A",
+  "seed": 1003,
+  "color": "W",
+  "depth": 36,
+  "played": "K4",
+  "lead": 13.47,
+  "best_turns": [
+   {
+    "reply": "L3",
+    "move": "H2",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.26,
+    "trap_e1": 1.0,
+    "played_e": 3.26,
+    "admissible": 9,
+    "lead": 14.4
+   },
+   {
+    "reply": "L6",
+    "move": "F4",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 6.46,
+    "trap_e1": 1.0,
+    "played_e": 6.46,
+    "admissible": 3,
+    "lead": 8.39
+   },
+   {
+    "reply": "G2",
+    "move": "F2",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 4.14,
+    "admissible": 3,
+    "lead": 5.22
+   },
+   {
+    "reply": "F1",
+    "move": "G5",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 1.23,
+    "admissible": 4,
+    "lead": null
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "J2",
+    "move": "K1",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.47,
+    "trap_e1": 1.0,
+    "played_e": 3.47,
+    "admissible": 22,
+    "lead": 10.4
+   },
+   {
+    "reply": "M8",
+    "move": "H2",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.26,
+    "trap_e1": 1.0,
+    "played_e": 3.26,
+    "admissible": 5,
+    "lead": 10.36
+   },
+   {
+    "reply": "M4",
+    "move": "N6",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.98,
+    "trap_e1": 1.0,
+    "played_e": 3.98,
+    "admissible": 7,
+    "lead": 8.48
+   },
+   {
+    "reply": "K4",
+    "move": "J5",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 4.42,
+    "admissible": 5,
+    "lead": 11.55
+   }
+  ]
+ },
+ {
+  "best": "E7",
+  "relax": "D6",
+  "source": "would_fire",
+  "arm": "A",
+  "seed": 1003,
+  "color": "W",
+  "depth": 68,
+  "played": "E7",
+  "lead": 16.19,
+  "best_turns": [
+   {
+    "reply": "J9",
+    "move": "M9",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.54,
+    "trap_e1": 0.0,
+    "played_e": 0.54,
+    "admissible": 32,
+    "lead": 16.41
+   },
+   {
+    "reply": "B9",
+    "move": "B10",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.41,
+    "admissible": 28,
+    "lead": 15.15
+   },
+   {
+    "reply": "D4",
+    "move": "C6",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.36,
+    "trap_e1": 0.0,
+    "played_e": 0.36,
+    "admissible": 3,
+    "lead": 15.05
+   },
+   {
+    "reply": "K10",
+    "move": "J11",
+    "kind": "no_pool",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": 0,
+    "lead": 14.62
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "J9",
+    "move": "K9",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.19,
+    "trap_e1": 0.0,
+    "played_e": 0.19,
+    "admissible": 34,
+    "lead": 15.92
+   },
+   {
+    "reply": "N7",
+    "move": "N9",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.15,
+    "admissible": 33,
+    "lead": 15.93
+   },
+   {
+    "reply": "F12",
+    "move": "F10",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.13,
+    "trap_e1": 1.0,
+    "played_e": 3.13,
+    "admissible": 6,
+    "lead": 16.0
+   },
+   {
+    "reply": "J11",
+    "move": "J12",
+    "kind": "no_pool",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": 0,
+    "lead": 7.42
+   }
+  ]
+ },
+ {
+  "best": "D7",
+  "relax": "A6",
+  "source": "would_fire",
+  "arm": "A",
+  "seed": 1003,
+  "color": "W",
+  "depth": 84,
+  "played": "D7",
+  "lead": 15.42,
+  "best_turns": [
+   {
+    "reply": "B1",
+    "move": "C1",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.38,
+    "trap_e1": 0.0,
+    "played_e": 0.38,
+    "admissible": 3,
+    "lead": 15.45
+   },
+   {
+    "reply": "J9",
+    "move": "K9",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.16,
+    "admissible": 6,
+    "lead": 15.14
+   },
+   {
+    "reply": "N7",
+    "move": "N9",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.18,
+    "admissible": 2,
+    "lead": 15.36
+   },
+   {
+    "reply": "D2",
+    "move": "A7",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.16,
+    "trap_e1": 0.0,
+    "played_e": 0.16,
+    "admissible": 1,
+    "lead": 15.46
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "J9",
+    "move": "K9",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.19,
+    "admissible": 6,
+    "lead": 15.36
+   },
+   {
+    "reply": "N7",
+    "move": "N9",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.26,
+    "admissible": 2,
+    "lead": 15.48
+   },
+   {
+    "reply": "A7",
+    "move": "A9",
+    "kind": "no_pool",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": 0,
+    "lead": 15.56
+   },
+   {
+    "reply": "B1",
+    "move": "C1",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.17,
+    "trap_e1": 0.0,
+    "played_e": 0.17,
+    "admissible": 2,
+    "lead": 15.47
+   }
+  ]
+ },
+ {
+  "best": "K9",
+  "relax": "K10",
+  "source": "would_fire",
+  "arm": "A",
+  "seed": 1003,
+  "color": "W",
+  "depth": 86,
+  "played": "K9",
+  "lead": 15.37,
+  "best_turns": [
+   {
+    "reply": "N7",
+    "move": "N9",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.29,
+    "admissible": 2,
+    "lead": 15.45
+   },
+   {
+    "reply": "B1",
+    "move": "C1",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.21,
+    "trap_e1": 0.0,
+    "played_e": 0.21,
+    "admissible": 3,
+    "lead": 15.44
+   },
+   {
+    "reply": "D2",
+    "move": "A7",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.16,
+    "admissible": 1,
+    "lead": 15.46
+   },
+   {
+    "reply": "N6",
+    "move": "F12",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.24,
+    "admissible": 31,
+    "lead": 15.51
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "B1",
+    "move": "A6",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.24,
+    "trap_e1": 0.0,
+    "played_e": 0.24,
+    "admissible": 3,
+    "lead": 15.02
+   },
+   {
+    "reply": "F12",
+    "move": "E10",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.24,
+    "admissible": 4,
+    "lead": 15.14
+   },
+   {
+    "reply": "A1",
+    "move": "A7",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.46,
+    "trap_e1": 0.0,
+    "played_e": 0.46,
+    "admissible": 1,
+    "lead": 15.13
+   },
+   {
+    "reply": "N7",
+    "move": "N9",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.62,
+    "admissible": 5,
+    "lead": 15.14
+   }
+  ]
+ },
+ {
+  "best": "E10",
+  "relax": "A6",
+  "source": "would_fire",
+  "arm": "A",
+  "seed": 1003,
+  "color": "W",
+  "depth": 114,
+  "played": "E10",
+  "lead": 17.77,
+  "best_turns": [
+   {
+    "reply": "H3",
+    "move": "G2",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.29,
+    "trap_e1": 0.0,
+    "played_e": 0.29,
+    "admissible": 54,
+    "lead": 17.94
+   },
+   {
+    "reply": "C1",
+    "move": "A6",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.11,
+    "admissible": 1,
+    "lead": 17.77
+   },
+   {
+    "reply": "B1",
+    "move": "K13",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.37,
+    "trap_e1": 0.0,
+    "played_e": 0.37,
+    "admissible": 51,
+    "lead": 17.78
+   },
+   {
+    "reply": "G1",
+    "move": "A7",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.43,
+    "admissible": 50,
+    "lead": 17.8
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "C1",
+    "move": "B4",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.29,
+    "trap_e1": 0.0,
+    "played_e": 0.29,
+    "admissible": 56,
+    "lead": 17.66
+   },
+   {
+    "reply": "B1",
+    "move": "E3",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.12,
+    "trap_e1": 0.0,
+    "played_e": 0.12,
+    "admissible": 55,
+    "lead": 17.79
+   },
+   {
+    "reply": "J2",
+    "move": "H12",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.24,
+    "admissible": 53,
+    "lead": 17.77
+   },
+   {
+    "reply": "F2",
+    "move": "K13",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.1,
+    "admissible": 55,
+    "lead": 17.7
+   }
+  ]
+ },
+ {
+  "best": "A6",
+  "relax": "A7",
+  "source": "would_fire",
+  "arm": "A",
+  "seed": 1003,
+  "color": "W",
+  "depth": 116,
+  "played": "A6",
+  "lead": 17.68,
+  "best_turns": [
+   {
+    "reply": "J2",
+    "move": "A10",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.1,
+    "trap_e1": 0.0,
+    "played_e": 0.1,
+    "admissible": 53,
+    "lead": 17.68
+   },
+   {
+    "reply": "C1",
+    "move": "E1",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.15,
+    "trap_e1": 0.0,
+    "played_e": 0.15,
+    "admissible": 51,
+    "lead": 17.75
+   },
+   {
+    "reply": "J5",
+    "move": "K13",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.19,
+    "trap_e1": 0.0,
+    "played_e": 0.19,
+    "admissible": 49,
+    "lead": 17.8
+   },
+   {
+    "reply": "K1",
+    "move": "K11",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.11,
+    "admissible": 48,
+    "lead": 17.8
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "J2",
+    "move": "A6",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.51,
+    "admissible": 52,
+    "lead": 17.62
+   },
+   {
+    "reply": "A1",
+    "move": "H12",
+    "kind": "other",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": null,
+    "lead": null
+   },
+   {
+    "reply": "J5",
+    "move": "N13",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.83,
+    "trap_e1": 0.0,
+    "played_e": 0.83,
+    "admissible": 58,
+    "lead": 17.41
+   },
+   {
+    "reply": "J1",
+    "move": "H1",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.47,
+    "trap_e1": 0.0,
+    "played_e": 0.47,
+    "admissible": 57,
+    "lead": 17.55
+   }
+  ]
+ },
+ {
+  "best": "B4",
+  "relax": "A7",
+  "source": "would_fire",
+  "arm": "A",
+  "seed": 1003,
+  "color": "W",
+  "depth": 118,
+  "played": "B4",
+  "lead": 17.69,
+  "best_turns": [
+   {
+    "reply": "J1",
+    "move": "H12",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.15,
+    "admissible": 53,
+    "lead": 17.76
+   },
+   {
+    "reply": "J2",
+    "move": "N13",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.97,
+    "trap_e1": 0.0,
+    "played_e": 0.97,
+    "admissible": 53,
+    "lead": 17.62
+   },
+   {
+    "reply": "H3",
+    "move": "E13",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.48,
+    "trap_e1": 0.0,
+    "played_e": 0.48,
+    "admissible": 50,
+    "lead": 17.61
+   },
+   {
+    "reply": "E1",
+    "move": "N11",
+    "kind": "other",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": null,
+    "lead": null
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "J2",
+    "move": "H12",
+    "kind": "other",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": null,
+    "lead": null
+   },
+   {
+    "reply": "H3",
+    "move": "N11",
+    "kind": "other",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": null,
+    "lead": null
+   },
+   {
+    "reply": "K1",
+    "move": "M3",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.15,
+    "trap_e1": 0.0,
+    "played_e": 0.15,
+    "admissible": 55,
+    "lead": 17.48
+   },
+   {
+    "reply": "N3",
+    "move": "M1",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.17,
+    "trap_e1": 0.0,
+    "played_e": 0.17,
+    "admissible": 53,
+    "lead": 17.53
+   }
+  ]
+ },
+ {
+  "best": "D8",
+  "relax": "A7",
+  "source": "would_fire",
+  "arm": "A",
+  "seed": 1003,
+  "color": "W",
+  "depth": 124,
+  "played": "D8",
+  "lead": 17.91,
+  "best_turns": [
+   {
+    "reply": "J2",
+    "move": "F1",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.35,
+    "trap_e1": 0.0,
+    "played_e": 0.35,
+    "admissible": 47,
+    "lead": 17.83
+   },
+   {
+    "reply": "J5",
+    "move": "K7",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.28,
+    "trap_e1": 0.0,
+    "played_e": 0.28,
+    "admissible": 45,
+    "lead": 17.97
+   },
+   {
+    "reply": "M1",
+    "move": "M3",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.41,
+    "trap_e1": 0.0,
+    "played_e": 0.41,
+    "admissible": 43,
+    "lead": 17.97
+   },
+   {
+    "reply": "M10",
+    "move": "N11",
+    "kind": "no_pool",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": 0,
+    "lead": 17.78
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "J5",
+    "move": "N11",
+    "kind": "other",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": null,
+    "lead": null
+   },
+   {
+    "reply": "J2",
+    "move": "J13",
+    "kind": "other",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": null,
+    "lead": null
+   },
+   {
+    "reply": "M1",
+    "move": "L13",
+    "kind": "other",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": null,
+    "lead": null
+   },
+   {
+    "reply": "F2",
+    "move": "pass",
+    "kind": "other",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": null,
+    "lead": null
+   }
+  ]
+ },
+ {
+  "best": "B13",
+  "relax": "F8",
+  "source": "would_fire",
+  "arm": "A",
+  "seed": 1004,
+  "color": "B",
+  "depth": 79,
+  "played": "B13",
+  "lead": 21.75,
+  "best_turns": [
+   {
+    "reply": "F8",
+    "move": "H6",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 2.72,
+    "trap_e1": 1.0,
+    "played_e": 2.72,
+    "admissible": 34,
+    "lead": 21.81
+   },
+   {
+    "reply": "L9",
+    "move": "M9",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.01,
+    "admissible": 6,
+    "lead": 16.5
+   },
+   {
+    "reply": "J9",
+    "move": "K12",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.11,
+    "trap_e1": 1.0,
+    "played_e": 1.11,
+    "admissible": 14,
+    "lead": 16.52
+   },
+   {
+    "reply": "A11",
+    "move": "G6",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.02,
+    "trap_e1": 1.0,
+    "played_e": 1.02,
+    "admissible": 29,
+    "lead": 14.69
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "G2",
+    "move": "G1",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.92,
+    "trap_e1": 0.0,
+    "played_e": 0.92,
+    "admissible": 17,
+    "lead": 21.17
+   },
+   {
+    "reply": "F3",
+    "move": "G5",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.32,
+    "admissible": 18,
+    "lead": 20.67
+   },
+   {
+    "reply": "G6",
+    "move": "B13",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.52,
+    "admissible": 16,
+    "lead": 20.97
+   },
+   {
+    "reply": "A12",
+    "move": "H4",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.82,
+    "admissible": 22,
+    "lead": 20.96
+   }
+  ]
+ },
+ {
+  "best": "J6",
+  "relax": "G6",
+  "source": "would_fire",
+  "arm": "A",
+  "seed": 1006,
+  "color": "B",
+  "depth": 87,
+  "played": "J6",
+  "lead": 18.34,
+  "best_turns": [
+   {
+    "reply": "G6",
+    "move": "K9",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.43,
+    "trap_e1": 0.0,
+    "played_e": 0.43,
+    "admissible": 6,
+    "lead": 18.55
+   },
+   {
+    "reply": "N4",
+    "move": "N9",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.73,
+    "trap_e1": 1.0,
+    "played_e": 3.73,
+    "admissible": 8,
+    "lead": 18.68
+   },
+   {
+    "reply": "L7",
+    "move": "A2",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.66,
+    "admissible": 7,
+    "lead": 18.59
+   },
+   {
+    "reply": "N3",
+    "move": "N2",
+    "kind": "no_pool",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": 0,
+    "lead": 18.56
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "J6",
+    "move": "H5",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.76,
+    "trap_e1": 0.0,
+    "played_e": 0.76,
+    "admissible": 26,
+    "lead": 18.3
+   },
+   {
+    "reply": "A2",
+    "move": "F7",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.09,
+    "admissible": 15,
+    "lead": 16.02
+   },
+   {
+    "reply": "F5",
+    "move": "K6",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.47,
+    "trap_e1": 0.0,
+    "played_e": 0.47,
+    "admissible": 17,
+    "lead": 16.07
+   },
+   {
+    "reply": "E6",
+    "move": "L5",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.57,
+    "trap_e1": 0.0,
+    "played_e": 0.57,
+    "admissible": 25,
+    "lead": 15.68
+   }
+  ]
+ },
+ {
+  "best": "A2",
+  "relax": "N9",
+  "source": "would_fire",
+  "arm": "A",
+  "seed": 1006,
+  "color": "B",
+  "depth": 89,
+  "played": "A2",
+  "lead": 18.56,
+  "best_turns": [
+   {
+    "reply": "B1",
+    "move": "C2",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.41,
+    "trap_e1": 0.0,
+    "played_e": 0.41,
+    "admissible": 8,
+    "lead": 18.58
+   },
+   {
+    "reply": "D2",
+    "move": "K12",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.25,
+    "trap_e1": 1.0,
+    "played_e": 1.25,
+    "admissible": 9,
+    "lead": 18.28
+   },
+   {
+    "reply": "K9",
+    "move": "N9",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.09,
+    "admissible": 1,
+    "lead": 17.14
+   },
+   {
+    "reply": "N7",
+    "move": "D6",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.19,
+    "admissible": 31,
+    "lead": 17.06
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "L7",
+    "move": "K9",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.76,
+    "trap_e1": 0.0,
+    "played_e": 0.76,
+    "admissible": 5,
+    "lead": 18.52
+   },
+   {
+    "reply": "N4",
+    "move": "A2",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.57,
+    "admissible": 7,
+    "lead": 18.54
+   },
+   {
+    "reply": "N3",
+    "move": "N2",
+    "kind": "no_pool",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": 0,
+    "lead": 18.54
+   },
+   {
+    "reply": "B1",
+    "move": "K12",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.65,
+    "admissible": 18,
+    "lead": 18.54
+   }
+  ]
+ },
+ {
+  "best": "N9",
+  "relax": "K9",
+  "source": "would_fire",
+  "arm": "A",
+  "seed": 1006,
+  "color": "B",
+  "depth": 93,
+  "played": "N9",
+  "lead": 18.29,
+  "best_turns": [
+   {
+    "reply": "L7",
+    "move": "K9",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.28,
+    "admissible": 11,
+    "lead": 18.26
+   },
+   {
+    "reply": "J8",
+    "move": "K12",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.19,
+    "admissible": 13,
+    "lead": 18.15
+   },
+   {
+    "reply": "N7",
+    "move": "D6",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.12,
+    "admissible": 29,
+    "lead": 18.12
+   },
+   {
+    "reply": "J9",
+    "move": "M9",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.19,
+    "admissible": 1,
+    "lead": 18.1
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "J8",
+    "move": "K12",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.47,
+    "admissible": 12,
+    "lead": 18.2
+   },
+   {
+    "reply": "L7",
+    "move": "N9",
+    "kind": "no_pool",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": 0,
+    "lead": 18.2
+   },
+   {
+    "reply": "N7",
+    "move": "D6",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.12,
+    "admissible": 32,
+    "lead": 18.13
+   },
+   {
+    "reply": "J9",
+    "move": "M9",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.19,
+    "admissible": 1,
+    "lead": 18.12
+   }
+  ]
+ },
+ {
+  "best": "D6",
+  "relax": "K11",
+  "source": "would_fire",
+  "arm": "A",
+  "seed": 1006,
+  "color": "B",
+  "depth": 101,
+  "played": "D6",
+  "lead": 36.68,
+  "best_turns": [
+   {
+    "reply": "E6",
+    "move": "F4",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.3,
+    "admissible": 42,
+    "lead": 36.67
+   },
+   {
+    "reply": "L13",
+    "move": "M13",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.36,
+    "admissible": 3,
+    "lead": 36.55
+   },
+   {
+    "reply": "G5",
+    "move": "J12",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.06,
+    "trap_e1": 1.0,
+    "played_e": 1.06,
+    "admissible": 45,
+    "lead": 36.46
+   },
+   {
+    "reply": "K11",
+    "move": "L12",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.27,
+    "admissible": 27,
+    "lead": 35.47
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "D6",
+    "move": "J12",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.76,
+    "trap_e1": 0.0,
+    "played_e": 0.76,
+    "admissible": 42,
+    "lead": 36.15
+   },
+   {
+    "reply": "D5",
+    "move": "C5",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.42,
+    "admissible": 32,
+    "lead": 35.69
+   },
+   {
+    "reply": "E5",
+    "move": "K13",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.41,
+    "trap_e1": 0.0,
+    "played_e": 0.41,
+    "admissible": 45,
+    "lead": 35.58
+   },
+   {
+    "reply": "J13",
+    "move": "L13",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.11,
+    "admissible": 3,
+    "lead": 35.55
+   }
+  ]
+ },
+ {
+  "best": "B3",
+  "relax": "J6",
+  "source": "would_fire",
+  "arm": "A",
+  "seed": 1009,
+  "color": "W",
+  "depth": 110,
+  "played": "B3",
+  "lead": 16.59,
+  "best_turns": [
+   {
+    "reply": "E7",
+    "move": "G6",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.43,
+    "admissible": 9,
+    "lead": 16.72
+   },
+   {
+    "reply": "A3",
+    "move": "C1",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.75,
+    "trap_e1": 0.0,
+    "played_e": 0.75,
+    "admissible": 43,
+    "lead": 16.77
+   },
+   {
+    "reply": "D1",
+    "move": "J6",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.88,
+    "admissible": 51,
+    "lead": 16.44
+   },
+   {
+    "reply": "A2",
+    "move": "G13",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.12,
+    "admissible": 44,
+    "lead": 15.61
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "F7",
+    "move": "B3",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.0,
+    "admissible": 17,
+    "lead": 16.1
+   },
+   {
+    "reply": "C1",
+    "move": "A2",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.14,
+    "admissible": 8,
+    "lead": 16.38
+   },
+   {
+    "reply": "G13",
+    "move": "H13",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.11,
+    "admissible": 24,
+    "lead": 16.47
+   },
+   {
+    "reply": "G6",
+    "move": "H5",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.14,
+    "admissible": 1,
+    "lead": 16.59
+   }
+  ]
+ },
+ {
+  "best": "A2",
+  "relax": "G6",
+  "source": "would_fire",
+  "arm": "A",
+  "seed": 1009,
+  "color": "W",
+  "depth": 112,
+  "played": "A2",
+  "lead": 17.09,
+  "best_turns": [
+   {
+    "reply": "F7",
+    "move": "G6",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.43,
+    "admissible": 24,
+    "lead": 17.1
+   },
+   {
+    "reply": "J3",
+    "move": "H5",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.13,
+    "admissible": 1,
+    "lead": 17.51
+   },
+   {
+    "reply": "G13",
+    "move": "H13",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.15,
+    "admissible": 29,
+    "lead": 17.6
+   },
+   {
+    "reply": "K5",
+    "move": "H3",
+    "kind": "no_pool",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": 0,
+    "lead": 17.54
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "F7",
+    "move": "A2",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.5,
+    "admissible": 14,
+    "lead": 17.26
+   },
+   {
+    "reply": "J3",
+    "move": "J6",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.41,
+    "trap_e1": 1.0,
+    "played_e": 1.41,
+    "admissible": 1,
+    "lead": 17.54
+   },
+   {
+    "reply": "A3",
+    "move": "J7",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.56,
+    "trap_e1": 1.0,
+    "played_e": 3.56,
+    "admissible": 8,
+    "lead": 14.96
+   },
+   {
+    "reply": "K5",
+    "move": "H3",
+    "kind": "no_pool",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": 0,
+    "lead": 12.23
+   }
+  ]
+ },
+ {
+  "best": "G6",
+  "relax": "H5",
+  "source": "would_fire",
+  "arm": "A",
+  "seed": 1009,
+  "color": "W",
+  "depth": 114,
+  "played": "G6",
+  "lead": 17.2,
+  "best_turns": [
+   {
+    "reply": "J3",
+    "move": "J6",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.5,
+    "trap_e1": 1.0,
+    "played_e": 1.5,
+    "admissible": 1,
+    "lead": 17.53
+   },
+   {
+    "reply": "A3",
+    "move": "J7",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.4,
+    "trap_e1": 1.0,
+    "played_e": 3.4,
+    "admissible": 8,
+    "lead": 14.98
+   },
+   {
+    "reply": "K5",
+    "move": "H3",
+    "kind": "no_pool",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": 0,
+    "lead": 12.22
+   },
+   {
+    "reply": "A6",
+    "move": "B1",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.3,
+    "trap_e1": 1.0,
+    "played_e": 3.3,
+    "admissible": 4,
+    "lead": 12.02
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "G6",
+    "move": "J6",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.05,
+    "admissible": 31,
+    "lead": 16.32
+   },
+   {
+    "reply": "G13",
+    "move": "H13",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.16,
+    "admissible": 27,
+    "lead": 16.52
+   },
+   {
+    "reply": "N10",
+    "move": "N5",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 2.22,
+    "trap_e1": 1.0,
+    "played_e": 2.22,
+    "admissible": 39,
+    "lead": 16.5
+   },
+   {
+    "reply": "N6",
+    "move": "N11",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.34,
+    "admissible": 27,
+    "lead": 16.15
+   }
+  ]
+ },
+ {
+  "best": "E10",
+  "relax": "K2",
+  "source": "would_fire",
+  "arm": "A",
+  "seed": 1011,
+  "color": "W",
+  "depth": 104,
+  "played": "E10",
+  "lead": 32.94,
+  "best_turns": [
+   {
+    "reply": "G6",
+    "move": "M11",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 4.14,
+    "trap_e1": 1.0,
+    "played_e": 4.14,
+    "admissible": 17,
+    "lead": 32.96
+   },
+   {
+    "reply": "J4",
+    "move": "M8",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 1.9,
+    "admissible": 6,
+    "lead": 24.51
+   },
+   {
+    "reply": "E9",
+    "move": "K4",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 2.18,
+    "admissible": 13,
+    "lead": 23.72
+   },
+   {
+    "reply": "K2",
+    "move": "H13",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.92,
+    "trap_e1": 0.0,
+    "played_e": 0.92,
+    "admissible": 10,
+    "lead": 23.69
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "M11",
+    "move": "M12",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.26,
+    "admissible": 3,
+    "lead": 33.1
+   },
+   {
+    "reply": "K3",
+    "move": "E10",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 1.37,
+    "admissible": 1,
+    "lead": 33.32
+   },
+   {
+    "reply": "G6",
+    "move": "E9",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 2.29,
+    "admissible": 6,
+    "lead": 33.25
+   },
+   {
+    "reply": "N12",
+    "move": "L12",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 4.97,
+    "trap_e1": 1.0,
+    "played_e": 4.97,
+    "admissible": 7,
+    "lead": 33.57
+   }
+  ]
+ },
+ {
+  "best": "J10",
+  "relax": "F11",
+  "source": "would_fire",
+  "arm": "A",
+  "seed": 1012,
+  "color": "B",
+  "depth": 45,
+  "played": "J10",
+  "lead": 13.23,
+  "best_turns": [
+   {
+    "reply": "M9",
+    "move": "M8",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.88,
+    "trap_e1": 0.0,
+    "played_e": 0.88,
+    "admissible": 30,
+    "lead": 12.49
+   },
+   {
+    "reply": "L8",
+    "move": "H8",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 5.31,
+    "trap_e1": 1.0,
+    "played_e": 5.31,
+    "admissible": 19,
+    "lead": 12.89
+   },
+   {
+    "reply": "K9",
+    "move": "F11",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 1.67,
+    "admissible": 2,
+    "lead": 5.51
+   },
+   {
+    "reply": "L10",
+    "move": "B6",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.97,
+    "admissible": 5,
+    "lead": 5.32
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "J10",
+    "move": "H12",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.26,
+    "trap_e1": 1.0,
+    "played_e": 3.26,
+    "admissible": 31,
+    "lead": 12.58
+   },
+   {
+    "reply": "K9",
+    "move": "B6",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 1.66,
+    "admissible": 32,
+    "lead": 10.88
+   },
+   {
+    "reply": "C11",
+    "move": "C9",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 1.43,
+    "admissible": 37,
+    "lead": 10.83
+   },
+   {
+    "reply": "B10",
+    "move": "B9",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 1.09,
+    "admissible": 34,
+    "lead": 10.76
+   }
+  ]
+ },
+ {
+  "best": "C12",
+  "relax": "A12",
+  "source": "would_fire",
+  "arm": "A",
+  "seed": 1018,
+  "color": "B",
+  "depth": 63,
+  "played": "C12",
+  "lead": 27.32,
+  "best_turns": [
+   {
+    "reply": "B3",
+    "move": "C2",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.89,
+    "trap_e1": 0.0,
+    "played_e": 0.89,
+    "admissible": 49,
+    "lead": 27.03
+   },
+   {
+    "reply": "B2",
+    "move": "J3",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 2.33,
+    "trap_e1": 1.0,
+    "played_e": 2.33,
+    "admissible": 34,
+    "lead": 21.42
+   },
+   {
+    "reply": "H2",
+    "move": "G6",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.86,
+    "trap_e1": 1.0,
+    "played_e": 1.86,
+    "admissible": 29,
+    "lead": 17.53
+   },
+   {
+    "reply": "F8",
+    "move": "G9",
+    "kind": "no_pool",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": 0,
+    "lead": 14.8
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "B3",
+    "move": "J3",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 2.19,
+    "trap_e1": 1.0,
+    "played_e": 2.19,
+    "admissible": 47,
+    "lead": 26.67
+   },
+   {
+    "reply": "B2",
+    "move": "J2",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.6,
+    "trap_e1": 1.0,
+    "played_e": 1.6,
+    "admissible": 38,
+    "lead": 20.4
+   },
+   {
+    "reply": "M8",
+    "move": "M7",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 2.1,
+    "admissible": 4,
+    "lead": 20.14
+   },
+   {
+    "reply": "E4",
+    "move": "D2",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 2.47,
+    "trap_e1": 1.0,
+    "played_e": 2.47,
+    "admissible": 35,
+    "lead": 22.67
+   }
+  ]
+ },
+ {
+  "best": "E3",
+  "relax": "D1",
+  "source": "would_fire",
+  "arm": "A",
+  "seed": 1022,
+  "color": "B",
+  "depth": 85,
+  "played": "E3",
+  "lead": 44.24,
+  "best_turns": [
+   {
+    "reply": "K13",
+    "move": "J13",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.91,
+    "trap_e1": 0.0,
+    "played_e": 0.91,
+    "admissible": 35,
+    "lead": 44.0
+   },
+   {
+    "reply": "M13",
+    "move": "G10",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.6,
+    "trap_e1": 1.0,
+    "played_e": 1.6,
+    "admissible": 34,
+    "lead": 43.88
+   },
+   {
+    "reply": "H10",
+    "move": "H11",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 2.79,
+    "trap_e1": 1.0,
+    "played_e": 2.79,
+    "admissible": 30,
+    "lead": 40.06
+   },
+   {
+    "reply": "B9",
+    "move": "A8",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 1.23,
+    "admissible": 27,
+    "lead": 36.48
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "K13",
+    "move": "B9",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 1.27,
+    "admissible": 30,
+    "lead": 43.72
+   },
+   {
+    "reply": "H10",
+    "move": "H9",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 2.76,
+    "trap_e1": 1.0,
+    "played_e": 2.76,
+    "admissible": 27,
+    "lead": 43.22
+   },
+   {
+    "reply": "G11",
+    "move": "G10",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 4.13,
+    "trap_e1": 1.0,
+    "played_e": 4.13,
+    "admissible": 27,
+    "lead": 37.59
+   },
+   {
+    "reply": "J10",
+    "move": "C6",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.66,
+    "trap_e1": 1.0,
+    "played_e": 1.66,
+    "admissible": 21,
+    "lead": 35.25
+   }
+  ]
+ },
+ {
+  "best": "J3",
+  "relax": "M3",
+  "source": "would_fire",
+  "arm": "A",
+  "seed": 1023,
+  "color": "W",
+  "depth": 68,
+  "played": "J3",
+  "lead": 47.95,
+  "best_turns": [
+   {
+    "reply": "H12",
+    "move": "D5",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 2.33,
+    "trap_e1": 1.0,
+    "played_e": 2.33,
+    "admissible": 30,
+    "lead": 47.75
+   },
+   {
+    "reply": "G12",
+    "move": "C5",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.7,
+    "trap_e1": 1.0,
+    "played_e": 1.7,
+    "admissible": 31,
+    "lead": 45.77
+   },
+   {
+    "reply": "B4",
+    "move": "B3",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 2.07,
+    "trap_e1": 1.0,
+    "played_e": 2.07,
+    "admissible": 32,
+    "lead": 44.39
+   },
+   {
+    "reply": "M3",
+    "move": "L2",
+    "kind": "no_pool",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": 0,
+    "lead": 41.2
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "H12",
+    "move": "D5",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 2.49,
+    "trap_e1": 1.0,
+    "played_e": 2.49,
+    "admissible": 28,
+    "lead": 47.27
+   },
+   {
+    "reply": "G12",
+    "move": "J10",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.03,
+    "trap_e1": 1.0,
+    "played_e": 3.03,
+    "admissible": 28,
+    "lead": 45.44
+   },
+   {
+    "reply": "B8",
+    "move": "C9",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 1.44,
+    "admissible": 34,
+    "lead": 41.85
+   },
+   {
+    "reply": "M9",
+    "move": "B6",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 4.57,
+    "trap_e1": 1.0,
+    "played_e": 4.57,
+    "admissible": 3,
+    "lead": 41.84
+   }
+  ]
+ },
+ {
+  "best": "E7",
+  "relax": "H11",
+  "source": "fired",
+  "arm": "B",
+  "seed": 1001,
+  "color": "W",
+  "depth": 64,
+  "played": "H11",
+  "lead": 12.79,
+  "best_turns": [
+   {
+    "reply": "D8",
+    "move": "G10",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.58,
+    "trap_e1": 1.0,
+    "played_e": 1.58,
+    "admissible": 33,
+    "lead": 12.94
+   },
+   {
+    "reply": "H10",
+    "move": "J9",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 2.23,
+    "trap_e1": 1.0,
+    "played_e": 2.23,
+    "admissible": 29,
+    "lead": 10.34
+   },
+   {
+    "reply": "H9",
+    "move": "H8",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.84,
+    "admissible": 22,
+    "lead": 5.33
+   },
+   {
+    "reply": "G9",
+    "move": "E12",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.23,
+    "trap_e1": 1.0,
+    "played_e": 3.23,
+    "admissible": 7,
+    "lead": 5.39
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "F6",
+    "move": "F5",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 1.66,
+    "admissible": 32,
+    "lead": 12.48
+   },
+   {
+    "reply": "H10",
+    "move": "H9",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 2.01,
+    "admissible": 29,
+    "lead": 11.88
+   },
+   {
+    "reply": "E6",
+    "move": "E7",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.23,
+    "trap_e1": 1.0,
+    "played_e": 1.23,
+    "admissible": 37,
+    "lead": 11.67
+   },
+   {
+    "reply": "J3",
+    "move": "N3",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.31,
+    "trap_e1": 1.0,
+    "played_e": 3.31,
+    "admissible": 20,
+    "lead": 9.18
+   }
+  ]
+ },
+ {
+  "best": "B3",
+  "relax": "A1",
+  "source": "fired",
+  "arm": "B",
+  "seed": 1002,
+  "color": "B",
+  "depth": 65,
+  "played": "A1",
+  "lead": 20.94,
+  "best_turns": [
+   {
+    "reply": "L8",
+    "move": "M5",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.27,
+    "trap_e1": 1.0,
+    "played_e": 1.27,
+    "admissible": 37,
+    "lead": 20.44
+   },
+   {
+    "reply": "G6",
+    "move": "F8",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 2.74,
+    "trap_e1": 1.0,
+    "played_e": 2.74,
+    "admissible": 35,
+    "lead": 19.19
+   },
+   {
+    "reply": "E9",
+    "move": "H8",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 2.99,
+    "trap_e1": 1.0,
+    "played_e": 2.99,
+    "admissible": 34,
+    "lead": 17.65
+   },
+   {
+    "reply": "E7",
+    "move": "D6",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.56,
+    "trap_e1": 1.0,
+    "played_e": 3.56,
+    "admissible": 10,
+    "lead": 17.26
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "L5",
+    "move": "M5",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.61,
+    "trap_e1": 1.0,
+    "played_e": 1.61,
+    "admissible": 19,
+    "lead": 20.97
+   },
+   {
+    "reply": "K6",
+    "move": "A11",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.57,
+    "trap_e1": 1.0,
+    "played_e": 3.57,
+    "admissible": 22,
+    "lead": 19.18
+   },
+   {
+    "reply": "L4",
+    "move": "J5",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.53,
+    "trap_e1": 1.0,
+    "played_e": 3.53,
+    "admissible": 4,
+    "lead": 16.96
+   },
+   {
+    "reply": "F6",
+    "move": "J6",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 4.49,
+    "trap_e1": 1.0,
+    "played_e": 4.49,
+    "admissible": 6,
+    "lead": 16.36
+   }
+  ]
+ },
+ {
+  "best": "L10",
+  "relax": "J8",
+  "source": "fired",
+  "arm": "B",
+  "seed": 1003,
+  "color": "W",
+  "depth": 56,
+  "played": "J8",
+  "lead": 21.14,
+  "best_turns": [
+   {
+    "reply": "H7",
+    "move": "A9",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 5.74,
+    "trap_e1": 1.0,
+    "played_e": 5.74,
+    "admissible": 16,
+    "lead": 21.09
+   },
+   {
+    "reply": "J8",
+    "move": "H6",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 4.22,
+    "trap_e1": 1.0,
+    "played_e": 4.22,
+    "admissible": 29,
+    "lead": 12.41
+   },
+   {
+    "reply": "G6",
+    "move": "G5",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.73,
+    "trap_e1": 1.0,
+    "played_e": 3.73,
+    "admissible": 28,
+    "lead": 11.58
+   },
+   {
+    "reply": "D7",
+    "move": "G9",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 5.35,
+    "trap_e1": 1.0,
+    "played_e": 5.35,
+    "admissible": 17,
+    "lead": 8.7
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "L11",
+    "move": "J9",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 4.48,
+    "trap_e1": 1.0,
+    "played_e": 4.48,
+    "admissible": 9,
+    "lead": 21.03
+   },
+   {
+    "reply": "A10",
+    "move": "A11",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 4.79,
+    "admissible": 34,
+    "lead": 15.95
+   },
+   {
+    "reply": "K11",
+    "move": "H12",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 2.75,
+    "admissible": 8,
+    "lead": 19.17
+   },
+   {
+    "reply": "L10",
+    "move": "K12",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 3.52,
+    "admissible": 4,
+    "lead": 19.66
+   }
+  ]
+ },
+ {
+  "best": "D1",
+  "relax": "C2",
+  "source": "fired",
+  "arm": "B",
+  "seed": 1003,
+  "color": "W",
+  "depth": 82,
+  "played": "C2",
+  "lead": 52.92,
+  "best_turns": [
+   {
+    "reply": "H6",
+    "move": "F8",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.09,
+    "trap_e1": 1.0,
+    "played_e": 3.09,
+    "admissible": 13,
+    "lead": 52.7
+   },
+   {
+    "reply": "M7",
+    "move": "L8",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 2.54,
+    "admissible": 2,
+    "lead": 47.21
+   },
+   {
+    "reply": "K7",
+    "move": "H5",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.54,
+    "trap_e1": 1.0,
+    "played_e": 3.54,
+    "admissible": 8,
+    "lead": 46.69
+   },
+   {
+    "reply": "G6",
+    "move": "L7",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 4.24,
+    "admissible": 7,
+    "lead": 45.9
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "H6",
+    "move": "J6",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.39,
+    "trap_e1": 1.0,
+    "played_e": 1.39,
+    "admissible": 14,
+    "lead": 52.04
+   },
+   {
+    "reply": "D12",
+    "move": "E12",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 2.53,
+    "trap_e1": 1.0,
+    "played_e": 2.53,
+    "admissible": 3,
+    "lead": 52.03
+   },
+   {
+    "reply": "G8",
+    "move": "G9",
+    "kind": "no_pool",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": 0,
+    "lead": 52.13
+   },
+   {
+    "reply": "F8",
+    "move": "G7",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.76,
+    "trap_e1": 1.0,
+    "played_e": 1.76,
+    "admissible": 8,
+    "lead": 52.22
+   }
+  ]
+ },
+ {
+  "best": "F8",
+  "relax": "A10",
+  "source": "fired",
+  "arm": "B",
+  "seed": 1003,
+  "color": "W",
+  "depth": 86,
+  "played": "A10",
+  "lead": 54.02,
+  "best_turns": [
+   {
+    "reply": "M12",
+    "move": "K12",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.81,
+    "admissible": 1,
+    "lead": 53.86
+   },
+   {
+    "reply": "A10",
+    "move": "B11",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 2.02,
+    "admissible": 4,
+    "lead": 53.67
+   },
+   {
+    "reply": "E6",
+    "move": "H5",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 2.3,
+    "trap_e1": 1.0,
+    "played_e": 2.3,
+    "admissible": 9,
+    "lead": 53.62
+   },
+   {
+    "reply": "G6",
+    "move": "H6",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 2.92,
+    "trap_e1": 1.0,
+    "played_e": 2.92,
+    "admissible": 38,
+    "lead": 51.87
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "H6",
+    "move": "F8",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.86,
+    "trap_e1": 1.0,
+    "played_e": 1.86,
+    "admissible": 14,
+    "lead": 54.16
+   },
+   {
+    "reply": "M7",
+    "move": "L8",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 2.03,
+    "admissible": 1,
+    "lead": 50.55
+   },
+   {
+    "reply": "K7",
+    "move": "L7",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 3.02,
+    "admissible": 9,
+    "lead": 49.26
+   },
+   {
+    "reply": "L9",
+    "move": "E6",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 2.67,
+    "admissible": 2,
+    "lead": 49.03
+   }
+  ]
+ },
+ {
+  "best": "F5",
+  "relax": "F6",
+  "source": "fired",
+  "arm": "B",
+  "seed": 1003,
+  "color": "W",
+  "depth": 92,
+  "played": "F6",
+  "lead": 54.86,
+  "best_turns": [
+   {
+    "reply": "D12",
+    "move": "C12",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.79,
+    "trap_e1": 0.0,
+    "played_e": 0.79,
+    "admissible": 6,
+    "lead": 55.44
+   },
+   {
+    "reply": "K12",
+    "move": "K11",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.18,
+    "trap_e1": 1.0,
+    "played_e": 1.18,
+    "admissible": 1,
+    "lead": 54.17
+   },
+   {
+    "reply": "N4",
+    "move": "M5",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 1.57,
+    "admissible": 7,
+    "lead": 54.15
+   },
+   {
+    "reply": "G12",
+    "move": "J12",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 1.11,
+    "admissible": 4,
+    "lead": 54.67
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "F5",
+    "move": "D1",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 1.82,
+    "admissible": 48,
+    "lead": 54.47
+   },
+   {
+    "reply": "G6",
+    "move": "G7",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.37,
+    "admissible": 2,
+    "lead": 53.59
+   },
+   {
+    "reply": "H5",
+    "move": "M12",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.59,
+    "trap_e1": 0.0,
+    "played_e": 0.59,
+    "admissible": 36,
+    "lead": 53.28
+   },
+   {
+    "reply": "E1",
+    "move": "A6",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.94,
+    "admissible": 45,
+    "lead": 53.3
+   }
+  ]
+ },
+ {
+  "best": "E10",
+  "relax": "G9",
+  "source": "fired",
+  "arm": "B",
+  "seed": 1003,
+  "color": "W",
+  "depth": 114,
+  "played": "G9",
+  "lead": 59.18,
+  "best_turns": [
+   {
+    "reply": "E1",
+    "move": "A6",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.5,
+    "admissible": 51,
+    "lead": 58.51
+   },
+   {
+    "reply": "A7",
+    "move": "H12",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.66,
+    "trap_e1": 0.0,
+    "played_e": 0.66,
+    "admissible": 48,
+    "lead": 58.5
+   },
+   {
+    "reply": "E5",
+    "move": "G1",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.96,
+    "trap_e1": 0.0,
+    "played_e": 0.96,
+    "admissible": 50,
+    "lead": 58.3
+   },
+   {
+    "reply": "C7",
+    "move": "K11",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.41,
+    "trap_e1": 1.0,
+    "played_e": 1.41,
+    "admissible": 51,
+    "lead": 58.3
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "E1",
+    "move": "G5",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.38,
+    "trap_e1": 0.0,
+    "played_e": 0.38,
+    "admissible": 51,
+    "lead": 58.37
+   },
+   {
+    "reply": "A6",
+    "move": "H5",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.48,
+    "admissible": 48,
+    "lead": 58.02
+   },
+   {
+    "reply": "C7",
+    "move": "L13",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.62,
+    "trap_e1": 0.0,
+    "played_e": 0.62,
+    "admissible": 49,
+    "lead": 57.91
+   },
+   {
+    "reply": "J1",
+    "move": "N7",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.81,
+    "trap_e1": 0.0,
+    "played_e": 0.81,
+    "admissible": 45,
+    "lead": 58.03
+   }
+  ]
+ },
+ {
+  "best": "E12",
+  "relax": "F11",
+  "source": "fired",
+  "arm": "B",
+  "seed": 1003,
+  "color": "W",
+  "depth": 120,
+  "played": "F11",
+  "lead": 61.23,
+  "best_turns": [
+   {
+    "reply": "E1",
+    "move": "K1",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.19,
+    "trap_e1": 1.0,
+    "played_e": 1.19,
+    "admissible": 45,
+    "lead": 60.25
+   },
+   {
+    "reply": "E10",
+    "move": "F13",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.49,
+    "trap_e1": 1.0,
+    "played_e": 1.49,
+    "admissible": 17,
+    "lead": 59.36
+   },
+   {
+    "reply": "A7",
+    "move": "J12",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 2.04,
+    "admissible": 41,
+    "lead": 58.7
+   },
+   {
+    "reply": "J1",
+    "move": "K11",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.79,
+    "trap_e1": 0.0,
+    "played_e": 0.79,
+    "admissible": 45,
+    "lead": 57.95
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "E1",
+    "move": "H5",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.31,
+    "admissible": 45,
+    "lead": 60.03
+   },
+   {
+    "reply": "G5",
+    "move": "A7",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.13,
+    "admissible": 43,
+    "lead": 60.19
+   },
+   {
+    "reply": "B8",
+    "move": "N7",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.0,
+    "trap_e1": 1.0,
+    "played_e": 1.0,
+    "admissible": 42,
+    "lead": 60.22
+   },
+   {
+    "reply": "N6",
+    "move": "M5",
+    "kind": "no_pool",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": 0,
+    "lead": 60.36
+   }
+  ]
+ },
+ {
+  "best": "D12",
+  "relax": "E12",
+  "source": "fired",
+  "arm": "B",
+  "seed": 1003,
+  "color": "W",
+  "depth": 122,
+  "played": "E12",
+  "lead": 60.81,
+  "best_turns": [
+   {
+    "reply": "E1",
+    "move": "A7",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.61,
+    "trap_e1": 0.0,
+    "played_e": 0.61,
+    "admissible": 43,
+    "lead": 60.14
+   },
+   {
+    "reply": "H5",
+    "move": "G5",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.81,
+    "admissible": 41,
+    "lead": 60.55
+   },
+   {
+    "reply": "E10",
+    "move": "G12",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.11,
+    "trap_e1": 1.0,
+    "played_e": 1.11,
+    "admissible": 38,
+    "lead": 60.96
+   },
+   {
+    "reply": "B8",
+    "move": "H13",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.32,
+    "trap_e1": 1.0,
+    "played_e": 1.32,
+    "admissible": 33,
+    "lead": 60.1
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "E1",
+    "move": "G5",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.4,
+    "trap_e1": 0.0,
+    "played_e": 0.4,
+    "admissible": 43,
+    "lead": 60.06
+   },
+   {
+    "reply": "H5",
+    "move": "H13",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.43,
+    "trap_e1": 1.0,
+    "played_e": 1.43,
+    "admissible": 40,
+    "lead": 60.34
+   },
+   {
+    "reply": "A7",
+    "move": "N7",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.16,
+    "trap_e1": 1.0,
+    "played_e": 1.16,
+    "admissible": 38,
+    "lead": 58.36
+   },
+   {
+    "reply": "N6",
+    "move": "M5",
+    "kind": "no_pool",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": 0,
+    "lead": 58.53
+   }
+  ]
+ },
+ {
+  "best": "F2",
+  "relax": "F1",
+  "source": "fired",
+  "arm": "B",
+  "seed": 1009,
+  "color": "W",
+  "depth": 98,
+  "played": "F1",
+  "lead": 16.05,
+  "best_turns": [
+   {
+    "reply": "N7",
+    "move": "B1",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.48,
+    "trap_e1": 1.0,
+    "played_e": 1.48,
+    "admissible": 40,
+    "lead": 16.07
+   },
+   {
+    "reply": "N6",
+    "move": "N5",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.46,
+    "admissible": 2,
+    "lead": 15.89
+   },
+   {
+    "reply": "A2",
+    "move": "H12",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.23,
+    "admissible": 43,
+    "lead": 15.86
+   },
+   {
+    "reply": "G13",
+    "move": "A5",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.8,
+    "trap_e1": 0.0,
+    "played_e": 0.8,
+    "admissible": 48,
+    "lead": 15.86
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "L2",
+    "move": "M1",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.17,
+    "trap_e1": 0.0,
+    "played_e": 0.17,
+    "admissible": 1,
+    "lead": 16.09
+   },
+   {
+    "reply": "C4",
+    "move": "E4",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.52,
+    "admissible": 24,
+    "lead": 16.28
+   },
+   {
+    "reply": "H12",
+    "move": "J11",
+    "kind": "no_pool",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": 0,
+    "lead": 16.35
+   },
+   {
+    "reply": "A3",
+    "move": "A5",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.73,
+    "trap_e1": 1.0,
+    "played_e": 1.73,
+    "admissible": 13,
+    "lead": 16.34
+   }
+  ]
+ },
+ {
+  "best": "H9",
+  "relax": "G9",
+  "source": "fired",
+  "arm": "B",
+  "seed": 1015,
+  "color": "W",
+  "depth": 98,
+  "played": "G9",
+  "lead": 13.52,
+  "best_turns": [
+   {
+    "reply": "G2",
+    "move": "F2",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.25,
+    "admissible": 2,
+    "lead": 13.72
+   },
+   {
+    "reply": "E7",
+    "move": "G9",
+    "kind": "no_pool",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": 0,
+    "lead": 13.66
+   },
+   {
+    "reply": "A9",
+    "move": "N3",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.03,
+    "admissible": 30,
+    "lead": 13.61
+   },
+   {
+    "reply": "N2",
+    "move": "A10",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.81,
+    "admissible": 30,
+    "lead": 13.79
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "E7",
+    "move": "H9",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.17,
+    "admissible": 1,
+    "lead": 13.48
+   },
+   {
+    "reply": "G2",
+    "move": "F2",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.32,
+    "admissible": 2,
+    "lead": 13.63
+   },
+   {
+    "reply": "A9",
+    "move": "N3",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.11,
+    "admissible": 30,
+    "lead": 13.6
+   },
+   {
+    "reply": "N2",
+    "move": "A10",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.55,
+    "admissible": 31,
+    "lead": 13.81
+   }
+  ]
+ },
+ {
+  "best": "H9",
+  "relax": "H10",
+  "source": "fired",
+  "arm": "B",
+  "seed": 1015,
+  "color": "W",
+  "depth": 100,
+  "played": "H10",
+  "lead": 13.49,
+  "best_turns": [
+   {
+    "reply": "G2",
+    "move": "F2",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.41,
+    "admissible": 2,
+    "lead": 13.63
+   },
+   {
+    "reply": "A9",
+    "move": "F1",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.68,
+    "trap_e1": 0.0,
+    "played_e": 0.68,
+    "admissible": 29,
+    "lead": 13.62
+   },
+   {
+    "reply": "N3",
+    "move": "A10",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.57,
+    "admissible": 29,
+    "lead": 12.91
+   },
+   {
+    "reply": "A5",
+    "move": "A3",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.96,
+    "trap_e1": 0.0,
+    "played_e": 0.96,
+    "admissible": 22,
+    "lead": 12.86
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "G2",
+    "move": "F2",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.23,
+    "admissible": 1,
+    "lead": 13.35
+   },
+   {
+    "reply": "A9",
+    "move": "N3",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.19,
+    "admissible": 20,
+    "lead": 13.4
+   },
+   {
+    "reply": "A10",
+    "move": "A11",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.01,
+    "admissible": 8,
+    "lead": 13.44
+   },
+   {
+    "reply": "N2",
+    "move": "G1",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.09,
+    "trap_e1": 1.0,
+    "played_e": 1.09,
+    "admissible": 30,
+    "lead": 13.42
+   }
+  ]
+ },
+ {
+  "best": "B7",
+  "relax": "C8",
+  "source": "fired",
+  "arm": "B",
+  "seed": 1015,
+  "color": "W",
+  "depth": 114,
+  "played": "C8",
+  "lead": 22.59,
+  "best_turns": [
+   {
+    "reply": "C7",
+    "move": "A6",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.57,
+    "admissible": 2,
+    "lead": 22.34
+   },
+   {
+    "reply": "A2",
+    "move": "B2",
+    "kind": "no_pool",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": 0,
+    "lead": 22.14
+   },
+   {
+    "reply": "C8",
+    "move": "A3",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.43,
+    "admissible": 14,
+    "lead": 22.32
+   },
+   {
+    "reply": "B6",
+    "move": "A8",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.45,
+    "admissible": 6,
+    "lead": 22.43
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "C7",
+    "move": "D9",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 0.85,
+    "admissible": 2,
+    "lead": 21.2
+   },
+   {
+    "reply": "B7",
+    "move": "C9",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 0.33,
+    "trap_e1": 0.0,
+    "played_e": 0.33,
+    "admissible": 17,
+    "lead": 20.96
+   },
+   {
+    "reply": "A2",
+    "move": "B2",
+    "kind": "no_pool",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": null,
+    "admissible": 0,
+    "lead": 20.38
+   },
+   {
+    "reply": "A3",
+    "move": "L10",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 1.01,
+    "trap_e1": 1.0,
+    "played_e": 1.01,
+    "admissible": 11,
+    "lead": 20.35
+   }
+  ]
+ },
+ {
+  "best": "A7",
+  "relax": "A9",
+  "source": "fired",
+  "arm": "B",
+  "seed": 1020,
+  "color": "B",
+  "depth": 65,
+  "played": "A9",
+  "lead": 79.48,
+  "best_turns": [
+   {
+    "reply": "M9",
+    "move": "A9",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 2.98,
+    "admissible": 1,
+    "lead": 79.42
+   },
+   {
+    "reply": "E10",
+    "move": "G13",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.51,
+    "trap_e1": 1.0,
+    "played_e": 3.51,
+    "admissible": 26,
+    "lead": 78.91
+   },
+   {
+    "reply": "M7",
+    "move": "L6",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 4.08,
+    "trap_e1": 1.0,
+    "played_e": 4.08,
+    "admissible": 30,
+    "lead": 76.16
+   },
+   {
+    "reply": "E12",
+    "move": "J13",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.08,
+    "trap_e1": 1.0,
+    "played_e": 3.08,
+    "admissible": 29,
+    "lead": 68.82
+   }
+  ],
+  "relax_turns": [
+   {
+    "reply": "M9",
+    "move": "A7",
+    "kind": "best_race",
+    "trap": 0.0,
+    "trap_e": 0.0,
+    "trap_e1": 0.0,
+    "played_e": 3.16,
+    "admissible": 1,
+    "lead": 79.62
+   },
+   {
+    "reply": "E10",
+    "move": "G13",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.7,
+    "trap_e1": 1.0,
+    "played_e": 3.7,
+    "admissible": 24,
+    "lead": 78.89
+   },
+   {
+    "reply": "L7",
+    "move": "F9",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 4.24,
+    "trap_e1": 1.0,
+    "played_e": 4.24,
+    "admissible": 27,
+    "lead": 75.93
+   },
+   {
+    "reply": "E12",
+    "move": "F10",
+    "kind": "deviate",
+    "trap": 1.0,
+    "trap_e": 3.33,
+    "trap_e1": 1.0,
+    "played_e": 3.33,
+    "admissible": 28,
+    "lead": 70.67
+   }
+  ]
+ }
+]

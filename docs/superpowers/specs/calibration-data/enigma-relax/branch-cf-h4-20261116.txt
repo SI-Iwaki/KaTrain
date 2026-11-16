@@ -1,0 +1,108 @@
+positions: 36 (fired 14, would_fire 22)
+[1/36] would_fire A 1000 move  55 lead 30.5 C3->J9 | after best: T4.5 b b b | after relax: T2.6 T7.0 T2.2 T4.8
+[2/36] would_fire A 1003 move  36 lead 13.5 K4->M5 | after best: T3.3 T6.5 b b | after relax: T3.5 T3.3 T4.0 b
+[3/36] would_fire A 1003 move  68 lead 16.2 E7->D6 | after best: T0.5 b T0.4 b | after relax: T0.2 b T3.1 b
+[4/36] would_fire A 1003 move  84 lead 15.4 D7->A6 | after best: T0.4 b b T0.2 | after relax: b b b T0.2
+[5/36] would_fire A 1003 move  86 lead 15.4 K9->K10 | after best: b T0.2 b b | after relax: T0.2 b T0.5 b
+[6/36] would_fire A 1003 move 114 lead 17.8 E10->A6 | after best: T0.3 b T0.4 b | after relax: T0.3 T0.1 b b
+[7/36] would_fire A 1003 move 116 lead 17.7 A6->A7 | after best: T0.1 T0.1 T0.2 b | after relax: b b T0.8 T0.5
+[8/36] would_fire A 1003 move 118 lead 17.7 B4->A7 | after best: b T1.0 T0.5 b | after relax: b b T0.1 T0.2
+[9/36] would_fire A 1003 move 124 lead 17.9 D8->A7 | after best: T0.3 T0.3 T0.4 b | after relax: b b b b
+[10/36] would_fire A 1004 move  79 lead 21.8 B13->F8 | after best: T2.7 b T1.1 T1.0 | after relax: T0.9 b b b
+[11/36] would_fire A 1006 move  87 lead 18.3 J6->G6 | after best: T0.4 T3.7 b b | after relax: T0.8 b T0.5 T0.6
+[12/36] would_fire A 1006 move  89 lead 18.6 A2->N9 | after best: T0.4 T1.2 b b | after relax: T0.8 b b b
+[13/36] would_fire A 1006 move  93 lead 18.3 N9->K9 | after best: b b b b | after relax: b b b b
+[14/36] would_fire A 1006 move 101 lead 36.7 D6->K11 | after best: b b T1.1 b | after relax: T0.8 b T0.4 b
+[15/36] would_fire A 1009 move 110 lead 16.6 B3->J6 | after best: b T0.8 b b | after relax: b b b b
+[16/36] would_fire A 1009 move 112 lead 17.1 A2->G6 | after best: b b b b | after relax: b T1.4 T3.6 b
+[17/36] would_fire A 1009 move 114 lead 17.2 G6->H5 | after best: T1.5 T3.4 b T3.3 | after relax: b b T2.2 b
+[18/36] would_fire A 1011 move 104 lead 32.9 E10->K2 | after best: T4.1 b b T0.9 | after relax: b b b T5.0
+[19/36] would_fire A 1012 move  45 lead 13.2 J10->F11 | after best: T0.9 T5.3 b b | after relax: T3.3 b b b
+[20/36] would_fire A 1018 move  63 lead 27.3 C12->A12 | after best: T0.9 T2.3 T1.9 b | after relax: T2.2 T1.6 b T2.5
+[21/36] would_fire A 1022 move  85 lead 44.2 E3->D1 | after best: T0.9 T1.6 T2.8 b | after relax: b T2.8 T4.1 T1.7
+[22/36] would_fire A 1023 move  68 lead 48.0 J3->M3 | after best: T2.3 T1.7 T2.1 b | after relax: T2.5 T3.0 b T4.6
+[23/36] fired      B 1001 move  64 lead 12.8 E7->H11 | after best: T1.6 T2.2 b T3.2 | after relax: b b T1.2 T3.3
+[24/36] fired      B 1002 move  65 lead 20.9 B3->A1 | after best: T1.3 T2.7 T3.0 T3.6 | after relax: T1.6 T3.6 T3.5 T4.5
+[25/36] fired      B 1003 move  56 lead 21.1 L10->J8 | after best: T5.7 T4.2 T3.7 T5.3 | after relax: T4.5 b b b
+[26/36] fired      B 1003 move  82 lead 52.9 D1->C2 | after best: T3.1 b T3.5 b | after relax: T1.4 T2.5 b T1.8
+[27/36] fired      B 1003 move  86 lead 54.0 F8->A10 | after best: b b T2.3 T2.9 | after relax: T1.9 b b b
+[28/36] fired      B 1003 move  92 lead 54.9 F5->F6 | after best: T0.8 T1.2 b b | after relax: b b T0.6 b
+[29/36] fired      B 1003 move 114 lead 59.2 E10->G9 | after best: b T0.7 T1.0 T1.4 | after relax: T0.4 b T0.6 T0.8
+[30/36] fired      B 1003 move 120 lead 61.2 E12->F11 | after best: T1.2 T1.5 b T0.8 | after relax: b b T1.0 b
+[31/36] fired      B 1003 move 122 lead 60.8 D12->E12 | after best: T0.6 b T1.1 T1.3 | after relax: T0.4 T1.4 T1.2 b
+[32/36] fired      B 1009 move  98 lead 16.1 F2->F1 | after best: T1.5 b b T0.8 | after relax: T0.2 b b T1.7
+[33/36] fired      B 1015 move  98 lead 13.5 H9->G9 | after best: b b b b | after relax: b b b b
+[34/36] fired      B 1015 move 100 lead 13.5 H9->H10 | after best: b T0.7 b T1.0 | after relax: b b b T1.1
+[35/36] fired      B 1015 move 114 lead 22.6 B7->C8 | after best: b b b b | after relax: b T0.3 b T1.0
+[36/36] fired      B 1020 move  65 lead 79.5 A7->A9 | after best: b T3.5 T4.1 T3.1 | after relax: b T3.7 T4.2 T3.3
+
+paired (after relax - after best), AI turns after the branch move, relax OFF in both branches
+ all (n=36)
+   first 1 turn(s) traps played       best  0.667  relax  0.528  diff -0.139 (se 0.099, z -1.41, n 36)
+   first 1 turn(s) traps with E>=1    best  0.333  relax  0.250  diff -0.083 (se 0.083, z -1.00, n 36)
+   first 1 turn(s) sum E of traps     best  1.094  relax  0.783  diff -0.310 (se 0.193, z -1.61, n 36)
+   first 1 turn(s) best-move turns incl. the branch move: diff -0.861 (se 0.099)
+   first 2 turn(s) traps played       best  1.250  relax  0.861  diff -0.389 (se 0.170, z -2.28, n 36)
+   first 2 turn(s) traps with E>=1    best  0.722  relax  0.528  diff -0.194 (se 0.137, z -1.42, n 36)
+   first 2 turn(s) sum E of traps     best  2.339  relax  1.637  diff -0.703 (se 0.350, z -2.01, n 36)
+   first 2 turn(s) best-move turns incl. the branch move: diff -0.611 (se 0.170)
+   first 3 turn(s) traps played       best  1.722  relax  1.361  diff -0.361 (se 0.179, z -2.02, n 36)
+   first 3 turn(s) traps with E>=1    best  1.028  relax  0.833  diff -0.194 (se 0.148, z -1.31, n 36)
+   first 3 turn(s) sum E of traps     best  3.156  relax  2.578  diff -0.578 (se 0.439, z -1.32, n 36)
+   first 3 turn(s) best-move turns incl. the branch move: diff -0.639 (se 0.179)
+   first 4 turn(s) traps played       best  2.111  relax  1.833  diff -0.278 (se 0.217, z -1.28, n 36)
+   first 4 turn(s) traps with E>=1    best  1.278  relax  1.167  diff -0.111 (se 0.198, z -0.56, n 36)
+   first 4 turn(s) sum E of traps     best  3.957  relax  3.617  diff -0.339 (se 0.643, z -0.53, n 36)
+   first 4 turn(s) best-move turns incl. the branch move: diff -0.722 (se 0.217)
+   turn 1 alone: trap rate best 0.667  relax 0.528  (n 36)
+   turn 2 alone: trap rate best 0.583  relax 0.333  (n 36)
+   turn 3 alone: trap rate best 0.472  relax 0.500  (n 36)
+   turn 4 alone: trap rate best 0.389  relax 0.472  (n 36)
+ fired (n=14)
+   first 1 turn(s) traps played       best  0.571  relax  0.500  diff -0.071 (se 0.165, z -0.43, n 14)
+   first 1 turn(s) traps with E>=1    best  0.429  relax  0.286  diff -0.143 (se 0.143, z -1.00, n 14)
+   first 1 turn(s) sum E of traps     best  1.125  relax  0.735  diff -0.390 (se 0.261, z -1.50, n 14)
+   first 1 turn(s) best-move turns incl. the branch move: diff -0.929 (se 0.165)
+   first 2 turn(s) traps played       best  1.143  relax  0.857  diff -0.286 (se 0.304, z -0.94, n 14)
+   first 2 turn(s) traps with E>=1    best  0.857  relax  0.571  diff -0.286 (se 0.266, z -1.07, n 14)
+   first 2 turn(s) sum E of traps     best  2.319  relax  1.561  diff -0.758 (se 0.560, z -1.35, n 14)
+   first 2 turn(s) best-move turns incl. the branch move: diff -0.714 (se 0.304)
+   first 3 turn(s) traps played       best  1.643  relax  1.357  diff -0.286 (se 0.221, z -1.30, n 14)
+   first 3 turn(s) traps with E>=1    best  1.286  relax  0.929  diff -0.357 (se 0.199, z -1.79, n 14)
+   first 3 turn(s) sum E of traps     best  3.655  relax  2.444  diff -1.211 (se 0.705, z -1.72, n 14)
+   first 3 turn(s) best-move turns incl. the branch move: diff -0.714 (se 0.221)
+   first 4 turn(s) traps played       best  2.357  relax  1.929  diff -0.429 (se 0.327, z -1.31, n 14)
+   first 4 turn(s) traps with E>=1    best  1.786  relax  1.429  diff -0.357 (se 0.289, z -1.24, n 14)
+   first 4 turn(s) sum E of traps     best  5.328  relax  3.696  diff -1.631 (se 1.080, z -1.51, n 14)
+   first 4 turn(s) best-move turns incl. the branch move: diff -0.571 (se 0.327)
+   turn 1 alone: trap rate best 0.571  relax 0.500  (n 14)
+   turn 2 alone: trap rate best 0.571  relax 0.357  (n 14)
+   turn 3 alone: trap rate best 0.500  relax 0.500  (n 14)
+   turn 4 alone: trap rate best 0.714  relax 0.571  (n 14)
+ would_fire (n=22)
+   first 1 turn(s) traps played       best  0.727  relax  0.545  diff -0.182 (se 0.125, z -1.45, n 22)
+   first 1 turn(s) traps with E>=1    best  0.273  relax  0.227  diff -0.045 (se 0.104, z -0.44, n 22)
+   first 1 turn(s) sum E of traps     best  1.074  relax  0.814  diff -0.260 (se 0.273, z -0.95, n 22)
+   first 1 turn(s) best-move turns incl. the branch move: diff -0.818 (se 0.125)
+   first 2 turn(s) traps played       best  1.318  relax  0.864  diff -0.455 (se 0.205, z -2.22, n 22)
+   first 2 turn(s) traps with E>=1    best  0.636  relax  0.500  diff -0.136 (se 0.151, z -0.90, n 22)
+   first 2 turn(s) sum E of traps     best  2.353  relax  1.685  diff -0.668 (se 0.460, z -1.45, n 22)
+   first 2 turn(s) best-move turns incl. the branch move: diff -0.545 (se 0.205)
+   first 3 turn(s) traps played       best  1.773  relax  1.364  diff -0.409 (se 0.260, z -1.57, n 22)
+   first 3 turn(s) traps with E>=1    best  0.864  relax  0.773  diff -0.091 (se 0.207, z -0.44, n 22)
+   first 3 turn(s) sum E of traps     best  2.839  relax  2.663  diff -0.176 (se 0.556, z -0.32, n 22)
+   first 3 turn(s) best-move turns incl. the branch move: diff -0.591 (se 0.260)
+   first 4 turn(s) traps played       best  1.955  relax  1.773  diff -0.182 (se 0.292, z -0.62, n 22)
+   first 4 turn(s) traps with E>=1    best  0.955  relax  1.000  diff +0.045 (se 0.267, z +0.17, n 22)
+   first 4 turn(s) sum E of traps     best  3.085  relax  3.567  diff +0.483 (se 0.766, z +0.63, n 22)
+   first 4 turn(s) best-move turns incl. the branch move: diff -0.818 (se 0.292)
+   turn 1 alone: trap rate best 0.727  relax 0.545  (n 22)
+   turn 2 alone: trap rate best 0.591  relax 0.318  (n 22)
+   turn 3 alone: trap rate best 0.455  relax 0.500  (n 22)
+   turn 4 alone: trap rate best 0.182  relax 0.409  (n 22)
+ by distance between the best move and the relax move (Chebyshev)
+   near (<=2) n=20 first 2 turn(s): traps -0.45 (se 0.22)  sum E -0.98 (se 0.44)
+   near (<=2) n=20 first 4 turn(s): traps -0.20 (se 0.27)  sum E -0.81 (se 0.86)
+   far (>=3)  n=16 first 2 turn(s): traps -0.31 (se 0.27)  sum E -0.35 (se 0.57)
+   far (>=3)  n=16 first 4 turn(s): traps -0.38 (se 0.36)  sum E +0.24 (se 0.98)
+ deferred best move replayed in the relax branch: next turn 6/36, within 4 turns 11/36

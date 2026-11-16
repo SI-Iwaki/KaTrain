@@ -1,0 +1,60 @@
+positions: 36 (fired 14, would_fire 22)
+[1/36] would_fire A 1000 move  55 lead 30.5 C3->J9 | after best: B11 deviate E 5.05 pool 13 | after relax: L6 deviate E 2.86 pool 21
+[2/36] would_fire A 1003 move  36 lead 13.5 K4->M5 | after best: E8 deviate E 2.58 pool 33 | after relax: J2 deviate E 3.43 pool 26
+[3/36] would_fire A 1003 move  68 lead 16.2 E7->D6 | after best: J9 deviate E 0.70 pool 31 | after relax: J9 deviate E 0.19 pool 35
+[4/36] would_fire A 1003 move  84 lead 15.4 D7->A6 | after best: B1 deviate E 0.41 pool 3 | after relax: J9 best_race E 0.00 pool 6
+[5/36] would_fire A 1003 move  86 lead 15.4 K9->K10 | after best: N7 best_race E 0.00 pool 2 | after relax: B1 best_race E 0.00 pool 3
+[6/36] would_fire A 1003 move 114 lead 17.8 E10->A6 | after best: G2 deviate E 0.25 pool 54 | after relax: C1 deviate E 0.13 pool 56
+[7/36] would_fire A 1003 move 116 lead 17.7 A6->A7 | after best: H3 deviate E 0.13 pool 53 | after relax: J2 best_race E 0.00 pool 52
+[8/36] would_fire A 1003 move 118 lead 17.7 B4->A7 | after best: J2 best_race E 0.00 pool 53 | after relax: J2 other E 0.00 pool None
+[9/36] would_fire A 1003 move 124 lead 17.9 D8->A7 | after best: J2 deviate E 0.31 pool 47 | after relax: N2 deviate E 0.19 pool 54
+[10/36] would_fire A 1004 move  79 lead 21.8 B13->F8 | after best: F8 deviate E 2.88 pool 31 | after relax: G2 best_race E 0.00 pool 18
+[11/36] would_fire A 1006 move  87 lead 18.3 J6->G6 | after best: G6 deviate E 0.27 pool 6 | after relax: J6 deviate E 0.66 pool 28
+[12/36] would_fire A 1006 move  89 lead 18.6 A2->N9 | after best: B1 deviate E 0.49 pool 10 | after relax: L7 deviate E 0.68 pool 5
+[13/36] would_fire A 1006 move  93 lead 18.3 N9->K9 | after best: L7 best_race E 0.00 pool 11 | after relax: L7 no_pool E 0.00 pool 0
+[14/36] would_fire A 1006 move 101 lead 36.7 D6->K11 | after best: E6 best_race E 0.00 pool 42 | after relax: L13 best_race E 0.00 pool 12
+[15/36] would_fire A 1009 move 110 lead 16.6 B3->J6 | after best: E7 best_race E 0.00 pool 9 | after relax: F7 best_race E 0.00 pool 16
+[16/36] would_fire A 1009 move 112 lead 17.1 A2->G6 | after best: F7 best_race E 0.00 pool 23 | after relax: F7 best_race E 0.00 pool 14
+[17/36] would_fire A 1009 move 114 lead 17.2 G6->H5 | after best: J3 deviate E 1.57 pool 1 | after relax: G6 best_race E 0.00 pool 34
+[18/36] would_fire A 1011 move 104 lead 32.9 E10->K2 | after best: G6 deviate E 3.78 pool 17 | after relax: M11 best_race E 0.00 pool 3
+[19/36] would_fire A 1012 move  45 lead 13.2 J10->F11 | after best: M9 deviate E 1.24 pool 31 | after relax: J10 deviate E 3.21 pool 35
+[20/36] would_fire A 1018 move  63 lead 27.3 C12->A12 | after best: B3 deviate E 2.00 pool 50 | after relax: B3 best_race E 0.00 pool 51
+[21/36] would_fire A 1022 move  85 lead 44.2 E3->D1 | after best: K13 deviate E 1.00 pool 35 | after relax: K13 best_race E 0.00 pool 31
+[22/36] would_fire A 1023 move  68 lead 48.0 J3->M3 | after best: H12 deviate E 2.55 pool 31 | after relax: H12 deviate E 2.55 pool 29
+[23/36] fired      B 1001 move  64 lead 12.8 E7->H11 | after best: D8 deviate E 1.63 pool 34 | after relax: F6 best_race E 0.00 pool 31
+[24/36] fired      B 1002 move  65 lead 20.9 B3->A1 | after best: L8 deviate E 1.45 pool 37 | after relax: K5 best_race E 0.00 pool 28
+[25/36] fired      B 1003 move  56 lead 21.1 L10->J8 | after best: H7 deviate E 5.39 pool 15 | after relax: L11 deviate E 4.74 pool 10
+[26/36] fired      B 1003 move  82 lead 52.9 D1->C2 | after best: H6 deviate E 1.30 pool 12 | after relax: H6 deviate E 1.35 pool 16
+[27/36] fired      B 1003 move  86 lead 54.0 F8->A10 | after best: A10 best_race E 0.00 pool 4 | after relax: H6 deviate E 1.26 pool 14
+[28/36] fired      B 1003 move  92 lead 54.9 F5->F6 | after best: D12 deviate E 0.99 pool 6 | after relax: F5 best_race E 0.00 pool 45
+[29/36] fired      B 1003 move 114 lead 59.2 E10->G9 | after best: E1 deviate E 1.90 pool 50 | after relax: E1 deviate E 1.94 pool 51
+[30/36] fired      B 1003 move 120 lead 61.2 E12->F11 | after best: E1 deviate E 1.09 pool 45 | after relax: E1 best_race E 0.00 pool 45
+[31/36] fired      B 1003 move 122 lead 60.8 D12->E12 | after best: E1 deviate E 1.30 pool 43 | after relax: E1 deviate E 1.88 pool 43
+[32/36] fired      B 1009 move  98 lead 16.1 F2->F1 | after best: N7 deviate E 1.05 pool 38 | after relax: H4 deviate E 0.69 pool 42
+[33/36] fired      B 1015 move  98 lead 13.5 H9->G9 | after best: G1 deviate E 0.35 pool 5 | after relax: G2 best_race E 0.00 pool 4
+[34/36] fired      B 1015 move 100 lead 13.5 H9->H10 | after best: G2 best_race E 0.00 pool 2 | after relax: G2 best_race E 0.00 pool 1
+[35/36] fired      B 1015 move 114 lead 22.6 B7->C8 | after best: C8 best_race E 0.00 pool 2 | after relax: C7 best_race E 0.00 pool 2
+[36/36] fired      B 1020 move  65 lead 79.5 A7->A9 | after best: M9 best_race E 0.00 pool 1 | after relax: M9 best_race E 0.00 pool 1
+
+paired (after relax - after best), next AI turn, relax OFF in both branches
+ all (n=36)
+   trap played (rate)           best   0.722  relax   0.417  diff -0.306 (se 0.087, z -3.49, n 36)
+   E of the trap (0 if none)    best   1.157  relax   0.716  diff -0.442 (se 0.184, z -2.40, n 36)
+   E of the move played         best   1.390  relax   1.153  diff -0.237 (se 0.168, z -1.41, n 34)
+   admissible pool size         best  23.629  relax  24.629  diff +1.000 (se 2.066, z +0.48, n 35)
+   max E among challengers      best   1.701  relax   1.546  diff -0.156 (se 0.139, z -1.12, n 34)
+   lead before the turn         best  28.925  relax  28.613  diff -0.313 (se 0.069, z -4.54, n 35)
+ fired (n=14)
+   trap played (rate)           best   0.714  relax   0.429  diff -0.286 (se 0.163, z -1.75, n 14)
+   E of the trap (0 if none)    best   1.175  relax   0.847  diff -0.328 (se 0.210, z -1.56, n 14)
+   E of the move played         best   1.471  relax   1.488  diff +0.017 (se 0.110, z +0.16, n 14)
+   admissible pool size         best  21.000  relax  23.786  diff +2.786 (se 3.022, z +0.92, n 14)
+   max E among challengers      best   1.723  relax   1.786  diff +0.063 (se 0.162, z +0.39, n 14)
+   lead before the turn         best  38.591  relax  38.334  diff -0.256 (se 0.113, z -2.27, n 14)
+ would_fire (n=22)
+   trap played (rate)           best   0.727  relax   0.409  diff -0.318 (se 0.102, z -3.13, n 22)
+   E of the trap (0 if none)    best   1.146  relax   0.632  diff -0.514 (se 0.272, z -1.89, n 22)
+   E of the move played         best   1.333  relax   0.919  diff -0.415 (se 0.270, z -1.54, n 20)
+   admissible pool size         best  25.381  relax  25.190  diff -0.190 (se 2.821, z -0.07, n 21)
+   max E among challengers      best   1.686  relax   1.377  diff -0.308 (se 0.203, z -1.52, n 20)
+   lead before the turn         best  22.482  relax  22.132  diff -0.350 (se 0.088, z -3.99, n 21)

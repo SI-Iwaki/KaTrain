@@ -1,0 +1,822 @@
+diff --git a/.claude/rules/ai-parameters.md b/.claude/rules/ai-parameters.md
+index 5a394080..5d086576 100644
+--- a/.claude/rules/ai-parameters.md
++++ b/.claude/rules/ai-parameters.md
+@@ -684,6 +684,10 @@ vloss 210→180 目・予測 E 265→268）。sticky ヨセフラグは `game._e
+ | `enigma13plus_min_delta_e` | 外しに要求する E の上積み（目）＝選択手の E − 最善手の E の下限。**0（OFF）で難解（13路）と同一挙動** | OFF/0.1/0.2/0.3/0.5 | **0.2** |
+ | `enigma13plus_cheap_loss` | この検証済み損失以下の外しは床を免除（序盤の定跡外し・最善手より良い手を残す）。大きくすると難解（13路）に近づく | 0/0.2/0.3/0.5/1.0 | **0.3** |
+ | `enigma13plus_probe_extra` | **罠探索の拡張**（spec 追記12-2）。子局面プローブの挑戦者を「安い順 7 手」＋「残りの admissible 候補から loss の範囲で等間隔にこの本数」にする（`_shortlist` → `enigma9_shortlist_spread`）。従来は cap 5 目の手番でも 2 目より高い手を調べておらず（118手番で最大 loss/cap 中央値 0.38）、E>=2 の罠は高い帯に多い（vloss<0.3 で 6%・4目超で 21%）。代金の上限は不変＝同じ予算でより大きい罠を net 比較に乗せる。**先読み wave2 も同じ規則で温める**（`_ponder_wave2_targets`・cap は予測局面の root lead から消費モードの式で近似）ので的中時の即着手は保たれる。コールド実測 **+0.8 秒/手**（katrain_debug 13路 1.2→2.0 秒。先読み的中時は乗らない）。重ければ 2。0 で従来の 8 手 | 0/2/4/6/8 | **4** |
++| `enigma13plus_relax_min_lead` | **余裕外し**（2026-11-16・`_relax_swap` → 純関数 `enigma9_relax_pick`・難解＋専用＝基底のフックは None）。罠の選択が最善手に倒れた手番（`chosen is None`）だけ、ΔE 床を通す前の検証済みエントリから「9段らしく・ほぼ損のない手」へ外してレポートの一致率を下げる。着手後リードの床は `max(この値, target_score + large_lead_max_loss)`（ユーザー設定の target 2・large 10 では 8/10/12 が同じ 12 になる）。追加クエリなし。**0（OFF）で従来と同一**。**外した直後の数手番は罠が減る**（2 分岐 36 対: 4 手番先までで罠 −0.28±0.22 回・ΣE −0.34±0.64、実発動 14 局面だけだと ΣE −1.63±1.08＝その後に取り戻すかは未確定）＝既定 OFF の理由。実測は `ai-strategies.md` の難解＋の節と `calibration-data/enigma-relax/` | OFF/8/10/12/15/20/25/30/40 | **OFF** |
++| `enigma13plus_relax_max_loss` | 余裕外しの 1 手の検証済み損失の上限（目）。着手後勝率の床 97%（`ENIGMA9_RELAX_MIN_WR`）は別に掛かる | 0.3/0.5/0.8/1.0/1.5/2.0 | **1.0** |
++| `enigma13plus_relax_min_hp` | 外す先の humanPolicy（rank_9d）の床。加えて最善手の hp の 1/4 以上（`ENIGMA9_RELAX_HP_RATIO`）。資格手が複数なら最安から 0.3 目（`ENIGMA9_RELAX_SLACK`）の帯で hp 最大 | 5%/10%/15%/20%/30% | **10%** |
++| `enigma13plus_relax_max_e_drop` | 外す先の E が最善手の E より下がってよい幅（目）＝最善手そのものが罠の手番を守る。実戦 14 局の在庫: 0 で 4 回・0.5 で 15 回・1.0 で 20 回（E −0.28/局）・MAX で 27 回（E −1.49/局） | 0/0.3/0.5/1.0/2.0/MAX | **0.5** |
+ | 他18項目（`enigma*plus_max_loss` 〜 `enigma*plus_opening_humanstyle_moves`・序盤の賭け罠 `enigma*plus_gamble_*` の 3 項目と捨て身の罠 `enigma*plus_overdraft_*` の 4 項目を含む） | 基底の難解（同じ盤）の同名項目と同じ意味・同じ候補値・同じ既定（テスト `test_base_options_are_shared_with_the_base_strategy` で固定）。ユーザーローカル config は基底の現在値を写してある（9路: max_loss 1.6・large 6.0・min_wr 0.25・target 0.2・aim_jigo true / 13路: max_loss 1.6・target 1.5 / 19路: max_loss 2.6・endgame 180・locality 3.0） | — | — |
+ 
+ **盤サイズ別の校正状況（追記12-3／12-4・2026-09-02）**: 13路は実対局 難解13局 vs 難解＋14局（後半 15 局は交互）で E 平均/手 1.66→1.84（z 0.7・有意でない）・**相手の実損失/手 2.25→3.23（+1.0・局平均 z 1.9・pooled z 2.4、交互 15 局だけなら z 2.6〜2.7）**・>=2目の失着 41%→54%・vloss/手 0.93→0.85（同じ代金で回収 2.4→3.8 倍）・着手中央 0.35→0.40 秒（spec 追記12-5・2026-09-03＝13路は校正済み扱い）。**9路は交互対局 難解6局 vs 難解＋5局で利点を確認できず**（E 1.74→1.84〈z 0.3〉・外し率 35%→33% 不変・vloss 0.60→0.36。実損失は測れる手番が 1局 3〜13 で崩壊局 1 局が平均を支配＝比較不能。spread 発火 3〜7 手番/局、ΔE 床は選ばれない候補しか落とさない）＝**9路の既定は難解のまま・校正は打ち止め**（spec 追記12-4）。**19路は 13路の値を流用で未校正**（ログなし・候補プールが最大なので spread の余地は構造上最大の見込み。probe 1本が重いぶん `probe_extra` 4 のコールド増分は 13路の +0.8 秒より大）。
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 3eabdc44..331a1293 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -12,7 +12,7 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
+ 
+ | 系統 | 内容 | 触る前に読む |
+ |---|---|---|
+-| Human-like AI 戦略 | 悪手フィルタに加え、力戦派 / 攻城 / 狩猟 / 一致率低減 / 持碁 / 一致率追随（9路）/ 難解（9・13・19路）/ 難解＋（9・13・19路＝罠探索の拡張＋ΔE 床の改良版・`EnigmaPlusMixin`）/ 擬態（13路＝相手より低い一致率で勝つ・`Mimic13Strategy`）/ 一致率ひかえめ（旧名 韜晦・9・13・19路＝勝ち優先で自分の一致率を絶対目標まで下げる・序盤の窓を難解＋に任せる研究外しの層〈既定 OFF〉つき・`Veil9Strategy`） | `.claude/rules/ai-strategies.md`（設計と実測）<br>`.claude/rules/ai-parameters.md`（全パラメータ値）<br>`.claude/rules/ai-humanstyle.md`（フィルタ実装） |
++| Human-like AI 戦略 | 悪手フィルタに加え、力戦派 / 攻城 / 狩猟 / 一致率低減 / 持碁 / 一致率追随（9路）/ 難解（9・13・19路）/ 難解＋（9・13・19路＝罠探索の拡張＋ΔE 床の改良版・大差の勝勢で最善手を自然な手へ外す余裕外し〈既定 OFF〉つき・`EnigmaPlusMixin`）/ 擬態（13路＝相手より低い一致率で勝つ・`Mimic13Strategy`）/ 一致率ひかえめ（旧名 韜晦・9・13・19路＝勝ち優先で自分の一致率を絶対目標まで下げる・序盤の窓を難解＋に任せる研究外しの層〈既定 OFF〉つき・`Veil9Strategy`） | `.claude/rules/ai-strategies.md`（設計と実測）<br>`.claude/rules/ai-parameters.md`（全パラメータ値）<br>`.claude/rules/ai-humanstyle.md`（フィルタ実装） |
+ | 詰碁 | 画面キャプチャ→盤面認識→枠→着手選択 `ai:tsumego`→死活ソルバ（Rust df-pn）→回答帳 | `.claude/rules/tsumego.md`（設計と落とし穴）<br>`.claude/rules/tsumego-parameters.md`（パラメータ値） |
+ | 盤面監視 | `board_watch.py`: BlueStacks 上の対局アプリ（黄盤＝囲碁クエスト系／明るい木目盤／野狐囲碁の PC 版）の着手を検出して人間側の手として片方向注入（トグル `ctrl+alt+d`）。AI の色の自動判定と連続対局、AI の着手をアプリ盤の真上に示す輪（`screen_marker.py`・難易度の色分けは `move_difficulty.py`）、交点へのカーソル移動（`screen_cursor.py`・クリックはしない）、5分進まなければ自動停止 ／ `tsumego_autoloop.py`: 詰碁の自動ループ（ADB でアプリを操作。トグルは `ctrl+alt+a`。spec `2026-08-23-tsumego-autoloop-design.md`） ／ 観戦モード: 黒白とも画面から来る対局（プロの対局など）を取り込んで分析するだけ（`board_spectate.py`・トグル `ctrl+alt+w`・spec `2026-11-15-spectate-watch-design.md`） | `.claude/rules/board-watch.md`（機能の全体像と設定キー）<br>`docs/superpowers/specs/2026-08-18-board-watch-design.md` |
+ 
+diff --git a/docs/manual/src/06f_ai_enigma.html b/docs/manual/src/06f_ai_enigma.html
+index 07f54f3e..3d4c60cd 100644
+--- a/docs/manual/src/06f_ai_enigma.html
++++ b/docs/manual/src/06f_ai_enigma.html
+@@ -98,11 +98,15 @@
+       <tr><td>enigma*plus_min_delta_e</td><td>0.2<span class="jp">OFF=0</span></td><td>外しに要求する E の上積み（目）。<b>OFF（0）にすると難解（13路）と完全に同じ挙動</b>。</td><td><span class="up">上げる</span>本物の罠だけ採用＝外しが減る。<span class="down">OFF</span>難解（13路）と同一</td></tr>
+       <tr><td>enigma*plus_cheap_loss</td><td>0.3</td><td>この損失以下の外しは床を免除（序盤の安い定跡外しを残す）。</td><td><span class="up">上げる</span>免除が広がり難解（13路）に近づく</td></tr>
+       <tr><td>enigma*plus_probe_extra</td><td>4<span class="jp">0=従来</span></td><td>罠を探す範囲の拡張。安い順 7 手に加えて、高い帯から等間隔にこの数だけ候補を追加で解析する。着手時間は 4 で +0.8 秒程度（先読みが当たった手番は変わらない）。</td><td><span class="up">上げる</span>より高い帯まで探す＝大きい罠が見つかりやすいが着手が遅くなる。<span class="down">0</span>従来の 8 手</td></tr>
++      <tr><td>enigma*plus_relax_min_lead</td><td>OFF</td><td>余裕外し。大差で勝っているとき、罠の選択が最善手に落ち着いた手番だけ、9 段が普通に打つ・ほぼ損のない別の手に替えて終局レポートの一致率を下げる。外した後のリードがこの値以上（かつ「目標差＋大差時の損失上限」以上）残る手番でだけ働く。追加の解析はしない。</td><td><span class="up">上げる</span>発動する局面が減る。<span class="down">OFF</span>従来どおり</td></tr>
++      <tr><td>enigma*plus_relax_max_loss</td><td>1.0</td><td>余裕外しで 1 手に払ってよい損（目）。外した後の勝率が 97% を割る手は打たない。</td><td><span class="up">上げる</span>外せる手番が増えるが損が残る</td></tr>
++      <tr><td>enigma*plus_relax_min_hp</td><td>10%</td><td>外す先の手を 9 段が打つ確率の下限（最善手の確率の 1/4 以上も必要）。</td><td><span class="up">上げる</span>より自然な手だけ＝外せる手番が減る</td></tr>
++      <tr><td>enigma*plus_relax_max_e_drop</td><td>0.5</td><td>外す先の E（相手の期待損失）が最善手より下がってよい幅。最善手そのものが罠になっている手番を守る。</td><td><span class="up">上げる</span>外せる手番が増えるが最善手の罠を手放す。<span class="down">0</span>罠の強さを落とさない</td></tr>
+       <tr><td>その他 11 項目</td><td>同じ盤の難解と同じ</td><td><code>enigma9plus_*</code> / <code>enigma13plus_*</code> / <code>enigma19plus_*</code> として別々に保存されます（難解の設定は引き継がれないので、変えていた値はこちらにも入れてください）。</td><td>—</td></tr>
+     </tbody>
+   </table></div>
+   <div class="callout warn">
+     <span class="label">校正状況</span>
+-    閾値 0.2 / 0.3 と追加プローブ数 4 は 13 路 7 局のログから置いた仮置きです。13 路は実対局 3 局で方向を確認済み。9 路・19 路は同じ既定値をそのまま流用したもので未校正です（19 路は 1 手の解析が重いので、着手が遅ければ追加プローブ数を 2 に）。
++    閾値 0.2 / 0.3 と追加プローブ数 4 は 13 路 7 局のログから置いた仮置きです。13 路は実対局 3 局で方向を確認済み。9 路・19 路は同じ既定値をそのまま流用したもので未校正です（19 路は 1 手の解析が重いので、着手が遅ければ追加プローブ数を 2 に）。余裕外しは既定 OFF です。13 路の実測では 1 局に約 1 回（大差の局で 1〜5 回）発動し、その局の一致率が 2〜5 ポイント下がります（払う損は 1 局で 0.3 目ほど）。ただし外した直後の数手番は罠を打つ回数が減ります（1 回の発動につき、4 手番先までで罠が 0.3〜0.4 回少ない。その後に取り戻すかは未確認）。罠の数を優先するなら OFF のままにしてください。9 路・19 路は未計測です。
+   </div>
+ </div>
+diff --git a/katrain/config.json b/katrain/config.json
+index 16d30fdd..347eddc5 100644
+--- a/katrain/config.json
++++ b/katrain/config.json
+@@ -267,7 +267,11 @@
+             "enigma9plus_overdraft_deficit": 0.0,
+             "enigma9plus_overdraft_answered_max": 0.0,
+             "enigma9plus_overdraft_min_fooled_lead": 2.0,
+-            "enigma9plus_overdraft_probes": 6
++            "enigma9plus_overdraft_probes": 6,
++            "enigma9plus_relax_min_lead": 0.0,
++            "enigma9plus_relax_max_loss": 1.0,
++            "enigma9plus_relax_min_hp": 0.1,
++            "enigma9plus_relax_max_e_drop": 0.5
+         },
+         "ai:enigma13": {
+             "enigma13_max_loss": 1.5,
+@@ -310,7 +314,11 @@
+             "enigma13plus_overdraft_deficit": 0.0,
+             "enigma13plus_overdraft_answered_max": 0.0,
+             "enigma13plus_overdraft_min_fooled_lead": 2.0,
+-            "enigma13plus_overdraft_probes": 6
++            "enigma13plus_overdraft_probes": 6,
++            "enigma13plus_relax_min_lead": 0.0,
++            "enigma13plus_relax_max_loss": 1.0,
++            "enigma13plus_relax_min_hp": 0.1,
++            "enigma13plus_relax_max_e_drop": 0.5
+         },
+         "ai:enigma19": {
+             "enigma19_max_loss": 2.0,
+@@ -353,7 +361,11 @@
+             "enigma19plus_overdraft_deficit": 0.0,
+             "enigma19plus_overdraft_answered_max": 0.0,
+             "enigma19plus_overdraft_min_fooled_lead": 2.0,
+-            "enigma19plus_overdraft_probes": 6
++            "enigma19plus_overdraft_probes": 6,
++            "enigma19plus_relax_min_lead": 0.0,
++            "enigma19plus_relax_max_loss": 1.0,
++            "enigma19plus_relax_min_hp": 0.1,
++            "enigma19plus_relax_max_e_drop": 0.5
+         },
+         "ai:mimic13": {
+             "mimic13_max_loss": 2.0,
+diff --git a/katrain/core/ai.py b/katrain/core/ai.py
+index 19929515..a44370bc 100644
+--- a/katrain/core/ai.py
++++ b/katrain/core/ai.py
+@@ -2043,6 +2043,12 @@ ENIGMA9_CHEAP_LOSS = 0.3
+ # probe 済み1502候補で E>=2 の割合は loss<0.3 で 6%・4目超で 21%（corr(E, vloss)=+0.24）＝大きい罠は
+ # 高い帯に多い。0 で従来の8手（ビット同一）
+ ENIGMA9_PROBE_EXTRA = 4
++# 難解＋の余裕外し（relax・2026-11-16・実測は calibration-data/enigma-relax/）: 大差の勝勢で、選択が
++# 最善手に倒れた手番（Best move wins the confusion race）だけ、9段らしく・ほぼ損のない別の手へ外して
++# 終局レポートの一致率を下げる。罠の手番（Deviate / Gamble / Overdraft）には触れず、追加クエリも撃たない
++ENIGMA9_RELAX_MIN_WR = 0.97        # 外した後の検証済み勝率の床（VEIL_DECIDED_WR と同値）
++ENIGMA9_RELAX_SLACK = 0.3          # 最安帯の幅（目）。帯の中は humanPolicy 最大
++ENIGMA9_RELAX_HP_RATIO = 0.25      # 最善手の humanPolicy に対する比の床（明らかな一手を珍しい手に替えない）
+ ENIGMA9_W_REPLY_RARE = 1.0         # 十分な応手の見つけにくさの重み（目相当）
+ ENIGMA9_W_OWN_RARE = 1.0           # 自手の意外さの重み（目相当）
+ ENIGMA9_OWN_RARE_FIND_FADE = 0.85  # own_rare の「応手自明」減衰が始まる find_hp（`enigma9_own_rare_find_gate`）
+@@ -2730,6 +2736,57 @@ def enigma9_delta_e_filter(scored, best_gtp, min_delta_e, cheap_loss):
+     return kept, dropped
+ 
+ 
++def enigma9_relax_pick(scored, best_gtp, best_lead_after, min_lead, max_loss, min_hp, max_e_drop,
++                       min_wr=ENIGMA9_RELAX_MIN_WR, slack=ENIGMA9_RELAX_SLACK, hp_ratio=ENIGMA9_RELAX_HP_RATIO):
++    """余裕外し: 大差の勝勢で最善手の代わりに打つ「9段らしく・ほぼ損のない手」を返す。返り値 (pick or None, 資格のある手)。
++
++    scored は子局面プローブで検証済みのエントリ（ΔE 床を通す前・最善手込み）。資格は全部 AND:
++      - 検証済み損失 max(0, loss) <= max_loss（気にならない損）
++      - own_hp >= max(min_hp, hp_ratio × 最善手の own_hp)（人間らしさ。明らかな一手を珍しい手に替えない）
++      - 着手後の検証済み勝率 >= min_wr、着手後のリード best_lead_after − loss >= min_lead（勝敗に響かない。
++        min_lead は呼び出し側が target + large_lead_max_loss 以上にする＝次の手番の罠探索の上限を縮めない）
++      - E >= 最善手の E − max_e_drop（最善手そのものが罠になっている手番は罠を残す）
++    選ぶのは最安の資格手から slack 目以内の帯の中で own_hp 最大（同点は損の小さい方）。
++    min_lead <= 0（OFF）・最善手のエントリ無し・着手後リード不明は (None, [])＝最善手のまま。
++
++    実測（2026-11-16・calibration-data/enigma-relax/）: 実戦ログ 13路 14 局の反実仮想で、リード 12 目以上で
++    最善手を打った 153 手番のうち 74 手番は cap 内に代替なし（盤面監視の難易度も「明らか」）、残り 79 手番の
++    うち資格あり（1.0 目・hp 10%・E 低下 0.5 まで）は 15 手番＝1.07 回/局・払う損 0.32 目/局・E の変化 −0.02 目/局。
++    **外した直後の数手番は罠が減る**（同じ局面の 2 分岐 36 対: 罠の回数は 2 手番先まで −0.39±0.17、4 手番先まで
++    −0.28±0.22・ΣE −0.34±0.64。実際に発動した 14 局面だけだと 4 手番先まで ΣE −1.63±1.08＝その後に取り戻すかは
++    未確定、原因も未確定）＝一致の減りは 1 発動あたり約 0.7 手ぶん。既定 OFF のままにしてある理由。
++    """
++    if min_lead is None or min_lead <= 0 or best_lead_after is None:
++        return None, []
++    best = next((c for c in scored if c["gtp"] == best_gtp), None)
++    if best is None:
++        return None, []
++    eps = 1e-9
++    hp_floor = max(min_hp, hp_ratio * (best.get("own_hp") or 0.0))
++    quals = []
++    for c in scored:
++        if c["gtp"] == best_gtp or c["gtp"] == "pass":
++            continue
++        cost = max(0.0, c["loss"])
++        if cost > max_loss + eps:
++            continue
++        if (c.get("own_hp") or 0.0) < hp_floor - eps:
++            continue
++        if c.get("wr_after") is None or c["wr_after"] < min_wr:
++            continue
++        if best_lead_after - c["loss"] < min_lead:
++            continue
++        if c["e"] < best["e"] - max_e_drop - eps:
++            continue
++        quals.append(c)
++    if not quals:
++        return None, []
++    cheapest = min(max(0.0, c["loss"]) for c in quals)
++    band = [c for c in quals if max(0.0, c["loss"]) <= cheapest + slack + eps]
++    pick = max(band, key=lambda c: (c.get("own_hp") or 0.0, -c["loss"]))
++    return pick, quals
++
++
+ def enigma9_gamble_window(depth, until_move):
+     """序盤の賭け罠（`<prefix>_gamble_until_move`）の窓の中か。0 以下で OFF。
+ 
+@@ -2959,6 +3016,13 @@ class Enigma9Strategy(AIStrategy):
+         """
+         return scored, []
+ 
++    def _relax_swap(self, scored, best_gtp, best_lead_after, target, large_cap):
++        """余裕外し（選択が最善手に倒れた手番で呼ぶ）。基底は None＝最善手のまま（ビット同一）。
++
++        難解＋（EnigmaPlusMixin）だけが `enigma9_relax_pick` で上書きする。
++        """
++        return None
++
+     def _shortlist(self, pool):
+         """子局面プローブに回す挑戦者。基底は従来の `enigma9_shortlist`（安い順 7 手）＝ビット同一。"""
+         return enigma9_shortlist(pool, ENIGMA9_SHORTLIST - 1)
+@@ -3855,6 +3919,7 @@ class Enigma9Strategy(AIStrategy):
+                     f"wr if answered correctly {g_pick['wr_after']:.1%}) instead of {best_gtp}.",
+                 )
+ 
++        scored_all = scored  # ΔE 床を通す前（余裕外しは「安くて自然な手」＝床が落とす帯を見る）
+         scored, _dropped = self._filter_challengers(scored, best_gtp)
+         chosen, band = enigma9_choose_local(scored, best_gtp, margin, loc_slack, loc_stddev)
+         if band:
+@@ -3864,6 +3929,15 @@ class Enigma9Strategy(AIStrategy):
+                 + (f" (prox {chosen['prox']:.2f}, net {chosen['net']:.2f})" if chosen else "")
+             )
+         if chosen is None:
++            # 余裕外し（難解＋・既定 OFF）: 罠の選択が最善手に倒れた手番だけ。追加クエリなし
++            relax = self._relax_swap(scored_all, best_gtp, best_lead_after, target, large_cap)
++            if relax is not None:
++                self._start_ponder(relax["gtp"], probes.get(relax["gtp"]), player)
++                return (
++                    Move.from_gtp(relax["gtp"], player=player),
++                    f"{self.LABEL}: far ahead, relaxed to {relax['gtp']} (verified loss {relax['loss']:.2f}, "
++                    f"own hp {relax['own_hp']:.1%}, wr {relax['wr_after']:.1%}) instead of {best_gtp}.",
++                )
+             self._log("Best move wins the confusion race -> best move")
+             self._start_ponder(best_gtp, probes.get(best_gtp), player)
+             return self._best_move(
+@@ -3955,8 +4029,43 @@ class EnigmaPlusMixin:
+         "min_delta_e": ENIGMA9_MIN_DELTA_E,   # 外しに要求する E の上積み（目）。0=OFF
+         "cheap_loss": ENIGMA9_CHEAP_LOSS,     # この vloss 以下の外しは床を免除（目）
+         "probe_extra": ENIGMA9_PROBE_EXTRA,   # 罠探索の拡張: 高い帯から等間隔に足すプローブ数。0=従来の8手
++        "relax_min_lead": 0.0,               # 余裕外し: 着手後に残すリードの下限（目）。0=OFF
++        "relax_max_loss": 1.0,               # 余裕外し: 1 手に払う検証済み損失の上限（目）
++        "relax_min_hp": 0.1,                 # 余裕外し: 外す先の humanPolicy の床
++        "relax_max_e_drop": 0.5,             # 余裕外し: 最善手より E が下がってよい幅（目）
+     }
+ 
++    def _relax_swap(self, scored, best_gtp, best_lead_after, target, large_cap):
++        """余裕外し: 大差の勝勢で最善手に倒れた手番を、9段らしく・ほぼ損のない別の手へ外す（既定 OFF）。
++
++        リードの下限は max(relax_min_lead, target + large_lead_max_loss)＝外した後も消費モードの cap が
++        上限に張り付いたまま（次の手番の罠探索の範囲を縮めない）。資格と選択は `enigma9_relax_pick`。
++        """
++        min_lead = float(self._setting("relax_min_lead") or 0.0)
++        if min_lead <= 0.0 or best_lead_after is None:
++            return None
++        floor = max(min_lead, target + large_cap)
++        if best_lead_after < floor:
++            return None
++        max_loss = float(self._setting("relax_max_loss"))
++        min_hp = float(self._setting("relax_min_hp"))
++        max_e_drop = float(self._setting("relax_max_e_drop"))
++        pick, quals = enigma9_relax_pick(scored, best_gtp, best_lead_after, floor, max_loss, min_hp, max_e_drop)
++        best = next((c for c in scored if c["gtp"] == best_gtp), None)
++        self._log(
++            f"Relax: lead_after={best_lead_after:.2f} floor={floor:.1f} max_loss={max_loss:.2f} "
++            f"min_hp={min_hp:.2f} max_e_drop={max_e_drop:.2f} qualifiers="
++            f"{[(c['gtp'], round(c['loss'], 2), round(c['own_hp'], 3)) for c in quals]}"
++        )
++        if pick is None:
++            return None
++        self._log(
++            f"Relax: played {pick['gtp']} (vloss={pick['loss']:.2f}, own_hp={pick['own_hp']:.3f}, "
++            f"E={pick['e']:.2f}, dE={pick['e'] - best['e']:+.2f}, wr={pick['wr_after']:.1%}) instead of {best_gtp} "
++            f"(best own_hp={best['own_hp']:.3f}, E={best['e']:.2f})"
++        )
++        return pick
++
+     def _shortlist(self, pool):
+         """罠探索の拡張（spec 追記12-2）: 安い順 7 手＋残りの候補から loss の範囲で等間隔に probe_extra 手。"""
+         extra = int(self._setting("probe_extra") or 0)
+diff --git a/katrain/core/constants.py b/katrain/core/constants.py
+index 71fd91db..009fa6dc 100644
+--- a/katrain/core/constants.py
++++ b/katrain/core/constants.py
+@@ -219,6 +219,13 @@ _ENIGMA_OVERDRAFT_ANSWERED_MAX = [(-1.0, "-1"), (0.0, "0"), (99.0, "MAX")]
+ _ENIGMA_OVERDRAFT_MIN_FOOLED_LEAD = [1.0, 2.0, 3.0, 5.0, 8.0]
+ _ENIGMA_OVERDRAFT_PROBES = [4, 6, 8, 12]
+ 
++# 難解＋の余裕外し（enigma*plus_relax_*・2026-11-16・実測 calibration-data/enigma-relax/）。全盤サイズ共通。
++# min_lead 0=OFF（実効の下限は target_score + large_lead_max_loss）、max_e_drop 99=MAX（E を見ない）
++_ENIGMA_RELAX_MIN_LEAD = [(0.0, "OFF"), (8.0, "8"), (10.0, "10"), (12.0, "12"), (15.0, "15"), (20.0, "20"), (25.0, "25"), (30.0, "30"), (40.0, "40")]
++_ENIGMA_RELAX_MAX_LOSS = [0.3, 0.5, 0.8, 1.0, 1.5, 2.0]
++_ENIGMA_RELAX_MIN_HP = [(0.05, "5%"), (0.1, "10%"), (0.15, "15%"), (0.2, "20%"), (0.3, "30%")]
++_ENIGMA_RELAX_MAX_E_DROP = [(0.0, "0"), (0.3, "0.3"), (0.5, "0.5"), (1.0, "1.0"), (2.0, "2.0"), (99.0, "MAX")]
++
+ # 韜晦（veil*_・spec 2026-09-23-veil-strategy-design.md）の候補値。支払い上限だけ盤サイズ別、他は3盤共通。
+ # 目標一致率は 15〜50%（15% 未満へは払わない設計）。勝ちの安全条件（reserve・min_winrate）の既定は
+ # 9/13/19路 3/5/7 目・85%。「攻め」プリセット（測定専用: reserve 3・min_winrate 75%・max_loss 6・
+@@ -442,6 +449,10 @@ AI_OPTION_VALUES = {
+     "enigma9plus_overdraft_answered_max": _ENIGMA_OVERDRAFT_ANSWERED_MAX,
+     "enigma9plus_overdraft_min_fooled_lead": _ENIGMA_OVERDRAFT_MIN_FOOLED_LEAD,
+     "enigma9plus_overdraft_probes": _ENIGMA_OVERDRAFT_PROBES,
++    "enigma9plus_relax_min_lead": _ENIGMA_RELAX_MIN_LEAD,
++    "enigma9plus_relax_max_loss": _ENIGMA_RELAX_MAX_LOSS,
++    "enigma9plus_relax_min_hp": _ENIGMA_RELAX_MIN_HP,
++    "enigma9plus_relax_max_e_drop": _ENIGMA_RELAX_MAX_E_DROP,
+     # ===== Enigma13Strategy（13路専用・難解） =====
+     # 9路の「2目以上の損失手は打たない」は挽回が難しい9路向けの締め方。13路は
+     # 悪手フィルタの盤サイズ比（NORMAL 3.3→5.6 ≒ ×1.7）に合わせて天井 3.0 まで開ける
+@@ -492,6 +503,10 @@ AI_OPTION_VALUES = {
+     "enigma13plus_overdraft_answered_max": _ENIGMA_OVERDRAFT_ANSWERED_MAX,
+     "enigma13plus_overdraft_min_fooled_lead": _ENIGMA_OVERDRAFT_MIN_FOOLED_LEAD,
+     "enigma13plus_overdraft_probes": _ENIGMA_OVERDRAFT_PROBES,
++    "enigma13plus_relax_min_lead": _ENIGMA_RELAX_MIN_LEAD,
++    "enigma13plus_relax_max_loss": _ENIGMA_RELAX_MAX_LOSS,
++    "enigma13plus_relax_min_hp": _ENIGMA_RELAX_MIN_HP,
++    "enigma13plus_relax_max_e_drop": _ENIGMA_RELAX_MAX_E_DROP,
+     # ===== Enigma19Strategy（19路専用・難解） =====
+     # 悪手フィルタは13路と同じ NORMAL=5.6 だが、19路は挽回機会が多いぶん天井 4.0 まで開ける
+     # （5.6=悪手フィルタまでは開けない＝「難解だが悪手ではない」帯に留める）
+@@ -536,6 +551,10 @@ AI_OPTION_VALUES = {
+     "enigma19plus_overdraft_answered_max": _ENIGMA_OVERDRAFT_ANSWERED_MAX,
+     "enigma19plus_overdraft_min_fooled_lead": _ENIGMA_OVERDRAFT_MIN_FOOLED_LEAD,
+     "enigma19plus_overdraft_probes": _ENIGMA_OVERDRAFT_PROBES,
++    "enigma19plus_relax_min_lead": _ENIGMA_RELAX_MIN_LEAD,
++    "enigma19plus_relax_max_loss": _ENIGMA_RELAX_MAX_LOSS,
++    "enigma19plus_relax_min_hp": _ENIGMA_RELAX_MIN_HP,
++    "enigma19plus_relax_max_e_drop": _ENIGMA_RELAX_MAX_E_DROP,
+     # ===== Mimic13Strategy（13路専用・擬態）spec 2026-09-17-mimic13-strategy-design.md =====
+     # 相手より低い一致率で勝つ。price = vloss − ΔE をリード連動の λ で買う
+     "mimic13_max_loss": [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0],
+@@ -765,6 +784,10 @@ AI_OPTION_ORDER = {
+     "enigma9plus_overdraft_answered_max": 18,
+     "enigma9plus_overdraft_min_fooled_lead": 19,
+     "enigma9plus_overdraft_probes": 20,
++    "enigma9plus_relax_min_lead": 21,
++    "enigma9plus_relax_max_loss": 22,
++    "enigma9plus_relax_min_hp": 23,
++    "enigma9plus_relax_max_e_drop": 24,
+     "enigma13_max_loss": 0,
+     "enigma13_large_lead_max_loss": 1,
+     "enigma13_min_winrate": 2,
+@@ -804,6 +827,10 @@ AI_OPTION_ORDER = {
+     "enigma13plus_overdraft_answered_max": 18,
+     "enigma13plus_overdraft_min_fooled_lead": 19,
+     "enigma13plus_overdraft_probes": 20,
++    "enigma13plus_relax_min_lead": 21,
++    "enigma13plus_relax_max_loss": 22,
++    "enigma13plus_relax_min_hp": 23,
++    "enigma13plus_relax_max_e_drop": 24,
+     "enigma19_max_loss": 0,
+     "enigma19_large_lead_max_loss": 1,
+     "enigma19_min_winrate": 2,
+@@ -843,6 +870,10 @@ AI_OPTION_ORDER = {
+     "enigma19plus_overdraft_answered_max": 18,
+     "enigma19plus_overdraft_min_fooled_lead": 19,
+     "enigma19plus_overdraft_probes": 20,
++    "enigma19plus_relax_min_lead": 21,
++    "enigma19plus_relax_max_loss": 22,
++    "enigma19plus_relax_min_hp": 23,
++    "enigma19plus_relax_max_e_drop": 24,
+     "mimic13_max_loss": 0,
+     "mimic13_reserve": 1,
+     "mimic13_spend_rate": 2,
+diff --git a/katrain/i18n/locales/en/LC_MESSAGES/katrain.po b/katrain/i18n/locales/en/LC_MESSAGES/katrain.po
+index d7f00ad7..1e6bd02d 100644
+--- a/katrain/i18n/locales/en/LC_MESSAGES/katrain.po
++++ b/katrain/i18n/locales/en/LC_MESSAGES/katrain.po
+@@ -1052,6 +1052,18 @@ msgstr "[9x9+] All-in trap: minimum lead if the opponent falls for it (pts)"
+ msgid "enigma9plus_overdraft_probes"
+ msgstr "[9x9+] All-in trap: extra probes"
+ 
++msgid "enigma9plus_relax_min_lead"
++msgstr "[9x9+] Relaxed swap: lead to keep (pts, OFF = classic)"
++
++msgid "enigma9plus_relax_max_loss"
++msgstr "[9x9+] Relaxed swap: per-move loss cap (pts)"
++
++msgid "enigma9plus_relax_min_hp"
++msgstr "[9x9+] Relaxed swap: minimum human policy of the swap"
++
++msgid "enigma9plus_relax_max_e_drop"
++msgstr "[9x9+] Relaxed swap: allowed drop in trap strength (E, pts)"
++
+ msgid "ai:enigma13"
+ msgstr "Enigma (13x13)"
+ 
+@@ -1181,6 +1193,18 @@ msgstr "[13x13+] All-in trap: minimum lead if the opponent falls for it (pts)"
+ msgid "enigma13plus_overdraft_probes"
+ msgstr "[13x13+] All-in trap: extra probes"
+ 
++msgid "enigma13plus_relax_min_lead"
++msgstr "[13x13+] Relaxed swap: lead to keep (pts, OFF = classic)"
++
++msgid "enigma13plus_relax_max_loss"
++msgstr "[13x13+] Relaxed swap: per-move loss cap (pts)"
++
++msgid "enigma13plus_relax_min_hp"
++msgstr "[13x13+] Relaxed swap: minimum human policy of the swap"
++
++msgid "enigma13plus_relax_max_e_drop"
++msgstr "[13x13+] Relaxed swap: allowed drop in trap strength (E, pts)"
++
+ msgid "ai:enigma19plus"
+ msgstr "Enigma+ (19x19)"
+ 
+@@ -1250,6 +1274,18 @@ msgstr "[19x19+] All-in trap: minimum lead if the opponent falls for it (pts)"
+ msgid "enigma19plus_overdraft_probes"
+ msgstr "[19x19+] All-in trap: extra probes"
+ 
++msgid "enigma19plus_relax_min_lead"
++msgstr "[19x19+] Relaxed swap: lead to keep (pts, OFF = classic)"
++
++msgid "enigma19plus_relax_max_loss"
++msgstr "[19x19+] Relaxed swap: per-move loss cap (pts)"
++
++msgid "enigma19plus_relax_min_hp"
++msgstr "[19x19+] Relaxed swap: minimum human policy of the swap"
++
++msgid "enigma19plus_relax_max_e_drop"
++msgstr "[19x19+] Relaxed swap: allowed drop in trap strength (E, pts)"
++
+ msgid "ai:mimic13"
+ msgstr "Mimic (13x13)"
+ 
+diff --git a/katrain/i18n/locales/jp/LC_MESSAGES/katrain.po b/katrain/i18n/locales/jp/LC_MESSAGES/katrain.po
+index f98d1a2f..a26a6201 100644
+--- a/katrain/i18n/locales/jp/LC_MESSAGES/katrain.po
++++ b/katrain/i18n/locales/jp/LC_MESSAGES/katrain.po
+@@ -740,6 +740,18 @@ msgstr "[9路＋] 捨て身の罠: 引っかかった時に残るリードの下
+ msgid "enigma9plus_overdraft_probes"
+ msgstr "[9路＋] 捨て身の罠: 追加プローブ数"
+ 
++msgid "enigma9plus_relax_min_lead"
++msgstr "[9路＋] 余裕外し: 残すリードの下限（目・OFF=従来）"
++
++msgid "enigma9plus_relax_max_loss"
++msgstr "[9路＋] 余裕外し: 1手の損失上限（目）"
++
++msgid "enigma9plus_relax_min_hp"
++msgstr "[9路＋] 余裕外し: 外す先の自然さの下限"
++
++msgid "enigma9plus_relax_max_e_drop"
++msgstr "[9路＋] 余裕外し: 罠の強さを下げてよい幅（目）"
++
+ msgid "ai:enigma13"
+ msgstr "難解（13路）"
+ 
+@@ -869,6 +881,18 @@ msgstr "[13路＋] 捨て身の罠: 引っかかった時に残るリードの
+ msgid "enigma13plus_overdraft_probes"
+ msgstr "[13路＋] 捨て身の罠: 追加プローブ数"
+ 
++msgid "enigma13plus_relax_min_lead"
++msgstr "[13路＋] 余裕外し: 残すリードの下限（目・OFF=従来）"
++
++msgid "enigma13plus_relax_max_loss"
++msgstr "[13路＋] 余裕外し: 1手の損失上限（目）"
++
++msgid "enigma13plus_relax_min_hp"
++msgstr "[13路＋] 余裕外し: 外す先の自然さの下限"
++
++msgid "enigma13plus_relax_max_e_drop"
++msgstr "[13路＋] 余裕外し: 罠の強さを下げてよい幅（目）"
++
+ msgid "ai:enigma19plus"
+ msgstr "難解＋（19路）"
+ 
+@@ -938,6 +962,18 @@ msgstr "[19路＋] 捨て身の罠: 引っかかった時に残るリードの
+ msgid "enigma19plus_overdraft_probes"
+ msgstr "[19路＋] 捨て身の罠: 追加プローブ数"
+ 
++msgid "enigma19plus_relax_min_lead"
++msgstr "[19路＋] 余裕外し: 残すリードの下限（目・OFF=従来）"
++
++msgid "enigma19plus_relax_max_loss"
++msgstr "[19路＋] 余裕外し: 1手の損失上限（目）"
++
++msgid "enigma19plus_relax_min_hp"
++msgstr "[19路＋] 余裕外し: 外す先の自然さの下限"
++
++msgid "enigma19plus_relax_max_e_drop"
++msgstr "[19路＋] 余裕外し: 罠の強さを下げてよい幅（目）"
++
+ msgid "ai:mimic13"
+ msgstr "擬態（13路）"
+ 
+@@ -2405,6 +2441,26 @@ msgstr ""
+ "捨て身の罠: 追加で検証する手数\n"
+ "罠を探すために追加で検証する手数。罠は事前に見分けられないので、発動回数はほぼこの値に比例します（4/6/8/12 手で 0.6/0.8/1.0/1.3 回/局）。上げると発動が増えますが、対象の手番で 1 手につき約 0.2 秒遅くなります。"
+ 
++msgid "aiopt:enigma*_relax_min_lead"
++msgstr ""
++"余裕外し: 残すリードの下限（目）\n"
++"大差で勝っているときだけ、最善手の代わりに「9段が普通に打つ・ほぼ損のない別の手」を打って、終局レポートの最善手一致率を下げます。発動するのは罠の選択が最善手に落ち着いた手番だけで、罠を打つ手番（外し・賭け罠・捨て身の罠）の選択は変えません。外した後のリードがこの値以上残る手番でだけ発動します（実際の下限はこの値と「{p}_target_score + {p}_large_lead_max_loss」の大きい方＝次の罠探しの範囲を狭めないため）。上げると発動する局面が減って安全側、OFF で従来どおり。追加の解析はしないので着手時間は変わりません。13路の実戦 14 局の集計では、既定の条件で 1 局に約 1 回（大差の局で 1〜5 回）発動し、払う損は 1 局で合計 0.3 目ほどです。注意: 外した直後の数手番は罠を打つ回数が減ります（同じ局面で比べた実測: 1 回の発動につき、4 手番先までで罠が 0.3〜0.4 回少ない。その後に取り戻すかは未確認）。このため一致率の下がり方は 1 回の発動につき約 0.7 手ぶんで、大差の局で −2〜−5 ポイントが目安です。"
++
++msgid "aiopt:enigma*_relax_max_loss"
++msgstr ""
++"余裕外し: 1手の損失上限（目）\n"
++"余裕外しで 1 手に払ってよい損（着手後の局面を解析して確かめた値）。上げると外せる手番が増えますが、レポートに小さな損として残ります。下げると同値に近い手だけになります。外した後の勝率が 97% を割る手は、この値に関係なく打ちません。"
++
++msgid "aiopt:enigma*_relax_min_hp"
++msgstr ""
++"余裕外し: 外す先の自然さの下限\n"
++"外す先の手に要る「9段がその手を打つ確率」。上げるほど人間らしい手だけになり、外せる手番は減ります。下げると珍しい手にも外します。最善手が誰でも打つ一手（確率が高い手）のときは、この値に加えて最善手の確率の 1/4 以上も要ります。条件を満たす手が複数あれば、損が最も小さい手から 0.3 目以内の中で確率が最も高い手を打ちます。"
++
++msgid "aiopt:enigma*_relax_max_e_drop"
++msgstr ""
++"余裕外し: 罠の強さを下げてよい幅（目）\n"
++"最善手そのものが相手にとって難しい手（罠）になっている手番を守るための条件です。外す先の E（相手の期待損失）が最善手の E よりこの値を超えて低いときは外しません。0 にすると罠の強さを一切落とさず（外せる手番は約 4 分の 1 に減る）、上げると外せる手番が増える代わりに、最善手が持っていた罠の効果を手放します（MAX で E を見ない＝外せる手番は既定の約 1.8 倍・1 局あたり E の合計が 1.5 目ほど下がる）。"
++
+ msgid "aiopt:enigma*_min_delta_e"
+ msgstr ""
+ "外しに要求する E の上積み（目・ΔE 床）\n"
+diff --git a/tests/test_ai_enigma_plus.py b/tests/test_ai_enigma_plus.py
+index 200af146..601abc0f 100644
+--- a/tests/test_ai_enigma_plus.py
++++ b/tests/test_ai_enigma_plus.py
+@@ -177,6 +177,10 @@ class TestRegistration:
+             "min_delta_e": ENIGMA9_MIN_DELTA_E,
+             "cheap_loss": ENIGMA9_CHEAP_LOSS,
+             "probe_extra": ENIGMA9_PROBE_EXTRA,
++            "relax_min_lead": 0.0,
++            "relax_max_loss": 1.0,
++            "relax_min_hp": 0.1,
++            "relax_max_e_drop": 0.5,
+         }
+         assert (ENIGMA9_MIN_DELTA_E, ENIGMA9_CHEAP_LOSS, ENIGMA9_PROBE_EXTRA) == (0.2, 0.3, 4)
+ 
+diff --git a/tests/test_ai_enigma_relax.py b/tests/test_ai_enigma_relax.py
+new file mode 100644
+index 00000000..d3d244af
+--- /dev/null
++++ b/tests/test_ai_enigma_relax.py
+@@ -0,0 +1,319 @@
++# tests/test_ai_enigma_relax.py
++"""難解＋の「余裕外し」（enigma*plus_relax_*・実測 calibration-data/enigma-relax/）のテスト（KataGo/Kivy 不要）。
++
++大差の勝勢で、選択が最善手に倒れた手番（Best move wins the confusion race）だけ、9段らしく・ほぼ損のない別の手へ
++外して終局レポートの一致率を下げる。罠の手番（Deviate）には触れない。既定 OFF＝従来とビット同一。
++"""
++
++import types
++
++import pytest
++
++from katrain.core.ai import (
++    ENIGMA9_RELAX_HP_RATIO,
++    ENIGMA9_RELAX_MIN_WR,
++    ENIGMA9_RELAX_SLACK,
++    Enigma9PlusStrategy,
++    Enigma9Strategy,
++    Enigma13PlusStrategy,
++    Enigma13Strategy,
++    Enigma19PlusStrategy,
++    Enigma19Strategy,
++    EnigmaPlusMixin,
++    enigma9_relax_pick,
++)
++from katrain.core.sgf_parser import Move
++
++BASES = (Enigma9Strategy, Enigma13Strategy, Enigma19Strategy)
++PLUS = (Enigma9PlusStrategy, Enigma13PlusStrategy, Enigma19PlusStrategy)
++
++
++def row(gtp, loss, own_hp, e, wr_after=0.999):
++    return {"gtp": gtp, "loss": loss, "own_hp": own_hp, "e": e, "wr_after": wr_after}
++
++
++BEST = row("D4", 0.0, 0.5, 1.0)
++
++
++def pick(rows, *, lead=30.0, min_lead=12.0, max_loss=1.0, min_hp=0.1, max_e_drop=0.5, **kw):
++    return enigma9_relax_pick([BEST] + rows, "D4", lead, min_lead, max_loss, min_hp, max_e_drop, **kw)
++
++
++def gtp_of(result):
++    return None if result[0] is None else result[0]["gtp"]
++
++
++class TestConstants:
++    def test_values(self):
++        assert (ENIGMA9_RELAX_MIN_WR, ENIGMA9_RELAX_SLACK, ENIGMA9_RELAX_HP_RATIO) == (0.97, 0.3, 0.25)
++
++    def test_plus_defaults_are_off(self):
++        d = EnigmaPlusMixin.PLUS_DEFAULTS
++        assert d["relax_min_lead"] == 0.0
++        assert (d["relax_max_loss"], d["relax_min_hp"], d["relax_max_e_drop"]) == (1.0, 0.1, 0.5)
++
++    def test_base_enigma_has_no_relax_settings(self):
++        for cls in BASES:
++            assert not any(k.startswith("relax") for k in cls.SETTING_DEFAULTS), cls.__name__
++
++
++class TestRelaxPick:
++    def test_off_when_min_lead_is_zero_or_none(self):
++        rows = [row("K10", 0.0, 0.4, 1.0)]
++        assert pick(rows, min_lead=0.0) == (None, [])
++        assert pick(rows, min_lead=None) == (None, [])
++
++    def test_failsafe_without_best_entry_or_lead(self):
++        rows = [row("K10", 0.0, 0.4, 1.0)]
++        assert enigma9_relax_pick(rows, "D4", 30.0, 12.0, 1.0, 0.1, 0.5) == (None, [])
++        assert pick(rows, lead=None) == (None, [])
++
++    def test_natural_cheap_move_is_picked(self):
++        result = pick([row("K10", 0.4, 0.3, 0.8)])
++        assert gtp_of(result) == "K10"
++        assert [c["gtp"] for c in result[1]] == ["K10"]
++
++    def test_loss_cap(self):
++        assert gtp_of(pick([row("K10", 1.01, 0.3, 1.0)])) is None
++        assert gtp_of(pick([row("K10", 1.0, 0.3, 1.0)])) == "K10"  # 境界は含む
++        assert gtp_of(pick([row("K10", 1.4, 0.3, 1.0)], max_loss=1.5)) == "K10"
++
++    def test_human_policy_floor(self):
++        assert gtp_of(pick([row("K10", 0.1, 0.09, 1.0)], hp_ratio=0.0)) is None
++        assert gtp_of(pick([row("K10", 0.1, 0.10, 1.0)], hp_ratio=0.0)) == "K10"
++
++    def test_floor_scales_with_the_best_move_policy(self):
++        # 最善手が hp 0.5 → 比の床 0.125。hp 0.9 の一手なら床 0.225＝hp 0.2 の手には替えない
++        assert gtp_of(pick([row("K10", 0.1, 0.12, 1.0)])) is None
++        assert gtp_of(pick([row("K10", 0.1, 0.13, 1.0)])) == "K10"
++        obvious = row("D4", 0.0, 0.9, 1.0)
++        assert enigma9_relax_pick([obvious, row("K10", 0.1, 0.2, 1.0)], "D4", 30.0, 12.0, 1.0, 0.1, 0.5)[0] is None
++        assert (
++            enigma9_relax_pick([obvious, row("K10", 0.1, 0.23, 1.0)], "D4", 30.0, 12.0, 1.0, 0.1, 0.5)[0]["gtp"]
++            == "K10"
++        )
++
++    def test_winrate_floor(self):
++        assert gtp_of(pick([row("K10", 0.1, 0.3, 1.0, wr_after=0.96)])) is None
++        assert gtp_of(pick([row("K10", 0.1, 0.3, 1.0, wr_after=None)])) is None
++        assert gtp_of(pick([row("K10", 0.1, 0.3, 1.0, wr_after=0.97)])) == "K10"
++
++    def test_lead_after_the_swap_must_stay_above_the_floor(self):
++        assert gtp_of(pick([row("K10", 0.5, 0.3, 1.0)], lead=12.4)) is None  # 12.4 − 0.5 < 12
++        assert gtp_of(pick([row("K10", 0.5, 0.3, 1.0)], lead=12.5)) == "K10"
++
++    def test_trap_guard_keeps_a_best_move_that_is_itself_the_trap(self):
++        assert gtp_of(pick([row("K10", 0.1, 0.3, 0.4)])) is None  # E 1.0 → 0.4 は 0.5 を超える低下
++        assert gtp_of(pick([row("K10", 0.1, 0.3, 0.5)])) == "K10"
++        assert gtp_of(pick([row("K10", 0.1, 0.3, 0.4)], max_e_drop=99.0)) == "K10"
++        assert gtp_of(pick([row("K10", 0.1, 0.3, 0.99)], max_e_drop=0.0)) is None
++        assert gtp_of(pick([row("K10", 0.1, 0.3, 1.2)], max_e_drop=0.0)) == "K10"
++
++    def test_most_natural_move_within_the_cheapest_band(self):
++        rows = [row("K10", 0.0, 0.2, 1.0), row("H8", 0.3, 0.4, 1.0), row("G7", 0.9, 0.45, 1.0)]
++        result = pick(rows)
++        assert gtp_of(result) == "H8"  # G7 は最安 0.0 から 0.3 目の帯の外
++        assert [c["gtp"] for c in result[1]] == ["K10", "H8", "G7"]
++
++    def test_negative_verified_loss_counts_as_free(self):
++        # 検証で最善手より良かった手（loss < 0）は代金 0。帯の基準も 0
++        rows = [row("K10", -0.8, 0.2, 1.0), row("H8", 0.2, 0.4, 1.0)]
++        assert gtp_of(pick(rows)) == "H8"
++        assert gtp_of(pick([row("K10", -0.8, 0.2, 1.0)], lead=11.5)) == "K10"  # 11.5 + 0.8 >= 12
++
++    def test_tie_on_policy_prefers_the_cheaper_move(self):
++        assert gtp_of(pick([row("K10", 0.2, 0.3, 1.0), row("H8", 0.1, 0.3, 1.0)])) == "H8"
++
++    def test_pass_and_best_are_never_picked(self):
++        assert gtp_of(pick([row("pass", 0.0, 0.9, 1.0)])) is None
++
++
++def _stub(cls, settings=None):
++    logs = []
++    katrain_ns = types.SimpleNamespace(log=lambda msg, *a, **k: logs.append(str(msg)))
++    node = types.SimpleNamespace(next_player="B")
++    game = types.SimpleNamespace(katrain=katrain_ns, current_node=node)
++    return cls(game, settings or {}), logs
++
++
++class TestRelaxHook:
++    ROWS = [BEST, row("K10", 0.4, 0.3, 0.8)]
++
++    def test_base_hook_is_a_noop(self):
++        for cls in BASES:
++            s, logs = _stub(cls, {f"{cls.KEY_PREFIX}_relax_min_lead": 12.0})
++            assert s._relax_swap(self.ROWS, "D4", 30.0, 2.0, 8.0) is None
++            assert not any("Relax" in m for m in logs)
++
++    @pytest.mark.parametrize("cls", PLUS, ids=[c.KEY_PREFIX for c in PLUS])
++    def test_plus_default_is_off(self, cls):
++        s, logs = _stub(cls)
++        assert s._relax_swap(self.ROWS, "D4", 30.0, 2.0, 8.0) is None
++        assert not any("Relax" in m for m in logs)
++
++    @pytest.mark.parametrize("cls", PLUS, ids=[c.KEY_PREFIX for c in PLUS])
++    def test_plus_on_picks_and_logs(self, cls):
++        s, logs = _stub(cls, {f"{cls.KEY_PREFIX}_relax_min_lead": 12.0})
++        assert s._relax_swap(self.ROWS, "D4", 30.0, 2.0, 8.0)["gtp"] == "K10"
++        assert any("Relax: played K10" in m and "instead of D4" in m for m in logs)
++
++    def test_floor_never_drops_below_target_plus_large_cap(self):
++        # スライダー 8 でも target 2 + large_cap 10 = 12 が下限（外した後も消費モードの cap が上限のまま）
++        s, logs = _stub(Enigma13PlusStrategy, {"enigma13plus_relax_min_lead": 8.0})
++        assert s._relax_swap(self.ROWS, "D4", 11.9, 2.0, 10.0) is None
++        assert not any("Relax" in m for m in logs)
++        assert s._relax_swap(self.ROWS, "D4", 12.3, 2.0, 10.0) is None  # 12.3 − 0.4 < 12
++        assert s._relax_swap(self.ROWS, "D4", 12.4, 2.0, 10.0)["gtp"] == "K10"
++
++    def test_settings_are_passed_through(self):
++        on = {"enigma13plus_relax_min_lead": 12.0}
++        s, _ = _stub(Enigma13PlusStrategy, {**on, "enigma13plus_relax_max_loss": 0.3})
++        assert s._relax_swap(self.ROWS, "D4", 30.0, 2.0, 8.0) is None
++        s, _ = _stub(Enigma13PlusStrategy, {**on, "enigma13plus_relax_min_hp": 0.35})
++        assert s._relax_swap(self.ROWS, "D4", 30.0, 2.0, 8.0) is None
++        s, _ = _stub(Enigma13PlusStrategy, {**on, "enigma13plus_relax_max_e_drop": 0.0})
++        assert s._relax_swap(self.ROWS, "D4", 30.0, 2.0, 8.0) is None
++
++
++def _hp(size, values):
++    arr = [0.0] * (size * size + 1)
++    for gtp, v in values.items():
++        x, y = Move.from_gtp(gtp).coords
++        arr[(size - 1 - y) * size + x] = v
++    return arr
++
++
++def _child(lead_after, wr_after, replies, reply_hp, size=13):
++    """黒番が打った後の子局面プローブ（clean + hp）。replies は [(gtp, 白視点の損失, visits)]。"""
++    move_infos = [
++        {"move": g, "scoreLead": lead_after + loss, "visits": v, "order": i} for i, (g, loss, v) in enumerate(replies)
++    ]
++    return {
++        "clean": {"rootInfo": {"scoreLead": lead_after, "winrate": wr_after}, "moveInfos": move_infos},
++        "hp": {"humanPolicy": _hp(size, reply_hp)},
++    }
++
++
++def _replies(punish):
++    """正解 C3（hp 50%）と自然な失着 M12（hp 50%・punish 目損）＝ E = punish / 2。"""
++    return [("C3", 0.0, 300), ("M12", punish, 40)], {"C3": 0.5, "M12": 0.5}
++
++
++EASY = ([("C3", 0.0, 300), ("N1", 0.4, 20)], {"C3": 0.9, "N1": 0.05})  # 応手が自明＝E≈0
++
++
++def _strategy(cls, prefix, settings=None, *, lead=30.0, k10_punish=1.6, k10_hp=0.3, endgame=False):
++    """黒が大差で勝っている 13路・黒番（target 2・max_loss 1.6・large 8 → 消費モード cap 8）。
++
++    D4=最善（hp 50%・E 1.0）/ K10=検証済み 0.4 目損・hp 30%・E = k10_punish/2（既定 0.8＝最善手より低い＝
++    従来は最善手に倒れる）/ H8=0.2 目損だが hp 1%（珍しい手）。
++    """
++    logs = []
++    katrain_ns = types.SimpleNamespace(log=lambda msg, *a, **k: logs.append(str(msg)))
++    cands = [
++        {"move": "D4", "pointsLost": 0.0, "relativePointsLost": 0.0, "visits": 900, "winrate": 0.999},
++        {"move": "H8", "pointsLost": 0.2, "relativePointsLost": 0.2, "visits": 60, "winrate": 0.999},
++        {"move": "K10", "pointsLost": 0.3, "relativePointsLost": 0.3, "visits": 60, "winrate": 0.999},
++    ]
++    node = types.SimpleNamespace(
++        next_player="B",
++        player="W",
++        depth=60,
++        move=None,
++        analysis_complete=True,
++        analysis={"root": {"scoreLead": lead}},
++        candidate_moves=cands,
++    )
++    game = types.SimpleNamespace(katrain=katrain_ns, current_node=node, board_size=(13, 13))
++    if endgame:
++        setattr(game, f"_{prefix}_endgame", True)
++    base = {
++        f"{prefix}_opening_humanstyle_moves": 0,
++        f"{prefix}_max_loss": 1.6,
++        f"{prefix}_large_lead_max_loss": 8.0,
++        f"{prefix}_target_score": 2.0,
++        f"{prefix}_locality_stddev": 0.0,
++    }
++    s = cls(game, {**base, **(settings or {})})
++    s.probed = []
++
++    def probe(gtps, player, parent_hp=False):
++        s.probed.append(list(gtps))
++        table = {
++            "D4": _child(lead, 0.999, *_replies(2.0)),
++            "K10": _child(lead - 0.4, 0.999, *_replies(k10_punish)),
++            "H8": _child(lead - 0.2, 0.999, *EASY),
++        }
++        parent = {"humanPolicy": _hp(13, {"D4": 0.5, "K10": k10_hp, "H8": 0.01})} if parent_hp else None
++        return {g: table[g] for g in gtps}, parent
++
++    s._probe_children = probe
++    s._run_query = lambda label, **kw: {"ownership": [1.0] * 169, "rootInfo": {"scoreLead": lead}}
++    return s, logs
++
++
++ON = {"enigma13plus_relax_min_lead": 12.0}
++
++
++class TestRelaxEndToEnd:
++    def test_off_plays_the_best_move(self):
++        s, logs = _strategy(Enigma13PlusStrategy, "enigma13plus")
++        move, thoughts = s.generate_move()
++        assert move.gtp() == "D4"
++        assert "most confusing" in thoughts
++        assert any("Best move wins the confusion race" in m for m in logs)
++        assert not any("Relax" in m for m in logs)
++
++    def test_on_swaps_the_best_move_for_the_natural_cheap_move(self):
++        s, logs = _strategy(Enigma13PlusStrategy, "enigma13plus", ON)
++        move, thoughts = s.generate_move()
++        assert move.gtp() == "K10"
++        assert "relaxed to K10" in thoughts and "instead of D4" in thoughts
++        assert any("Relax: played K10" in m for m in logs)
++        assert not any("Best move wins the confusion race" in m for m in logs)
++
++    def test_on_issues_exactly_the_same_probes_as_off(self):
++        off, _ = _strategy(Enigma13PlusStrategy, "enigma13plus")
++        on, _ = _strategy(Enigma13PlusStrategy, "enigma13plus", ON)
++        off.generate_move()
++        on.generate_move()
++        assert on.probed == off.probed
++
++    def test_not_far_enough_ahead(self):
++        s, logs = _strategy(Enigma13PlusStrategy, "enigma13plus", ON, lead=11.0)
++        assert s.generate_move()[0].gtp() == "D4"
++        assert not any("Relax: played" in m for m in logs)
++
++    def test_trap_turn_is_untouched(self):
++        # K10 が本物の罠（E 3.0 > 最善手 1.0）なら従来どおり罠として打つ＝余裕外しは呼ばれない
++        for settings in ({}, ON):
++            s, logs = _strategy(Enigma13PlusStrategy, "enigma13plus", settings, k10_punish=6.0)
++            move, thoughts = s.generate_move()
++            assert move.gtp() == "K10"
++            assert "deviated to K10" in thoughts
++            assert any("Deviate: played K10" in m for m in logs)
++            assert not any("Relax" in m for m in logs)
++
++    def test_trap_guard_keeps_the_best_move(self):
++        s, logs = _strategy(Enigma13PlusStrategy, "enigma13plus", ON, k10_punish=0.8)  # E 0.4 = 0.6 目の低下
++        assert s.generate_move()[0].gtp() == "D4"
++        assert any("Relax:" in m and "qualifiers=[]" in m for m in logs)
++        relaxed = {**ON, "enigma13plus_relax_max_e_drop": 99.0}
++        s, _ = _strategy(Enigma13PlusStrategy, "enigma13plus", relaxed, k10_punish=0.8)
++        assert s.generate_move()[0].gtp() == "K10"
++
++    def test_unnatural_move_is_not_a_swap_target(self):
++        s, _ = _strategy(Enigma13PlusStrategy, "enigma13plus", ON, k10_hp=0.05)
++        assert s.generate_move()[0].gtp() == "D4"
++
++    def test_works_in_the_endgame_too(self):
++        off, _ = _strategy(Enigma13PlusStrategy, "enigma13plus", endgame=True)
++        assert off.generate_move()[0].gtp() == "D4"
++        on, logs = _strategy(Enigma13PlusStrategy, "enigma13plus", ON, endgame=True)
++        assert on.generate_move()[0].gtp() == "K10"
++        assert any("Relax: played K10" in m for m in logs)
++
++    def test_base_enigma_ignores_the_setting(self):
++        s, logs = _strategy(Enigma13Strategy, "enigma13", {"enigma13_relax_min_lead": 12.0})
++        assert s.generate_move()[0].gtp() == "D4"
++        assert not any("Relax" in m for m in logs)
