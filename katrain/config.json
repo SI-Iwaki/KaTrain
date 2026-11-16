@@ -244,7 +244,10 @@
             "enigma9_overdraft_deficit": 0.0,
             "enigma9_overdraft_answered_max": 0.0,
             "enigma9_overdraft_min_fooled_lead": 2.0,
-            "enigma9_overdraft_probes": 6
+            "enigma9_overdraft_probes": 6,
+            "enigma9_underdog_until_move": 0,
+            "enigma9_underdog_deficit": 2.0,
+            "enigma9_underdog_probes": 6
         },
         "ai:enigma9plus": {
             "enigma9plus_max_loss": 1.0,
@@ -267,7 +270,10 @@
             "enigma9plus_overdraft_deficit": 0.0,
             "enigma9plus_overdraft_answered_max": 0.0,
             "enigma9plus_overdraft_min_fooled_lead": 2.0,
-            "enigma9plus_overdraft_probes": 6
+            "enigma9plus_overdraft_probes": 6,
+            "enigma9plus_underdog_until_move": 0,
+            "enigma9plus_underdog_deficit": 2.0,
+            "enigma9plus_underdog_probes": 6
         },
         "ai:enigma13": {
             "enigma13_max_loss": 1.5,
@@ -287,7 +293,10 @@
             "enigma13_overdraft_deficit": 0.0,
             "enigma13_overdraft_answered_max": 0.0,
             "enigma13_overdraft_min_fooled_lead": 2.0,
-            "enigma13_overdraft_probes": 6
+            "enigma13_overdraft_probes": 6,
+            "enigma13_underdog_until_move": 0,
+            "enigma13_underdog_deficit": 2.0,
+            "enigma13_underdog_probes": 6
         },
         "ai:enigma13plus": {
             "enigma13plus_max_loss": 1.5,
@@ -310,7 +319,10 @@
             "enigma13plus_overdraft_deficit": 0.0,
             "enigma13plus_overdraft_answered_max": 0.0,
             "enigma13plus_overdraft_min_fooled_lead": 2.0,
-            "enigma13plus_overdraft_probes": 6
+            "enigma13plus_overdraft_probes": 6,
+            "enigma13plus_underdog_until_move": 0,
+            "enigma13plus_underdog_deficit": 2.0,
+            "enigma13plus_underdog_probes": 6
         },
         "ai:enigma19": {
             "enigma19_max_loss": 2.0,
@@ -330,7 +342,10 @@
             "enigma19_overdraft_deficit": 0.0,
             "enigma19_overdraft_answered_max": 0.0,
             "enigma19_overdraft_min_fooled_lead": 2.0,
-            "enigma19_overdraft_probes": 6
+            "enigma19_overdraft_probes": 6,
+            "enigma19_underdog_until_move": 0,
+            "enigma19_underdog_deficit": 2.0,
+            "enigma19_underdog_probes": 6
         },
         "ai:enigma19plus": {
             "enigma19plus_max_loss": 2.0,
@@ -353,7 +368,10 @@
             "enigma19plus_overdraft_deficit": 0.0,
             "enigma19plus_overdraft_answered_max": 0.0,
             "enigma19plus_overdraft_min_fooled_lead": 2.0,
-            "enigma19plus_overdraft_probes": 6
+            "enigma19plus_overdraft_probes": 6,
+            "enigma19plus_underdog_until_move": 0,
+            "enigma19plus_underdog_deficit": 2.0,
+            "enigma19plus_underdog_probes": 6
         },
         "ai:mimic13": {
             "mimic13_max_loss": 2.0,

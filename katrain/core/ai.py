@@ -2085,6 +2085,18 @@ ENIGMA9_OVERDRAFT_MAX_FIND = ENIGMA9_HP_BOOK   # 十分な応手の hp 最大値
 ENIGMA9_OVERDRAFT_CEILING_FACTOR = 1.5         # 1 手の損失の天井 = これ × large_lead_max_loss（+20 から 22 目捨てる手を塞ぐ）
 ENIGMA9_OVERDRAFT_RAW_MARGIN = 1.5             # プローブ候補を選ぶ生 loss の帯の余裕（目）。生 loss は両側に外れる
 
+# 劣勢演出の罠（underdog）オプション（spec 2026-11-17-enigma-underdog-design.md）。窓（手数 <
+# `<prefix>_underdog_until_move`）× ヨセ前 × リードしている手番で、捨て身の罠と同じ資格（応じられた後の
+# リードの帯・応手の見つけにくさ・引っかかった後のリード）に ΔE の下限を足した罠を net 比較を飛ばして打つ。
+# 捨て身の罠との違いは (1) 手数の窓がある (2) 消費モードでない小差のリード（cost_weight >= 1）でも開く
+# (3) 帯の上端が 0＝応じられたら必ず少し劣勢 (4) 1 手の損失の天井が large_lead_max_loss まで
+# (5) 通常上限の内側の候補も資格を見る。窓（手数）の中は捨て身の罠を置き換える。
+# until_move 0 = OFF（採用判断・解析条件とも従来とビット同一）
+ENIGMA9_UNDERDOG_UPPER = 0.0               # 応じられた後のリードの上端（exclusive）＝必ずマイナスになる手だけ
+ENIGMA9_UNDERDOG_MIN_FOOLED_LEAD = 1.0     # 引っかかった場合に残るリードの下限（目）
+ENIGMA9_UNDERDOG_MIN_DELTA_E = 0.5         # 罠とみなす E の上積み（目）。最善手のほうが大きい罠の手番では打たない
+ENIGMA9_UNDERDOG_CEILING_FACTOR = 1.0      # 1 手の損失の天井 = これ × large_lead_max_loss
+
 # 「二段の漏斗」: 9路の通常解析（1000visits・wRN=0.04）は visits を1〜3手に集中させる
 # ため、visits >= 10 の候補だけでは外し候補が 0〜1 手しか残らない（実測 2026-08-10・
 # 校正局 move 8: moveInfos 74手のうち visits>=10 は 2手・visits>=2 でも 3手）。そこで
@@ -2892,6 +2904,74 @@ def enigma9_overdraft_pick(over_scored, deficit, upper, min_fooled_lead, ceiling
     return max(qualifiers, key=lambda c: (c["u"], c["lead_after"])), qualifiers
 
 
+def enigma9_underdog_window(depth, until_move, deficit, in_yose, lead, cap, large_cap, upper,
+                            factor=ENIGMA9_UNDERDOG_CEILING_FACTOR):
+    """劣勢演出の罠の窓。開いていれば (over_cap, ceiling)、閉じていれば None。
+
+    条件（全部 AND）: until_move > 0 かつ depth < until_move（賭け罠の窓と同じ数え方）／ deficit > 0 ／
+    ヨセ前 ／ lead が取れている ／ lead > upper（既に帯の上端以下＝劣勢の手番では開かない＝通常の選択で
+    挽回する。回数の上限もこれが兼ねる）／ lead − ceiling < upper（天井まで払えば帯に届く）。
+    ceiling = max(cap, factor × large_cap) は 1 手の損失の天井、over_cap = min(lead + deficit, ceiling)。
+
+    捨て身の罠の窓（`enigma9_overdraft_window`）と違い cost_weight を見ない＝消費モードでない小差の
+    リードでも開く。実測（2026-11-17・13路 18 局の反実仮想の再集計・手数 < 50・天井 10）: 資格のある罠
+    26 手番のうち 15 がリード 1〜5 目（消費モードの外になりうる帯）、リード 1 目以下は 35 手番で 0 件。
+    over_cap が cap 以下でも開く（帯が通常上限の内側に収まる小差の手番＝通常の候補から資格を探す）。
+    """
+    n = int(until_move or 0)
+    d = float(deficit or 0.0)
+    if n <= 0 or depth >= n or d <= 0.0 or in_yose or lead is None:
+        return None
+    if lead <= upper:
+        return None
+    ceiling = max(cap, factor * large_cap)
+    if lead - ceiling >= upper:
+        return None
+    return min(lead + d, ceiling), ceiling
+
+
+def enigma9_underdog_probe_picks(candidates, best_gtp, taken, lo, hi, k):
+    """劣勢演出の罠の追加プローブ対象を k 手まで返す。
+
+    生 loss が (lo, hi] の候補（最善手・pass・taken＝通常の shortlist を除く）を loss 昇順（同着は visits
+    多い順）に並べ、visits を問わず等間隔（両端を含む）に k 手。捨て身の罠の `enigma9_overdraft_probe_picks`
+    （信頼できる候補を等間隔 → 残りは浅い候補を visits 多い順・loss 安い順）は使わない: 資格のある罠の
+    大半は visits 1 の浅い候補で（反実仮想の再集計 45 手中 35）、生 loss はリード + 0.4 目あたりを中心に
+    リード − 0.9〜+1.6 目へ散らばるのに、浅い候補を安い順に埋めると帯の下端に固まる（実局面 2026-11-17:
+    `004112`@18 は 6 手とも生 loss 2.79〜2.88、`211800`@28 は帯の上 3.4 目ぶんを 1 手も調べなかった）。
+    """
+    k = int(k or 0)
+    if k <= 0:
+        return []
+    band = sorted(
+        [
+            c for c in candidates
+            if c["gtp"] != best_gtp and c["gtp"] != "pass" and c["gtp"] not in taken and lo < c["loss"] <= hi
+        ],
+        key=lambda c: (c["loss"], -c.get("visits", 0)),
+    )
+    return _enigma9_spread_picks(band, k)
+
+
+def enigma9_underdog_pick(entries, best_e, deficit, upper, min_fooled_lead, ceiling,
+                          min_delta_e=ENIGMA9_UNDERDOG_MIN_DELTA_E, max_find=ENIGMA9_OVERDRAFT_MAX_FIND):
+    """劣勢演出の罠の資格がある候補から1手選ぶ。返り値 (pick | None, qualifiers)。
+
+    資格は捨て身の罠（`enigma9_overdraft_pick`）の4条件（1 手の損失の天井・応じられた後のリードの帯・
+    応手の見つけにくさ・引っかかった後のリード）に「E − 最善手の E >= min_delta_e」を足したもの。
+    順位も同じ（応じられた後のリード + E 最大＝帯の中で最も浅く沈み、最も多く取り返す見込みの手）。
+    entries は検証済み損失が通常上限を超えた候補と、上限の内側でスコアリング済みの挑戦者の両方
+    （どちらも lead_after・e・e_fooled・find・loss を持つ）。最善手の E が無ければ基準が無いので (None, [])。
+    ΔE の条件は「最善手自体がより大きい罠」の手番で損をして小さい罠を打つのを塞ぐ（反実仮想で
+    条件なしなら資格 31 手番・うち 5 がこれ）。入力の dict は書き換えない。
+    """
+    if best_e is None:
+        return None, []
+    eps = 1e-9
+    trap = [c for c in entries if c["e"] - best_e >= min_delta_e - eps]
+    return enigma9_overdraft_pick(trap, deficit, upper, min_fooled_lead, ceiling, max_find=max_find)
+
+
 @register_strategy(AI_ENIGMA_9)
 class Enigma9Strategy(AIStrategy):
     """9路専用「難解」戦略。
@@ -2947,6 +3027,9 @@ class Enigma9Strategy(AIStrategy):
         "overdraft_answered_max": 0.0,       # 捨て身の罠: 応じられた後のリードの上限（0=必ずマイナス・99=目標差未満）
         "overdraft_min_fooled_lead": 2.0,    # 捨て身の罠: 引っかかった場合に残るリードの下限（目）
         "overdraft_probes": 6,               # 捨て身の罠: 追加プローブ数
+        "underdog_until_move": 0,            # 劣勢演出の罠の窓（手数未満で発動・0=OFF）。spec 2026-11-17-enigma-underdog-design.md
+        "underdog_deficit": 2.0,             # 劣勢演出の罠: 応じられた場合の最大ビハインド（目）
+        "underdog_probes": 6,                # 劣勢演出の罠: 追加プローブ数
     }
 
     def _setting(self, suffix):
@@ -3642,6 +3725,21 @@ class Enigma9Strategy(AIStrategy):
                 upper=over_upper,
             )
 
+        # ---- 劣勢演出の罠（underdog）の窓（spec 2026-11-17-enigma-underdog-design.md）----
+        # 手数の窓 × ヨセ前。until_move 0（既定）なら何も触らない＝以降の分岐はすべて従来どおり（ビット同一）。
+        # 手数の窓の中は捨て身の罠を置き換える（帯・下限・天井・プローブ数はこのオプションの値。リードして
+        # いない・天井まで払っても帯に届かない手番は over_win も None＝通常の選択と賭け罠だけ）。
+        # 消費モードかどうかは問わない。lead_now は `not in_yose` の分岐でしか定義されない
+        under_on = False
+        under_until = int(self._setting("underdog_until_move") or 0)
+        if not in_yose and enigma9_gamble_window(self.cn.depth, under_until):
+            under_deficit = float(self._setting("underdog_deficit"))
+            over_upper = min(target, ENIGMA9_UNDERDOG_UPPER)
+            over_win = enigma9_underdog_window(
+                self.cn.depth, under_until, under_deficit, in_yose, lead_now, cap, large_cap, over_upper
+            )
+            under_on = over_win is not None
+
         # ヨセでは「自手の意外さ」を net から外す（`enigma9_own_rarity_weight`）
         w_own = enigma9_own_rarity_weight(in_yose)
 
@@ -3697,13 +3795,19 @@ class Enigma9Strategy(AIStrategy):
         over_picks = []
         if over_win is not None:
             over_cap, over_ceiling = over_win
-            over_picks = enigma9_overdraft_probe_picks(
+            # 劣勢演出の罠は帯「応じられた後のリードが [−deficit, upper)」＝損失 (lead − upper, lead + deficit] を
+            # 直接ねらう（通常上限の内側にも帯が掛かる小差の手番があるので下端は cap ではなく lead から決める）
+            over_lo = (lead_now - over_upper) if under_on else cap
+            over_k = int(self._setting("underdog_probes" if under_on else "overdraft_probes"))
+            over_tag = "Underdog" if under_on else "Overdraft"
+            over_pick_fn = enigma9_underdog_probe_picks if under_on else enigma9_overdraft_probe_picks
+            over_picks = over_pick_fn(
                 candidates, best_gtp, {c["gtp"] for c in shortlist},
-                cap - ENIGMA9_OVERDRAFT_RAW_MARGIN, over_cap + ENIGMA9_OVERDRAFT_RAW_MARGIN,
-                int(self._setting("overdraft_probes")),
+                over_lo - ENIGMA9_OVERDRAFT_RAW_MARGIN, over_cap + ENIGMA9_OVERDRAFT_RAW_MARGIN,
+                over_k,
             )
             self._log(
-                f"Overdraft: window lead={lead_now:.2f} cap={cap:.2f} over_cap={over_cap:.2f} "
+                f"{over_tag}: window lead={lead_now:.2f} cap={cap:.2f} over_cap={over_cap:.2f} "
                 f"ceiling={over_ceiling:.2f} probes +{len(over_picks)} "
                 f"{[(c['gtp'], round(c['loss'], 2)) for c in over_picks]}"
             )
@@ -3738,6 +3842,9 @@ class Enigma9Strategy(AIStrategy):
 
         scored = []
         over_scored = []  # 捨て身の罠: 検証済み損失が cap を超えた候補（窓が開いている手番だけ）
+        # 劣勢演出の罠の追加プローブは罠の候補にだけ回す（検証済み損失が cap の内側でも通常の net 比較・賭け罠
+        # には参加させない）＝資格のある罠が無い手番の選択は OFF と同じ候補集合で決まる
+        under_extra = {c["gtp"] for c in over_picks} if under_on else set()
         for c in probe_items:
             pr = probes.get(c["gtp"]) or {}
             clean, hp_child = pr.get("clean"), pr.get("hp")
@@ -3760,10 +3867,14 @@ class Enigma9Strategy(AIStrategy):
                         continue
                     over_route = True  # 捨て身の罠の候補。勝率フロアは見ない（意図して 50% を割る手）
                 elif wr_after is not None and wr_after < min_wr:
-                    self._log(
-                        f"Drop {c['gtp']}: verified wr {wr_after:.1%} < floor {min_wr:.0%}"
-                    )
-                    continue
+                    if not under_on:
+                        self._log(
+                            f"Drop {c['gtp']}: verified wr {wr_after:.1%} < floor {min_wr:.0%}"
+                        )
+                        continue
+                    over_route = True  # 劣勢演出の罠: 上限の内側でも勝率フロア未満の手は罠の候補として残す
+                elif c["gtp"] in under_extra:
+                    over_route = True  # 劣勢演出の罠の追加プローブ: 上限の内側でも通常の比較には入れない
             replies, best_reply = enigma9_reply_table(clean["moveInfos"], opponent)
             if not replies:
                 self._log(f"No reply table for {c['gtp']} -> dropped")
@@ -3791,11 +3902,14 @@ class Enigma9Strategy(AIStrategy):
                 vloss, e_punish, findability, own_hp, w_own=w_own, cost_weight=cost_weight,
                 locality=prox,
             )
-            scored.append(
-                {**c, "loss": vloss, "raw_loss": c["loss"], "wr_after": wr_after,
-                 "e": e_punish, "cov": coverage, "find": findability,
-                 "own_hp": own_hp, "reply": best_reply, "net": net, "prox": prox}
-            )
+            entry = {**c, "loss": vloss, "raw_loss": c["loss"], "wr_after": wr_after,
+                     "e": e_punish, "cov": coverage, "find": findability,
+                     "own_hp": own_hp, "reply": best_reply, "net": net, "prox": prox}
+            if under_on:
+                # 劣勢演出の罠は通常上限の内側の挑戦者も資格を見る（小差のリードでは帯が上限の内側に掛かる）
+                e_fooled, p_fooled = enigma9_fooled_punish(replies, hp_of)
+                entry.update(lead_after=lead_after, e_fooled=e_fooled, p_fooled=p_fooled)
+            scored.append(entry)
             wr_txt = "n/a" if wr_after is None else f"{wr_after:.1%}"
             self._log(
                 f"Score {c['gtp']}: vloss={vloss:.2f} (raw {c['loss']:.2f}) wr={wr_txt} "
@@ -3806,25 +3920,37 @@ class Enigma9Strategy(AIStrategy):
         if over_win is not None:
             # 捨て身の罠: 資格（応じられた後のリードの帯・応手の見つけにくさ・引っかかった後のリード）の
             # ある候補が居れば、net 比較・net_margin・局所性・ΔE 床・勝率フロアを通さずに打つ
-            o_deficit = float(self._setting("overdraft_deficit"))
             o_upper = over_upper
-            o_floor = float(self._setting("overdraft_min_fooled_lead"))
-            o_pick, o_quals = enigma9_overdraft_pick(over_scored, o_deficit, o_upper, o_floor, over_win[1])
+            if under_on:
+                # 劣勢演出の罠: 資格は捨て身の罠と同じ＋ ΔE の下限。通常上限の内側の挑戦者も対象
+                o_deficit, o_floor = under_deficit, ENIGMA9_UNDERDOG_MIN_FOOLED_LEAD
+                o_best = next((c for c in scored if c["gtp"] == best_gtp), None)
+                o_pool = over_scored + [c for c in scored if c["gtp"] != best_gtp]
+                o_pick, o_quals = enigma9_underdog_pick(
+                    o_pool, None if o_best is None else o_best["e"], o_deficit, o_upper, o_floor, over_win[1],
+                )
+                o_name = "underdog trap"
+            else:
+                o_deficit = float(self._setting("overdraft_deficit"))
+                o_floor = float(self._setting("overdraft_min_fooled_lead"))
+                o_pool = over_scored
+                o_pick, o_quals = enigma9_overdraft_pick(o_pool, o_deficit, o_upper, o_floor, over_win[1])
+                o_name = "overdraft trap"
             self._log(
-                f"Overdraft: band=[{-o_deficit:.1f}, {o_upper:.1f}) fooled>={o_floor:.1f} "
-                f"scored={len(over_scored)} qualifiers="
+                f"{over_tag}: band=[{-o_deficit:.1f}, {o_upper:.1f}) fooled>={o_floor:.1f} "
+                f"scored={len(o_pool)} qualifiers="
                 f"{[(c['gtp'], round(c['lead_after'], 2), round(c['fooled_lead'], 2)) for c in o_quals]}"
             )
             if o_pick is not None:
                 self._log(
-                    f"Overdraft: played {o_pick['gtp']} (answered {o_pick['lead_after']:+.2f}, "
+                    f"{over_tag}: played {o_pick['gtp']} (answered {o_pick['lead_after']:+.2f}, "
                     f"fooled {o_pick['fooled_lead']:+.2f}, vloss={o_pick['loss']:.2f}, E={o_pick['e']:.2f}, "
                     f"find_hp={o_pick['find']:.3f}, p_fooled={o_pick['p_fooled']:.0%}) instead of {best_gtp}"
                 )
                 self._start_ponder(o_pick["gtp"], probes.get(o_pick["gtp"]), player)
                 return (
                     Move.from_gtp(o_pick["gtp"], player=player),
-                    f"{self.LABEL}: overdraft trap {o_pick['gtp']} (verified loss {o_pick['loss']:.2f}, "
+                    f"{self.LABEL}: {o_name} {o_pick['gtp']} (verified loss {o_pick['loss']:.2f}, "
                     f"lead {o_pick['lead_after']:+.2f} if answered correctly, {o_pick['fooled_lead']:+.2f} if the "
                     f"opponent falls for it, reply findability {o_pick['find']:.1%}) instead of {best_gtp}.",
                 )
@@ -3925,6 +4051,9 @@ class Enigma13Strategy(Enigma9Strategy):
         "overdraft_answered_max": 0.0,       # 捨て身の罠: 応じられた後のリードの上限（0=必ずマイナス・99=目標差未満）
         "overdraft_min_fooled_lead": 2.0,    # 捨て身の罠: 引っかかった場合に残るリードの下限（目）
         "overdraft_probes": 6,               # 捨て身の罠: 追加プローブ数
+        "underdog_until_move": 0,            # 劣勢演出の罠の窓（手数未満で発動・0=OFF）。spec 2026-11-17-enigma-underdog-design.md
+        "underdog_deficit": 2.0,             # 劣勢演出の罠: 応じられた場合の最大ビハインド（目）
+        "underdog_probes": 6,                # 劣勢演出の罠: 追加プローブ数
     }
 
 
@@ -4061,6 +4190,9 @@ class Enigma19Strategy(Enigma9Strategy):
         "overdraft_answered_max": 0.0,       # 捨て身の罠: 応じられた後のリードの上限（0=必ずマイナス・99=目標差未満）
         "overdraft_min_fooled_lead": 2.0,    # 捨て身の罠: 引っかかった場合に残るリードの下限（目）
         "overdraft_probes": 6,               # 捨て身の罠: 追加プローブ数
+        "underdog_until_move": 0,            # 劣勢演出の罠の窓（手数未満で発動・0=OFF）。spec 2026-11-17-enigma-underdog-design.md
+        "underdog_deficit": 2.0,             # 劣勢演出の罠: 応じられた場合の最大ビハインド（目）
+        "underdog_probes": 6,                # 劣勢演出の罠: 追加プローブ数
     }
 
 

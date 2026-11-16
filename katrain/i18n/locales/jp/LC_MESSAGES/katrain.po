@@ -671,6 +671,15 @@ msgstr "[9路] 捨て身の罠: 引っかかった時に残るリードの下限
 msgid "enigma9_overdraft_probes"
 msgstr "[9路] 捨て身の罠: 追加プローブ数"
 
+msgid "enigma9_underdog_until_move"
+msgstr "[9路] 劣勢演出の罠: この手数未満で発動（OFF=従来）"
+
+msgid "enigma9_underdog_deficit"
+msgstr "[9路] 劣勢演出の罠: 応じられた場合の最大ビハインド（目）"
+
+msgid "enigma9_underdog_probes"
+msgstr "[9路] 劣勢演出の罠: 追加プローブ数"
+
 msgid "ai:enigma9plus"
 msgstr "難解＋（9路）"
 
@@ -740,6 +749,15 @@ msgstr "[9路＋] 捨て身の罠: 引っかかった時に残るリードの下
 msgid "enigma9plus_overdraft_probes"
 msgstr "[9路＋] 捨て身の罠: 追加プローブ数"
 
+msgid "enigma9plus_underdog_until_move"
+msgstr "[9路] 劣勢演出の罠: この手数未満で発動（OFF=従来）"
+
+msgid "enigma9plus_underdog_deficit"
+msgstr "[9路] 劣勢演出の罠: 応じられた場合の最大ビハインド（目）"
+
+msgid "enigma9plus_underdog_probes"
+msgstr "[9路] 劣勢演出の罠: 追加プローブ数"
+
 msgid "ai:enigma13"
 msgstr "難解（13路）"
 
@@ -799,6 +817,15 @@ msgstr "[13路] 捨て身の罠: 引っかかった時に残るリードの下�
 
 msgid "enigma13_overdraft_probes"
 msgstr "[13路] 捨て身の罠: 追加プローブ数"
+
+msgid "enigma13_underdog_until_move"
+msgstr "[13路] 劣勢演出の罠: この手数未満で発動（OFF=従来）"
+
+msgid "enigma13_underdog_deficit"
+msgstr "[13路] 劣勢演出の罠: 応じられた場合の最大ビハインド（目）"
+
+msgid "enigma13_underdog_probes"
+msgstr "[13路] 劣勢演出の罠: 追加プローブ数"
 
 msgid "ai:enigma13plus"
 msgstr "難解＋（13路）"
@@ -869,6 +896,15 @@ msgstr "[13路＋] 捨て身の罠: 引っかかった時に残るリードの�
 msgid "enigma13plus_overdraft_probes"
 msgstr "[13路＋] 捨て身の罠: 追加プローブ数"
 
+msgid "enigma13plus_underdog_until_move"
+msgstr "[13路] 劣勢演出の罠: この手数未満で発動（OFF=従来）"
+
+msgid "enigma13plus_underdog_deficit"
+msgstr "[13路] 劣勢演出の罠: 応じられた場合の最大ビハインド（目）"
+
+msgid "enigma13plus_underdog_probes"
+msgstr "[13路] 劣勢演出の罠: 追加プローブ数"
+
 msgid "ai:enigma19plus"
 msgstr "難解＋（19路）"
 
@@ -937,6 +973,15 @@ msgstr "[19路＋] 捨て身の罠: 引っかかった時に残るリードの�
 
 msgid "enigma19plus_overdraft_probes"
 msgstr "[19路＋] 捨て身の罠: 追加プローブ数"
+
+msgid "enigma19plus_underdog_until_move"
+msgstr "[19路] 劣勢演出の罠: この手数未満で発動（OFF=従来）"
+
+msgid "enigma19plus_underdog_deficit"
+msgstr "[19路] 劣勢演出の罠: 応じられた場合の最大ビハインド（目）"
+
+msgid "enigma19plus_underdog_probes"
+msgstr "[19路] 劣勢演出の罠: 追加プローブ数"
 
 msgid "ai:mimic13"
 msgstr "擬態（13路）"
@@ -1060,6 +1105,15 @@ msgstr "[19路] 捨て身の罠: 引っかかった時に残るリードの下�
 
 msgid "enigma19_overdraft_probes"
 msgstr "[19路] 捨て身の罠: 追加プローブ数"
+
+msgid "enigma19_underdog_until_move"
+msgstr "[19路] 劣勢演出の罠: この手数未満で発動（OFF=従来）"
+
+msgid "enigma19_underdog_deficit"
+msgstr "[19路] 劣勢演出の罠: 応じられた場合の最大ビハインド（目）"
+
+msgid "enigma19_underdog_probes"
+msgstr "[19路] 劣勢演出の罠: 追加プローブ数"
 
 msgid "jigo9_phase1_start"
 msgstr "[9路] Phase1開始手数 (控えめに打ち始める)"
@@ -2404,6 +2458,21 @@ msgid "aiopt:enigma*_overdraft_probes"
 msgstr ""
 "捨て身の罠: 追加で検証する手数\n"
 "罠を探すために追加で検証する手数。罠は事前に見分けられないので、発動回数はほぼこの値に比例します（4/6/8/12 手で 0.6/0.8/1.0/1.3 回/局）。上げると発動が増えますが、対象の手番で 1 手につき約 0.2 秒遅くなります。"
+
+msgid "aiopt:enigma*_underdog_until_move"
+msgstr ""
+"劣勢演出の罠（この手数未満で発動）\n"
+"OFF 以外にすると、対局の手数がこの値未満・ヨセ前・こちらがリードしている手番で、「正しく応じられたら少し劣勢になるが、相手の正しい応手は見つけにくく、応じ損ねてもらえばリードが残る」罠を探して打ちます。資格は全部で 4 つ＝(1) 正しく応じられた後のリードが −{p}_underdog_deficit 以上 0 未満（必ず少し劣勢）、(2) 十分な応手が 9段の第一感（25%）に無い、(3) 相手の期待損失 E が最善手より 0.5 目以上大きい、(4) 引っかかった場合（十分でない応手を 9段の第一感で重みづけた平均）にリードが 1 目以上残る。資格のある手があれば、難解さの比較と勝率フロアを飛ばして打ちます（複数あれば 応じられた後のリード ＋ E が最大の手）。罠が無い手番は従来どおりで、わざと損をする手は打ちません。捨て身の罠との違いは、手数の窓があること、勝勢の消費モードでない小差のリードでも探すこと、1 手の損失が勝勢時の勝負手損失上限までに収まること。この手数の間は捨て身の罠の代わりにこちらが働きます（賭け罠はそのまま併用）。正しく応じられたら素直に劣勢になり、既に劣勢の手番では発動しません＝そこから従来の選択で逆転を狙います。13路の実測（過去 18 局の 50 手までの全手番に掛けた集計・追加 6 手）では発動は約 0.7 回/局・半数の局で 1 回以上、選ばれる手は中央値で 4 目ほどの損・応じられたら −0.4 目・引っかかれば +1.4 目。相手はたいてい引っかかる（見積もりで約 8 割）ので、実際に劣勢になるのは数局に 1 回の演出用です。窓の中のリードしている手番は着手が約 1 秒遅くなります。目安は 9路 16・13路 50・19路 100。"
+
+msgid "aiopt:enigma*_underdog_deficit"
+msgstr ""
+"劣勢演出の罠: 応じられた場合の最大ビハインド（目）\n"
+"正しく応じられた後に許すビハインドの上限。上げるとより深く沈む罠まで打ちますが、13路の実測では在庫の大半が −1 目以内に収まるので、回数はほとんど変わりません（1.5 → 3.0 で数 % 増）。"
+
+msgid "aiopt:enigma*_underdog_probes"
+msgstr ""
+"劣勢演出の罠: 追加で検証する手数\n"
+"罠を探すために追加で検証する手数。罠は事前に見分けられないので、発動回数はほぼこの値に比例します（13路・50 手までの実測で 6 手 0.7 回/局・12 手 1.4 回/局）。上げると発動が増えますが、窓の中のリードしている手番の着手が遅くなります（6 手で約 +1 秒/手番・手数にほぼ比例）。"
 
 msgid "aiopt:enigma*_min_delta_e"
 msgstr ""
