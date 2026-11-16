@@ -1,0 +1,23 @@
+{
+ "enigma13plus_max_loss": 3.0,
+ "enigma13plus_large_lead_max_loss": 10.0,
+ "enigma13plus_min_winrate": 0.25,
+ "enigma13plus_net_margin": 0.0,
+ "enigma13plus_target_score": 2.0,
+ "enigma13plus_aim_jigo": false,
+ "enigma13plus_endgame_move": 75,
+ "enigma13plus_unsettled_max": 16,
+ "enigma13plus_locality_stddev": 0.5,
+ "enigma13plus_locality_slack": 0.3,
+ "enigma13plus_min_delta_e": 0.2,
+ "enigma13plus_cheap_loss": 0.3,
+ "enigma13plus_probe_extra": 6.0,
+ "enigma13plus_opening_humanstyle_moves": 10.0,
+ "enigma13plus_gamble_until_move": 30.0,
+ "enigma13plus_gamble_min_winrate": 0.3,
+ "enigma13plus_gamble_min_delta_e": 0.5,
+ "enigma13plus_overdraft_deficit": 0.0,
+ "enigma13plus_overdraft_answered_max": 99.0,
+ "enigma13plus_overdraft_min_fooled_lead": 1.0,
+ "enigma13plus_overdraft_probes": 4.0
+}
