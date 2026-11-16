@@ -479,6 +479,9 @@ humanSL 9段 humanPolicy 8visits・全並列）し、
 | `enigma9_overdraft_answered_max` | 同上 | −1/0/MAX | **0** |
 | `enigma9_overdraft_min_fooled_lead` | 同上 | 1/2/3/5/8 | **2.0** |
 | `enigma9_overdraft_probes` | 同上 | 4/6/8/12 | **6** |
+| `enigma9_underdog_until_move` | 13路と同じ機構（`enigma13_underdog_*` 参照）。**未校正**（9路はリード 8 目未満に大きい罠がほぼ無い＝ほぼ発動しない見込み） | OFF/12/16/20/24 | **0（OFF）**・目安 16 |
+| `enigma9_underdog_deficit` | 同上 | 1/1.5/2/2.5/3 | **2.0** |
+| `enigma9_underdog_probes` | 同上 | 4/6/8/12 | **6** |
 
 **own_rare の「応手自明」減衰（2026-09-01・9/13/19路共通・spec 追記11）**: `enigma9_net_score` の own_rare 項は `enigma9_own_rare_find_gate(find_hp)` で減衰する＝find_hp <= `ENIGMA9_OWN_RARE_FIND_FADE`(0.85) は 1.0（**ビット同一**）、0.85→1.0 で線形に 0。実測 `game_20260901_180139` move 36（13路白番・aim_jigo 消費モード）: B10 は E=0.03・find_hp=0.983（9段の正解応手 A10 が 98.3%）なのに own_rare 0.99 だけでnet 0.39 > 最善 B5 の 0.18 となり、0.94 目払って「誰でも正答できる手」に外した＝ヨセ（追記6・w_own=0）と同じ own_rare 支配の中盤版。reply_rare は find >= 0.25 で 0 に張り付き「それ以上自明」を罰しないのでここが唯一の穴だった。E・reply_rare は不変＝find が高くても E で勝つ本物の罠（同 move 38 C11: E=0.84・find=0.715・own_rare 抜きでもnet 0.50 > 0.02）はそのまま採る。線形ランプなのは find_hp の run 間分散 ±0.05〜0.09 で崖だと境界の採否が反転するため。回帰: `tests/test_ai_enigma9.py::TestOwnRareFindGate`。
 
@@ -661,6 +664,9 @@ move 40（+4.4 リード）はヨセ予算内に候補なしで最善 / move 39�
 | `enigma13_overdraft_answered_max` | 応じられた後のリードの上限（目）。帯は `[−D, min(target, これ))`。0=必ずマイナスになる手だけ／−1=1 目以上の劣勢になる手だけ／MAX(99)=目標差未満＝穏やかな手も含む（6 プローブで 2.0 回/局〈下限 2 目〉・1.1 回/局〈下限 3 目〉） | −1/0/MAX | **0** |
 | `enigma13_overdraft_min_fooled_lead` | 引っかかった場合に残るリードの下限 W（目）。必ずマイナス・6 プローブで W=2: 0.82 回/局 → W=3: 0.54 回/局 | 1/2/3/5/8 | **2.0** |
 | `enigma13_overdraft_probes` | 追加プローブ数 k。必ずマイナス・W=2 で k=4/6/8/12 → 0.59/0.82/1.01/1.28 回/局。1 手あたりコールド約 +0.2 秒（対象は消費モードの手番＝約 10 手番/局・先読みでは温まらない） | 4/6/8/12 | **6** |
+| `enigma13_underdog_until_move` | **劣勢演出の罠（2026-11-17・spec `2026-11-17-enigma-underdog-design.md`）の窓**。対局の手数がこの値未満 × ヨセ前 × リードしている（`lead > upper`・upper = `min(target, 0)`）× 天井まで払えば帯に届く（`lead − ceiling < upper`・`ceiling = max(cap, large_lead_max_loss)`）手番で、捨て身の罠の経路を再利用して「正しく応じられたら必ず少し劣勢」の罠を探す（純関数 `enigma9_underdog_window` / `enigma9_underdog_pick`）。**消費モードかどうかは問わない**（捨て身の罠は `cost_weight < 1` だけ＝max_loss 3・target 2 だとリード 5 目以下に届かない）。追加プローブは生 loss `(lead − upper − 1.5, min(lead + D, ceiling) + 1.5]` の候補を loss 昇順に並べ **visits を問わず等間隔に** `underdog_probes` 手（`enigma9_underdog_probe_picks`。捨て身の罠の「信頼できる候補 → 浅い候補を安い順」は帯の下端に固まる＝資格のある罠の 35/45 は visits 1 で、生 loss はリード + 0.4 目を中心に散らばる）。**追加プローブで調べた候補は罠の候補にだけ回し、検証済み損失が cap の内側でも通常の net 比較・賭け罠には入れない**＝資格のある罠が無い手番は OFF と同じ候補集合で選ぶ。資格（全部 AND）＝`−D <= lead_after < upper`・`find_hp <= 0.25`・`loss <= ceiling`・`lead_after + e_fooled >= ENIGMA9_UNDERDOG_MIN_FOOLED_LEAD`(1.0)・`E − 最善手の E >= ENIGMA9_UNDERDOG_MIN_DELTA_E`(0.5)。対象は検証済み損失が cap を超えた候補に加え、**cap の内側の挑戦者**（勝率フロア未満で Drop されるはずの手も罠の候補へ回す）。資格があれば net 比較・net_margin・局所性・ΔE 床・勝率フロアを通さず `lead_after + E` 最大の手を打つ。**手数の窓の中は捨て身の罠を置き換える**（窓の外は捨て身の罠が従来どおり）。賭け罠より先に判定し、資格が無ければ賭け罠 → 通常の選択。既に劣勢（`lead <= upper`）なら開かない＝回数上限を兼ねる。0 = OFF＝ビット同一。難解＋・一致率ひかえめの序盤の研究外し（`VeilOpenEnigma*Plus`）は継承、擬態（13路）は対象外。**実測1＝実装そのものの発動回数**（`underdog_batch_fire.py`・復元 SGF 18 局の手数 50 未満の AI 439 手番に ON で掛ける・ローカル設定〈max_loss 3・large 10・target 2〉）: **6 プローブ 13 回＝0.72 回/局・9/18 局で 1 回以上、12 プローブ 26 回＝1.44 回/局・13/18 局**（ほぼ比例）。6 プローブの 13 回は 発動前のリード中央値 3.0（1.5〜7.1・**5 目以下が 9 回＝既存の 2 オプションが届かなかった帯**）・損失 4.1（1.7〜7.2）・応じられたら −0.43（最悪 −1.61）・引っかかれば +1.44（＝引っかかってもリードは中央値 1.6 目縮む）。発動は 20 手目以降が 12/13。各手番は実戦の棋譜の局面を独立に撃つので、発動後の在庫の変化は入っていない。**実測2＝在庫の見積もり**（捨て身の罠の反実仮想 293 手番の再集計 `underdog_cf_reslice.py`）: 50 手まで・天井 10 で 12 プローブ 1.44 回/局、在庫の 58% はリード 1〜5 目（1 目以下は 0）、p_fooled 83%、**E − 損失 −3.05＝期待値では毎回約 3 目の損＝演出用**。相手はたいてい引っかかるので実際に劣勢になるのは数局に 1 回の見込み。非発動の手番は OFF と同じ候補集合で選ぶ（実局面 `211800`@32 で Score 行の顔ぶれと選択手が OFF と一致）。着手決定はコールド 0.2〜0.8 → 1.0〜1.8 秒（追加 6 プローブ＝約 +1 秒・先読みでは温まらない）。確認はログの `Underdog: window` / `Underdog: band` / `Underdog: played`。**実戦校正は未実施** | OFF/30/40/50/60 | **0（OFF）**・目安 50 |
+| `enigma13_underdog_deficit` | 正しく応じられた後に許す最大ビハインド D（目）。在庫はほぼ全部 −1 目以内なので回数はほとんど変わらない（6 プローブ・50 手まで・天井 10 で D 1.5 → 3.0: 0.94 → 0.97 回/局） | 1/1.5/2/2.5/3 | **2.0** |
+| `enigma13_underdog_probes` | 追加プローブ数。発動回数はほぼ比例（実装の実測: 50 手までで 6 → 0.72 回/局・12 → 1.44 回/局）。窓の中のリードしている手番でコールド約 +1 秒/手番（6 プローブ） | 4/6/8/12 | **6** |
 
 CLI: `python -m katrain_debug --sgf <13路SGF> --move N --strategy enigma13`（batch 可）。
 **13路の実戦校正は未実施**（GUI 実戦ログ `[Enigma13Strategy]` と batch 3-run 平均で行う）。
@@ -684,7 +690,7 @@ vloss 210→180 目・予測 E 265→268）。sticky ヨセフラグは `game._e
 | `enigma13plus_min_delta_e` | 外しに要求する E の上積み（目）＝選択手の E − 最善手の E の下限。**0（OFF）で難解（13路）と同一挙動** | OFF/0.1/0.2/0.3/0.5 | **0.2** |
 | `enigma13plus_cheap_loss` | この検証済み損失以下の外しは床を免除（序盤の定跡外し・最善手より良い手を残す）。大きくすると難解（13路）に近づく | 0/0.2/0.3/0.5/1.0 | **0.3** |
 | `enigma13plus_probe_extra` | **罠探索の拡張**（spec 追記12-2）。子局面プローブの挑戦者を「安い順 7 手」＋「残りの admissible 候補から loss の範囲で等間隔にこの本数」にする（`_shortlist` → `enigma9_shortlist_spread`）。従来は cap 5 目の手番でも 2 目より高い手を調べておらず（118手番で最大 loss/cap 中央値 0.38）、E>=2 の罠は高い帯に多い（vloss<0.3 で 6%・4目超で 21%）。代金の上限は不変＝同じ予算でより大きい罠を net 比較に乗せる。**先読み wave2 も同じ規則で温める**（`_ponder_wave2_targets`・cap は予測局面の root lead から消費モードの式で近似）ので的中時の即着手は保たれる。コールド実測 **+0.8 秒/手**（katrain_debug 13路 1.2→2.0 秒。先読み的中時は乗らない）。重ければ 2。0 で従来の 8 手 | 0/2/4/6/8 | **4** |
-| 他18項目（`enigma*plus_max_loss` 〜 `enigma*plus_opening_humanstyle_moves`・序盤の賭け罠 `enigma*plus_gamble_*` の 3 項目と捨て身の罠 `enigma*plus_overdraft_*` の 4 項目を含む） | 基底の難解（同じ盤）の同名項目と同じ意味・同じ候補値・同じ既定（テスト `test_base_options_are_shared_with_the_base_strategy` で固定）。ユーザーローカル config は基底の現在値を写してある（9路: max_loss 1.6・large 6.0・min_wr 0.25・target 0.2・aim_jigo true / 13路: max_loss 1.6・target 1.5 / 19路: max_loss 2.6・endgame 180・locality 3.0） | — | — |
+| 他21項目（`enigma*plus_max_loss` 〜 `enigma*plus_opening_humanstyle_moves`・序盤の賭け罠 `enigma*plus_gamble_*` の 3 項目と捨て身の罠 `enigma*plus_overdraft_*` の 4 項目・劣勢演出の罠 `enigma*plus_underdog_*` の 3 項目を含む） | 基底の難解（同じ盤）の同名項目と同じ意味・同じ候補値・同じ既定（テスト `test_base_options_are_shared_with_the_base_strategy` で固定）。ユーザーローカル config は基底の現在値を写してある（9路: max_loss 1.6・large 6.0・min_wr 0.25・target 0.2・aim_jigo true / 13路: max_loss 1.6・target 1.5 / 19路: max_loss 2.6・endgame 180・locality 3.0） | — | — |
 
 **盤サイズ別の校正状況（追記12-3／12-4・2026-09-02）**: 13路は実対局 難解13局 vs 難解＋14局（後半 15 局は交互）で E 平均/手 1.66→1.84（z 0.7・有意でない）・**相手の実損失/手 2.25→3.23（+1.0・局平均 z 1.9・pooled z 2.4、交互 15 局だけなら z 2.6〜2.7）**・>=2目の失着 41%→54%・vloss/手 0.93→0.85（同じ代金で回収 2.4→3.8 倍）・着手中央 0.35→0.40 秒（spec 追記12-5・2026-09-03＝13路は校正済み扱い）。**9路は交互対局 難解6局 vs 難解＋5局で利点を確認できず**（E 1.74→1.84〈z 0.3〉・外し率 35%→33% 不変・vloss 0.60→0.36。実損失は測れる手番が 1局 3〜13 で崩壊局 1 局が平均を支配＝比較不能。spread 発火 3〜7 手番/局、ΔE 床は選ばれない候補しか落とさない）＝**9路の既定は難解のまま・校正は打ち止め**（spec 追記12-4）。**19路は 13路の値を流用で未校正**（ログなし・候補プールが最大なので spread の余地は構造上最大の見込み。probe 1本が重いぶん `probe_extra` 4 のコールド増分は 13路の +0.8 秒より大）。
 
@@ -721,6 +727,9 @@ CLI: `python -m katrain_debug --sgf <SGF> --move N --strategy enigma9plus|enigma
 | `enigma19_overdraft_answered_max` | 同上 | −1/0/MAX | **0** |
 | `enigma19_overdraft_min_fooled_lead` | 同上 | 1/2/3/5/8 | **2.0** |
 | `enigma19_overdraft_probes` | 同上 | 4/6/8/12 | **6** |
+| `enigma19_underdog_until_move` | 13路と同じ機構（`enigma13_underdog_*` 参照）。**未校正**（19路は未計測） | OFF/60/80/100/120 | **0（OFF）**・目安 100 |
+| `enigma19_underdog_deficit` | 同上 | 1/1.5/2/2.5/3 | **2.0** |
+| `enigma19_underdog_probes` | 同上 | 4/6/8/12 | **6** |
 
 CLI: `python -m katrain_debug --sgf <19路SGF> --move N --strategy enigma19`（batch 可）。
 **19路の実戦校正は未実施**（GUI 実戦ログ `[Enigma19Strategy]` と batch 3-run 平均で行う）。
