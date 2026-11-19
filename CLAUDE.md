@@ -14,7 +14,7 @@ KaTrain v1.17.1.1 修正版。囲碁AI学習ツール。
 |---|---|---|
 | Human-like AI 戦略 | 悪手フィルタに加え、力戦派 / 攻城 / 狩猟 / 一致率低減 / 持碁 / 一致率追随（9路）/ 難解（9・13・19路）/ 難解＋（9・13・19路＝罠探索の拡張＋ΔE 床の改良版・`EnigmaPlusMixin`）/ 擬態（13路＝相手より低い一致率で勝つ・`Mimic13Strategy`）/ 一致率ひかえめ（旧名 韜晦・9・13・19路＝勝ち優先で自分の一致率を絶対目標まで下げる・序盤の窓を難解＋に任せる研究外しの層〈既定 OFF〉つき・`Veil9Strategy`） | `.claude/rules/ai-strategies.md`（設計と実測）<br>`.claude/rules/ai-parameters.md`（全パラメータ値）<br>`.claude/rules/ai-humanstyle.md`（フィルタ実装） |
 | 詰碁 | 画面キャプチャ→盤面認識→枠→着手選択 `ai:tsumego`→死活ソルバ（Rust df-pn）→回答帳 | `.claude/rules/tsumego.md`（設計と落とし穴）<br>`.claude/rules/tsumego-parameters.md`（パラメータ値） |
-| 盤面監視 | `board_watch.py`: BlueStacks 上の対局アプリ（黄盤＝囲碁クエスト系／明るい木目盤／野狐囲碁の PC 版）の着手を検出して人間側の手として片方向注入（トグル `ctrl+alt+d`）。AI の色の自動判定と連続対局、AI の着手をアプリ盤の真上に示す輪（`screen_marker.py`・難易度の色分けは `move_difficulty.py`）、交点へのカーソル移動（`screen_cursor.py`・クリックはしない）、5分進まなければ自動停止 ／ `tsumego_autoloop.py`: 詰碁の自動ループ（ADB でアプリを操作。トグルは `ctrl+alt+a`。spec `2026-08-23-tsumego-autoloop-design.md`） ／ 観戦モード: 黒白とも画面から来る対局（プロの対局など）を取り込んで分析するだけ（`board_spectate.py`・トグル `ctrl+alt+w`・spec `2026-11-15-spectate-watch-design.md`） | `.claude/rules/board-watch.md`（機能の全体像と設定キー）<br>`docs/superpowers/specs/2026-08-18-board-watch-design.md` |
+| 盤面監視 | `board_watch.py`: BlueStacks 上の対局アプリ（黄盤＝囲碁クエスト系／明るい木目盤／野狐囲碁の PC 版）の着手を検出して人間側の手として片方向注入（トグル `ctrl+alt+d`）。AI の色の自動判定と連続対局、AI の着手をアプリ盤の真上に示す輪（`screen_marker.py`・難易度の色分けは `move_difficulty.py`・最善手／第一感／人間らしい手／罠かどうかを輪の中の字で並べる複数候補の表示と、表示した候補をアプリで打ったときの決定手の差し替えは `move_candidates.py`）、交点へのカーソル移動（`screen_cursor.py`・クリックはしない）、5分進まなければ自動停止 ／ `tsumego_autoloop.py`: 詰碁の自動ループ（ADB でアプリを操作。トグルは `ctrl+alt+a`。spec `2026-08-23-tsumego-autoloop-design.md`） ／ 観戦モード: 黒白とも画面から来る対局（プロの対局など）を取り込んで分析するだけ（`board_spectate.py`・トグル `ctrl+alt+w`・spec `2026-11-15-spectate-watch-design.md`） | `.claude/rules/board-watch.md`（機能の全体像と設定キー）<br>`docs/superpowers/specs/2026-08-18-board-watch-design.md` |
 
 ## 盤面テーマ（盤・碁石のデザイン）
 
@@ -82,6 +82,7 @@ katrain/
     tsumego_answer_book.py -- 回答帳（正解手順の記録と、盤の8対称キーで一致する再出題の0秒再生）
     log_archive.py    -- 30日より古い詰碁ログを logs/archive/tsumego_YYYYMM.zip へ畳む
     move_difficulty.py -- 盤面監視の輪の難易度判定（明らか／普通／難解）
+    move_candidates.py -- 盤面監視の複数候補の表示（最＝最善手／感＝第一感／人＝人間らしい手／全／罠）と差し替え対象の判定
     ...               -- utils.py, lang.py, contribute_engine.py, tsumego_frame.py 等
   gui/                -- Kivy GUIウィジェット
     theme_manager.py  -- 盤面テーマ（盤・碁石）の一覧と切り替え（設定 general/board_theme）
@@ -221,7 +222,7 @@ python -m katrain_debug.selfplay report-sgf FILE.sgf
   | `katrain/core/constants.py` / `katrain/config.json` | `ai-settings-gui.md`（AI設定追加手順） |
   | `katrain/core/base_katrain.py` | `base-katrain-config.md`（JsonStore構造・起動時リセットパターン） |
   | `**/*.log` の分析 | `log-analysis.md`（Grepパターン、サブエージェントテンプレート） |
-  | 盤面監視（`board_watch.py` / `screen_marker.py` / `screen_cursor.py` / `move_difficulty.py`） | `board-watch.md`（機能の全体像と設定キー） |
+  | 盤面監視（`board_watch.py` / `screen_marker.py` / `screen_cursor.py` / `move_difficulty.py` / `move_candidates.py`） | `board-watch.md`（機能の全体像と設定キー） |
   | 自己対局ハーネス（`katrain_debug/selfplay*.py`・走らせるときも） | `selfplay.md`（全コマンド例・投了モデル・校正・再開の検査） |
   | 上流の移植・エンジン／モデルの差し替え・WinError 4551 | `environment.md`（上流同期・エンジン切替・Smart App Control） |
 - **i18n変更時は `.po` 編集後に `python tools/compile_mo.py` で `.mo` を再コンパイルすること**

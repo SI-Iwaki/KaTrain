@@ -5,12 +5,14 @@ paths:
   - "katrain/core/screen_marker.py"
   - "katrain/core/screen_cursor.py"
   - "katrain/core/move_difficulty.py"
+  - "katrain/core/move_candidates.py"
   - "katrain/core/board_spectate.py"
   - "katrain/core/screen_ocr.py"
   - "katrain/core/screen_ocr.ps1"
   - "tests/test_board_watch*.py"
   - "tests/test_screen_*.py"
   - "tests/test_move_difficulty.py"
+  - "tests/test_move_candidates.py"
   - "tests/test_ring_difficulty_prefetch.py"
   - "tests/test_board_spectate.py"
   - "tests/test_screen_ocr.py"
@@ -41,3 +43,23 @@ paths:
 - **新規対局ポップアップの前に対局者を戻す** — ポップアップは `_do_new_game` のあとに対局者ウィジェットを読み直すので、観戦前の対局者は `spectate_end_for_new_game` で先に戻しておく
 
 - **実機確認（2026-11-15・野狐の観戦）で直した点**: (1) 帯のボタンは高さとフォントを固定する（`SizedButton` は高さ未指定だと文字が巨大化して上のパネルへはみ出す）。帯は 2 段（文言／ボタン）で、先頭の「盤を拡大」が右パネルを畳む（`spectate_panel_hidden`・畳んでいる間は勝率と目差 `spectate_eval` を帯に出す）。(2) 日本ルールの部屋のコミ表記は「黒6.5目コミ出し」＝`parse_fox_panel` が「N目…出し」を数字で拾う。(3) 黒白 1 手ずつの 2 手は順序が決まるので`estimated` にしない（10 秒の早碁では確定待ちの間に 2 手進むのが普通）。(4) 対局情報の数字欄は`numeric_input_filter` で全角を半角に直す（日本語入力のままだと欄のフォントに無く豆腐になる）。画面の確認は別プロファイルで起動して `Window.screenshot` を撮る（窓の幅は 4 の倍数にする＝そうでないと画像が斜めに歪む）
+
+## 複数候補の表示と差し替え（spec 追記15・2026-11-19）
+
+設定画面の輪の行の「候補」チェック（`board_watch.highlight_candidates`・既定 OFF）で、決定手の太い輪に加えて細い輪＋輪の内側の字を出す。字は 最＝KataGo の最善手／感＝第一感（humanSL 9段の確率最大・悪手でもそのまま）／人＝悪手でない中で 9段の確率最大（第一感の損失が 2 目を超える・KataGo が読んでいない、のときだけ別の点に出る）／全＝最善手と第一感が同じ点／罠＝決定手が罠。同じ点の役割は 1 つの輪にまとめる（1 点に最大 2 字・輪は最大 4 つ）。表示した候補をアプリで打つと KaTrain の決定手をその手に差し替える（`board_watch.candidate_swap`・既定 ON）。候補以外の点は従来どおり警告。
+
+- ファイル: 判定 `katrain/core/move_candidates.py`（`candidate_roles` / `candidate_marks` / `ring_roles_of` / `swap_targets`）、描画 `screen_marker.py`（`mark_bgra`・`MarkerSet`）、差し替えの判定 `board_watch.swap_candidate`（verdict `swap`）と `BoardWatcher._on_swap_verdict` / `_resolve_swap`、本体 `__main__._board_watch_marks` / `_do_board_watch_swap`、盤の置き換え `Game.replace_last_move`
+- 設定キー: `highlight_candidates`（false）／`candidate_swap`（true）／`candidates_max_loss`（2.0＝「悪手でない」の上限・目。GUI なし）
+- 罠の記録は戦略の `ring_decision` → 着手ノードの `ai_decision`（`generate_ai_move`）。難解 / 難解＋と擬態が書く
+
+やってはいけないこと:
+
+- **罠かどうかを着手ノードに記憶しない** — ノードが現局面になるのは `game.play` の中、戦略の記録が付くのはその後。すき間で監視スレッドが計算すると「罠でない」が固定される。役割（最・感・人）だけ記憶し、罠は毎回読む
+- **難解の記録を `last_decision_info` に書かない** — 自己対局ハーネスと batch_eval は `last_decision_info` を持つ戦略を「判定情報あり」として集計する。輪の表示用は `ring_decision`
+- **第一感が悪手かどうかの判定に visits の下限を掛けない** — 通常解析は visits を数手に集中させるので、掛けると第一感が浅いだけの手番で「人」が別の点へ飛ぶ。下限を掛けるのは代わりの手を選ぶときだけ
+- **字を輪の色で塗らない** — 2 字は輪の線に掛かるので同じ色に沈む（赤い輪の上の「罠感」が読めなかった）。白＋黒い縁取り
+- **バッジを輪の外に出さない** — 囲碁は候補が隣の交点に並ぶ。将棋の marker.py の四隅バッジは隣どうしで重なる（モックで確認）
+- **差し替えの反映待ちを手数で見ない** — 差し替えは手数が変わらない。最終手が差し替え先になったかで見る（`_resolve_swap`）
+- **`swap_candidate` から「相手の 1 手つき」の分岐を外さない** — 早碁では確定前に相手の石が載り、外すと mismatch から戻れない
+- **差し替えで最終手のノードを分岐として残さない** — `children[0]` を辿る集計・保存が打たれなかった手へ進む。親から外す
+- **設定画面の輪の行にコントロールを足したら実際に起動して撮る** — `python tools/manual_screenshots.py --out <dir> --groups settings`。4 つ目でラベルが 2 行に折れた
