@@ -154,3 +154,112 @@ def test_marker_show_and_hide_are_idempotent_and_safe_after_close():
     marker.close()
     marker.show(300, 300, 80)  # close 後の show は無視
     assert marker._thread is None
+
+
+# --- 複数候補の表示（board-watch spec 追記15）: 輪の内側の字・細い輪・複数の窓 ---
+
+
+def _alpha_count(data, size, box):
+    """box=(x0, y0, x1, y1) の中の α>0 の画素数"""
+    x0, y0, x1, y1 = box
+    return sum(1 for y in range(y0, y1) for x in range(x0, x1) if data[(y * size + x) * 4 + 3] > 0)
+
+
+def test_mark_without_text_is_byte_identical_to_the_plain_ring():
+    from katrain.core.screen_marker import mark_bgra
+
+    assert mark_bgra(40, 6, (0, 255, 255)) == ring_bgra(40, 6, (0, 255, 255))
+    assert mark_bgra(40, 6, (0, 255, 255), "") == ring_bgra(40, 6, (0, 255, 255))
+
+
+def test_mark_draws_glyphs_inside_the_ring_premultiplied():
+    from katrain.core.screen_marker import load_font, mark_bgra
+
+    size, thickness = 56, 4
+    if load_font(20) is None:
+        pytest.skip("日本語フォントが無い環境")
+    plain = ring_bgra(size, thickness, (0, 255, 255))
+    marked = mark_bgra(size, thickness, (0, 255, 255), "最")
+    assert len(marked) == len(plain) and marked != plain
+    center = (size // 4, size // 4, size * 3 // 4, size * 3 // 4)
+    assert _alpha_count(plain, size, center) == 0 and _alpha_count(marked, size, center) > 50
+    px = [marked[i : i + 4] for i in range(0, len(marked), 4)]
+    assert all(p[0] <= p[3] and p[1] <= p[3] and p[2] <= p[3] for p in px), "事前乗算なら各色 <= α"
+    # 字は白＋黒い縁取り（輪の色に依らず読める）。輪だけの絵には白も黒も無い
+    def count(data, bgr):
+        return sum(1 for i in range(0, len(data), 4) if data[i + 3] == 255 and tuple(data[i : i + 3]) == bgr)
+
+    assert count(marked, (255, 255, 255)) > 20 and count(marked, (0, 0, 0)) > 20
+    assert count(plain, (255, 255, 255)) == 0 and count(plain, (0, 0, 0)) == 0
+
+
+def test_mark_without_a_font_falls_back_to_the_plain_ring(tmp_path):
+    from katrain.core.screen_marker import mark_bgra
+
+    assert mark_bgra(40, 6, (0, 255, 255), "最", font_directory=str(tmp_path)) == ring_bgra(40, 6, (0, 255, 255))
+
+
+def test_glyph_layout_keeps_every_glyph_inside_the_window():
+    from katrain.core.screen_marker import glyph_layout
+
+    for size in (30, 38, 56, 80):
+        for count in (1, 2, 3, 4, 7):
+            height, centers = glyph_layout(count, size)
+            assert len(centers) == min(count, 4)
+            for cx, cy in centers:
+                assert height / 2 <= cx <= size - height / 2 and height / 2 <= cy <= size - height / 2
+    assert glyph_layout(1, 38)[0] > glyph_layout(2, 38)[0] >= 15  # 19路相当（38px）の2字でも 15px 以上
+
+
+def test_thin_ring_geometry_for_the_other_candidates():
+    from katrain.core.screen_marker import RING_THIN_THICKNESS_RATIO
+
+    _l, _t, size, thick = ring_geometry(100, 100, 60)
+    _l, _t, size2, thin = ring_geometry(100, 100, 60, RING_THIN_THICKNESS_RATIO)
+    assert size == size2 and thin < thick
+
+
+def test_show_carries_text_thickness_and_color_in_one_target(monkeypatch):
+    marker = ScreenMarker()
+    monkeypatch.setattr(marker, "_kick", lambda: None)  # 窓は作らない（目標状態だけ見る）
+    marker.show(100, 100, 60)
+    assert marker._target == (*ring_geometry(100, 100, 60), "")
+    marker.show(100, 100, 60, text="罠", thick=False, color=(255, 0, 255))
+    assert marker._target[3] < ring_geometry(100, 100, 60)[3] and marker._target[4] == "罠"
+    assert marker._color == (255, 0, 255)
+
+
+def test_marker_set_fills_slots_in_order_and_hides_the_rest(monkeypatch):
+    from katrain.core.screen_marker import MARKER_SLOTS, MarkerSet
+
+    markers = MarkerSet()
+    assert len(markers.markers) == MARKER_SLOTS == 4
+    for m in markers.markers:
+        monkeypatch.setattr(m, "_kick", lambda: None)
+    markers.show([(100, 100, 60, "罠", True, (255, 0, 0)), (200, 100, 60, "最", False, (0, 255, 255))])
+    first, second, third, fourth = markers.markers
+    assert first._target[4] == "罠" and first._color == (255, 0, 0)
+    assert second._target[4] == "最" and second._target[3] < first._target[3]
+    assert third._target is None and fourth._target is None
+    markers.show([(100, 100, 60, "", True, (255, 0, 0))])  # 候補が減ったら余った輪は消える
+    assert first._target[4] == "" and second._target is None
+    markers.hide()
+    assert all(m._target is None for m in markers.markers)
+
+
+@win_only
+def test_marker_set_shows_several_windows_and_hides_all_of_them():
+    from katrain.core.screen_marker import MarkerSet
+
+    markers = MarkerSet()
+    try:
+        markers.show([(300, 300, 60, "罠", True, RING_COLOR), (380, 300, 60, "最", False, RING_COLOR)])
+        first, second, third, _fourth = markers.markers
+        assert _wait(lambda: first.visible and second.visible)
+        assert first.capture_excluded is True and second.capture_excluded is True  # どの窓も監視の撮影に写らない
+        assert third._thread is None  # 使わない窓はスレッドも起こさない
+        markers.hide()
+        assert _wait(lambda: not first.visible and not second.visible)
+    finally:
+        markers.close()
+    assert all(m._hwnd is None for m in markers.markers)

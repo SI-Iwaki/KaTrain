@@ -726,6 +726,9 @@ msgstr "cursor"
 msgid "board_watch:highlight_difficulty"
 msgstr "difficulty"
 
+msgid "board_watch:highlight_candidates"
+msgstr "more"
+
 msgid "default"
 msgstr "default"
 

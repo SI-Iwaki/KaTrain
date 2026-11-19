@@ -228,6 +228,8 @@ def _ai_turn(game, ai_mode, ai_settings):
         game.katrain.log(f"Discarding AI move {move.gtp()}: position changed", OUTPUT_DEBUG)
         return move, None, strategy
     played_node.ai_thoughts = ai_thoughts
+    # 盤面監視の輪の「罠」表示用の記録（本体と同じ行。ハーネスは読まない＝集計は last_decision_info だけ）
+    played_node.ai_decision = getattr(strategy, "ring_decision", None) or getattr(strategy, "last_decision_info", None)
     game.katrain.log(f"Move generation complete: {move.gtp()} -- {ai_thoughts}", OUTPUT_DEBUG)
     return move, played_node, strategy
 

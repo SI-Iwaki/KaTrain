@@ -260,12 +260,47 @@ class WatchState(NamedTuple):
     board_size: int
     # 1手前のアプリ盤（previous_app_grid）。None なら従来の逆再生で ahead を判定する
     previous_grid: Optional[list] = None
+    # 複数候補の表示（spec 追記15）: 最終手の代わりにアプリで打たれたら差し替えを受け付ける交点 (i, j) の列。
+    # 既定の空＝差し替えを判定しない（reconcile は従来とビット同一）
+    swap_moves: tuple = ()
 
 
 class Verdict(NamedTuple):
-    kind: str  # "in_sync" | "waiting" | "ahead" | "move" | "mismatch"
+    kind: str  # "in_sync" | "waiting" | "ahead" | "move" | "swap" | "mismatch"
     move: Optional[Tuple[int, int]] = None
     reason: str = ""
+
+
+def swap_candidate(state, observed):
+    """アプリの盤が「1手前の盤＋最終手の代わりの候補手」で説明できるなら、その交点 (i, j)。できなければ None。
+
+    表示した候補（state.swap_moves）のどれかをユーザーがアプリで打った、の判定（spec 追記15）。相手がすぐ
+    応じて「1手前＋候補手＋相手の1手」になっている盤も同じ候補手の差し替えとみなす（対局監視の ahead は
+    400ms 周期×確定2周なので、早碁では差し替えの確定前に相手の石が載る。差し替えた後の周で、相手の石は
+    通常の move 判定が拾う）。1手前の盤が作れない（previous_grid が None）ときは判定しない。
+    """
+    if not state.swap_moves or state.last_move is None or state.previous_grid is None:
+        return None
+    li, lj, color = state.last_move
+    opponent = WHITE if color == BLACK else BLACK
+    size = state.board_size
+    for i, j in state.swap_moves:
+        if (i, j) == (li, lj) or not (0 <= i < size and 0 <= j < size) or observed[i][j] != color:
+            continue
+        swapped = apply_move_to_grid(state.previous_grid, i, j, color)
+        if swapped is None:
+            continue
+        if swapped == observed:
+            return (i, j)
+        replies = [
+            (ri, rj)
+            for ri in range(size)
+            for rj in range(size)
+            if observed[ri][rj] == opponent and swapped[ri][rj] == EMPTY
+        ]
+        if len(replies) == 1 and apply_move_to_grid(swapped, replies[0][0], replies[0][1], opponent) == observed:
+            return (i, j)
+    return None
 
 
 def reconcile(state, observed):
@@ -298,6 +333,9 @@ def reconcile(state, observed):
             is_ahead = apply_move_to_grid(observed, li, lj, lcolor) == state.current_grid
         if is_ahead:
             return Verdict("ahead")
+        swapped = swap_candidate(state, observed)
+        if swapped is not None:
+            return Verdict("swap", move=swapped)
     matches = []
     for i in range(state.board_size):
         for j in range(state.board_size):
@@ -363,6 +401,21 @@ def ring_difficulty_enabled(cfg):
     return bool(cfg.get("highlight_difficulty", False)) and ring_color(cfg.get("highlight_color")) is not None
 
 
+def ring_candidates_enabled(cfg):
+    """決定手に加えて最善手・第一感・人間らしい手の輪も出すか（設定 highlight_candidates が ON かつ輪が
+    「表示しない」でない・追記15）"""
+    from katrain.core.screen_marker import ring_color
+
+    cfg = cfg or {}
+    return bool(cfg.get("highlight_candidates", False)) and ring_color(cfg.get("highlight_color")) is not None
+
+
+def candidate_swap_enabled(cfg):
+    """表示した候補をアプリで打ったら KaTrain の決定手を差し替えるか（設定 candidate_swap・既定 ON。候補の表示が
+    OFF なら常に偽・追記15）"""
+    return ring_candidates_enabled(cfg) and bool((cfg or {}).get("candidate_swap", True))
+
+
 def apply_game_watch_flags(game, cfg):
     """対局監視モードの Game 側フラグを張り、先読み本数を返す。
 
@@ -378,7 +431,8 @@ def apply_game_watch_flags(game, cfg):
     game.board_watch_prefetch_replies = prefetch
     # 輪の難易度の色分け（追記11）。監視開始・新規対局・設定変更のどれでも、今の局面が AI の手番なら先回りを撃つ
     # （AI 黒番の初手＝root と、対局の途中で ON にした場合を拾う。同じノードには2本撃たない）
-    game.ring_difficulty_active = ring_difficulty_enabled(cfg)
+    # 複数候補の表示（追記15）も同じ humanPolicy を使う＝どちらかが ON なら先回りを撃つ（フラグ名は追記11 のまま）
+    game.ring_difficulty_active = ring_difficulty_enabled(cfg) or ring_candidates_enabled(cfg)
     prefetch_hp = getattr(game, "_maybe_ring_hp_prefetch", None)
     if prefetch_hp is not None:
         prefetch_hp(getattr(game, "current_node", None))
@@ -487,7 +541,14 @@ class BoardWatcher:
         idle_stop_text=IDLE_STOP_TEXT,
         player_color_fn=None,
         on_new_game=None,
+        on_swap=None,
     ):
+        # 複数候補の表示（spec 追記15）: アプリで決定手の代わりに別の候補が打たれた（verdict "swap"）ら
+        # on_swap(i, j, color, move_number, board_size, replaced) を呼ぶ。replaced は差し替えられる最終手 (i, j)。
+        # None（既定）なら swap は mismatch と同じ扱い（get_state_fn が swap_moves を渡さなければそもそも出ない）
+        self.on_swap = on_swap
+        self._swap_pending = None  # (i, j, move_number, deadline) 差し替えの反映待ち
+        self._swap_blocked = None  # (i, j, move_number) 反映されなかった差し替えを同じ局面で投げ直さない
         self.capture_fn = capture_fn
         self.get_state_fn = get_state_fn
         self.on_move = on_move
@@ -557,8 +618,18 @@ class BoardWatcher:
             if self._pending is not None:
                 self._active()  # 注入した手が反映されるまでは速く確認する（タイムアウト後は idle へ戻す）
             return
+        if self._swap_pending is not None and not self._resolve_swap(state):
+            return
         verdict = reconcile(state, observed)
         self._notify_ahead(state.last_move[:2] if verdict.kind == "ahead" and state.last_move else None)
+        if verdict.kind == "swap":
+            if self.on_swap is None:
+                verdict = Verdict("mismatch", reason="盤面の差が1手で説明できません")
+            else:
+                self._forget_new_game()
+                self._mismatch_count = 0
+                self._on_swap_verdict(state, verdict.move)
+                return
         if verdict.kind == "mismatch":
             if self._new_game_seen(state, observed):
                 return
@@ -611,6 +682,49 @@ class BoardWatcher:
         self._pending = (move[0], move[1], state.move_number, self.clock() + self.settings.inject_timeout_ms / 1000.0)
         self._watching()
         self.on_move(move[0], move[1], state.to_play, state.move_number, state.board_size)
+
+    def _resolve_swap(self, state):
+        """差し替えの反映を待っている間の処理。まだ待つなら False を返す。
+
+        差し替えは手数が変わらない（最終手を別の手に置き換えるだけ）ので、`_resolve_pending` のように手数では
+        見られない。KaTrain の最終手が差し替え先になったら反映済み。手数が動いた（undo など）も「待ち終わり」。
+        """
+        i, j, move_number, deadline = self._swap_pending
+        if state.move_number != move_number or (state.last_move is not None and state.last_move[:2] == (i, j)):
+            self._swap_pending = None
+            self._swap_blocked = None
+            return True
+        if self.clock() >= deadline:
+            self._swap_pending = None
+            self._swap_blocked = (i, j, move_number)
+            self._warn("アプリで打たれた候補手へ差し替えられませんでした（コウ・非合法手の可能性）" + RESYNC_HINT)
+            return False
+        self._active()  # 反映されるまでは速く確認する
+        return False
+
+    def _on_swap_verdict(self, state, move):
+        """アプリで決定手の代わりに別の候補が打たれた。相手の着手と同じく stable_frames 周そろってから知らせる"""
+        self._quiet_key = None
+        self._quiet_since = None
+        if self._swap_blocked == (move[0], move[1], state.move_number):
+            return
+        self._active()  # 確定待ちの1周が体感遅延に直結する（ahead は idle 周期なので詰める）
+        key = ("swap", move[0], move[1])
+        if self._stable_move == key:
+            self._stable_count += 1
+        else:
+            self._stable_move = key
+            self._stable_count = 1
+        if self._stable_count < self.settings.stable_frames:
+            return
+        self._stable_move = None
+        self._stable_count = 0
+        self._swap_pending = (
+            move[0], move[1], state.move_number, self.clock() + self.settings.inject_timeout_ms / 1000.0
+        )
+        self._watching()
+        li, lj, color = state.last_move
+        self.on_swap(move[0], move[1], color, state.move_number, state.board_size, (li, lj))
 
     @property
     def ahead_move(self):

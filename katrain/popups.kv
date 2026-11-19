@@ -305,29 +305,45 @@
             # 「難易度で色分け」チェック（右・spec 追記11）を1行に同居させる。上の実測どおり行を増やすと
             # 2行ラベルが重なるため。3つ並べると幅が足りず「カーソル」が折れた（実測 2026-11-06）ので、
             # この欄の右列だけ幅を広げる（GridLayout の列幅は列内の size_hint_x の最大で決まる）
+            # 2026-11-19 に「候補」チェック（spec 追記15）を足して4つになった。そのままだと3つのラベルが2行に折れ
+            # 色の欄も切れた（別プロファイルで起動して撮影）ので、この行だけチェックボックスとラベルを小さくし、
+            # 右列の幅をもう少し広げる
             MDBoxLayout:
                 orientation: 'horizontal'
-                size_hint_x: 1.3
-                spacing: dp(4)
+                size_hint_x: 1.6
+                spacing: dp(2)
                 LabelledSpinner:
                     id: highlight_color
                     input_property: "board_watch/highlight_color"
                     i18n_prefix: "board_watch:highlight_color:"
-                    size_hint: 0.4, 0.8
+                    size_hint: 0.75, 0.8
                     pos_hint: {'center_y': 0.5}
                     font_size: sp(Theme.DESC_FONT_SIZE)
                 SmallDescriptionLabel:
                     text: i18n._("board_watch:move_cursor")
-                    size_hint_x: 0.34
+                    font_size: sp(Theme.DESC_FONT_SIZE) * 0.58
+                    size_hint_x: 0.44
                 LabelledCheckBox:
                     input_property: "board_watch/move_cursor"
+                    size: sp(Theme.DESC_FONT_SIZE) * 1.6, sp(Theme.DESC_FONT_SIZE) * 1.6
                     pos_hint: {'center_y': 0.5}
                 # 輪の色を局面の難しさで塗り分ける（明らか＝緑・難解＝赤・普通＝左の色。spec 追記11）
                 SmallDescriptionLabel:
                     text: i18n._("board_watch:highlight_difficulty")
-                    size_hint_x: 0.26
+                    font_size: sp(Theme.DESC_FONT_SIZE) * 0.58
+                    size_hint_x: 0.33
                 LabelledCheckBox:
                     input_property: "board_watch/highlight_difficulty"
+                    size: sp(Theme.DESC_FONT_SIZE) * 1.6, sp(Theme.DESC_FONT_SIZE) * 1.6
+                    pos_hint: {'center_y': 0.5}
+                # 決定手に加えて最善手・第一感・人間らしい手も輪＋字で出す（表示中の候補をアプリで打てば差し替え。spec 追記15）
+                SmallDescriptionLabel:
+                    text: i18n._("board_watch:highlight_candidates")
+                    font_size: sp(Theme.DESC_FONT_SIZE) * 0.58
+                    size_hint_x: 0.22
+                LabelledCheckBox:
+                    input_property: "board_watch/highlight_candidates"
+                    size: sp(Theme.DESC_FONT_SIZE) * 1.6, sp(Theme.DESC_FONT_SIZE) * 1.6
                     pos_hint: {'center_y': 0.5}
 
         # Engine Settings

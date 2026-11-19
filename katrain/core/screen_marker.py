@@ -19,14 +19,21 @@ Android 側からは存在を知る手段がない）。
 AA レイヤード窓でも 対照 2788 画素 → 除外 0 画素。WS_EX_LAYERED だけでは除外されない）。
 除外に失敗した環境（Win10 2004 未満）では輪を**出さない**＝監視を壊すより表示を諦める。
 
+輪は複数出せる（`MarkerSet`・spec 追記15）: 決定手の太い輪に加えて、最善手・第一感・人間らしい手を細い輪で出し、
+役割を輪の内側の字で示す（`mark_bgra`。何を出すかは `move_candidates` が決める。ここは字と輪を描くだけ）。
+1交点＝1窓で、どの窓も同じくキャプチャから除外する。
+
 座標系は `tsumego_capture.find_window_rect`（GetWindowRect）と同じ画面座標。窓の生成・描画・破棄は
 専用スレッド（メッセージループ）が行い、他スレッドは目標状態を書いて PostMessage で起こすだけ。
 """
 
 import ctypes
 import ctypes.wintypes
+import functools
+import os
 import sys
 import threading
+from pathlib import Path
 
 from katrain.core.move_difficulty import RING_HARD, RING_OBVIOUS
 
@@ -72,6 +79,7 @@ def difficulty_ring_color(base_name, kind):
 
 RING_DIAMETER_RATIO = 1.0  # 輪の外径 = セル幅（隣の交点に掛からない）
 RING_THICKNESS_RATIO = 0.14  # 線の太さ = 外径 × これ
+RING_THIN_THICKNESS_RATIO = 0.07  # 決定手以外の候補（最善手・第一感など）の細い輪（spec 追記15）
 RING_MIN_THICKNESS = 3
 RING_MIN_SIZE = 8
 RING_SUPERSAMPLE = 8  # アンチエイリアス: この倍率で描いて面積平均で縮小する（縁は 64 段階）
@@ -79,10 +87,10 @@ RING_SUPERSAMPLE = 8  # アンチエイリアス: この倍率で描いて面積
 WDA_EXCLUDEFROMCAPTURE = 0x11
 
 
-def ring_geometry(x, y, cell):
+def ring_geometry(x, y, cell, thickness_ratio=RING_THICKNESS_RATIO):
     """中心 (x, y)・セル幅 cell の輪の窓矩形 (left, top, size) と線の太さを返す（純関数）"""
     size = max(RING_MIN_SIZE, int(round(cell * RING_DIAMETER_RATIO)))
-    thickness = max(RING_MIN_THICKNESS, int(round(size * RING_THICKNESS_RATIO)))
+    thickness = max(RING_MIN_THICKNESS, int(round(size * thickness_ratio)))
     return int(round(x - size / 2)), int(round(y - size / 2)), size, thickness
 
 
@@ -116,6 +124,84 @@ def ring_bgra(size, thickness, rgb):
     return Image.merge("RGBA", (*channels, alpha)).tobytes()
 
 
+# --- 輪の内側の字（複数候補の表示・spec 追記15）---
+# 候補点は必ず空点なので輪の内側が空いている＝役割を字で書く（色を覚えなくてよい）。将棋の marker.py は
+# 輪の右上にバッジを出すが、囲碁は候補が隣の交点に並びやすくバッジ同士が重なる（モックで確認）ので内側に置く。
+# 字は白＋黒い縁取り。輪の色で塗ると、2字のとき輪の線に掛かった部分が同じ色に沈む（難易度の赤い輪の上の
+# 「罠感」が読めなかった＝実寸の描画で確認）。白なら盤・輪のどの色の上でも読め、色を覚える必要もない
+GLYPH_COLOR = (255, 255, 255)
+GLYPH_STROKE_RATIO = 0.11  # 縁取りの太さ = 字の高さ × これ
+GLYPH_MIN_HEIGHT = 8
+# 字数 -> (字の高さ ÷ セル幅, 各字の中心のずれ ÷ セル幅)。2字は輪の線に少し掛かる大きさ（19路の 38px セルで 16px）
+GLYPH_LAYOUTS = {
+    1: (0.56, ((0.0, 0.0),)),
+    2: (0.42, ((-0.21, 0.0), (0.21, 0.0))),
+    3: (0.34, ((-0.17, -0.16), (0.17, -0.16), (0.0, 0.18))),
+    4: (0.34, ((-0.17, -0.17), (0.17, -0.17), (-0.17, 0.17), (0.17, 0.17))),
+}
+FONT_CANDIDATES = ("meiryob.ttc", "meiryo.ttc", "YuGothB.ttc", "msgothic.ttc")  # 太字優先。%WINDIR%\Fonts
+
+
+def font_dir():
+    return Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
+
+
+@functools.lru_cache(maxsize=None)
+def load_font(size, directory=None):
+    """候補フォントを順に探して ImageFont を返す。1つも無ければ None（＝字は省く。輪は出す）"""
+    from PIL import ImageFont
+
+    directory = Path(directory) if directory is not None else font_dir()
+    for name in FONT_CANDIDATES:
+        path = directory / name
+        if path.exists():
+            try:
+                return ImageFont.truetype(str(path), size)
+            except OSError:
+                continue
+    return None
+
+
+def glyph_layout(count, size):
+    """字数と輪の外径 size から (字の高さ px, 各字の中心 (x, y) px) を返す（純関数）。4字を超えるぶんは捨てる"""
+    ratio, offsets = GLYPH_LAYOUTS[max(1, min(count, max(GLYPH_LAYOUTS)))]
+    height = max(GLYPH_MIN_HEIGHT, int(round(size * ratio)))
+    return height, [(size / 2 + dx * size, size / 2 + dy * size) for dx, dy in offsets]
+
+
+def mark_bgra(size, thickness, rgb, text="", font_directory=None):
+    """輪＋内側の字を size×size の事前乗算 BGRA で返す（純関数）。字が無ければ `ring_bgra` と同一のバイト列。
+
+    フォントが見つからなければ字を省いて輪だけ返す（輪は従来どおり出す）。
+    """
+    ring = ring_bgra(size, thickness, rgb)
+    chars = list(text or "")[: max(GLYPH_LAYOUTS)]
+    if not chars:
+        return ring
+    height, centers = glyph_layout(len(chars), size)
+    font = load_font(height, font_directory)
+    if font is None:
+        return ring
+    from PIL import Image, ImageChops, ImageDraw
+
+    glyphs = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(glyphs)
+    stroke = max(1, int(round(height * GLYPH_STROKE_RATIO)))
+    for char, (cx, cy) in zip(chars, centers):
+        left, top, right, bottom = draw.textbbox((0, 0), char, font=font, stroke_width=stroke)
+        draw.text(
+            (cx - (right - left) / 2 - left, cy - (bottom - top) / 2 - top),
+            char, font=font, fill=(*GLYPH_COLOR, 255), stroke_width=stroke, stroke_fill=(0, 0, 0, 255),
+        )
+    # 事前乗算どうしの重ね: 出力 = 字 + 輪 × (1 − 字の α)。字は直値 RGBA なので先に事前乗算する
+    gr, gg, gb, ga = glyphs.split()
+    glyph_pre = Image.merge("RGBA", (*(ImageChops.multiply(c, ga) for c in (gb, gg, gr)), ga))
+    ring_img = Image.frombytes("RGBA", (size, size), ring)  # チャンネル順は B,G,R,A（中身は事前乗算済み）
+    keep = ImageChops.invert(ga)
+    out = [ImageChops.add(g, ImageChops.multiply(r, keep)) for g, r in zip(glyph_pre.split(), ring_img.split())]
+    return Image.merge("RGBA", out).tobytes()
+
+
 class ScreenMarker:
     """輪を1つ出す。show/hide/set_color/close はどのスレッドから呼んでもよい（内部で直列化）。
 
@@ -143,12 +229,21 @@ class ScreenMarker:
         return sys.platform == "win32"
 
     # --- 外向き API ---
-    def show(self, x, y, cell):
-        target = ring_geometry(x, y, cell)
+    def show(self, x, y, cell, text="", thick=True, color=None):
+        """輪を出す／動かす。text は輪の内側に書く字（複数候補の表示）、thick=False は細い輪。
+
+        color を渡すと位置と同時に色も替える（1回の描き直しで済む。別々に替えると一瞬だけ古い位置に新しい色が出る）
+        """
+        ratio = RING_THICKNESS_RATIO if thick else RING_THIN_THICKNESS_RATIO
+        target = (*ring_geometry(x, y, cell, ratio), text or "")
         with self._lock:
-            if self._closed or target == self._target:
+            if self._closed:
+                return
+            new_color = self._color if color is None else tuple(color)
+            if target == self._target and new_color == self._color:
                 return
             self._target = target
+            self._color = new_color
         self._kick()
 
     def hide(self):
@@ -255,18 +350,59 @@ class ScreenMarker:
             return
         if target == self._applied and color == self._applied_color:
             return
-        left, top, size, thickness = target
-        _update_layered(hwnd, left, top, size, ring_bgra(size, thickness, color))
+        left, top, size, thickness, text = target
+        _update_layered(hwnd, left, top, size, mark_bgra(size, thickness, color, text))
         if self._applied is None:
             user32.ShowWindow(hwnd, _SW_SHOWNA)  # 非アクティブのまま見せる（アプリからフォーカスを奪わない）
         self._applied = target
         self._applied_color = color
 
 
+MARKER_SLOTS = 4  # 決定手＋最善手＋第一感＋人間らしい手（同じ点の役割は1つの輪にまとめるので最大4点）
+
+
+class MarkerSet:
+    """輪を複数出す（決定手＋ほかの候補・spec 追記15）。1交点＝1窓で、字はその窓の輪の内側に描く。
+
+    show(marks) の marks は [(x, y, cell, text, thick, rgb), ...]（先頭が決定手）。余った窓は消す。
+    どのスレッドから呼んでもよい（各窓は ScreenMarker が直列化する）。
+    """
+
+    def __init__(self, log=None, slots=MARKER_SLOTS):
+        self._markers = tuple(ScreenMarker(log=log) for _ in range(slots))
+
+    @staticmethod
+    def available():
+        return ScreenMarker.available()
+
+    def show(self, marks):
+        for index, marker in enumerate(self._markers):
+            if index < len(marks):
+                x, y, cell, text, thick, rgb = marks[index]
+                marker.show(x, y, cell, text=text, thick=thick, color=rgb)
+            else:
+                marker.hide()
+
+    def hide(self):
+        for marker in self._markers:
+            marker.hide()
+
+    def close(self):
+        for marker in self._markers:
+            marker.hide()
+        for marker in self._markers:
+            marker.close()
+
+    @property
+    def markers(self):
+        return self._markers
+
+
 # --- Win32 ---
 _MARKERS = {}  # hwnd -> ScreenMarker（WndProc から実体へ戻すため）
 _WNDPROC_REF = []  # コールバックを GC から守る
 _CLASS_REGISTERED = False
+_CLASS_LOCK = threading.Lock()  # MarkerSet は複数の窓スレッドを同時に起こす＝RegisterClassW の競合を防ぐ
 
 _WS_POPUP = 0x80000000
 _WS_EX_TOPMOST = 0x00000008
@@ -363,6 +499,11 @@ def _update_layered(hwnd, left, top, size, bgra):
 
 
 def _register_class():
+    with _CLASS_LOCK:
+        _register_class_locked()
+
+
+def _register_class_locked():
     global _CLASS_REGISTERED
     if _CLASS_REGISTERED:
         return

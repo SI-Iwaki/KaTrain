@@ -701,6 +701,12 @@ class Game(BaseGame):
         owner = getattr(self, "_enigma_ponder_owner", None)
         if owner is None or move is None or move.player == owner:
             return
+        Game._stop_enigma_ponder(self)
+
+    def _stop_enigma_ponder(self):
+        """難解の着手後先読みを無条件に打ち切る（`_cancel_enigma_ponder` の本体。発行者の色は見ない）"""
+        if getattr(self, "_enigma_ponder_owner", None) is None:
+            return
         self._enigma_ponder_owner = None
         self._enigma_ponder_gen = getattr(self, "_enigma_ponder_gen", 0) + 1
         state = getattr(self, "_enigma_ponder", None)
@@ -709,6 +715,33 @@ class Game(BaseGame):
             engine, nodes = state[0], state[1]
             for node in nodes:
                 engine.terminate_queries(only_for_node=node)
+
+    def replace_last_move(self, move: Move):
+        """今の局面の最終手を、同じ色の別の手 move に置き換える（盤面監視の候補の差し替え・board-watch spec 追記15）。
+
+        最終手のノードは親から外す（分岐として残すと `children[0]` を辿る集計・保存が打たれなかった手の側へ進む）。
+        move が非合法なら元の局面に戻して IllegalMoveException を投げ直す。戻り値は新しい着手ノード。
+        先読み（難解の ponder・応手先読み）は置き換える手の応手を温めているので、色を問わず先に止める。
+        """
+        old = self.current_node
+        parent = old.parent
+        if parent is None or old.children or old.move is None or move.player != old.move.player:
+            raise IllegalMoveException("Cannot replace the last move here")
+        self._stop_enigma_ponder()
+        for engine in set(self.engines.values()):
+            engine.terminate_queries(only_for_node=old)
+        with self._lock:
+            parent.children = [c for c in parent.children if c is not old]
+            self.current_node = parent
+            self._calculate_groups()
+        try:
+            return self.play(move)
+        except IllegalMoveException:
+            with self._lock:
+                parent.children.append(old)
+                self.current_node = old
+                self._calculate_groups()
+            raise
 
     def _cancel_region_prefetch(self):
         """発行済みの先読みクエリを打ち切る（結果はもともと捨てるだけなので副作用なし）。

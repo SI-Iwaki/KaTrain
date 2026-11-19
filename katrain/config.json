@@ -111,6 +111,9 @@
         "highlight_color": "cyan",
         "move_cursor": false,
         "highlight_difficulty": false,
+        "highlight_candidates": false,
+        "candidate_swap": true,
+        "candidates_max_loss": 2.0,
         "spectate_hotkey": "ctrl+alt+w",
         "spectate_poll_ms": 1000
     },

@@ -720,6 +720,51 @@ class KaTrainGui(Screen, KaTrainBase):
             self.log(f"board_watch: 注入した手が非合法でした: {e}", OUTPUT_INFO)
             self._board_watch_status(BW_STATUS_WARN, f"注入した手が非合法でした: {e}")
 
+    def _do_board_watch_swap(self, coords, color, expect_move_number, replaced_coords):
+        """盤面監視: アプリで決定手の代わりに表示中の別の候補が打たれた＝KaTrain の最終手をその手に差し替える。
+
+        （board-watch spec 追記15）。監視スレッドの判定はキュー投入前のスナップショットなので、ここで
+        「最終手が監視の見た手のまま・その色・手数・まだ先が無い」を確かめ直し、違えば捨てる
+        （`_do_board_watch_play` と同じ作法）。差し替えた手のノードには、元の決定手と残りの候補を
+        「差し替え可能な手」として引き継ぐ＝アプリの仮置きや読み違いで差し替えても、同じ規則で戻せる。
+        """
+        from katrain.core.move_candidates import swap_targets
+
+        node = self.game.current_node
+        last = node.move
+        if (
+            node.depth != expect_move_number
+            or last is None
+            or last.player != color
+            or last.coords is None
+            or tuple(last.coords) != tuple(replaced_coords)
+            or node.children
+        ):
+            self.log(
+                f"board_watch: 差し替えを破棄しました（手数 {node.depth}!={expect_move_number} か、最終手が変わった）",
+                OUTPUT_INFO,
+            )
+            return
+        new_move = Move(coords, player=color)
+        carried = (swap_targets(node) | {last.gtp()}) - {new_move.gtp()}
+        self.board_gui.animating_pv = None
+        try:
+            new_node = self.game.replace_last_move(new_move)
+        except IllegalMoveException as e:
+            self.log(f"board_watch: 差し替え先 {new_move.gtp()} が非合法でした: {e}", OUTPUT_INFO)
+            self._board_watch_status(BW_STATUS_WARN, f"アプリで打たれた手に差し替えられません: {e}")
+            return
+        new_node.watch_swap_carry = frozenset(carried)
+        new_node.ai_decision = {"kind": "swap", "from": last.gtp(), "trap": False}
+        new_node.ai_thoughts = (
+            f"board_watch: replaced the AI move {last.gtp()} with {new_move.gtp()} (played in the app)."
+        )
+        self._play_stone_sound()
+        self.log(
+            f"board_watch: アプリで打たれた {new_move.gtp()} に差し替えました（KaTrain の決定手は {last.gtp()}）",
+            OUTPUT_INFO,
+        )
+
     def _do_board_watch_start(self, reader, grid, size, near_color=None, force_import=False):
         """監視の開始。前提チェック → 必要なら局面取り込み → プレイモード → スレッド起動。
 
@@ -744,7 +789,7 @@ class KaTrainGui(Screen, KaTrainBase):
             watch_settings_from_config,
         )
         from katrain.core import screen_cursor
-        from katrain.core.screen_marker import ScreenMarker
+        from katrain.core.screen_marker import MarkerSet
 
         ai_players = [bw for bw, info in self.players_info.items() if info.ai]
         ai_color, assignment = watch_player_assignment(ai_players, near_color)
@@ -813,14 +858,25 @@ class KaTrainGui(Screen, KaTrainBase):
         def on_move(i, j, color, move_number, board_size):
             self("board-watch-play", grid_to_move(i, j, board_size), color, move_number)
 
+        def on_swap(i, j, color, move_number, board_size, replaced):
+            # アプリで決定手の代わりに表示中の別の候補が打たれた（spec 追記15）
+            self(
+                "board-watch-swap",
+                grid_to_move(i, j, board_size),
+                color,
+                move_number,
+                grid_to_move(replaced[0], replaced[1], board_size),
+            )
+
         watch_cfg = self._config.get("board_watch") or {}
         # AI の手をアプリ盤の上に強調表示する輪（screen_marker・spec 追記6）。座標は reader が持つ
         # 窓矩形＋盤矩形から引くので reader も持っておく。前回の輪が残っていれば捨てる
         self._board_watch_marker_close()
         self._board_watch_reader = reader
-        if ScreenMarker.available():
-            # ON/OFF・色は _board_watch_ahead が毎回設定を読む＝設定画面で変えれば走っている監視にも効く
-            self._board_watch_marker = ScreenMarker(log=lambda message: self.log(message, OUTPUT_INFO))
+        if MarkerSet.available():
+            # ON/OFF・色・候補の表示は _board_watch_ahead が毎回設定を読む＝設定画面で変えれば走っている監視にも効く。
+            # 輪は決定手＋ほかの候補（最善手・第一感・人間らしい手）で最大4つ（spec 追記15）
+            self._board_watch_marker = MarkerSet(log=lambda message: self.log(message, OUTPUT_INFO))
         if screen_cursor.available():
             # AI の着手の交点へマウスカーソルを運ぶ（screen_cursor・spec 追記8）。ON/OFF は
             # _board_watch_ahead が毎回設定を読む。前面判定は reader と同じ窓タイトルで行う
@@ -834,6 +890,7 @@ class KaTrainGui(Screen, KaTrainBase):
             on_move=on_move,
             on_status=self._board_watch_status,
             on_ahead=self._board_watch_ahead,
+            on_swap=on_swap,
             settings=watch_settings_from_config(watch_cfg),
             # 対局が auto_stop_sec 進まなければ自分で止まる（アプリの投了・時間切れは KaTrain に
             # 伝わらない＝終局後の空回り対策・spec 追記9）。後始末は Kivy スレッドで行う
@@ -1695,11 +1752,43 @@ class KaTrainGui(Screen, KaTrainBase):
             if point is None or color is None:
                 marker.hide()
             else:
-                marker.set_color(color)
-                marker.show(*point)
+                marker.show(self._board_watch_marks(cfg, reader, move, point, color))
         parker = getattr(self, "_board_watch_cursor", None)
         if parker is not None:
             parker.park(move, point, enabled=bool(cfg.get("move_cursor", False)))
+
+    def _board_watch_marks(self, cfg, reader, move, point, color):
+        """輪の一覧 [(x, y, セル幅, 字, 太い輪か, 色)]。先頭が決定手（今までの輪）。
+
+        候補の表示（設定 highlight_candidates・spec 追記15）が ON で、輪の指す手が AI の最終手なら、最善手（最）・
+        第一感（感）・人間らしい手（人・第一感と違うときだけ）を細い輪で足し、決定手が罠なら「罠」と書く。
+        同じ点の役割は1つの輪にまとめる。ほかの候補は難易度で塗り分けず設定色のまま。
+        """
+        from katrain.core.board_watch import ring_candidates_enabled
+        from katrain.core.move_candidates import CANDIDATE_MAX_LOSS, current_move_marks
+        from katrain.core.screen_marker import ring_color
+
+        decision_only = [(*point, "", True, color)]
+        if not ring_candidates_enabled(cfg):
+            return decision_only
+        game = self.game
+        last = getattr(getattr(game, "current_node", None), "move", None)
+        if last is None or not self.players_info[last.player].ai:
+            return decision_only  # 人間側の手（KaTrain の盤で直接打った等）には候補を出さない
+        try:
+            max_loss = float(cfg.get("candidates_max_loss", CANDIDATE_MAX_LOSS))
+        except (TypeError, ValueError):
+            max_loss = CANDIDATE_MAX_LOSS
+        marks = current_move_marks(game, move, max_loss=max_loss, log=lambda message: self.log(message, OUTPUT_INFO))
+        if not marks:
+            return decision_only
+        base = ring_color(cfg.get("highlight_color"))
+        out = []
+        for (i, j), text, decision in marks:
+            at = point if decision else reader.screen_point(i, j)
+            if at is not None:
+                out.append((*at, text, decision, color if decision else base))
+        return out or decision_only
 
     def _board_watch_highlight_refresh(self):
         """設定画面で強調表示（輪の色・カーソル移動）が変わった。対局監視が走っていれば今の ahead に当て直す"""
@@ -1720,7 +1809,14 @@ class KaTrainGui(Screen, KaTrainBase):
 
     def _board_watch_state(self):
         """監視スレッドが読む KaTrain 側のスナップショット（判定は board_watch 側で行う）"""
-        from katrain.core.board_watch import WatchState, move_to_grid, previous_app_grid, stones_to_grid
+        from katrain.core.board_watch import (
+            WatchState,
+            candidate_swap_enabled,
+            move_to_grid,
+            previous_app_grid,
+            stones_to_grid,
+        )
+        from katrain.core.move_candidates import swap_targets
         from katrain.core.tsumego_solver_api import moves_from_node
 
         game = self.game
@@ -1741,6 +1837,17 @@ class KaTrainGui(Screen, KaTrainBase):
         if move is not None and move.coords is not None:  # パスは coords=None の Move
             i, j = move_to_grid(move.coords, size_x)
             last_move = (i, j, move.player)
+        # 複数候補の表示（spec 追記15）: AI の最終手の代わりにアプリで打たれたら差し替える交点。
+        # 候補は輪を出すとき（_board_watch_ahead）にノードへ書かれる＝輪が出ていない間は空
+        swap_moves = ()
+        if (
+            last_move is not None
+            and candidate_swap_enabled(self._config.get("board_watch"))
+            and self.players_info[move.player].ai
+        ):
+            swap_moves = tuple(
+                sorted(move_to_grid(Move.from_gtp(gtp).coords, size_x) for gtp in swap_targets(node))
+            )
         to_play = node.next_player
         return WatchState(
             current_grid=grid,
@@ -1758,6 +1865,7 @@ class KaTrainGui(Screen, KaTrainBase):
             move_number=node.depth,
             board_size=size_x,
             previous_grid=previous,
+            swap_moves=swap_moves,
         )
 
     def _board_watch_idle_stopped(self, watcher):

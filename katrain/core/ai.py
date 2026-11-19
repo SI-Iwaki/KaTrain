@@ -30,6 +30,7 @@ from katrain.core.game import (
     Move,
     region_analysis_extra_settings,
 )
+from katrain.core.move_candidates import TRAP_MIN_DELTA_E
 from katrain.core.utils import var_to_grid, weighted_selection_without_replacement, evaluation_class
 
 # Decorator pattern for adding classes to the registry
@@ -3538,6 +3539,10 @@ class Enigma9Strategy(AIStrategy):
 
     def _generate_move(self) -> Tuple[Move, str]:
         self._cancel_ponder()  # 前手番の先読みの残骸を最初に打ち切る
+        # 盤面監視の輪に「罠」と出すための記録（board-watch spec 追記15）。着手ノードの `ai_decision` に写る
+        # （`generate_ai_move`）。記録だけで、解析条件・採用判断には一切使わない。自己対局ハーネスが読む
+        # `last_decision_info`（一致率ひかえめの判定情報）とは別の属性＝ハーネスの集計を変えない
+        self.ring_decision = {"kind": "best", "trap": False}
         self.wait_for_analysis()
         player = self.cn.next_player
         sign = 1 if player == "B" else -1
@@ -3948,6 +3953,7 @@ class Enigma9Strategy(AIStrategy):
                     f"find_hp={o_pick['find']:.3f}, p_fooled={o_pick['p_fooled']:.0%}) instead of {best_gtp}"
                 )
                 self._start_ponder(o_pick["gtp"], probes.get(o_pick["gtp"]), player)
+                self.ring_decision = {"kind": "underdog" if under_on else "overdraft", "trap": True}
                 return (
                     Move.from_gtp(o_pick["gtp"], player=player),
                     f"{self.LABEL}: {o_name} {o_pick['gtp']} (verified loss {o_pick['loss']:.2f}, "
@@ -3973,6 +3979,7 @@ class Enigma9Strategy(AIStrategy):
                     f"instead of {best_gtp}"
                 )
                 self._start_ponder(g_pick["gtp"], probes.get(g_pick["gtp"]), player)
+                self.ring_decision = {"kind": "gamble", "trap": True}
                 return (
                     Move.from_gtp(g_pick["gtp"], player=player),
                     f"{self.LABEL}: gamble trap {g_pick['gtp']} (verified loss {g_pick['loss']:.2f}, "
@@ -3981,6 +3988,7 @@ class Enigma9Strategy(AIStrategy):
                     f"wr if answered correctly {g_pick['wr_after']:.1%}) instead of {best_gtp}.",
                 )
 
+        best_e = next((c["e"] for c in scored if c["gtp"] == best_gtp), None)  # 輪の「罠」表示用（記録のみ）
         scored, _dropped = self._filter_challengers(scored, best_gtp)
         chosen, band = enigma9_choose_local(scored, best_gtp, margin, loc_slack, loc_stddev)
         if band:
@@ -4003,6 +4011,14 @@ class Enigma9Strategy(AIStrategy):
             f"wr={wr_txt}) instead of {best_gtp}"
         )
         self._start_ponder(chosen["gtp"], probes.get(chosen["gtp"]), player)
+        # 通常の外しは「相手の期待損失 E が最善手より TRAP_MIN_DELTA_E 目以上大きい」ときだけ罠と表示する
+        # （珍しいだけで E が増えない外しは無印）
+        delta_e = None if best_e is None else chosen["e"] - best_e
+        self.ring_decision = {
+            "kind": "deviate",
+            "delta_e": delta_e,
+            "trap": delta_e is not None and delta_e >= TRAP_MIN_DELTA_E,
+        }
         return (
             Move.from_gtp(chosen["gtp"], player=player),
             f"{self.LABEL}: deviated to {chosen['gtp']} (verified loss {chosen['loss']:.2f}, "
@@ -4533,6 +4549,7 @@ class Mimic13Strategy(Enigma13Strategy):
             f"instead of {best_gtp}"
         )
         self._start_ponder(chosen["gtp"], probes.get(chosen["gtp"]), player)
+        self.ring_decision = {"kind": chosen["kind"], "trap": chosen["kind"] == "trap"}  # 輪の「罠」表示用
         return (
             Move.from_gtp(chosen["gtp"], player=player),
             f"{self.LABEL}: deviated to {chosen['gtp']} ({chosen['kind']}, price {chosen['price']:.2f}, "
@@ -13490,5 +13507,7 @@ def generate_ai_move(game: Game, ai_mode: str, ai_settings: Dict) -> Tuple[Optio
         game.katrain.log(f"Discarding AI move {move.gtp()}: position changed", OUTPUT_DEBUG)
         return move, None
     played_node.ai_thoughts = ai_thoughts
+    # 戦略が残した決定の記録（難解の罠かどうか等）。盤面監視の輪の「罠」表示が読む（board-watch spec 追記15）
+    played_node.ai_decision = getattr(strategy, "ring_decision", None) or getattr(strategy, "last_decision_info", None)
     game.katrain.log(f"Move generation complete: {move.gtp()} -- {ai_thoughts}", OUTPUT_DEBUG)
     return move, played_node

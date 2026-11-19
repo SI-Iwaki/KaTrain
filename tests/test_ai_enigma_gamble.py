@@ -272,3 +272,30 @@ class TestGambleEndToEnd:
         move, _ = on.generate_move()
         assert "G7" in on.probed[0]  # spread は最も高い手を必ず含む
         assert move.gtp() == "G7"
+
+
+class TestRingDecision:
+    """盤面監視の輪の「罠」表示用の記録（board-watch spec 追記15）。記録だけで着手は変えない。"""
+
+    def test_cheap_rarity_deviation_is_not_a_trap(self):
+        s, _ = _gamble_strategy(Enigma13Strategy, "enigma13")
+        assert s.generate_move()[0].gtp() == "K10"
+        info = s.ring_decision
+        assert info["kind"] == "deviate" and info["trap"] is False
+        assert abs(info["delta_e"]) < 0.5  # 珍しいだけで相手の期待損失は増えない外し
+
+    def test_named_trap_is_a_trap(self):
+        s, _ = _gamble_strategy(Enigma13Strategy, "enigma13", {"enigma13_gamble_until_move": 35})
+        assert s.generate_move()[0].gtp() == "G7"
+        assert s.ring_decision == {"kind": "gamble", "trap": True}
+
+    def test_best_move_is_not_a_trap(self):
+        s, _ = _gamble_strategy(Enigma13Strategy, "enigma13", {"enigma13_net_margin": 5.0})
+        assert s.generate_move()[0].gtp() == "D4"
+        assert s.ring_decision == {"kind": "best", "trap": False}
+
+    def test_the_record_is_separate_from_the_harness_decision_info(self):
+        """自己対局ハーネスは `last_decision_info` を持つ戦略を「判定情報あり」として集計する＝難解には生やさない"""
+        s, _ = _gamble_strategy(Enigma13PlusStrategy, "enigma13plus")
+        s.generate_move()
+        assert not hasattr(s, "last_decision_info") and isinstance(s.ring_decision, dict)
